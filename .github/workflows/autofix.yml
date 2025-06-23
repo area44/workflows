@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   autofix:
-    runs-on: ubuntu-latest  # Use the latest Ubuntu GitHub-hosted runner
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout your repository using git
