@@ -1,7 +1,10 @@
+name: Build and Deploy Astro Site
+
 on:
   workflow_call:
     inputs:
       run_deploy:
+        description: 'Whether to run the deploy step'
         required: false
         type: boolean
         default: false
@@ -9,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       run_deploy:
-        description: 'Whether to deploy after build'
+        description: 'Whether to run the deploy step'
         required: false
-        default: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -26,7 +29,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      should_deploy: ${{ steps.set-output.outputs.should_deploy }}
+      should_deploy: ${{ steps.set_output.outputs.should_deploy }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,6 +38,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'pnpm'
 
       - name: Install PNPM
         uses: pnpm/action-setup@v4
@@ -53,7 +57,7 @@ jobs:
           path: dist
 
       - name: Set deploy condition
-        id: set-output
+        id: set_output
         run: |
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "should_deploy=true" >> "$GITHUB_OUTPUT"
@@ -62,9 +66,8 @@ jobs:
           fi
 
   deploy:
-    if: inputs.run_deploy == true && needs.build.outputs.should_deploy == 'true'
+    if: ${{ inputs.run_deploy == true && needs.build.outputs.should_deploy == 'true' }}
     needs: build
-    if: needs.build.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
