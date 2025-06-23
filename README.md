@@ -8,7 +8,7 @@ GitHub reusable workflows allow you to centralize common automation tasks (like 
 
 This repository acts as the **central hub** for all shared workflows at AREA44.
 
-## 📦 Available Workflows
+## Available Workflows
 
 - `autofix.yml`
 
