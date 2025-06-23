@@ -1,10 +1,8 @@
 name: autofix.ci
 
 on:
-  workflow_call:  # Make this workflow reusable from other repositories
+  workflow_call:
 
-
-# Required permission to allow autofix.ci to push changes back to the repository
 permissions:
   contents: write
 
@@ -25,10 +23,10 @@ jobs:
       - name: Setup Biome CLI
         uses: biomejs/setup-biome@v2
         with:
-          version: latest
+          version: 2.0.4
 
       - name: Run Biome
-        run: biome ci .
+        run: biome ci
 
       - name: Run autofix.ci
         uses: autofix-ci/action@v1.3
