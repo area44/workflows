@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -19,14 +19,14 @@ jobs:
     outputs:
       should_deploy: ${{ steps.set-output.outputs.should_deploy }}
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: "pnpm"
+          node-version: 22
+          cache: 'pnpm'
 
       - name: Install PNPM
         uses: pnpm/action-setup@v4
@@ -55,7 +55,7 @@ jobs:
 
   deploy:
     needs: build
-    if: needs.build.outputs.should_deploy == "true"
+    if: needs.build.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
