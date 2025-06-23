@@ -1,8 +1,8 @@
-name: Deploy Astro site to Pages
+name: Build and Deploy Astro Site
 
 on:
-  workflow_dispatch:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,14 +16,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.set-output.outputs.should_deploy }}
     steps:
-      - name: Checkout your repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: "pnpm"
 
       - name: Install PNPM
@@ -34,18 +36,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build with Astro
+      - name: Build Astro site
         run: pnpm build
 
-      - name: Upload artifact
-        if: github.event_name == "push" && github.ref == "refs/heads/main"
+      - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
+      - name: Set deploy condition
+        id: set-output
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
-    if: github.event_name == "push" && github.ref == "refs/heads/main"
     needs: build
+    if: needs.build.outputs.should_deploy == "true"
     runs-on: ubuntu-latest
     environment:
       name: github-pages
