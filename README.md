@@ -29,12 +29,12 @@ on:
 
 jobs:
   autofix:
-    uses: area44/workflow-hub/.github/workflows/autofix.yml@v0.1.0
+    uses: area44/workflow-hub/.github/workflows/autofix.yml@v0.2.0
 ```
 
 ### ✅ Best Practices
 
-* Always reference **tagged versions** (e.g. `@v0.1.0`) instead of a branch like `main` to ensure stability.
+* Always reference **tagged versions** (e.g. `@v0.2.0`) instead of a branch like `main` to ensure stability.
 * Keep your workflows modular and focused on a single task for better reusability.
 
 ## 📄 License
