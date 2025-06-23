@@ -1,29 +1,42 @@
-# Workflow Hub - GitHub Actions for AREA44
+# Workflow Hub – Reusable GitHub Actions by AREA44
 
-This repository contains **reusable GitHub Actions workflows** maintained by AREA44. These workflows are designed to be shared and invoked across multiple repositories to standardize and simplify CI/CD pipelines.
+Welcome to the **Workflow Hub**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
 
-## What Is This?
+## 🚀 What Is This?
 
-GitHub reusable workflows allow you to centralize common automation tasks (like testing, linting, formatting, and deployment) into a single source — then reuse them across all your projects using the `uses:` syntax.
+GitHub’s **reusable workflows** feature allows you to define shared automation logic (such as building, testing, linting, fixing, and deploying) once—and then reuse it across any repository with the `uses:` keyword.
 
-This repository acts as the **central hub** for all shared workflows at AREA44.
+This repository serves as the **central source of truth** for all shared workflows within the AREA44 ecosystem.
 
-## Available Workflows
+## 📦 Available Workflows
 
-- `autofix.yml`
+* **`astro.yml`** — Build and deploy Astro sites to GitHub Pages.
+* **`autofix.yml`** — Automatically fix code style issues using formatters and linters.
 
-## Usage Example
+> Additional workflows may be added over time to support common development and deployment needs.
 
-In a downstream repository:
+## 🛠️ How to Use
+
+In your downstream repository, reference a workflow like this:
 
 ```yaml
+name: autofix.ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
 jobs:
   autofix:
     uses: area44/workflow-hub/.github/workflows/autofix.yml@v0.1.0
 ```
 
-Make sure to tag versions in this repo and reference specific versions (like `@v0.1.0`) in consumers for stability.
+### ✅ Best Practices
+
+* Always reference **tagged versions** (e.g. `@v0.1.0`) instead of a branch like `main` to ensure stability.
+* Keep your workflows modular and focused on a single task for better reusability.
 
 ## 📄 License
 
-This repository is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
