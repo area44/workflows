@@ -14,7 +14,7 @@ on:
       run_deploy:
         description: 'Whether to run the deploy step'
         required: false
-        default: 'false'
+        default: false
 
 permissions:
   contents: read
