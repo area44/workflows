@@ -12,8 +12,7 @@ This repository serves as the **central source of truth** for all shared workflo
 
 * **`astro.yml`** — Build and deploy Astro sites to GitHub Pages.
 * **`autofix.yml`** — Automatically fix code style issues using formatters and linters.
-
-> Additional workflows may be added over time to support common development and deployment needs.
+* **`vite.yml`** — Build and deploy Vite sites to GitHub Pages.
 
 ## 🛠️ How to Use
 
