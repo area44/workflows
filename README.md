@@ -23,7 +23,7 @@ name: autofix.ci
 
 on:
   push:
-    branches: ["main"]
+    branches: ['main']
   pull_request:
 
 jobs:
