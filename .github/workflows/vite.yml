@@ -1,4 +1,4 @@
-name: Build and Deploy Astro Site
+name: Build and Deploy with Vite
 
 on:
   workflow_call:
@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_deploy: ${{ steps.set_output.outputs.should_deploy }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -50,7 +51,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build Astro site
+      - name: Build with Vite
         run: pnpm build
 
       - name: Upload site artifact
