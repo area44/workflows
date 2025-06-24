@@ -25,10 +25,10 @@ jobs:
       - name: Setup Biome CLI
         uses: biomejs/setup-biome@v2
         with:
-          version: 2.0.4
+          version: latest
 
       - name: Run Biome
         run: biome ci
 
       - name: Run autofix.ci
-        uses: autofix-ci/action@v1.3
+        uses: autofix-ci/action@v1
