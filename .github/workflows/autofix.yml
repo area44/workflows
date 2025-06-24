@@ -1,3 +1,5 @@
+name: autofix.ci
+
 on:
   workflow_call:
 
@@ -9,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout your repository using git
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install PNPM
+      - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
           version: 10
