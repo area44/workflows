@@ -30,10 +30,10 @@ on:
 
 jobs:
   autofix:
-    uses: area44/actions-lib/.github/workflows/autofix.yml@latest
+    uses: area44/actions-lib/.github/workflows/autofix.yml@main
 ```
 
-> Replace `latest` with a version tag (e.g., `v1`) for stability in production use.
+> Replace `main` with a version tag (e.g., `v1`) for stability in production use.
 
 ## 📄 License
 
