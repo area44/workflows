@@ -1,6 +1,6 @@
-# Workflow Hub – Reusable GitHub Actions by AREA44
+# Actions Library – Reusable GitHub Actions by AREA44
 
-Welcome to the **Workflow Hub**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
+Welcome to the **Actions Library**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
 
 ## 🚀 What Is This?
 
@@ -13,6 +13,8 @@ This repository serves as the **central source of truth** for all shared workflo
 * **`astro.yml`** — Build and deploy Astro sites to GitHub Pages.
 * **`autofix.yml`** — Automatically fix code style issues using formatters and linters.
 * **`vite.yml`** — Build and deploy Vite sites to GitHub Pages.
+
+> Workflows are stored in the `actions` directory.
 
 ## 🛠️ How to Use
 
@@ -28,8 +30,10 @@ on:
 
 jobs:
   autofix:
-    uses: area44/workflow-hub/.github/workflows/autofix.yml@main
+    uses: area44/actions-lib/actions/autofix.yml@latest
 ```
+
+> Replace `latest` with a version tag (e.g., `v1`) for stability in production use.
 
 ## 📄 License
 
