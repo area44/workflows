@@ -1,6 +1,6 @@
-# Actions Library – Reusable GitHub Actions by AREA44
+# Actions – Reusable GitHub Actions by AREA44
 
-Welcome to the **Actions Library**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
+Welcome to the **Actions**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
 
 ## 🚀 What Is This?
 
@@ -30,10 +30,10 @@ on:
 
 jobs:
   autofix:
-    uses: area44/actions-lib/.github/workflows/autofix.yml@main
+    uses: area44/actions/.github/workflows/autofix.yml@main
 ```
 
-> Replace `main` with a version tag (e.g., `v1`) for stability in production use.
+> Replace `main` with a version tag (e.g., `v0.4.1`) for stability in production use.
 
 ## 📄 License
 
