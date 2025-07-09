@@ -75,12 +75,6 @@ jobs:
         with:
           version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
-      - name: Setup Yarn
-        if: ${{ steps.detect_pm.outputs.PM_NAME == 'yarn' }}
-        uses: DerYeger/setup-yarn@v1
-        with:
-          version: ${{ steps.detect_pm.outputs.PM_VERSION }}
-
       - name: Setup Bun
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
         uses: oven-sh/setup-bun@v1
@@ -109,7 +103,13 @@ jobs:
           esac
 
       - name: Build with Vite
-        run: pnpm build
+        run: |
+          case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+            pnpm) pnpm build ;;
+            yarn) yarn build ;;
+            bun)  bun run build ;;
+            *)    npm run build ;;
+          esac
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3

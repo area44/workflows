@@ -53,12 +53,6 @@ jobs:
         with:
           version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
-      - name: Setup Yarn
-        if: ${{ steps.detect_pm.outputs.PM_NAME == 'yarn' }}
-        uses: DerYeger/setup-yarn@v1
-        with:
-          version: ${{ steps.detect_pm.outputs.PM_VERSION }}
-
       - name: Setup Bun
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
         uses: oven-sh/setup-bun@v1
