@@ -43,7 +43,7 @@ jobs:
               echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "No packageManager field found, using default PNPM version"
+            echo "No packageManager field found, using latest PNPM"
             echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
           fi
 
