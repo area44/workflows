@@ -14,10 +14,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Determine Node.js version
+        id: get_node_version
+        run: |
+          if [[ -f ".nvmrc" ]]; then
+            echo "Using Node.js version from .nvmrc"
+            echo "NODE_VERSION=$(cat .nvmrc | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          elif node_version=$(jq -r '.engines.node // empty' package.json); [[ -n "$node_version" ]]; then
+            echo "Using Node.js version from package.json: $node_version"
+            echo "NODE_VERSION=$node_version" >> "$GITHUB_OUTPUT"
+          else
+            echo "Using latest LTS Node.js version"
+            echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine PNPM version
+        id: get_pnpm_version
+        run: |
+          default_pnpm_version="latest"
+          if jq -e '.packageManager' package.json > /dev/null; then
+            pm=$(jq -r '.packageManager' package.json)
+            if [[ "$pm" == pnpm@* ]]; then
+              pnpm_version="${pm#pnpm@}"
+              echo "Using PNPM version from package.json: $pnpm_version"
+              echo "PNPM_VERSION=$pnpm_version" >> "$GITHUB_OUTPUT"
+            else
+              echo "Unsupported or different package manager: $pm"
+              echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No packageManager field found, using default PNPM version"
+            echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: ${{ steps.get_pnpm_version.outputs.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
