@@ -39,48 +39,73 @@ jobs:
         id: get_node_version
         run: |
           if [[ -f ".nvmrc" ]]; then
-            echo "Using Node.js version from .nvmrc"
             echo "NODE_VERSION=$(cat .nvmrc | tr -d '\n')" >> "$GITHUB_OUTPUT"
           elif node_version=$(jq -r '.engines.node // empty' package.json); [[ -n "$node_version" ]]; then
-            echo "Using Node.js version from package.json: $node_version"
             echo "NODE_VERSION=$node_version" >> "$GITHUB_OUTPUT"
           else
-            echo "Using latest LTS Node.js version"
             echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Determine PNPM version
-        id: get_pnpm_version
+      - name: Detect package manager
+        id: detect_pm
         run: |
-          default_pnpm_version="latest"
-          if jq -e '.packageManager' package.json > /dev/null; then
-            pm=$(jq -r '.packageManager' package.json)
-            if [[ "$pm" == pnpm@* ]]; then
-              pnpm_version="${pm#pnpm@}"
-              echo "Using PNPM version from package.json: $pnpm_version"
-              echo "PNPM_VERSION=$pnpm_version" >> "$GITHUB_OUTPUT"
-            else
-              echo "Unsupported or different package manager: $pm"
-              echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
-            fi
+          default_pm="npm"
+          default_pm_version="latest"
+          if [[ -f "package.json" ]] && jq -e '.packageManager' package.json > /dev/null; then
+            raw_pm=$(jq -r '.packageManager' package.json)
+            pm_name="${raw_pm%@*}"
+            pm_version="${raw_pm#*@}"
           else
-            echo "No packageManager field found, using latest PNPM"
-            echo "PNPM_VERSION=$default_pnpm_version" >> "$GITHUB_OUTPUT"
+            pm_name="$default_pm"
+            pm_version="$default_pm_version"
           fi
-
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ steps.get_pnpm_version.outputs.PNPM_VERSION }}
+          echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
+          echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: ${{ steps.detect_pm.outputs.PM_NAME }}
+
+      - name: Setup PNPM
+        if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+
+      - name: Setup Yarn
+        if: ${{ steps.detect_pm.outputs.PM_NAME == 'yarn' }}
+        uses: DerYeger/setup-yarn@v1
+        with:
+          version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+
+      - name: Setup Bun
+        if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.pnpm-store
+            ~/.bun
+            .yarn/cache
+          key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-
 
       - name: Install dependencies
-        run: pnpm install
+        run: |
+          case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+            pnpm) pnpm install --no-frozen-lockfile ;;
+            yarn) yarn install ;;
+            bun)  bun install ;;
+            *)    npm install ;;
+          esac
 
       - name: Build Astro site
         run: pnpm build
