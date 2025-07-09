@@ -40,7 +40,7 @@ jobs:
           elif [[ -f "yarn.lock" ]]; then
             pm_name="yarn"
             pm_version=$(yarn -v 2>/dev/null || echo "latest")
-          elif [[ -f "bun.lockb" ]]; then
+          elif [[ -f "bun.lock" ]]; then
             pm_name="bun"
             pm_version=$(bun --version 2>/dev/null || echo "latest")
           else
@@ -51,7 +51,6 @@ jobs:
           echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
           echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
 
-
       - name: Setup PNPM
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
         uses: pnpm/action-setup@v4
@@ -60,7 +59,7 @@ jobs:
 
       - name: Setup Bun
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 

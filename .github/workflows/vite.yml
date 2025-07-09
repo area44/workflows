@@ -56,10 +56,20 @@ jobs:
             raw_pm=$(jq -r '.packageManager' package.json)
             pm_name="${raw_pm%@*}"
             pm_version="${raw_pm#*@}"
+          elif [[ -f "pnpm-lock.yaml" ]]; then
+            pm_name="pnpm"
+            pm_version=$(npx -y pnpm --version 2>/dev/null || echo "latest")
+          elif [[ -f "yarn.lock" ]]; then
+            pm_name="yarn"
+            pm_version=$(yarn -v 2>/dev/null || echo "latest")
+          elif [[ -f "bun.lock" ]]; then
+            pm_name="bun"
+            pm_version=$(bun --version 2>/dev/null || echo "latest")
           else
             pm_name="$default_pm"
-            pm_version="$default_pm_version"
+            pm_version=$(npm -v 2>/dev/null || echo "$default_pm_version")
           fi
+          echo "Detected package manager: $pm_name@$pm_version"
           echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
           echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
 
@@ -71,7 +81,7 @@ jobs:
 
       - name: Setup Bun
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
