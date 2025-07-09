@@ -63,12 +63,6 @@ jobs:
           echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
           echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
-          cache: ${{ steps.detect_pm.outputs.PM_NAME }}
-
       - name: Setup PNPM
         if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
         uses: pnpm/action-setup@v4
@@ -81,17 +75,11 @@ jobs:
         with:
           bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: |
-            ~/.npm
-            ~/.pnpm-store
-            ~/.bun
-            .yarn/cache
-          key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-
+          node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
+          cache: ${{ steps.detect_pm.outputs.PM_NAME }}
 
       - name: Install dependencies
         run: |
