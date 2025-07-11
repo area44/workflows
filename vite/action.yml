@@ -10,6 +10,7 @@ inputs:
 outputs:
   should_deploy:
     description: Whether the site should be deployed
+    value: ${{ steps.set_output.outputs.should_deploy }}
 
 runs:
   using: "composite"
@@ -75,11 +76,23 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: $PM_NAME install
+      run: |
+        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+          pnpm) pnpm install --no-frozen-lockfile ;;
+          yarn) yarn install ;;
+          bun)  bun install ;;
+          *)    npm install ;;
+        esac
 
     - name: Build with Vite
       shell: bash
-      run: $PM_NAME run build
+      run: |
+        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+          pnpm) pnpm build ;;
+          yarn) yarn build ;;
+          bun)  bun run build ;;
+          *)    npm run build ;;
+        esac
 
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@v3
@@ -97,7 +110,3 @@ runs:
           should_deploy=true
         fi
         echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
-
-    - name: Export output
-      shell: bash
-      run: echo "should_deploy=${{ steps.set_output.outputs.should_deploy }}" >> $GITHUB_OUTPUT
