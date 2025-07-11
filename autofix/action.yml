@@ -4,9 +4,6 @@ description: Run Biome and apply autofix.ci
 runs:
   using: "composite"
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
     - name: Determine Node.js version
       id: get_node_version
       shell: bash
