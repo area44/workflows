@@ -99,11 +99,16 @@ runs:
     - name: Set deploy condition
       id: set_output
       shell: bash
+      env:
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REF: ${{ github.ref }}
+        RUN_DEPLOY: ${{ inputs.run_deploy }}
       run: |
         should_deploy=false
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+        if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
           should_deploy=true
-        elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.run_deploy }}" == "true" ]]; then
+        elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$RUN_DEPLOY" == "true" ]]; then
           should_deploy=true
         fi
         echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
+
