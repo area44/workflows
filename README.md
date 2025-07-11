@@ -22,9 +22,14 @@ on:
     branches: ['main']
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   autofix:
-    uses: area44/workflows/autofix@main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: area44/workflows/autofix@v2.0.0
 ```
 
 > Replace `main` with a specific version tag (e.g., `v0.5.0`) to ensure consistent behavior over time.
