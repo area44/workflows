@@ -105,9 +105,7 @@ runs:
         RUN_DEPLOY: ${{ inputs.run_deploy }}
       run: |
         should_deploy=false
-        if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
-          should_deploy=true
-        elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$RUN_DEPLOY" == "true" ]]; then
+        if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" && "$RUN_DEPLOY" == "true" ]]; then
           should_deploy=true
         fi
         echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
