@@ -1,6 +1,16 @@
 name: area44/vite
 description: Build and Deploy with Vite
 
+inputs:
+  run_deploy:
+    description: Whether to run the deploy step
+    required: false
+    default: 'false'
+
+outputs:
+  should_deploy:
+    description: Whether the site should be deployed
+
 runs:
   using: "composite"
   steps:
@@ -75,3 +85,19 @@ runs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: dist
+
+    - name: Set deploy condition
+      id: set_output
+      shell: bash
+      run: |
+        should_deploy=false
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          should_deploy=true
+        elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.run_deploy }}" == "true" ]]; then
+          should_deploy=true
+        fi
+        echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
+
+    - name: Export output
+      shell: bash
+      run: echo "should_deploy=${{ steps.set_output.outputs.should_deploy }}" >> $GITHUB_OUTPUT
