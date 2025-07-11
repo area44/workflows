@@ -1,24 +1,18 @@
-# Actions – Reusable GitHub Actions by AREA44
+# area44/workflows
 
-Welcome to the **Actions**, a centralized repository of **reusable GitHub Actions workflows** maintained by **AREA44**. This repository helps standardize and streamline CI/CD processes across multiple projects.
+This repository contains reusable **GitHub Actions workflows** for the AREA44 ecosystem. It helps standardize and streamline CI/CD processes across projects by defining shared automation steps—such as linting, fixing, building, testing, and deploying—in one central location.
 
-## 🚀 What Is This?
+## Available Workflows
 
-GitHub’s **reusable workflows** feature allows you to define shared automation logic (such as building, testing, linting, fixing, and deploying) once—and then reuse it across any repository with the `uses:` keyword.
-
-This repository serves as the **central source of truth** for all shared workflows within the AREA44 ecosystem.
-
-## 📦 Available Workflows
-
-* **`astro.yml`** — Build and deploy Astro sites to GitHub Pages.
-* **`autofix.yml`** — Automatically fix code style issues using formatters and linters.
-* **`vite.yml`** — Build and deploy Vite sites to GitHub Pages.
-
-> Workflows are stored in the `actions` directory.
+| Workflow        | Description                                                                 |
+|-----------------|-----------------------------------------------------------------------------|
+| `astro.yml`     | Build and deploy [Astro](https://astro.build/) sites to GitHub Pages.       |
+| `autofix.yml`   | Automatically fix code style issues using formatters and linters.           |
+| `vite.yml`      | Build and deploy [Vite](https://vitejs.dev/) sites to GitHub Pages.         |
 
 ## 🛠️ How to Use
 
-In your downstream repository, reference a workflow like this:
+To use one of these reusable workflows in your own repository, reference it like this:
 
 ```yaml
 name: autofix.ci
@@ -28,13 +22,22 @@ on:
     branches: ['main']
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   autofix:
-    uses: area44/actions/.github/workflows/autofix.yml@main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run autofix
+        uses: area44/workflows/autofix@main
 ```
 
-> Replace `main` with a version tag (e.g., `v0.4.1`) for stability in production use.
+> Replace `main` with a specific version tag (e.g., `v2.0.0`) to ensure consistent behavior over time.
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
