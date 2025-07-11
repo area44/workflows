@@ -1,17 +1,6 @@
 name: area44/astro
 description: Build and Deploy Astro Site
 
-inputs:
-  run_deploy:
-    description: Whether to run the deploy step
-    required: false
-    default: 'false'
-
-outputs:
-  should_deploy:
-    description: Whether the site should be deployed
-    value: ${{ steps.set_output.outputs.should_deploy }}
-
 runs:
   using: "composite"
   steps:
@@ -117,13 +106,3 @@ runs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: dist
-
-    - name: Set deploy condition
-      id: set_output
-      shell: bash
-      run: |
-        should_deploy=false
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" && "${{ inputs.run_deploy }}" == "true" ]]; then
-          should_deploy=true
-        fi
-        echo "should_deploy=$should_deploy" >> "$GITHUB_OUTPUT"
