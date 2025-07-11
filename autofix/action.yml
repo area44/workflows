@@ -1,90 +1,86 @@
-name: autofix.ci
+name: area44/autofix.ci
+description: Run Biome and apply autofix.ci
 
-on:
-  workflow_call:
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-permissions:
-  contents: write
+    - name: Determine Node.js version
+      id: get_node_version
+      shell: bash
+      run: |
+        if [[ -f ".nvmrc" ]]; then
+          echo "NODE_VERSION=$(cat .nvmrc | tr -d '\n')" >> "$GITHUB_OUTPUT"
+        elif node_version=$(jq -r '.engines.node // empty' package.json); [[ -n "$node_version" ]]; then
+          echo "NODE_VERSION=$node_version" >> "$GITHUB_OUTPUT"
+        else
+          echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
+        fi
 
-jobs:
-  autofix:
-    runs-on: ubuntu-latest
+    - name: Detect package manager
+      id: detect_pm
+      shell: bash
+      run: |
+        default_pm="npm"
+        default_pm_version="latest"
+        if [[ -f "package.json" ]] && jq -e '.packageManager' package.json > /dev/null; then
+          raw_pm=$(jq -r '.packageManager' package.json)
+          pm_name="${raw_pm%@*}"
+          pm_version="${raw_pm#*@}"
+        elif [[ -f "pnpm-lock.yaml" ]]; then
+          pm_name="pnpm"
+          pm_version=$(npx -y pnpm --version 2>/dev/null || echo "latest")
+        elif [[ -f "yarn.lock" ]]; then
+          pm_name="yarn"
+          pm_version=$(yarn -v 2>/dev/null || echo "latest")
+        elif [[ -f "bun.lock" ]]; then
+          pm_name="bun"
+          pm_version=$(bun --version 2>/dev/null || echo "latest")
+        else
+          pm_name="$default_pm"
+          pm_version=$(npm -v 2>/dev/null || echo "$default_pm_version")
+        fi
+        echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
+        echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Setup PNPM
+      if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
-      - name: Determine Node.js version
-        id: get_node_version
-        run: |
-          if [[ -f ".nvmrc" ]]; then
-            echo "NODE_VERSION=$(cat .nvmrc | tr -d '\n')" >> "$GITHUB_OUTPUT"
-          elif node_version=$(jq -r '.engines.node // empty' package.json); [[ -n "$node_version" ]]; then
-            echo "NODE_VERSION=$node_version" >> "$GITHUB_OUTPUT"
-          else
-            echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
-          fi
+    - name: Setup Bun
+      if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
 
-      - name: Detect package manager
-        id: detect_pm
-        run: |
-          default_pm="npm"
-          default_pm_version="latest"
-          if [[ -f "package.json" ]] && jq -e '.packageManager' package.json > /dev/null; then
-            raw_pm=$(jq -r '.packageManager' package.json)
-            pm_name="${raw_pm%@*}"
-            pm_version="${raw_pm#*@}"
-          elif [[ -f "pnpm-lock.yaml" ]]; then
-            pm_name="pnpm"
-            pm_version=$(npx -y pnpm --version 2>/dev/null || echo "latest")
-          elif [[ -f "yarn.lock" ]]; then
-            pm_name="yarn"
-            pm_version=$(yarn -v 2>/dev/null || echo "latest")
-          elif [[ -f "bun.lock" ]]; then
-            pm_name="bun"
-            pm_version=$(bun --version 2>/dev/null || echo "latest")
-          else
-            pm_name="$default_pm"
-            pm_version=$(npm -v 2>/dev/null || echo "$default_pm_version")
-          fi
-          echo "Detected package manager: $pm_name@$pm_version"
-          echo "PM_NAME=$pm_name" >> "$GITHUB_OUTPUT"
-          echo "PM_VERSION=$pm_version" >> "$GITHUB_OUTPUT"
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
+        cache: ${{ steps.detect_pm.outputs.PM_NAME }}
 
-      - name: Setup PNPM
-        if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+    - name: Install dependencies
+      shell: bash
+      run: |
+        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+          pnpm) pnpm install --no-frozen-lockfile ;;
+          yarn) yarn install ;;
+          bun)  bun install ;;
+          *)    npm install ;;
+        esac
 
-      - name: Setup Bun
-        if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+    - name: Setup Biome CLI
+      uses: biomejs/setup-biome@v2
+      with:
+        version: latest
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
-          cache: ${{ steps.detect_pm.outputs.PM_NAME }}
+    - name: Run Biome
+      shell: bash
+      run: biome check .
 
-      - name: Install dependencies
-        run: |
-          case "${{ steps.detect_pm.outputs.PM_NAME }}" in
-            pnpm) pnpm install --no-frozen-lockfile ;;
-            yarn) yarn install ;;
-            bun)  bun install ;;
-            *)    npm install ;;
-          esac
-
-      - name: Setup Biome CLI
-        uses: biomejs/setup-biome@v2
-        with:
-          version: latest
-
-      - name: Run Biome
-        run: biome check
-
-      - name: Run autofix.ci
-        uses: autofix-ci/action@v1
+    - name: Run autofix.ci
+      uses: autofix-ci/action@v1
