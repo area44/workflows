@@ -29,10 +29,14 @@ jobs:
   autofix:
     runs-on: ubuntu-latest
     steps:
-      - uses: area44/workflows/autofix@v2.0.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run autofix
+        uses: area44/workflows/autofix@main
 ```
 
-> Replace `main` with a specific version tag (e.g., `v0.5.0`) to ensure consistent behavior over time.
+> Replace `main` with a specific version tag (e.g., `v2.0.0`) to ensure consistent behavior over time.
 
 ## License
 

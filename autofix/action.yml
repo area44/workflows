@@ -1,5 +1,5 @@
 name: area44/autofix.ci
-description: Run Biome and apply autofix.ci
+description: Run autofix.ci
 
 runs:
   using: "composite"
