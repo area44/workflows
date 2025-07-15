@@ -17,6 +17,9 @@ runs:
           echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
         fi
 
+        echo "NODE_VERSION=$NODE_VERSION" >> "$GITHUB_OUTPUT"
+        echo "Detected Node.js version: $NODE_VERSION"
+
     - name: Detect package manager
       id: detect_pm
       shell: bash
@@ -34,13 +37,16 @@ runs:
           if [[ -n "$RAW_PM" ]]; then
             PACKAGE_MANAGER="${RAW_PM%%@*}"
             VERSION="${RAW_PM#*@}"
-            [[ "$VERSION" == "$RAW_PM" ]] && VERSION="latest"
+            [[ "$PACKAGE_MANAGER" == "$VERSION" ]] && VERSION="latest"
           else
-            echo "No lockfile or packageManager found"; exit 1
+            PACKAGE_MANAGER="npm"
+            VERSION="latest"
+            echo "No lockfile or packageManager found. Defaulting to npm@latest"
           fi
         else
           echo "No lockfile or package.json found"; exit 1
         fi
+
         echo "PM_NAME=$PACKAGE_MANAGER" >> "$GITHUB_OUTPUT"
         echo "PM_VERSION=$VERSION" >> "$GITHUB_OUTPUT"
         echo "Detected package manager: $PACKAGE_MANAGER@$VERSION"
@@ -61,7 +67,6 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
-        cache: ${{ steps.detect_pm.outputs.PM_NAME }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
