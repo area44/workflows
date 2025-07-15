@@ -24,32 +24,30 @@ runs:
       id: detect_pm
       shell: bash
       run: |
-        if [[ -f pnpm-lock.yaml ]]; then
-          PACKAGE_MANAGER="pnpm"; VERSION="latest"
-        elif [[ -f yarn.lock ]]; then
-          PACKAGE_MANAGER="yarn"; VERSION="latest"
-        elif [[ -f package-lock.json ]]; then
-          PACKAGE_MANAGER="npm"; VERSION="latest"
-        elif [[ -f bun.lock || -f bun.lockb ]]; then
-          PACKAGE_MANAGER="bun"; VERSION="latest"
-        elif [[ -f package.json ]]; then
+        PM=""
+        VERSION="latest"
+        [[ -f pnpm-lock.yaml ]] && PM="pnpm"
+        [[ -f yarn.lock ]] && PM="${PM:-yarn}"
+        [[ -f package-lock.json ]] && PM="${PM:-npm}"
+        [[ -f bun.lock || -f bun.lockb ]] && PM="${PM:-bun}"
+        if [[ -z "$PM" && -f package.json ]]; then
           RAW_PM=$(jq -r '.packageManager // empty' package.json)
           if [[ -n "$RAW_PM" ]]; then
-            PACKAGE_MANAGER="${RAW_PM%%@*}"
+            PM="${RAW_PM%%@*}"
             VERSION="${RAW_PM#*@}"
-            [[ "$PACKAGE_MANAGER" == "$VERSION" ]] && VERSION="latest"
+            [[ "$PM" == "$VERSION" ]] && VERSION="latest"
           else
-            PACKAGE_MANAGER="npm"
-            VERSION="latest"
-            echo "No lockfile or packageManager found. Defaulting to npm@latest"
+            PM="npm"
           fi
-        else
-          echo "No lockfile or package.json found"; exit 1
         fi
+        if [[ "$VERSION" == "latest" && -f package.json ]]; then
+          VERSION=$(jq -r ".engines.${PM} // \"latest\"" package.json)
+        fi
+        [[ -z "$PM" ]] && { echo "No package manager found"; exit 1; }
 
-        echo "PM_NAME=$PACKAGE_MANAGER" >> "$GITHUB_OUTPUT"
+        echo "PM_NAME=$PM" >> "$GITHUB_OUTPUT"
         echo "PM_VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "Detected package manager: $PACKAGE_MANAGER@$VERSION"
+        echo "Detected package manager: $PM@$VERSION"
 
     - name: Setup PNPM
       if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
