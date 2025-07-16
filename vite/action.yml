@@ -29,7 +29,7 @@ runs:
         [[ -f pnpm-lock.yaml ]] && PM="pnpm"
         [[ -f yarn.lock ]] && PM="${PM:-yarn}"
         [[ -f package-lock.json ]] && PM="${PM:-npm}"
-        [[ -f bun.lock || -f bun.lockb ]] && PM="${PM:-bun}"
+        [[ -f bun.lock ]] && PM="${PM:-bun}"
         if [[ -z "$PM" && -f package.json ]]; then
           RAW_PM=$(jq -r '.packageManager // empty' package.json)
           if [[ -n "$RAW_PM" ]]; then
@@ -69,7 +69,6 @@ runs:
           **/package-lock.json
           **/pnpm-lock.yaml
           **/yarn.lock
-          **/bun.lockb
           **/bun.lock
 
     - name: Cache dependencies
@@ -81,7 +80,7 @@ runs:
           ~/.pnpm-store
           ~/.yarn/cache
           ~/.bun/install/cache
-        key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json', '**/bun.lock', '**/bun.lockb') }}
+        key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json', '**/bun.lock') }}
         restore-keys: |
           ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-
 
