@@ -94,14 +94,9 @@ runs:
           *)    npm install ;;
         esac
 
-    - name: Setup Biome CLI
-      uses: biomejs/setup-biome@v2
-      with:
-        version: latest
-
     - name: Run Biome
       shell: bash
-      run: biome check .
+      run: pnpm check
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1
