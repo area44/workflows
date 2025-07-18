@@ -96,7 +96,13 @@ runs:
 
     - name: Run Biome
       shell: bash
-      run: pnpm check
+      run: |
+        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
+          pnpm) pnpm check ;;
+          yarn) yarn check ;;
+          bun)  bun check ;;
+          *)    npm run check ;;
+        esac
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1
