@@ -80,7 +80,7 @@ runs:
           ~/.pnpm-store
           ~/.yarn/cache
           ~/.bun/install/cache
-        key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json', '**/bun.lock') }}
+        key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/package.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json', '**/bun.lock') }}
         restore-keys: |
           ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-
 
