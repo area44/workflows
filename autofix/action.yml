@@ -95,7 +95,7 @@ runs:
         fi
 
         if [[ -n "$SCRIPT" ]]; then
-          $PM run "$SCRIPT" ;;
+          $PM run "$SCRIPT"
         else
           echo "No 'check' or 'format' script found."
         fi
