@@ -33,6 +33,9 @@ runs:
           fi
         fi
 
+        echo "NODE_VERSION=$NODE_VERSION" >> "$GITHUB_OUTPUT"
+        echo "PM_NAME=$PM" >> "$GITHUB_OUTPUT"
+        echo "PM_VERSION=$PM_VERSION" >> "$GITHUB_OUTPUT"
         echo "Detected Node.js: $NODE_VERSION | PM: $PM@$PM_VERSION"
 
     - name: Setup PNPM
