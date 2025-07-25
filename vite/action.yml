@@ -4,67 +4,56 @@ description: Build and Deploy with Vite
 runs:
   using: "composite"
   steps:
-    - name: Determine Node.js version
-      id: get_node_version
+    - name: Detect Node.js version and package manager
+      id: detect_env
       shell: bash
       run: |
         if [[ -f .nvmrc ]]; then
-          echo "NODE_VERSION=$(<.nvmrc)" >> "$GITHUB_OUTPUT"
-        elif [[ -f package.json ]]; then
-          NODE_VERSION=$(jq -er '.engines.node // empty' package.json || true)
-          echo "NODE_VERSION=${NODE_VERSION:-lts/*}" >> "$GITHUB_OUTPUT"
+          NODE_VERSION=$(<.nvmrc)
         else
-          echo "NODE_VERSION=lts/*" >> "$GITHUB_OUTPUT"
+          NODE_VERSION="lts/*"
         fi
 
-        echo "NODE_VERSION=$NODE_VERSION" >> "$GITHUB_OUTPUT"
-        echo "Detected Node.js version: $NODE_VERSION"
-
-    - name: Detect package manager
-      id: detect_pm
-      shell: bash
-      run: |
         PM=""
-        VERSION="latest"
+        PM_VERSION="latest"
+
         [[ -f pnpm-lock.yaml ]] && PM="pnpm"
         [[ -f yarn.lock ]] && PM="${PM:-yarn}"
         [[ -f package-lock.json ]] && PM="${PM:-npm}"
         [[ -f bun.lock ]] && PM="${PM:-bun}"
+
         if [[ -z "$PM" && -f package.json ]]; then
           RAW_PM=$(jq -r '.packageManager // empty' package.json)
           if [[ -n "$RAW_PM" ]]; then
             PM="${RAW_PM%%@*}"
-            VERSION="${RAW_PM#*@}"
-            [[ "$PM" == "$VERSION" ]] && VERSION="latest"
+            PM_VERSION="${RAW_PM#*@}"
+            [[ "$PM" == "$PM_VERSION" ]] && PM_VERSION="latest"
           else
             PM="npm"
           fi
         fi
-        if [[ "$VERSION" == "latest" && -f package.json ]]; then
-          VERSION=$(jq -r ".engines.${PM} // \"latest\"" package.json)
-        fi
-        [[ -z "$PM" ]] && { echo "No package manager found"; exit 1; }
 
+        echo "NODE_VERSION=$NODE_VERSION" >> "$GITHUB_OUTPUT"
         echo "PM_NAME=$PM" >> "$GITHUB_OUTPUT"
-        echo "PM_VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "Detected package manager: $PM@$VERSION"
+        echo "PM_VERSION=$PM_VERSION" >> "$GITHUB_OUTPUT"
+        echo "Detected Node.js: $NODE_VERSION | Package Manager: $PM@$PM_VERSION"
 
     - name: Setup PNPM
-      if: ${{ steps.detect_pm.outputs.PM_NAME == 'pnpm' }}
+      if: ${{ steps.detect_env.outputs.PM_NAME == 'pnpm' }}
       uses: pnpm/action-setup@v4
       with:
-        version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+        version: ${{ steps.detect_env.outputs.PM_VERSION }}
 
     - name: Setup Bun
-      if: ${{ steps.detect_pm.outputs.PM_NAME == 'bun' }}
+      if: ${{ steps.detect_env.outputs.PM_NAME == 'bun' }}
       uses: oven-sh/setup-bun@v2
       with:
-        bun-version: ${{ steps.detect_pm.outputs.PM_VERSION }}
+        bun-version: ${{ steps.detect_env.outputs.PM_VERSION }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ steps.get_node_version.outputs.NODE_VERSION }}
+        node-version: ${{ steps.detect_env.outputs.NODE_VERSION }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
@@ -80,29 +69,21 @@ runs:
           ~/.pnpm-store
           ~/.yarn/cache
           ~/.bun/install/cache
-        key: ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-${{ hashFiles('**/package.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json', '**/bun.lock') }}
+        key: ${{ runner.os }}-${{ steps.detect_env.outputs.PM_NAME }}-${{ hashFiles('**/package.json', '**/*.lock') }}
         restore-keys: |
-          ${{ runner.os }}-${{ steps.detect_pm.outputs.PM_NAME }}-
+          ${{ runner.os }}-${{ steps.detect_env.outputs.PM_NAME }}-
 
     - name: Install dependencies
       shell: bash
       run: |
-        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
-          pnpm) pnpm install ;;
-          yarn) yarn install ;;
-          bun)  bun install ;;
-          *)    npm install ;;
-        esac
+        PM="${{ steps.detect_env.outputs.PM_NAME }}"
+        $PM install
 
-    - name: Build with Vite
+    - name: Build Vite site
       shell: bash
       run: |
-        case "${{ steps.detect_pm.outputs.PM_NAME }}" in
-          pnpm) pnpm build ;;
-          yarn) yarn build ;;
-          bun)  bun run build ;;
-          *)    npm run build ;;
-        esac
+        PM="${{ steps.detect_env.outputs.PM_NAME }}"
+        $PM run build
 
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@v3
