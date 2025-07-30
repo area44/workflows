@@ -79,6 +79,12 @@ runs:
         PM="${{ steps.detect_env.outputs.PM_NAME }}"
         $PM install
 
+    - name: Set environment variables
+      shell: bash
+      run: |
+        REPO_NAME="${{ github.event.repository.name }}"
+        echo "BASE=/$REPO_NAME/" >> "$GITHUB_ENV"
+
     - name: Build Vite site
       shell: bash
       run: |

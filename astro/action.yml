@@ -73,6 +73,14 @@ runs:
         restore-keys: |
           ${{ runner.os }}-${{ steps.detect_env.outputs.PM_NAME }}-
 
+    - name: Set environment variables
+      shell: bash
+      run: |
+        REPO_NAME="${{ github.event.repository.name }}"
+        OWNER="${{ github.repository_owner }}"
+        echo "BASE=/$REPO_NAME/" >> "$GITHUB_ENV"
+        echo "SITE=https://$OWNER.github.io" >> "$GITHUB_ENV"
+
     - name: Install dependencies
       shell: bash
       run: |
