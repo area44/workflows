@@ -31,15 +31,18 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: npm install --no-save sharp globby
+      run: |
+        cd $RUNNER_TEMP
+        npm init -y >/dev/null 2>&1
+        npm install --no-save sharp globby
 
     - name: Optimize images
       id: optimize
       shell: bash
       run: |
         cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
-        const { globby } = await import('globby');
-        const sharp = (await import('sharp')).default;
+        import { globby } from 'globby';
+        import sharp from 'sharp';
         import fs from 'fs';
 
         const paths = await globby(['**/*.{jpg,jpeg,png,webp}'], { gitignore: true });
