@@ -38,8 +38,8 @@ runs:
       shell: bash
       run: |
         cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
-        import { globby } from 'globby';
-        import sharp from 'sharp';
+        const { globby } = await import('globby');
+        const sharp = (await import('sharp')).default;
         import fs from 'fs';
 
         const paths = await globby(['**/*.{jpg,jpeg,png,webp}'], { gitignore: true });
