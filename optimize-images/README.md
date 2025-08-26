@@ -24,7 +24,7 @@ jobs:
         id: optimize
         uses: area44/workflows/optimize-images@main
 
-      - name: Commit optimized files
+      - name: Commit optimized images
         if: ${{ steps.optimize.outputs.optimizedCount != '0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,14 +36,16 @@ jobs:
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} HEAD:${{ github.head_ref || github.ref_name }}
 
       - name: Find comment
+        if: ${{ github.event_name == 'pull_request' }}
         uses: peter-evans/find-comment@v3
         id: fc
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: Image Optimization Report
+          body-includes: 'Image Optimization Report'
 
       - name: Create or update comment
+        if: ${{ github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
         with:
           comment-id: ${{ steps.fc.outputs.comment-id }}
@@ -55,7 +57,7 @@ jobs:
             - Skipped: **${{ steps.optimize.outputs.skippedCount || '0' }}**
             - Total Saved: **${{ steps.optimize.outputs.totalSaved || '0.0' }} KB**
 
-            ### File Breakdown
+            ### File Size Comparison
             ```
             ${{ steps.optimize.outputs.details || 'No images found' }}
             ```
