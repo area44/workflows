@@ -99,3 +99,11 @@ runs:
         EOF
 
         node optimize-images.mjs
+    
+    - name: Debug outputs
+      shell: bash
+      run: |
+        echo "Optimized: ${{ steps.optimize.outputs.optimizedCount }}"
+        echo "Skipped: ${{ steps.optimize.outputs.skippedCount }}"
+        echo "Total Saved: ${{ steps.optimize.outputs.totalSaved }}"
+        echo "Details: ${{ steps.optimize.outputs.details }}"
