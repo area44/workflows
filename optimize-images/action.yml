@@ -40,11 +40,14 @@ runs:
       id: optimize
       shell: bash
       run: |
+        mkdir -p $RUNNER_TEMP/originals
+
         cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
         import fs from 'fs';
-        import { execSync } from 'child_process';
-        const { globby } = await import('globby');
+        import path from 'path';
+        import { globby } from 'globby';
         const sharp = (await import('sharp')).default;
+        import crypto from 'crypto';
 
         const paths = await globby(['**/*.{jpg,jpeg,png,webp}'], { gitignore: true });
 
@@ -53,18 +56,22 @@ runs:
         let totalSaved = 0;
         let details = [];
 
-        const originalSizes = {};
+        const originalsDir = process.env.RUNNER_TEMP + '/originals';
+        const hashes = {};
         for (const file of paths) {
-          try {
-            const sizeStr = execSync(`git show origin/main:${file} | wc -c`).toString().trim();
-            originalSizes[file] = parseInt(sizeStr);
-          } catch (e) {
-            originalSizes[file] = 0;
-          }
+          const content = fs.readFileSync(file);
+          const hash = crypto.createHash('sha256').update(content).digest('hex');
+          hashes[file] = hash;
+
+          const backupPath = path.join(originalsDir, file);
+          fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+          fs.writeFileSync(backupPath, content);
         }
 
         for (const file of paths) {
           const input = fs.readFileSync(file);
+          const originalSizeKB = input.length / 1024;
+
           let pipeline = sharp(input).rotate();
 
           if (file.match(/\.(jpe?g)$/i)) {
@@ -76,16 +83,17 @@ runs:
           }
 
           const optimizedBuffer = await pipeline.toBuffer();
+          const optimizedHash = crypto.createHash('sha256').update(optimizedBuffer).digest('hex');
 
-          if (optimizedBuffer.length < input.length) {
-            fs.writeFileSync(file, optimizedBuffer);
-            const saved = (input.length - optimizedBuffer.length) / 1024;
-            totalSaved += saved;
-            optimizedCount++;
-            details.push(`${file}: ${originalSizes[file]/1024 | 0} KB → ${optimizedBuffer.length/1024 | 0} KB (saved ${saved.toFixed(1)} KB)`);
-          } else {
+          if (optimizedHash === hashes[file]) {
             skippedCount++;
             details.push(`${file}: no improvement`);
+          } else {
+            fs.writeFileSync(file, optimizedBuffer);
+            const savedKB = (input.length - optimizedBuffer.length) / 1024;
+            totalSaved += savedKB;
+            optimizedCount++;
+            details.push(`${file}: ${originalSizeKB.toFixed(1)} KB → ${(optimizedBuffer.length/1024).toFixed(1)} KB (saved ${savedKB.toFixed(1)} KB)`);
           }
         }
 
