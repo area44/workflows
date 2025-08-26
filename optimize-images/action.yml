@@ -10,12 +10,16 @@ inputs:
 outputs:
   optimizedCount:
     description: "Number of images optimized"
+    value: ${{ steps.optimize.outputs.optimizedCount }}
   skippedCount:
     description: "Number of images skipped"
+    value: ${{ steps.optimize.outputs.skippedCount }}
   totalSaved:
     description: "Total KB saved"
+    value: ${{ steps.optimize.outputs.totalSaved }}
   details:
     description: "Per-file optimization breakdown"
+    value: ${{ steps.optimize.outputs.details }}
 
 runs:
   using: "composite"
@@ -27,13 +31,16 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: npm install --no-save sharp globby
+      run: |
+        cd $RUNNER_TEMP
+        npm init -y >/dev/null 2>&1
+        npm install --no-save sharp globby
 
     - name: Optimize images
       id: optimize
       shell: bash
       run: |
-        cat <<'EOF' > optimize-images.mjs
+        cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
         import { globby } from 'globby';
         import sharp from 'sharp';
         import fs from 'fs';
@@ -81,7 +88,7 @@ runs:
         console.log(`- Total Saved: ${totalSaved.toFixed(1)} KB`);
 
         const output = (name, value) => {
-          if (value.includes('\n')) {
+          if (value.includes && value.includes('\n')) {
             const delimiter = `EOF_${name}`;
             fs.appendFileSync(
               process.env.GITHUB_OUTPUT,
@@ -98,4 +105,4 @@ runs:
         output("details", details.join('\n'));
         EOF
 
-        node optimize-images.mjs
+        node $RUNNER_TEMP/optimize-images.mjs
