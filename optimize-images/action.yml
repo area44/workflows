@@ -1,0 +1,101 @@
+name: area44/optimize-images
+description: "Automatically optimize images (JPG, JPEG, PNG, WebP)"
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    required: false
+    default: 22
+
+outputs:
+  optimizedCount:
+    description: "Number of images optimized"
+  skippedCount:
+    description: "Number of images skipped"
+  totalSaved:
+    description: "Total KB saved"
+  details:
+    description: "Per-file optimization breakdown"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install dependencies
+      shell: bash
+      run: npm install --no-save sharp globby
+
+    - name: Optimize images
+      id: optimize
+      shell: bash
+      run: |
+        cat <<'EOF' > optimize-images.mjs
+        import { globby } from 'globby';
+        import sharp from 'sharp';
+        import fs from 'fs';
+
+        const paths = await globby(['**/*.{jpg,jpeg,png,webp}'], { gitignore: true });
+
+        let totalSaved = 0;
+        let optimizedCount = 0;
+        let skippedCount = 0;
+        let details = [];
+
+        console.log(`Found ${paths.length} image(s) to check...`);
+
+        for (const file of paths) {
+          const input = fs.readFileSync(file);
+          let pipeline = sharp(input).rotate();
+
+          if (file.match(/\.(jpe?g)$/i)) {
+            pipeline = pipeline.jpeg({ quality: 80, mozjpeg: true });
+          } else if (file.match(/\.png$/i)) {
+            pipeline = pipeline.png({ compressionLevel: 9 });
+          } else if (file.match(/\.webp$/i)) {
+            pipeline = pipeline.webp({ quality: 80 });
+          }
+
+          const optimizedBuffer = await pipeline.toBuffer();
+
+          if (optimizedBuffer.length < input.length) {
+            fs.writeFileSync(file, optimizedBuffer);
+            const saved = (input.length - optimizedBuffer.length) / 1024;
+            totalSaved += saved;
+            optimizedCount++;
+            details.push(`${file} — saved ${saved.toFixed(1)} KB`);
+            console.log(`Optimized: ${file} (saved ${saved.toFixed(1)} KB)`);
+          } else {
+            skippedCount++;
+            details.push(`${file} — already optimized`);
+            console.log(`Skipped: ${file} (already optimized)`);
+          }
+        }
+
+        console.log("Summary:");
+        console.log(`- Optimized: ${optimizedCount}`);
+        console.log(`- Skipped: ${skippedCount}`);
+        console.log(`- Total Saved: ${totalSaved.toFixed(1)} KB`);
+
+        const output = (name, value) => {
+          if (value.includes('\n')) {
+            const delimiter = `EOF_${name}`;
+            fs.appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `${name}<<${delimiter}\n${value}\n${delimiter}\n`
+            );
+          } else {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+          }
+        };
+
+        output("optimizedCount", optimizedCount.toString());
+        output("skippedCount", skippedCount.toString());
+        output("totalSaved", totalSaved.toFixed(1));
+        output("details", details.join('\n'));
+        EOF
+
+        node optimize-images.mjs
