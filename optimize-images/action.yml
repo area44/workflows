@@ -18,7 +18,7 @@ outputs:
     description: "Total KB saved"
     value: ${{ steps.optimize.outputs.totalSaved }}
   details:
-    description: "Per-file optimization breakdown"
+    description: "Per-file optimization comparison"
     value: ${{ steps.optimize.outputs.details }}
 
 runs:
@@ -41,18 +41,27 @@ runs:
       shell: bash
       run: |
         cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
-        import { globby } from 'globby';
-        import sharp from 'sharp';
         import fs from 'fs';
+        import { execSync } from 'child_process';
+        const { globby } = await import('globby');
+        const sharp = (await import('sharp')).default;
 
         const paths = await globby(['**/*.{jpg,jpeg,png,webp}'], { gitignore: true });
 
-        let totalSaved = 0;
         let optimizedCount = 0;
         let skippedCount = 0;
+        let totalSaved = 0;
         let details = [];
 
-        console.log(`Found ${paths.length} image(s) to check...`);
+        const originalSizes = {};
+        for (const file of paths) {
+          try {
+            const sizeStr = execSync(`git show origin/main:${file} | wc -c`).toString().trim();
+            originalSizes[file] = parseInt(sizeStr);
+          } catch (e) {
+            originalSizes[file] = 0;
+          }
+        }
 
         for (const file of paths) {
           const input = fs.readFileSync(file);
@@ -73,19 +82,12 @@ runs:
             const saved = (input.length - optimizedBuffer.length) / 1024;
             totalSaved += saved;
             optimizedCount++;
-            details.push(`${file} — saved ${saved.toFixed(1)} KB`);
-            console.log(`Optimized: ${file} (saved ${saved.toFixed(1)} KB)`);
+            details.push(`${file}: ${originalSizes[file]/1024 | 0} KB → ${optimizedBuffer.length/1024 | 0} KB (saved ${saved.toFixed(1)} KB)`);
           } else {
             skippedCount++;
-            details.push(`${file} — already optimized`);
-            console.log(`Skipped: ${file} (already optimized)`);
+            details.push(`${file}: no improvement`);
           }
         }
-
-        console.log("Summary:");
-        console.log(`- Optimized: ${optimizedCount}`);
-        console.log(`- Skipped: ${skippedCount}`);
-        console.log(`- Total Saved: ${totalSaved.toFixed(1)} KB`);
 
         const output = (name, value) => {
           if (value.includes && value.includes('\n')) {
