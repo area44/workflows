@@ -51,7 +51,7 @@ runs:
         bun-version: ${{ steps.detect_env.outputs.PM_VERSION }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ steps.detect_env.outputs.NODE_VERSION }}
         cache-dependency-path: |
