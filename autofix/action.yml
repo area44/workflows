@@ -9,51 +9,51 @@ runs:
       shell: bash
       run: |
         if [[ -f .nvmrc ]]; then
-          NODE_VERSION=$(<.nvmrc)
+          node_version=$(<.nvmrc)
         else
-          NODE_VERSION="lts/*"
+          node_version="lts/*"
         fi
 
-        PM=""
-        PM_VERSION="latest"
+        package_manager=""
+        package_manager_version="latest"
 
-        [[ -f pnpm-lock.yaml ]] && PM="pnpm"
-        [[ -f yarn.lock ]] && PM="${PM:-yarn}"
-        [[ -f package-lock.json ]] && PM="${PM:-npm}"
-        [[ -f bun.lock ]] && PM="${PM:-bun}"
+        [[ -f pnpm-lock.yaml ]] && package_manager="pnpm"
+        [[ -f yarn.lock ]] && package_manager="${package_manager:-yarn}"
+        [[ -f package-lock.json ]] && package_manager="${package_manager:-npm}"
+        [[ -f bun.lock ]] && package_manager="${package_manager:-bun}"
 
-        if [[ -z "$PM" && -f package.json ]]; then
-          RAW_PM=$(jq -r '.packageManager // empty' package.json)
-          if [[ -n "$RAW_PM" ]]; then
-            PM="${RAW_PM%%@*}"
-            PM_VERSION="${RAW_PM#*@}"
-            [[ "$PM" == "$PM_VERSION" ]] && PM_VERSION="latest"
+        if [[ -z "$package_manager" && -f package.json ]]; then
+          raw_package_manager=$(jq -r '.packageManager // empty' package.json)
+          if [[ -n "$raw_package_manager" ]]; then
+            package_manager="${raw_package_manager%%@*}"
+            package_manager_version="${raw_package_manager#*@}"
+            [[ "$package_manager" == "$package_manager_version" ]] && package_manager_version="latest"
           else
-            PM="npm"
+            package_manager="npm"
           fi
         fi
 
-        echo "NODE_VERSION=$NODE_VERSION" >> "$GITHUB_OUTPUT"
-        echo "PM_NAME=$PM" >> "$GITHUB_OUTPUT"
-        echo "PM_VERSION=$PM_VERSION" >> "$GITHUB_OUTPUT"
-        echo "Detected Node.js: $NODE_VERSION | Package Manager: $PM@$PM_VERSION"
+        echo "node_version=$node_version" >> "$GITHUB_OUTPUT"
+        echo "package_manager=$package_manager" >> "$GITHUB_OUTPUT"
+        echo "package_manager_version=$package_manager_version" >> "$GITHUB_OUTPUT"
+        echo "Detected Node.js: $node_version | Package Manager: $package_manager@$package_manager_version"
 
     - name: Setup PNPM
-      if: ${{ steps.detect_env.outputs.PM_NAME == 'pnpm' }}
+      if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
       uses: pnpm/action-setup@v4
       with:
-        version: ${{ steps.detect_env.outputs.PM_VERSION }}
+        version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Bun
-      if: ${{ steps.detect_env.outputs.PM_NAME == 'bun' }}
+      if: ${{ steps.detect_env.outputs.package_manager == 'bun' }}
       uses: oven-sh/setup-bun@v2
       with:
-        bun-version: ${{ steps.detect_env.outputs.PM_VERSION }}
+        bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ steps.detect_env.outputs.NODE_VERSION }}
+        node-version: ${{ steps.detect_env.outputs.node_version }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
@@ -69,14 +69,14 @@ runs:
           ~/.pnpm-store
           ~/.yarn/cache
           ~/.bun/install/cache
-        key: ${{ runner.os }}-${{ steps.detect_env.outputs.PM_NAME }}-${{ hashFiles('**/package.json', '**/*.lock') }}
+        key: ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-${{ hashFiles('**/package.json', '**/*.lock') }}
         restore-keys: |
-          ${{ runner.os }}-${{ steps.detect_env.outputs.PM_NAME }}-
+          ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
 
     - name: Install dependencies
       shell: bash
       run: |
-        case "${{ steps.detect_env.outputs.PM_NAME }}" in
+        case "${{ steps.detect_env.outputs.package_manager }}" in
           pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
           yarn) yarn install --prefer-offline ;;
           bun)  bun install ;;
@@ -86,16 +86,16 @@ runs:
     - name: Run `check` or `format` script
       shell: bash
       run: |
-        PM="${{ steps.detect_env.outputs.PM_NAME }}"
-        SCRIPT=""
+        package_manager="${{ steps.detect_env.outputs.package_manager }}"
+        script=""
 
         if [[ -f package.json ]]; then
-          jq -e '.scripts.check' package.json > /dev/null && SCRIPT="check"
-          [[ -z "$SCRIPT" ]] && jq -e '.scripts.format' package.json > /dev/null && SCRIPT="format"
+          jq -e '.scripts.check' package.json > /dev/null && script="check"
+          [[ -z "$script" ]] && jq -e '.scripts.format' package.json > /dev/null && script="format"
         fi
 
-        if [[ -n "$SCRIPT" ]]; then
-          $PM run "$SCRIPT"
+        if [[ -n "$script" ]]; then
+          "$package_manager" run "$script"
         else
           echo "No 'check' or 'format' script found."
         fi

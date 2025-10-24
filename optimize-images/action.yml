@@ -32,7 +32,7 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
-        cd $RUNNER_TEMP
+        cd "$RUNNER_TEMP"
         npm init -y >/dev/null 2>&1
         npm install --no-save sharp globby
 
@@ -40,9 +40,9 @@ runs:
       id: optimize
       shell: bash
       run: |
-        mkdir -p $RUNNER_TEMP/originals
+        mkdir -p "$RUNNER_TEMP/originals"
 
-        cat <<'EOF' > $RUNNER_TEMP/optimize-images.mjs
+        cat <<'EOF' > "$RUNNER_TEMP/optimize-images.mjs"
         import fs from 'fs';
         import path from 'path';
         import { globby } from 'globby';
@@ -58,6 +58,7 @@ runs:
 
         const originalsDir = process.env.RUNNER_TEMP + '/originals';
         const hashes = {};
+
         for (const file of paths) {
           const content = fs.readFileSync(file);
           const hash = crypto.createHash('sha256').update(content).digest('hex');
@@ -87,32 +88,32 @@ runs:
 
           if (optimizedHash === hashes[file]) {
             skippedCount++;
-            details.push(`${file}: no improvement`);
+            details.push(\`\${file}: no improvement\`);
           } else {
             fs.writeFileSync(file, optimizedBuffer);
             const savedKB = (input.length - optimizedBuffer.length) / 1024;
             totalSaved += savedKB;
             optimizedCount++;
-            details.push(`${file}: ${originalSizeKB.toFixed(1)} KB → ${(optimizedBuffer.length/1024).toFixed(1)} KB (saved ${savedKB.toFixed(1)} KB)`);
+            details.push(\`\${file}: \${originalSizeKB.toFixed(1)} KB → \${(optimizedBuffer.length / 1024).toFixed(1)} KB (saved \${savedKB.toFixed(1)} KB)\`);
           }
         }
 
         const output = (name, value) => {
-          if (value.includes && value.includes('\n')) {
-            const delimiter = `EOF_${name}`;
+          if (value && value.includes('\\n')) {
+            const delimiter = \`EOF_\${name}\`;
             fs.appendFileSync(
               process.env.GITHUB_OUTPUT,
-              `${name}<<${delimiter}\n${value}\n${delimiter}\n`
+              \`\${name}<<\${delimiter}\\n\${value}\\n\${delimiter}\\n\`
             );
           } else {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, \`\${name}=\${value}\\n\`);
           }
         };
 
         output("optimizedCount", optimizedCount.toString());
         output("skippedCount", skippedCount.toString());
         output("totalSaved", totalSaved.toFixed(1));
-        output("details", details.join('\n'));
+        output("details", details.join('\\n'));
         EOF
 
-        node $RUNNER_TEMP/optimize-images.mjs
+        node "$RUNNER_TEMP/optimize-images.mjs"
