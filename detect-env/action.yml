@@ -3,20 +3,18 @@ description: Detect Node.js version and package manager
 
 outputs:
   node_version:
-    description: "Detected Node.js version"
-    value: ${{ steps.detect.outputs.node_version }}
+    value: ${{ steps.detect_env.outputs.node_version }}
   package_manager:
-    description: "Detected package manager"
-    value: ${{ steps.detect.outputs.package_manager }}
+    value: ${{ steps.detect_env.outputs.package_manager }}
   package_manager_version:
-    description: "Detected package manager version"
-    value: ${{ steps.detect.outputs.package_manager_version }}
+    value: ${{ steps.detect_env.outputs.package_manager_version }}
 
 runs:
   using: "composite"
   steps:
     - name: Detect Node.js version and package manager
       shell: bash
+      id: detect_env
       run: |
         set -euo pipefail
 

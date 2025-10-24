@@ -53,16 +53,14 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      env:
-        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
+        package_manager="${{ steps.detect_env.outputs.package_manager }}"
         $package_manager install
 
     - name: Build Astro site
       shell: bash
-      env:
-        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
+        package_manager="${{ steps.detect_env.outputs.package_manager }}"
         $package_manager run build
 
     - name: Upload site artifact
