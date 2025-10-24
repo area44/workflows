@@ -53,7 +53,7 @@ runs:
       shell: bash
       run: |
         repo_name="${{ github.event.repository.name }}"
-        echo "base=/$repo_name/" >> "$GITHUB_ENV"
+        echo "BASE=/$repo_name/" >> "$GITHUB_ENV"
 
     - name: Build Vite site
       shell: bash

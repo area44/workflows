@@ -48,8 +48,10 @@ runs:
       run: |
         repo_name="${{ github.event.repository.name }}"
         owner="${{ github.repository_owner }}"
-        echo "base=/$repo_name/" >> "$GITHUB_ENV"
-        echo "site=https://$owner.github.io" >> "$GITHUB_ENV"
+        {
+          echo "BASE=/$repo_name/" >> "$GITHUB_ENV"
+          echo "SITE=https://$owner.github.io"
+        } >> "$GITHUB_ENV"
 
     - name: Install dependencies
       shell: bash
