@@ -49,7 +49,7 @@ runs:
         package_manager="${{ steps.detect_env.outputs.package_manager }}"
         "$package_manager" install
 
-    - name: Set environment variables
+    - name: Set site variables
       shell: bash
       run: |
         repo_name="${{ github.event.repository.name }}"

@@ -43,7 +43,7 @@ runs:
         restore-keys: |
           ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
 
-    - name: Set environment variables
+    - name: Set site variables
       shell: bash
       run: |
         repo_name="${{ github.event.repository.name }}"
