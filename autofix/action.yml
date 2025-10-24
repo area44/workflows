@@ -45,8 +45,10 @@ runs:
 
     - name: Install dependencies
       shell: bash
+      env:
+        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        case "${{ steps.detect_env.outputs.package_manager }}" in
+        case "$package_manager" in
           pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
           yarn) yarn install --prefer-offline ;;
           bun)  bun install ;;
@@ -55,8 +57,9 @@ runs:
 
     - name: Run `check` or `format` script
       shell: bash
+      env:
+        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
         script=""
 
         if [[ -f package.json ]]; then
