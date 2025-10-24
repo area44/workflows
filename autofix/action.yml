@@ -6,37 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      shell: bash
-      run: |
-        if [[ -f .nvmrc ]]; then
-          node_version=$(<.nvmrc)
-        else
-          node_version="lts/*"
-        fi
-
-        package_manager=""
-        package_manager_version="latest"
-
-        [[ -f pnpm-lock.yaml ]] && package_manager="pnpm"
-        [[ -f yarn.lock ]] && package_manager="${package_manager:-yarn}"
-        [[ -f package-lock.json ]] && package_manager="${package_manager:-npm}"
-        [[ -f bun.lock ]] && package_manager="${package_manager:-bun}"
-
-        if [[ -z "$package_manager" && -f package.json ]]; then
-          raw_package_manager=$(jq -r '.packageManager // empty' package.json)
-          if [[ -n "$raw_package_manager" ]]; then
-            package_manager="${raw_package_manager%%@*}"
-            package_manager_version="${raw_package_manager#*@}"
-            [[ "$package_manager" == "$package_manager_version" ]] && package_manager_version="latest"
-          else
-            package_manager="npm"
-          fi
-        fi
-
-        echo "node_version=$node_version" >> "$GITHUB_OUTPUT"
-        echo "package_manager=$package_manager" >> "$GITHUB_OUTPUT"
-        echo "package_manager_version=$package_manager_version" >> "$GITHUB_OUTPUT"
-        echo "Detected Node.js: $node_version | Package Manager: $package_manager@$package_manager_version"
+      uses: area44/workflows/detect-env@v3
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}

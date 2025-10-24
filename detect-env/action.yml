@@ -1,0 +1,57 @@
+name: area44/detect-env
+description: Detect Node.js version and package manager
+
+outputs:
+  node_version:
+    description: "Detected Node.js version"
+    value: ${{ steps.detect.outputs.node_version }}
+  package_manager:
+    description: "Detected package manager"
+    value: ${{ steps.detect.outputs.package_manager }}
+  package_manager_version:
+    description: "Detected package manager version"
+    value: ${{ steps.detect.outputs.package_manager_version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect Node.js version and package manager
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ -f .nvmrc ]]; then
+          node_version=$(<.nvmrc)
+        else
+          node_version="lts/*"
+          if [[ -f package.json ]]; then
+            node_line=$(grep -o '"node":[^,}]*' package.json || true)
+            if [[ -n "$node_line" ]]; then
+              node_version=$(sed -E 's/.*"node":[[:space:]]*"([^"]+)".*/\1/' <<< "$node_line")
+            fi
+          fi
+        fi
+
+        package_manager="npm"
+        package_manager_version="latest"
+
+        if   [[ -f pnpm-lock.yaml ]]; then package_manager="pnpm"
+        elif [[ -f yarn.lock ]]; then package_manager="yarn"
+        elif [[ -f package-lock.json ]]; then package_manager="npm"
+        elif [[ -f bun.lock ]]; then package_manager="bun"
+        elif [[ -f package.json ]]; then
+          package_manager_line=$(grep -o '"packageManager":[^,}]*' package.json || true)
+          if [[ -n "$package_manager_line" ]]; then
+            package_manager=$(sed -E 's/.*"packageManager":[[:space:]]*"([^@"]+).*/\1/' <<< "$package_manager_line")
+            package_manager_version=$(sed -E 's/.*"packageManager":[[:space:]]*"[^@"]*@([^"]*).*/\1/' <<< "$package_manager_line")
+            [[ "$package_manager" == "$package_manager_version" ]] && package_manager_version="latest"
+          fi
+        fi
+
+        {
+          echo "node_version=$node_version"
+          echo "package_manager=$package_manager"
+          echo "package_manager_version=$package_manager_version"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Detected Node.js: $node_version | Package Manager: $package_manager@$package_manager_version"
