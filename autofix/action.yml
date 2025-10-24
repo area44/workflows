@@ -45,10 +45,8 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      env:
-        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        case "$package_manager" in
+        case "${{ steps.detect_env.outputs.package_manager }}" in
           pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
           yarn) yarn install --prefer-offline ;;
           bun)  bun install ;;
@@ -57,18 +55,15 @@ runs:
 
     - name: Run `check` or `format` script
       shell: bash
-      env:
-        package_manager: ${{ steps.detect_env.outputs.package_manager }}
       run: |
         script=""
-
         if [[ -f package.json ]]; then
           jq -e '.scripts.check' package.json > /dev/null && script="check"
           [[ -z "$script" ]] && jq -e '.scripts.format' package.json > /dev/null && script="format"
         fi
 
         if [[ -n "$script" ]]; then
-          "$package_manager" run "$script"
+          "${{ steps.detect_env.outputs.package_manager }}" run "$script"
         else
           echo "No 'check' or 'format' script found."
         fi
