@@ -39,6 +39,7 @@ runs:
           ~/.pnpm-store
           ~/.yarn/cache
           ~/.bun/install/cache
+          .astro
         key: ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-${{ hashFiles('**/package.json', '**/*.lock') }}
         restore-keys: |
           ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
