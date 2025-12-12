@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.1.0
+      uses: area44/workflows/detect-env@v3.1.1
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
