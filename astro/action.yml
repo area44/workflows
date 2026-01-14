@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.1.1
+      uses: area44/workflows/detect-env@v3.2.0
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -29,20 +29,6 @@ runs:
           **/pnpm-lock.yaml
           **/yarn.lock
           **/bun.lock
-
-    - name: Cache dependencies
-      uses: actions/cache@v5
-      with:
-        path: |
-          node_modules
-          ~/.npm
-          ~/.pnpm-store
-          ~/.yarn/cache
-          ~/.bun/install/cache
-          .astro
-        key: ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-${{ hashFiles('**/package.json', '**/*.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
 
     - name: Set site variables
       shell: bash
