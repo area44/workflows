@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.1.1
+      uses: area44/workflows/detect-env@v3.2.0
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -30,42 +30,60 @@ runs:
           **/yarn.lock
           **/bun.lock
 
-    - name: Cache dependencies
-      uses: actions/cache@v5
-      with:
-        path: |
-          node_modules
-          ~/.npm
-          ~/.pnpm-store
-          ~/.yarn/cache
-          ~/.bun/install/cache
-        key: ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-${{ hashFiles('**/package.json', '**/*.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
-
     - name: Install dependencies
       shell: bash
       run: |
         case "${{ steps.detect_env.outputs.package_manager }}" in
-          pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
-          yarn) yarn install --prefer-offline ;;
-          bun)  bun install ;;
-          *)    npm ci ;;
+          pnpm)
+            pnpm install --prefer-offline --no-frozen-lockfile
+            ;;
+          yarn)
+            yarn install --prefer-offline
+            ;;
+          bun)
+            bun install
+            ;;
+          *)
+            if [[ -f package-lock.json ]]; then
+              npm ci
+            else
+              npm install
+            fi
+            ;;
         esac
 
-    - name: Run `check` or `format` script
+    - name: Run scripts
       shell: bash
       run: |
-        script=""
-        if [[ -f package.json ]]; then
-          jq -e '.scripts.check' package.json > /dev/null && script="check"
-          [[ -z "$script" ]] && jq -e '.scripts.format' package.json > /dev/null && script="format"
-        fi
+        scripts="$(node -e "
+          const fs = require('fs');
+          if (!fs.existsSync('package.json')) process.exit(0);
 
-        if [[ -n "$script" ]]; then
-          "${{ steps.detect_env.outputs.package_manager }}" run "$script"
+          const scripts = require('./package.json').scripts || {};
+
+          const cases = [
+            ['check'],
+            ['format', 'lint'],
+            ['fmt', 'lint'],
+            ['lint'],
+            ['format'],
+            ['fmt'],
+          ];
+
+          for (const group of cases) {
+            if (group.every(name => scripts[name])) {
+              console.log(group.join(' '));
+              break;
+            }
+          }
+        ")"
+
+        if [[ -n "$scripts" ]]; then
+          for script in $scripts; do
+            "${{ steps.detect_env.outputs.package_manager }}" run "$script"
+          done
         else
-          echo "No 'check' or 'format' script found."
+          echo "No matching scripts found."
         fi
 
     - name: Run autofix.ci

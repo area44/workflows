@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.1.1
+      uses: area44/workflows/detect-env@v3.2.0
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -30,29 +30,17 @@ runs:
           **/yarn.lock
           **/bun.lock
 
-    - name: Cache dependencies
-      uses: actions/cache@v5
-      with:
-        path: |
-          node_modules
-          ~/.npm
-          ~/.pnpm-store
-          ~/.yarn/cache
-          ~/.bun/install/cache
-          .astro
-        key: ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-${{ hashFiles('**/package.json', '**/*.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ steps.detect_env.outputs.package_manager }}-
-
     - name: Set site variables
       shell: bash
       run: |
-        repo_name="${{ github.event.repository.name }}"
+        repo="${{ github.event.repository.name }}"
         owner="${{ github.repository_owner }}"
-        {
-          echo "BASE=/$repo_name/" >> "$GITHUB_ENV"
-          echo "SITE=https://$owner.github.io"
-        } >> "$GITHUB_ENV"
+        echo "SITE=https://$owner.github.io" >> "$GITHUB_ENV"
+        if [[ "$repo" == "$owner.github.io" ]]; then
+          echo "BASE=/" >> "$GITHUB_ENV"
+        else
+          echo "BASE=/$repo/" >> "$GITHUB_ENV"
+        fi
 
     - name: Install dependencies
       shell: bash
