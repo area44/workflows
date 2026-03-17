@@ -83,8 +83,8 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
-        if [[ -n "$BUILD_COMMAND" ]]; then
-          $BUILD_COMMAND
+        if [[ -n "eval "$BUILD_COMMAND"" ]]; then
+          eval "$BUILD_COMMAND"
         else
           "$PACKAGE_MANAGER" run build
         fi
