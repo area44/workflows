@@ -47,7 +47,7 @@ runs:
 
     - name: Run scripts
       shell: bash
-      run: node ${{ github.action_path }}/../src/run-scripts.js "${{ steps.detect_env.outputs.package_manager }}"
+      run: node ${{ github.action_path }}/../src/autofix.js "${{ steps.detect_env.outputs.package_manager }}"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1.3.3

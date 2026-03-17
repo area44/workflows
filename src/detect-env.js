@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 
 let node_version = 'lts/*';
 let package_manager = 'npm';
