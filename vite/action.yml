@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.2.0
+      uses: ./detect-env
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -24,11 +24,13 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ steps.detect_env.outputs.node_version }}
+        cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
           **/yarn.lock
           **/bun.lock
+          **/bun.lockb
 
     - name: Set site variables
       shell: bash
@@ -46,13 +48,19 @@ runs:
       shell: bash
       run: |
         package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        "$package_manager" install
+        case "$package_manager" in
+          pnpm) pnpm install --frozen-lockfile ;;
+          bun) bun install --frozen-lockfile ;;
+          yarn) yarn install --frozen-lockfile ;;
+          npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
+          *) $package_manager install ;;
+        esac
 
     - name: Build Vite site
       shell: bash
       run: |
         package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        "$package_manager" run build
+        $package_manager run build
 
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@v4

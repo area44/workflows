@@ -6,7 +6,7 @@ runs:
   steps:
     - name: Detect Node.js version and package manager
       id: detect_env
-      uses: area44/workflows/detect-env@v3.2.0
+      uses: ./detect-env
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -24,32 +24,24 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ steps.detect_env.outputs.node_version }}
+        cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
           **/yarn.lock
           **/bun.lock
+          **/bun.lockb
 
     - name: Install dependencies
       shell: bash
       run: |
-        case "${{ steps.detect_env.outputs.package_manager }}" in
-          pnpm)
-            pnpm install --prefer-offline --no-frozen-lockfile
-            ;;
-          yarn)
-            yarn install --prefer-offline
-            ;;
-          bun)
-            bun install
-            ;;
-          *)
-            if [[ -f package-lock.json ]]; then
-              npm ci
-            else
-              npm install
-            fi
-            ;;
+        package_manager="${{ steps.detect_env.outputs.package_manager }}"
+        case "$package_manager" in
+          pnpm) pnpm install --frozen-lockfile ;;
+          bun) bun install --frozen-lockfile ;;
+          yarn) yarn install --frozen-lockfile ;;
+          npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
+          *) $package_manager install ;;
         esac
 
     - name: Run scripts
@@ -87,4 +79,4 @@ runs:
         fi
 
     - name: Run autofix.ci
-      uses: autofix-ci/action@v1
+      uses: autofix-ci/action@v1.3.3
