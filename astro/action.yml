@@ -5,8 +5,9 @@ runs:
   using: "composite"
   steps:
     - name: Detect Node.js version and package manager
+      shell: bash
       id: detect_env
-      uses: ./detect-env
+      run: node ${{ github.action_path }}/../src/detect-env.js
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}

@@ -1,0 +1,44 @@
+const fs = require('fs');
+
+let node_version = 'lts/*';
+let package_manager = 'npm';
+let package_manager_version = 'latest';
+
+if (fs.existsSync('.nvmrc')) {
+  node_version = fs.readFileSync('.nvmrc', 'utf8').trim();
+} else if (fs.existsSync('package.json')) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    if (pkg.engines && pkg.engines.node) {
+      node_version = pkg.engines.node;
+    }
+  } catch (e) {}
+}
+
+if (fs.existsSync('pnpm-lock.yaml')) {
+  package_manager = 'pnpm';
+} else if (fs.existsSync('yarn.lock')) {
+  package_manager = 'yarn';
+} else if (fs.existsSync('package-lock.json')) {
+  package_manager = 'npm';
+} else if (fs.existsSync('bun.lockb') || fs.existsSync('bun.lock')) {
+  package_manager = 'bun';
+} else if (fs.existsSync('package.json')) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    if (pkg.packageManager) {
+      const [name, version] = pkg.packageManager.split('@');
+      package_manager = name;
+      package_manager_version = version || 'latest';
+    }
+  } catch (e) {}
+}
+
+const output = [
+  `node_version=${node_version}`,
+  `package_manager=${package_manager}`,
+  `package_manager_version=${package_manager_version}`
+].join('\n');
+
+fs.appendFileSync(process.env.GITHUB_OUTPUT, output + '\n');
+console.log('Detected Node.js: ' + node_version + ' | Package Manager: ' + package_manager + '@' + package_manager_version);

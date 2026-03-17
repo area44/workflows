@@ -5,8 +5,9 @@ runs:
   using: "composite"
   steps:
     - name: Detect Node.js version and package manager
+      shell: bash
       id: detect_env
-      uses: ./detect-env
+      run: node ${{ github.action_path }}/../src/detect-env.js
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -46,37 +47,7 @@ runs:
 
     - name: Run scripts
       shell: bash
-      run: |
-        scripts="$(node -e "
-          const fs = require('fs');
-          if (!fs.existsSync('package.json')) process.exit(0);
-
-          const scripts = require('./package.json').scripts || {};
-
-          const cases = [
-            ['check'],
-            ['format', 'lint'],
-            ['fmt', 'lint'],
-            ['lint'],
-            ['format'],
-            ['fmt'],
-          ];
-
-          for (const group of cases) {
-            if (group.every(name => scripts[name])) {
-              console.log(group.join(' '));
-              break;
-            }
-          }
-        ")"
-
-        if [[ -n "$scripts" ]]; then
-          for script in $scripts; do
-            "${{ steps.detect_env.outputs.package_manager }}" run "$script"
-          done
-        else
-          echo "No matching scripts found."
-        fi
+      run: node ${{ github.action_path }}/../src/autofix.js "${{ steps.detect_env.outputs.package_manager }}"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1.3.3
