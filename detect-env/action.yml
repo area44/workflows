@@ -16,40 +16,50 @@ runs:
       shell: bash
       id: detect_env
       run: |
-        set -euo pipefail
+        node -e "
+          const fs = require('fs');
+          const path = require('path');
 
-        if [[ -f .nvmrc ]]; then
-          node_version=$(<.nvmrc)
-        else
-          node_version="lts/*"
-          if [[ -f package.json ]]; then
-            node_line=$(grep -o '"node":[^,}]*' package.json || true)
-            if [[ -n "$node_line" ]]; then
-              node_version=$(sed -E 's/.*"node":[[:space:]]*"([^"]+)".*/\1/' <<< "$node_line")
-            fi
-          fi
-        fi
+          let node_version = 'lts/*';
+          let package_manager = 'npm';
+          let package_manager_version = 'latest';
 
-        package_manager="npm"
-        package_manager_version="latest"
+          if (fs.existsSync('.nvmrc')) {
+            node_version = fs.readFileSync('.nvmrc', 'utf8').trim();
+          } else if (fs.existsSync('package.json')) {
+            try {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              if (pkg.engines && pkg.engines.node) {
+                node_version = pkg.engines.node;
+              }
+            } catch (e) {}
+          }
 
-        if   [[ -f pnpm-lock.yaml ]]; then package_manager="pnpm"
-        elif [[ -f yarn.lock ]]; then package_manager="yarn"
-        elif [[ -f package-lock.json ]]; then package_manager="npm"
-        elif [[ -f bun.lock ]]; then package_manager="bun"
-        elif [[ -f package.json ]]; then
-          package_manager_line=$(grep -o '"packageManager":[^,}]*' package.json || true)
-          if [[ -n "$package_manager_line" ]]; then
-            package_manager=$(sed -E 's/.*"packageManager":[[:space:]]*"([^@"]+).*/\1/' <<< "$package_manager_line")
-            package_manager_version=$(sed -E 's/.*"packageManager":[[:space:]]*"[^@"]*@([^"]*).*/\1/' <<< "$package_manager_line")
-            [[ "$package_manager" == "$package_manager_version" ]] && package_manager_version="latest"
-          fi
-        fi
+          if (fs.existsSync('pnpm-lock.yaml')) {
+            package_manager = 'pnpm';
+          } else if (fs.existsSync('yarn.lock')) {
+            package_manager = 'yarn';
+          } else if (fs.existsSync('package-lock.json')) {
+            package_manager = 'npm';
+          } else if (fs.existsSync('bun.lockb') || fs.existsSync('bun.lock')) {
+            package_manager = 'bun';
+          } else if (fs.existsSync('package.json')) {
+            try {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              if (pkg.packageManager) {
+                const [name, version] = pkg.packageManager.split('@');
+                package_manager = name;
+                package_manager_version = version || 'latest';
+              }
+            } catch (e) {}
+          }
 
-        {
-          echo "node_version=$node_version"
-          echo "package_manager=$package_manager"
-          echo "package_manager_version=$package_manager_version"
-        } >> "$GITHUB_OUTPUT"
+          const output = [
+            \`node_version=\${node_version}\`,
+            \`package_manager=\${package_manager}\`,
+            \`package_manager_version=\${package_manager_version}\`
+          ].join('\n');
 
-        echo "Detected Node.js: $node_version | Package Manager: $package_manager@$package_manager_version"
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, output + '\n');
+          console.log('Detected Node.js: ' + node_version + ' | Package Manager: ' + package_manager + '@' + package_manager_version);
+        "
