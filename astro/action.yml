@@ -1,5 +1,24 @@
 name: area44/astro
 description: Build and Deploy Astro Site
+inputs:
+  path:
+    description: "The directory where the built site is located"
+    required: false
+    default: "dist"
+  node-version:
+    description: "Optional Node.js version override (e.g., '20', 'lts/*')"
+    required: false
+  build-command:
+    description: "Optional build command override (e.g., 'npm run build')"
+    required: false
+
+outputs:
+  node-version:
+    description: "The Node.js version used"
+    value: ${{ steps.detect_env.outputs.node_version }}
+  package-manager:
+    description: "The package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager }}
 
 runs:
   using: "composite"
@@ -7,24 +26,24 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node ${{ github.action_path }}/../src/detect-env.js
+      run: node "${GITHUB_ACTION_PATH}/../src/detect-env.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@feaa2f710aee579c21b811984a164bc88a598691 # v4.0.0
       with:
         version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Bun
       if: ${{ steps.detect_env.outputs.package_manager == 'bun' }}
-      uses: oven-sh/setup-bun@v2
+      uses: oven-sh/setup-bun@4623fc02173f9123e8d8b29bc601896a748d6ca7 # v2.0.1
       with:
         bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@393f3e7e6204592224097f4b4458da77651a080d # v4.1.0
       with:
-        node-version: ${{ steps.detect_env.outputs.node_version }}
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
         cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
@@ -35,35 +54,43 @@ runs:
 
     - name: Set site variables
       shell: bash
+      env:
+        REPO: ${{ github.event.repository.name }}
+        OWNER: ${{ github.repository_owner }}
       run: |
-        repo="${{ github.event.repository.name }}"
-        owner="${{ github.repository_owner }}"
-        echo "SITE=https://$owner.github.io" >> "$GITHUB_ENV"
-        if [[ "$repo" == "$owner.github.io" ]]; then
+        echo "SITE=https://${OWNER}.github.io" >> "$GITHUB_ENV"
+        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
           echo "BASE=/" >> "$GITHUB_ENV"
         else
-          echo "BASE=/$repo/" >> "$GITHUB_ENV"
+          echo "BASE=/${REPO}/" >> "$GITHUB_ENV"
         fi
 
     - name: Install dependencies
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        case "$package_manager" in
+        case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
           bun) bun install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) $package_manager install ;;
+          *) "$PACKAGE_MANAGER" install ;;
         esac
 
     - name: Build Astro site
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        $package_manager run build
+        if [[ -n "$BUILD_COMMAND" ]]; then
+          $BUILD_COMMAND
+        else
+          "$PACKAGE_MANAGER" run build
+        fi
 
     - name: Upload site artifact
-      uses: actions/upload-pages-artifact@v4
+      uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dee4629d8575 # v3.0.1
       with:
-        path: dist
+        path: ${{ inputs.path }}
