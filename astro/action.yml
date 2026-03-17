@@ -15,7 +15,7 @@ inputs:
 outputs:
   node-version:
     description: "The Node.js version used"
-    value: ${{ steps.detect_env.outputs.node_version }}
+    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package_manager }}
