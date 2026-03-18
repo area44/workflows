@@ -11,6 +11,7 @@ inputs:
   build-command:
     description: "Optional build command override (e.g., 'npm run build')"
     required: false
+    default: "npm run build"
 
 outputs:
   node-version:
@@ -26,7 +27,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${GITHUB_ACTION_PATH}/../src/detect-env.js"
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -41,7 +42,7 @@ runs:
         bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
         cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}

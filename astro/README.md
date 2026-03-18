@@ -12,6 +12,7 @@ name: GitHub Pages
 on:
   push:
     branches: ['main']
+  pull_request:
 
 permissions:
   contents: read
@@ -28,7 +29,7 @@ jobs:
       - name: Build Astro site
         uses: area44/workflows/astro@main
         with:
-          # Optional: node-version: '20'
+          # Optional: node-version: '24'
           # Optional: path: 'dist'
 ```
 
