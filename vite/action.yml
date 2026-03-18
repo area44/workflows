@@ -1,5 +1,25 @@
 name: area44/vite
 description: Build and Deploy with Vite
+inputs:
+  path:
+    description: "The directory where the built site is located"
+    required: false
+    default: "dist"
+  node-version:
+    description: "Optional Node.js version override (e.g., '24', 'lts/*')"
+    required: false
+  build-command:
+    description: "Optional build command override (e.g., 'npm run build')"
+    required: false
+    default: "npm run build"
+
+outputs:
+  node-version:
+    description: "The Node.js version used"
+    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+  package-manager:
+    description: "The package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager }}
 
 runs:
   using: "composite"
@@ -7,7 +27,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node ${{ github.action_path }}/../src/detect-env.js
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -24,7 +44,7 @@ runs:
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ steps.detect_env.outputs.node_version }}
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
         cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
@@ -35,35 +55,42 @@ runs:
 
     - name: Set site variables
       shell: bash
+      env:
+        REPO: ${{ github.event.repository.name }}
+        OWNER: ${{ github.repository_owner }}
       run: |
-        repo="${{ github.event.repository.name }}"
-        owner="${{ github.repository_owner }}"
-
-        if [[ "$repo" == "$owner.github.io" ]]; then
+        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
           echo "BASE=/" >> "$GITHUB_ENV"
         else
-          echo "BASE=/$repo/" >> "$GITHUB_ENV"
+          echo "BASE=/${REPO}/" >> "$GITHUB_ENV"
         fi
 
     - name: Install dependencies
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        case "$package_manager" in
+        case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
           bun) bun install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) $package_manager install ;;
+          *) "$PACKAGE_MANAGER" install ;;
         esac
 
     - name: Build Vite site
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        $package_manager run build
+        if [[ -n "$BUILD_COMMAND" ]]; then
+          eval "$BUILD_COMMAND"
+        else
+          "$PACKAGE_MANAGER" run build
+        fi
 
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@v4
       with:
-        path: dist
+        path: ${{ inputs.path }}

@@ -1,5 +1,9 @@
 name: area44/autofix.ci
 description: Run autofix.ci
+inputs:
+  node-version:
+    description: "Optional Node.js version override"
+    required: false
 
 runs:
   using: "composite"
@@ -7,7 +11,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node ${{ github.action_path }}/../src/detect-env.js
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -24,7 +28,7 @@ runs:
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ steps.detect_env.outputs.node_version }}
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
         cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
@@ -35,19 +39,22 @@ runs:
 
     - name: Install dependencies
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        package_manager="${{ steps.detect_env.outputs.package_manager }}"
-        case "$package_manager" in
+        case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
           bun) bun install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) $package_manager install ;;
+          *) "$PACKAGE_MANAGER" install ;;
         esac
 
     - name: Run scripts
       shell: bash
-      run: node ${{ github.action_path }}/../src/autofix.js "${{ steps.detect_env.outputs.package_manager }}"
+      env:
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
+      run: node "${GITHUB_ACTION_PATH}/../dist/autofix.js" "$PACKAGE_MANAGER"
 
     - name: Run autofix.ci
-      uses: autofix-ci/action@v1.3.3
+      uses: autofix-ci/action@v1

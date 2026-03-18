@@ -1,5 +1,9 @@
 # area44/vite
 
+Build and deploy your Vite site to GitHub Pages with ease.
+
+## Usage
+
 Add the following workflow to your repository:
 
 ```yaml
@@ -11,17 +15,32 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  vite:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Run build
+
+      - name: Build Vite site
         uses: area44/workflows/vite@main
 ```
 
-> Replace `main` with a specific version tag (e.g., `v2.0.0`) to ensure consistent behavior over time.
+## Inputs
+
+| Name | Description | Default |
+|------|-------------|---------|
+| `path` | The directory where the built site is located | `dist` |
+| `node-version` | Optional Node.js version override | (auto-detected) |
+| `build-command` | Optional build command override | `npm run build` |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `node-version` | The Node.js version used |
+| `package-manager` | The package manager used |
