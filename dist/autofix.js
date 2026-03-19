@@ -44,7 +44,7 @@ function runAutofix() {
   if (selectedScripts.length > 0) {
     console.log(`Detected autofix scripts: ${selectedScripts.join(', ')}`);
     for (const script of selectedScripts) {
-      console.log(`>>> Executing: ${packageManager} run ${script}`);
+      console.log(`Executing: ${packageManager} run ${script}`);
       try {
         execSync(`${packageManager} run ${script}`, { stdio: 'inherit' });
       } catch (err) {
