@@ -12,6 +12,10 @@ inputs:
     description: "Optional build command override (e.g., 'npm run build')"
     required: false
     default: "npm run build"
+  artifact-name:
+    description: "The name of the artifact to upload"
+    required: false
+    default: "github-pages"
 
 outputs:
   node-version:
@@ -94,3 +98,4 @@ runs:
       uses: actions/upload-pages-artifact@v4
       with:
         path: ${{ inputs.path }}
+        name: ${{ inputs.artifact-name }}
