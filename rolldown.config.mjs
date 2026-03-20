@@ -1,7 +1,6 @@
 import { defineConfig } from 'rolldown';
 import { builtinModules } from 'node:module';
 import fs from 'node:fs';
-import path from 'node:path';
 
 const sharedConfig = {
   platform: 'node',
@@ -20,10 +19,10 @@ const sharedConfig = {
   },
 };
 
-// Copy source files to dist for reference/debugging
-const copyPlugin = {
-  name: 'copy-source',
-  async writeBundle() {
+// Plugin to copy source files to dist
+const copyTsPlugin = {
+  name: 'copy-ts',
+  writeBundle() {
     if (!fs.existsSync('dist')) fs.mkdirSync('dist');
     fs.copyFileSync('src/detect-env.ts', 'dist/detect-env.ts');
     fs.copyFileSync('src/autofix.ts', 'dist/autofix.ts');
@@ -34,7 +33,7 @@ export default defineConfig([
   {
     ...sharedConfig,
     input: { 'detect-env': 'src/detect-env.ts' },
-    plugins: [copyPlugin],
+    plugins: [copyTsPlugin],
   },
   {
     ...sharedConfig,

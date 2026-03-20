@@ -15,49 +15,65 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
-          mkdir dummy-astro
+          mkdir -p dummy-astro
           cd dummy-astro
-          echo '{"name": "dummy-astro", "engines": {"node": "20"}, "scripts": {"build": "mkdir dist && touch dist/index.html"}}' > package.json
+          echo '{"name": "dummy-astro", "engines": {"node": "20"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
           npm install
 
       - name: Test Astro Action
         uses: ./astro
+        id: astro_action
         with:
           path: dummy-astro/dist
           build-command: "cd dummy-astro && npm run build"
           artifact-name: "astro-pages"
 
+      - name: Verify Astro Outputs
+        run: |
+          echo "Node version: ${{ steps.astro_action.outputs.node-version }}"
+          echo "Package manager: ${{ steps.astro_action.outputs.package-manager }}"
+          if [ -z "${{ steps.astro_action.outputs.node-version }}" ]; then exit 1; fi
+
   test-vite:
     name: Test Vite Action
     runs-on: ubuntu-latest
+    needs: test-astro
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Dummy Project
         run: |
-          mkdir dummy-vite
+          mkdir -p dummy-vite
           cd dummy-vite
-          echo '{"name": "dummy-vite", "scripts": {"build": "mkdir dist && touch dist/index.html"}}' > package.json
+          echo '{"name": "dummy-vite", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
           npm install
 
       - name: Test Vite Action
         uses: ./vite
+        id: vite_action
         with:
           path: dummy-vite/dist
           build-command: "cd dummy-vite && npm run build"
           artifact-name: "vite-pages"
 
+      - name: Verify Vite Outputs
+        run: |
+          echo "Node version: ${{ steps.vite_action.outputs.node-version }}"
+          echo "Package manager: ${{ steps.vite_action.outputs.package-manager }}"
+          if [ -z "${{ steps.vite_action.outputs.node-version }}" ]; then exit 1; fi
+
   test-autofix:
     name: Test Autofix Action
     runs-on: ubuntu-latest
+    needs: test-vite
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Dummy Project
         run: |
-          mkdir dummy-autofix
+          mkdir -p dummy-autofix
           cd dummy-autofix
           echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
           npm install
