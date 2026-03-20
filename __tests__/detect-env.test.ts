@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import { detectNodeVersion, detectPackageManager } from './detect-env';
+import { detectNodeVersion, detectPackageManager } from '../src/detect-env';
 
 vi.mock('fs');
 

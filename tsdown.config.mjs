@@ -1,13 +1,11 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsdown';
 
 export default defineConfig({
   entry: ['src/detect-env.ts', 'src/autofix.ts'],
   format: ['cjs'],
   clean: true,
-  dts: false,
   minify: false,
-  target: 'node16',
-  banner: {
-    js: '/* eslint-disable */',
-  },
+  platform: 'node',
+  outDir: 'dist',
+  banner: '/* eslint-disable */',
 });

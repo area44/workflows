@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import { execSync } from 'child_process';
-import { runAutofix } from './autofix';
+import { runAutofix } from '../src/autofix';
 
 vi.mock('fs');
 vi.mock('child_process');
