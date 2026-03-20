@@ -95,3 +95,4 @@ runs:
       uses: actions/upload-pages-artifact@v4
       with:
         path: ${{ inputs.path }}
+        name: ${{ env.PAGES_ARTIFACT_NAME || 'github-pages' }}
