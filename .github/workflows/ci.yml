@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Build and Verify
+    name: Unit Test and Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,6 +21,9 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci || npm install
+
+      - name: Run Main Tests
+        run: npm test
 
       - name: Build
         run: npm run build
