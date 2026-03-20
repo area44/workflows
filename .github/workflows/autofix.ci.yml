@@ -20,5 +20,6 @@ jobs:
           echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
           npm install --no-package-lock
 
-      - name: Test Autofix Action
-        uses: ./autofix
+      - name: Test Autofix Script
+        run: node ../dist/autofix.js npm
+        working-directory: dummy-autofix
