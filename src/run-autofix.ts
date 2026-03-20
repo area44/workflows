@@ -1,3 +1,3 @@
-import { runAutofix } from './core/autofix.js';
+import { executeAutofix } from './fixer.js';
 
-runAutofix();
+executeAutofix();

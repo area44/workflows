@@ -7,7 +7,7 @@ import * as core from '@actions/core';
  * Usage: node autofix.js [package_manager]
  */
 
-export function runAutofix(): void {
+export function executeAutofix(): void {
   if (!fs.existsSync('package.json')) {
     core.info('No package.json found. Skipping autofix scripts.');
     return;

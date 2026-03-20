@@ -4,8 +4,10 @@ This repository contains reusable GitHub Actions workflows and composite actions
 
 ## Project Structure
 
-- `src/core/`: Contains the core logic for environment detection and autofix scripts.
-- `src/run-*.ts`: Entry point scripts that are bundled into `dist/`.
+- `src/environment.ts`: Core logic for environment detection.
+- `src/fixer.ts`: Core logic for autofix scripts.
+- `src/run-environment.ts`: Entry point script for environment detection.
+- `src/run-autofix.ts`: Entry point script for autofix.
 - `dist/`: Contains the bundled and minified JavaScript files used by the actions. **Do not edit these files directly.**
 - `astro/`, `autofix/`, `vite/`: Directory for each composite action containing its `action.yml` and `README.md`.
 - `__tests__/`: Unit tests for the core logic.
@@ -21,5 +23,5 @@ This repository contains reusable GitHub Actions workflows and composite actions
 
 - Use ES modules.
 - Use TypeScript for all source code.
-- Use descriptive names for internal functions (e.g., `setOutputs` instead of `run`).
-- Keep core logic independent of the GitHub Actions environment where possible (extract into `src/core/`).
+- Use descriptive names for internal functions (e.g., `detectAndSetEnvironment` instead of `run`).
+- Keep core logic independent of the GitHub Actions environment where possible.

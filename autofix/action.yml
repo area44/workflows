@@ -11,7 +11,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${GITHUB_ACTION_PATH}/../dist/run-detect-env.js"
+      run: node "${GITHUB_ACTION_PATH}/../dist/run-environment.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}

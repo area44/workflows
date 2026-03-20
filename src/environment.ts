@@ -63,7 +63,7 @@ package_manager=${pm.name}
 package_manager_version=${pm.version}`);
 }
 
-export function run(): void {
+export function detectAndSetEnvironment(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);

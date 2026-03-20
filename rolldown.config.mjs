@@ -22,7 +22,7 @@ const sharedConfig = {
 export default defineConfig([
   {
     ...sharedConfig,
-    input: { 'run-detect-env': 'src/run-detect-env.ts' },
+    input: { 'run-environment': 'src/run-environment.ts' },
   },
   {
     ...sharedConfig,
