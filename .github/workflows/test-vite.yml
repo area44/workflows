@@ -7,7 +7,6 @@ on:
 
 jobs:
   test:
-    name: Test Vite Action
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

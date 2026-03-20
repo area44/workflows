@@ -16797,7 +16797,7 @@ var require_core = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.platform = __importStar(require_platform());
 }));
 //#endregion
-//#region src/setup.ts
+//#region src/detect-env.ts
 var import_core = /* @__PURE__ */ __toESM(require_core(), 1);
 /**
 * Detects Node.js version and package manager from the environment.
@@ -16859,7 +16859,7 @@ function detectPackageManager() {
 		version: "latest"
 	};
 }
-function setOutputs(nodeVersion, pm) {
+function writeOutput(nodeVersion, pm) {
 	import_core.setOutput("node_version", nodeVersion);
 	import_core.setOutput("package_manager", pm.name);
 	import_core.setOutput("package_manager_version", pm.version);
@@ -16871,9 +16871,9 @@ package_manager_version=${pm.version}`);
 function run() {
 	const nodeVersion = detectNodeVersion();
 	const pm = detectPackageManager();
-	setOutputs(nodeVersion, pm);
+	writeOutput(nodeVersion, pm);
 	import_core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
 run();
 //#endregion
-export { detectNodeVersion, detectPackageManager, run, setOutputs };
+export { detectNodeVersion, detectPackageManager, run, writeOutput };

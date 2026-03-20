@@ -16,36 +16,36 @@ inputs:
 outputs:
   node-version:
     description: "The Node.js version used"
-    value: ${{ inputs.node-version || steps.setup.outputs.node_version }}
+    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
   package-manager:
     description: "The package manager used"
-    value: ${{ steps.setup.outputs.package_manager }}
+    value: ${{ steps.detect_env.outputs.package_manager }}
 
 runs:
   using: "composite"
   steps:
     - name: Detect Node.js version and package manager
       shell: bash
-      id: setup
-      run: node "${GITHUB_ACTION_PATH}/../dist/setup.js"
+      id: detect_env
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
 
     - name: Setup PNPM
-      if: ${{ steps.setup.outputs.package_manager == 'pnpm' }}
+      if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
       uses: pnpm/action-setup@v5
       with:
-        version: ${{ steps.setup.outputs.package_manager_version }}
+        version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Bun
-      if: ${{ steps.setup.outputs.package_manager == 'bun' }}
+      if: ${{ steps.detect_env.outputs.package_manager == 'bun' }}
       uses: oven-sh/setup-bun@v2
       with:
-        bun-version: ${{ steps.setup.outputs.package_manager_version }}
+        bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ inputs.node-version || steps.setup.outputs.node_version }}
-        cache: ${{ steps.setup.outputs.package_manager != 'bun' && steps.setup.outputs.package_manager || '' }}
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+        cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
         cache-dependency-path: |
           **/package-lock.json
           **/pnpm-lock.yaml
@@ -68,7 +68,7 @@ runs:
     - name: Install dependencies
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.setup.outputs.package_manager }}
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
         case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
@@ -81,7 +81,7 @@ runs:
     - name: Build Vite site
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.setup.outputs.package_manager }}
+        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         if [[ -n "$BUILD_COMMAND" ]]; then

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import * as core from '@actions/core';
-import { detectNodeVersion, detectPackageManager } from '../src/setup';
+import { detectNodeVersion, detectPackageManager } from '../src/detect-env';
 
 vi.mock('fs');
 vi.mock('@actions/core');
 
-describe('setup', () => {
+describe('detect-env', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

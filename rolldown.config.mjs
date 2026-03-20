@@ -21,7 +21,7 @@ const sharedConfig = {
 export default defineConfig([
   {
     ...sharedConfig,
-    input: { 'setup': 'src/setup.ts' },
+    input: { 'detect-env': 'src/detect-env.ts' },
   },
   {
     ...sharedConfig,
