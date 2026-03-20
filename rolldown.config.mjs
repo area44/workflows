@@ -19,7 +19,6 @@ const sharedConfig = {
   },
 };
 
-// Plugin to copy source files to dist
 const copyTsPlugin = {
   name: 'copy-ts',
   writeBundle() {
@@ -32,11 +31,11 @@ const copyTsPlugin = {
 export default defineConfig([
   {
     ...sharedConfig,
-    input: { 'detect-env': 'src/detect-env.ts' },
+    input: { 'detect-env': 'src/bin-detect-env.ts' },
     plugins: [copyTsPlugin],
   },
   {
     ...sharedConfig,
-    input: { 'autofix': 'src/autofix.ts' },
+    input: { 'autofix': 'src/bin-autofix.ts' },
   },
 ]);

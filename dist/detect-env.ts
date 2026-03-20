@@ -69,5 +69,3 @@ export function run(): void {
   writeOutput(nodeVersion, pm);
   core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
-
-run();
