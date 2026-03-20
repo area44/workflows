@@ -7,4 +7,7 @@ export default defineConfig({
   dts: false,
   minify: false,
   target: 'node16',
+  banner: {
+    js: '/* eslint-disable */',
+  },
 });
