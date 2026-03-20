@@ -1,0 +1,64 @@
+name: Test Actions
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-astro:
+    name: Test Astro Action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dummy Project
+        run: |
+          mkdir dummy-astro
+          cd dummy-astro
+          echo '{"name": "dummy-astro", "engines": {"node": "20"}, "scripts": {"build": "mkdir dist && touch dist/index.html"}}' > package.json
+          touch package-lock.json
+
+      - name: Test Astro Action
+        uses: ./astro
+        with:
+          path: dummy-astro/dist
+          build-command: "cd dummy-astro && npm run build"
+
+  test-vite:
+    name: Test Vite Action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dummy Project
+        run: |
+          mkdir dummy-vite
+          cd dummy-vite
+          echo '{"name": "dummy-vite", "scripts": {"build": "mkdir dist && touch dist/index.html"}}' > package.json
+          touch pnpm-lock.yaml
+
+      - name: Test Vite Action
+        uses: ./vite
+        with:
+          path: dummy-vite/dist
+          build-command: "cd dummy-vite && npm run build"
+
+  test-autofix:
+    name: Test Autofix Action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dummy Project
+        run: |
+          mkdir dummy-autofix
+          cd dummy-autofix
+          echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
+          touch package-lock.json
+
+      - name: Test Autofix Action
+        uses: ./autofix

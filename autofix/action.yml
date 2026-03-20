@@ -11,7 +11,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.cjs"
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
@@ -54,7 +54,7 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-      run: node "${GITHUB_ACTION_PATH}/../dist/autofix.cjs" "$PACKAGE_MANAGER"
+      run: node "${GITHUB_ACTION_PATH}/../dist/autofix.mjs" "$PACKAGE_MANAGER"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1

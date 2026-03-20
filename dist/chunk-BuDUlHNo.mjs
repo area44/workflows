@@ -1,0 +1,8 @@
+/* eslint-disable */
+import { createRequire } from "node:module";
+
+//#region \0rolldown/runtime.js
+var __require = /* @__PURE__ */ createRequire(import.meta.url);
+
+//#endregion
+export { __require as t };
