@@ -52,7 +52,7 @@ export function detectPackageManager(): PackageManager {
   return { name: 'npm', version: 'latest' };
 }
 
-export function writeOutput(nodeVersion: string, pm: PackageManager): void {
+export function setOutputs(nodeVersion: string, pm: PackageManager): void {
   core.setOutput('node_version', nodeVersion);
   core.setOutput('package_manager', pm.name);
   core.setOutput('package_manager_version', pm.version);
@@ -66,7 +66,7 @@ package_manager_version=${pm.version}`);
 export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
-  writeOutput(nodeVersion, pm);
+  setOutputs(nodeVersion, pm);
   core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
 
