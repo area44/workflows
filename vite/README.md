@@ -1,10 +1,16 @@
 # area44/vite
 
-Build and deploy your Vite site to GitHub Pages with ease.
+Easily build and deploy your Vite site to GitHub Pages.
+
+## Features
+
+- **Auto-detection**: Automatically detects your Node.js version and package manager.
+- **Optimized for GitHub Pages**: Sets the correct `BASE` environment variable for GitHub Pages deployment.
+- **Flexible Configuration**: Supports custom build commands and output paths.
 
 ## Usage
 
-Add the following workflow to your repository:
+Add a workflow to your repository (`.github/workflows/pages.yml`):
 
 ```yaml
 name: GitHub Pages
@@ -28,6 +34,10 @@ jobs:
 
       - name: Build Vite site
         uses: area44/workflows/vite@main
+        with:
+          # Optional: path: 'dist'
+          # Optional: node-version: '24'
+          # Optional: build-command: 'npm run build'
 ```
 
 ## Inputs

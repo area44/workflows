@@ -12,6 +12,7 @@ const sharedConfig = {
     format: 'esm',
     entryFileNames: '[name].js',
     banner: '/* eslint-disable */',
+    minify: true,
   },
   resolve: {
     conditionNames: ['node', 'import'],
@@ -21,10 +22,10 @@ const sharedConfig = {
 export default defineConfig([
   {
     ...sharedConfig,
-    input: { 'detect-env': 'src/detect-env.ts' },
+    input: { 'run-detect-env': 'src/run-detect-env.ts' },
   },
   {
     ...sharedConfig,
-    input: { 'autofix': 'src/autofix.ts' },
+    input: { 'run-autofix': 'src/run-autofix.ts' },
   },
 ]);

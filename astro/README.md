@@ -1,10 +1,16 @@
 # area44/astro
 
-Build and deploy your Astro site to GitHub Pages with ease.
+Easily build and deploy your Astro site to GitHub Pages.
+
+## Features
+
+- **Auto-detection**: Automatically detects your Node.js version (from `.nvmrc` or `package.json`) and package manager (npm, pnpm, yarn, bun).
+- **Standardized Setup**: Handles dependencies installation, site build, and artifact upload for GitHub Pages.
+- **Node.js version override**: Allows manually specifying the Node.js version.
 
 ## Usage
 
-Add the following workflow to your repository:
+Add a workflow to your repository (`.github/workflows/pages.yml`):
 
 ```yaml
 name: GitHub Pages
@@ -29,8 +35,12 @@ jobs:
       - name: Build Astro site
         uses: area44/workflows/astro@main
         with:
-          # Optional: node-version: '24'
-          # Optional: path: 'dist'
+          # Optional: Specify the directory where the built site is located. Default: 'dist'.
+          # path: 'dist'
+          # Optional: Override the auto-detected Node.js version (e.g., '24', 'lts/*').
+          # node-version: '24'
+          # Optional: Override the default build command ('npm run build').
+          # build-command: 'npm run build'
 ```
 
 ## Inputs
