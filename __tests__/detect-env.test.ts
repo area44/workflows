@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
+import * as core from '@actions/core';
 import { detectNodeVersion, detectPackageManager } from '../src/detect-env';
 
 vi.mock('fs');
+vi.mock('@actions/core');
 
 describe('detect-env', () => {
   beforeEach(() => {
@@ -15,6 +17,7 @@ describe('detect-env', () => {
       vi.mocked(fs.readFileSync).mockReturnValue('20');
 
       expect(detectNodeVersion()).toBe('20');
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Found .nvmrc: 20'));
     });
 
     it('should return version from package.json engines if .nvmrc does not exist', () => {
@@ -22,6 +25,7 @@ describe('detect-env', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ engines: { node: '>=18' } }));
 
       expect(detectNodeVersion()).toBe('>=18');
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Found Node.js version in package.json engines: >=18'));
     });
 
     it('should return lts/* if no version is found', () => {
@@ -58,6 +62,7 @@ describe('detect-env', () => {
       const pm = detectPackageManager();
       expect(pm.name).toBe('pnpm');
       expect(pm.version).toBe('9.0.0');
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Found packageManager in package.json: pnpm@9.0.0'));
     });
   });
 });

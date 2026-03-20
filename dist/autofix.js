@@ -1,8 +1,7 @@
 /* eslint-disable */
-import { t as __require } from "./chunk-BuDUlHNo.mjs";
+import { n as info, r as setFailed, t as getInput } from "./core-DlBMIGNh.js";
 import fs from "fs";
 import { execSync } from "child_process";
-
 //#region src/autofix.ts
 /**
 * Runs common lint/format scripts if they exist in package.json.
@@ -10,18 +9,18 @@ import { execSync } from "child_process";
 */
 function runAutofix() {
 	if (!fs.existsSync("package.json")) {
-		console.log("No package.json found. Skipping autofix scripts.");
+		info("No package.json found. Skipping autofix scripts.");
 		return;
 	}
 	let pkg;
 	try {
 		pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 	} catch (err) {
-		console.error(`Error: Failed to parse package.json: ${err.message}`);
-		process.exit(1);
+		setFailed(`Failed to parse package.json: ${err.message}`);
+		return;
 	}
 	const scripts = pkg.scripts || {};
-	const packageManager = process.argv[2] || "npm";
+	const packageManager = getInput("package-manager") || process.argv[2] || "npm";
 	const combinations = [
 		["check"],
 		["format", "lint"],
@@ -36,20 +35,19 @@ function runAutofix() {
 		break;
 	}
 	if (selectedScripts.length > 0) {
-		console.log(`Detected autofix scripts: ${selectedScripts.join(", ")}`);
+		info(`Detected autofix scripts: ${selectedScripts.join(", ")}`);
 		for (const script of selectedScripts) {
-			console.log(`Executing: ${packageManager} run ${script}`);
+			info(`Executing: ${packageManager} run ${script}`);
 			try {
 				execSync(`${packageManager} run ${script}`, { stdio: "inherit" });
 			} catch (err) {
-				console.error(`Error: Script "${script}" failed with exit code ${err.status}`);
-				process.exit(err.status || 1);
+				setFailed(`Script "${script}" failed with exit code ${err.status}`);
+				return;
 			}
 		}
-		console.log("Autofix scripts completed successfully.");
-	} else console.log("No matching autofix scripts (check, format, lint, etc.) found in package.json.");
+		info("Autofix scripts completed successfully.");
+	} else info("No matching autofix scripts (check, format, lint, etc.) found in package.json.");
 }
-if (__require.main === module) runAutofix();
-
+runAutofix();
 //#endregion
 export { runAutofix };

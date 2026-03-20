@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import * as core from '@actions/core';
 import { runAutofix } from '../src/autofix';
 
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('@actions/core');
 
 describe('autofix', () => {
   beforeEach(() => {
@@ -14,11 +16,10 @@ describe('autofix', () => {
 
   it('should skip if package.json does not exist', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    const consoleSpy = vi.spyOn(console, 'log');
 
     runAutofix();
 
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No package.json found'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('No package.json found'));
   });
 
   it('should run "check" script if it exists', () => {

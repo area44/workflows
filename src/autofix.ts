@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { execSync } from 'child_process';
+import * as core from '@actions/core';
 
 /**
  * Runs common lint/format scripts if they exist in package.json.
@@ -8,7 +9,7 @@ import { execSync } from 'child_process';
 
 export function runAutofix(): void {
   if (!fs.existsSync('package.json')) {
-    console.log('No package.json found. Skipping autofix scripts.');
+    core.info('No package.json found. Skipping autofix scripts.');
     return;
   }
 
@@ -16,12 +17,12 @@ export function runAutofix(): void {
   try {
     pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   } catch (err: any) {
-    console.error(`Error: Failed to parse package.json: ${err.message}`);
-    process.exit(1);
+    core.setFailed(`Failed to parse package.json: ${err.message}`);
+    return;
   }
 
   const scripts = pkg.scripts || {};
-  const packageManager = process.argv[2] || 'npm';
+  const packageManager = core.getInput('package-manager') || process.argv[2] || 'npm';
 
   // Priority list of script combinations to try
   const combinations = [
@@ -42,22 +43,20 @@ export function runAutofix(): void {
   }
 
   if (selectedScripts.length > 0) {
-    console.log(`Detected autofix scripts: ${selectedScripts.join(', ')}`);
+    core.info(`Detected autofix scripts: ${selectedScripts.join(', ')}`);
     for (const script of selectedScripts) {
-      console.log(`Executing: ${packageManager} run ${script}`);
+      core.info(`Executing: ${packageManager} run ${script}`);
       try {
         execSync(`${packageManager} run ${script}`, { stdio: 'inherit' });
       } catch (err: any) {
-        console.error(`Error: Script "${script}" failed with exit code ${err.status}`);
-        process.exit(err.status || 1);
+        core.setFailed(`Script "${script}" failed with exit code ${err.status}`);
+        return;
       }
     }
-    console.log('Autofix scripts completed successfully.');
+    core.info('Autofix scripts completed successfully.');
   } else {
-    console.log('No matching autofix scripts (check, format, lint, etc.) found in package.json.');
+    core.info('No matching autofix scripts (check, format, lint, etc.) found in package.json.');
   }
 }
 
-if (require.main === module) {
-  runAutofix();
-}
+runAutofix();

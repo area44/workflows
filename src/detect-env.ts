@@ -1,4 +1,5 @@
 import fs from 'fs';
+import * as core from '@actions/core';
 
 /**
  * Detects Node.js version and package manager from the environment.
@@ -9,18 +10,18 @@ export function detectNodeVersion(): string {
   try {
     if (fs.existsSync('.nvmrc')) {
       const version = fs.readFileSync('.nvmrc', 'utf8').trim();
-      console.log(`Found .nvmrc: ${version}`);
+      core.info(`Found .nvmrc: ${version}`);
       return version;
     }
     if (fs.existsSync('package.json')) {
       const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
       if (pkg.engines && pkg.engines.node) {
-        console.log(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
+        core.info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
         return pkg.engines.node;
       }
     }
   } catch (err: any) {
-    console.error(`Warning: Failed to detect Node.js version: ${err.message}`);
+    core.warning(`Failed to detect Node.js version: ${err.message}`);
   }
   return 'lts/*';
 }
@@ -41,43 +42,32 @@ export function detectPackageManager(): PackageManager {
       const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
       if (pkg.packageManager) {
         const [name, version] = pkg.packageManager.split('@');
-        console.log(`Found packageManager in package.json: ${name}@${version || 'latest'}`);
+        core.info(`Found packageManager in package.json: ${name}@${version || 'latest'}`);
         return { name, version: version || 'latest' };
       }
     }
   } catch (err: any) {
-    console.error(`Warning: Failed to detect package manager: ${err.message}`);
+    core.warning(`Failed to detect package manager: ${err.message}`);
   }
   return { name: 'npm', version: 'latest' };
 }
 
 export function writeOutput(nodeVersion: string, pm: PackageManager): void {
-  const output = [
-    `node_version=${nodeVersion}`,
-    `package_manager=${pm.name}`,
-    `package_manager_version=${pm.version}`
-  ].join('\n');
+  core.setOutput('node_version', nodeVersion);
+  core.setOutput('package_manager', pm.name);
+  core.setOutput('package_manager_version', pm.version);
 
-  if (process.env.GITHUB_OUTPUT) {
-    try {
-      fs.appendFileSync(process.env.GITHUB_OUTPUT, output + '\n');
-    } catch (err: any) {
-      console.error(`Error: Failed to write to GITHUB_OUTPUT: ${err.message}`);
-      process.exit(1);
-    }
-  } else {
-    console.log('GITHUB_OUTPUT not set. Detected values:');
-    console.log(output);
-  }
+  core.info(`Detected values:
+node_version=${nodeVersion}
+package_manager=${pm.name}
+package_manager_version=${pm.version}`);
 }
 
 export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);
-  console.log(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
+  core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
 
-if (require.main === module) {
-  run();
-}
+run();
