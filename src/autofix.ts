@@ -58,3 +58,5 @@ export function runAutofix(): void {
     core.info('No matching autofix scripts (check, format, lint, etc.) found in package.json.');
   }
 }
+
+runAutofix();

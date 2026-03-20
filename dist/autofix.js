@@ -16845,8 +16845,6 @@ function runAutofix() {
 		import_core.info("Autofix scripts completed successfully.");
 	} else import_core.info("No matching autofix scripts (check, format, lint, etc.) found in package.json.");
 }
-//#endregion
-//#region src/bin-autofix.ts
 runAutofix();
 //#endregion
-export {};
+export { runAutofix };

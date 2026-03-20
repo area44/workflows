@@ -16874,8 +16874,6 @@ function run() {
 	writeOutput(nodeVersion, pm);
 	import_core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
-//#endregion
-//#region src/bin-detect-env.ts
 run();
 //#endregion
-export {};
+export { detectNodeVersion, detectPackageManager, run, writeOutput };
