@@ -1,0 +1,25 @@
+name: autofix.ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Dummy Project
+        run: |
+          rm -rf dummy-autofix
+          mkdir -p dummy-autofix
+          cd dummy-autofix
+          echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
+          npm install --no-package-lock
+
+      - name: Test Autofix Script
+        run: node ../dist/autofix.js npm
+        working-directory: dummy-autofix
