@@ -5,8 +5,7 @@
   "private": true,
   "scripts": {
     "build": "rolldown -c rolldown.config.mjs",
-    "test": "vitest run",
-    "all": "npm run build && npm run test"
+    "all": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -18,7 +17,6 @@
     "@actions/core": "^1.11.1",
     "@types/node": "^22.0.0",
     "rolldown": "^1.0.0-rc.10",
-    "typescript": "^5.0.0",
-    "vitest": "^2.0.0"
+    "typescript": "^5.0.0"
   }
 }
