@@ -1,0 +1,22 @@
+{
+  "name": "@area44/workflows",
+  "version": "1.0.0",
+  "description": "This repository contains reusable GitHub Actions workflows and composite actions for the AREA44 ecosystem.",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "dev": "tsup --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/area44/workflows.git"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
