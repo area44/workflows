@@ -14,12 +14,12 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
-          rm -rf dummy-autofix
-          mkdir -p dummy-autofix
-          cd dummy-autofix
-          echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
+          rm -rf dummy-fixer
+          mkdir -p dummy-fixer
+          cd dummy-fixer
+          echo '{"name": "dummy-fixer", "scripts": {"lint": "echo linting"}}' > package.json
           npm install --no-package-lock
 
       - name: Test Autofix Script
-        run: node ../dist/autofix.js npm
-        working-directory: dummy-autofix
+        run: node ../dist/fixer.js npm
+        working-directory: dummy-fixer
