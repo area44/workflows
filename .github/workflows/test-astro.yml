@@ -14,10 +14,11 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
+          rm -rf dummy-astro
           mkdir -p dummy-astro
           cd dummy-astro
           echo '{"name": "dummy-astro", "engines": {"node": "20"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
-          npm install
+          npm install --no-package-lock
 
       - name: Test Astro Action
         uses: ./astro

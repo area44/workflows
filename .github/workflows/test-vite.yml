@@ -14,10 +14,11 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
+          rm -rf dummy-vite
           mkdir -p dummy-vite
           cd dummy-vite
           echo '{"name": "dummy-vite", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
-          npm install
+          npm install --no-package-lock
 
       - name: Test Vite Action
         uses: ./vite
