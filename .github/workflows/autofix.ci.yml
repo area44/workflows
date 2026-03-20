@@ -44,7 +44,6 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
-          rm -rf dummy-astro
           mkdir -p dummy-astro
           cd dummy-astro
           echo '{"name": "dummy-astro", "engines": {"node": "20"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
@@ -69,7 +68,6 @@ jobs:
 
       - name: Setup Dummy Project
         run: |
-          rm -rf dummy-vite
           mkdir -p dummy-vite
           cd dummy-vite
           echo '{"name": "dummy-vite", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
@@ -89,14 +87,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Dummy Project
-        run: |
-          rm -rf dummy-autofix
-          mkdir -p dummy-autofix
-          cd dummy-autofix
-          echo '{"name": "dummy-autofix", "scripts": {"lint": "echo linting"}}' > package.json
-          npm install --no-package-lock
 
       - name: Test Autofix Action
         uses: ./autofix
