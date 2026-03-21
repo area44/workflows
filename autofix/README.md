@@ -5,7 +5,7 @@ Run linting/formatting scripts and push fixes using fixer.ci.
 ## Usage
 
 ```yaml
-name: autofix.ci
+name: fixer.ci
 on:
   push:
     branches: ["main"]
@@ -15,14 +15,14 @@ permissions:
   contents: write
 
 jobs:
-  fixer:
+  autofix:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run fixer
-        uses: area44/workflows/fixer@main
+      - name: Run autofix
+        uses: area44/workflows/autofix@main
 ```
 
 ## Inputs

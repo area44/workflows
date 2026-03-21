@@ -7,7 +7,7 @@ import * as core from "@actions/core";
  * Usage: node fixer.js [package_manager]
  */
 
-export function executeAutofix(): void {
+export function executeFixer(): void {
   if (!fs.existsSync("package.json")) {
     core.info("No package.json found. Skipping fixer scripts.");
     return;
@@ -59,4 +59,4 @@ export function executeAutofix(): void {
   }
 }
 
-executeAutofix();
+executeFixer();

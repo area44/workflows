@@ -1,4 +1,4 @@
-name: area44/fixer.ci
+name: area44/autofix.ci
 description: Run autofix.ci
 inputs:
   node-version:

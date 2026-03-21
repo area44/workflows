@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import { execSync } from "child_process";
 import * as core from "@actions/core";
-import { executeAutofix } from "../src/fixer";
+import { executeFixer } from "../src/fixer";
 
 vi.mock("fs");
 vi.mock("child_process");
@@ -17,7 +17,7 @@ describe("fixer", () => {
   it("should skip if package.json does not exist", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    executeAutofix();
+    executeFixer();
 
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining("No package.json found"));
   });
@@ -30,7 +30,7 @@ describe("fixer", () => {
       }),
     );
 
-    executeAutofix();
+    executeFixer();
 
     expect(execSync).toHaveBeenCalledWith("npm run check", expect.any(Object));
   });
@@ -43,7 +43,7 @@ describe("fixer", () => {
       }),
     );
 
-    executeAutofix();
+    executeFixer();
 
     expect(execSync).toHaveBeenCalledWith("npm run format", expect.any(Object));
     expect(execSync).toHaveBeenCalledWith("npm run lint", expect.any(Object));
@@ -58,7 +58,7 @@ describe("fixer", () => {
       }),
     );
 
-    executeAutofix();
+    executeFixer();
 
     expect(execSync).toHaveBeenCalledWith("pnpm run check", expect.any(Object));
   });

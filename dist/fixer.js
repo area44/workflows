@@ -15918,7 +15918,7 @@ function info(message) {
 * Runs common lint/format scripts if they exist in package.json.
 * Usage: node fixer.js [package_manager]
 */
-function executeAutofix() {
+function executeFixer() {
 	if (!fs.existsSync("package.json")) {
 		info("No package.json found. Skipping fixer scripts.");
 		return;
@@ -15959,6 +15959,6 @@ function executeAutofix() {
 		info("Fixer scripts completed successfully.");
 	} else info("No matching fixer scripts (check, format, lint, etc.) found in package.json.");
 }
-executeAutofix();
+executeFixer();
 //#endregion
-export { executeAutofix };
+export { executeFixer };
