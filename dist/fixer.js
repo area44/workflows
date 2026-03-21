@@ -2,9 +2,9 @@
 import { createRequire } from "node:module";
 import * as fs$1 from "fs";
 import fs, { constants, promises } from "fs";
+import { execSync } from "child_process";
 import * as os$1 from "os";
 import os, { EOL } from "os";
-import * as crypto from "crypto";
 var __commonJSMin = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 //#endregion
@@ -105,21 +105,6 @@ function escapeData(s) {
 }
 function escapeProperty(s) {
 	return toCommandValue(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
-}
-//#endregion
-//#region node_modules/@actions/core/lib/file-command.js
-function issueFileCommand(command, message) {
-	const filePath = process.env[`GITHUB_${command}`];
-	if (!filePath) throw new Error(`Unable to find environment variable for file command ${command}`);
-	if (!fs$1.existsSync(filePath)) throw new Error(`Missing file at path: ${filePath}`);
-	fs$1.appendFileSync(filePath, `${toCommandValue(message)}${os$1.EOL}`, { encoding: "utf8" });
-}
-function prepareKeyValueMessage(key, value) {
-	const delimiter = `ghadelimiter_${crypto.randomUUID()}`;
-	const convertedValue = toCommandValue(value);
-	if (key.includes(delimiter)) throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter}"`);
-	if (convertedValue.includes(delimiter)) throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
-	return `${key}<<${delimiter}${os$1.EOL}${convertedValue}${os$1.EOL}${delimiter}`;
 }
 //#endregion
 //#region node_modules/tunnel/lib/tunnel.js
@@ -15889,23 +15874,36 @@ var ExitCode;
 	ExitCode[ExitCode["Failure"] = 1] = "Failure";
 })(ExitCode || (ExitCode = {}));
 /**
-* Sets the value of an output.
+* Gets the value of an input.
+* Unless trimWhitespace is set to false in InputOptions, the value is also trimmed.
+* Returns an empty string if the value is not defined.
 *
-* @param     name     name of the output to set
-* @param     value    value to store. Non-string values will be converted to a string via JSON.stringify
+* @param     name     name of the input to get
+* @param     options  optional. See InputOptions.
+* @returns   string
 */
-function setOutput(name, value) {
-	if (process.env["GITHUB_OUTPUT"] || "") return issueFileCommand("OUTPUT", prepareKeyValueMessage(name, value));
-	process.stdout.write(os$1.EOL);
-	issueCommand("set-output", { name }, toCommandValue(value));
+function getInput(name, options) {
+	const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
+	if (options && options.required && !val) throw new Error(`Input required and not supplied: ${name}`);
+	if (options && options.trimWhitespace === false) return val;
+	return val.trim();
 }
 /**
-* Adds a warning issue
-* @param message warning issue message. Errors will be converted to string via toString()
+* Sets the action status to failed.
+* When the action exits it will be with an exit code of 1
+* @param message add error issue message
+*/
+function setFailed(message) {
+	process.exitCode = ExitCode.Failure;
+	error(message);
+}
+/**
+* Adds an error issue
+* @param message error issue message. Errors will be converted to string via toString()
 * @param properties optional properties to add to the annotation.
 */
-function warning(message, properties = {}) {
-	issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+function error(message, properties = {}) {
+	issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
 * Writes info to log with console.log.
@@ -15915,82 +15913,52 @@ function info(message) {
 	process.stdout.write(message + os$1.EOL);
 }
 //#endregion
-//#region src/detect-env.ts
+//#region src/fixer.ts
 /**
-* Detects Node.js version and package manager from the environment.
-* Outputs the results to GITHUB_OUTPUT.
+* Runs common lint/format scripts if they exist in package.json.
+* Usage: node fixer.js [package_manager]
 */
-function detectNodeVersion() {
+function executeFixer() {
+	if (!fs.existsSync("package.json")) {
+		info("No package.json found. Skipping fixer scripts.");
+		return;
+	}
+	let pkg;
 	try {
-		if (fs.existsSync(".nvmrc")) {
-			const version = fs.readFileSync(".nvmrc", "utf8").trim();
-			info(`Found .nvmrc: ${version}`);
-			return version;
-		}
-		if (fs.existsSync("package.json")) {
-			const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-			if (pkg.engines && pkg.engines.node) {
-				info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
-				return pkg.engines.node;
+		pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+	} catch (err) {
+		setFailed(`Failed to parse package.json: ${err.message}`);
+		return;
+	}
+	const scripts = pkg.scripts || {};
+	const packageManager = getInput("package-manager") || process.argv[2] || "npm";
+	const combinations = [
+		["check"],
+		["format", "lint"],
+		["fmt", "lint"],
+		["lint"],
+		["format"],
+		["fmt"]
+	];
+	let selectedScripts = [];
+	for (const group of combinations) if (group.every((name) => scripts[name])) {
+		selectedScripts = group;
+		break;
+	}
+	if (selectedScripts.length > 0) {
+		info(`Detected fixer scripts: ${selectedScripts.join(", ")}`);
+		for (const script of selectedScripts) {
+			info(`Executing: ${packageManager} run ${script}`);
+			try {
+				execSync(`${packageManager} run ${script}`, { stdio: "inherit" });
+			} catch (err) {
+				setFailed(`Script "${script}" failed with exit code ${err.status}`);
+				return;
 			}
 		}
-	} catch (err) {
-		warning(`Failed to detect Node.js version: ${err.message}`);
-	}
-	return "lts/*";
+		info("Fixer scripts completed successfully.");
+	} else info("No matching fixer scripts (check, format, lint, etc.) found in package.json.");
 }
-function detectPackageManager() {
-	try {
-		if (fs.existsSync("pnpm-lock.yaml")) return {
-			name: "pnpm",
-			version: "latest"
-		};
-		if (fs.existsSync("yarn.lock")) return {
-			name: "yarn",
-			version: "latest"
-		};
-		if (fs.existsSync("package-lock.json")) return {
-			name: "npm",
-			version: "latest"
-		};
-		if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock")) return {
-			name: "bun",
-			version: "latest"
-		};
-		if (fs.existsSync("package.json")) {
-			const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-			if (pkg.packageManager) {
-				const [name, version] = pkg.packageManager.split("@");
-				info(`Found packageManager in package.json: ${name}@${version || "latest"}`);
-				return {
-					name,
-					version: version || "latest"
-				};
-			}
-		}
-	} catch (err) {
-		warning(`Failed to detect package manager: ${err.message}`);
-	}
-	return {
-		name: "npm",
-		version: "latest"
-	};
-}
-function writeOutput(nodeVersion, pm) {
-	setOutput("node_version", nodeVersion);
-	setOutput("package_manager", pm.name);
-	setOutput("package_manager_version", pm.version);
-	info(`Detected values:
-node_version=${nodeVersion}
-package_manager=${pm.name}
-package_manager_version=${pm.version}`);
-}
-function run() {
-	const nodeVersion = detectNodeVersion();
-	const pm = detectPackageManager();
-	writeOutput(nodeVersion, pm);
-	info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
-}
-run();
+executeFixer();
 //#endregion
-export { detectNodeVersion, detectPackageManager, run, writeOutput };
+export { executeFixer };

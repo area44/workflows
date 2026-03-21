@@ -11,7 +11,7 @@ name: GitHub Pages
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   pull_request:
 
 permissions:
@@ -32,15 +32,15 @@ jobs:
 
 ## Inputs
 
-| Name | Description | Default |
-|------|-------------|---------|
-| `path` | The directory where the built site is located | `dist` |
-| `node-version` | Optional Node.js version override | (auto-detected) |
-| `build-command` | Optional build command override | `npm run build` |
+| Name            | Description                                   | Default         |
+| --------------- | --------------------------------------------- | --------------- |
+| `path`          | The directory where the built site is located | `dist`          |
+| `node-version`  | Optional Node.js version override             | (auto-detected) |
+| `build-command` | Optional build command override               |                 |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `node-version` | The Node.js version used |
+| Name              | Description              |
+| ----------------- | ------------------------ |
+| `node-version`    | The Node.js version used |
 | `package-manager` | The package manager used |

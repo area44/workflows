@@ -1,22 +1,23 @@
 {
   "name": "@area44/workflows",
   "version": "1.0.0",
-  "description": "GitHub Actions workflows for the AREA44 ecosystem",
   "private": true,
+  "description": "GitHub Actions workflows for the AREA44 ecosystem",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/area44/workflows.git"
+  },
+  "type": "module",
   "scripts": {
     "build": "rolldown -c rolldown.config.mjs",
     "test": "vitest run",
     "all": "npm run build && npm run test"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/area44/workflows.git"
-  },
-  "license": "MIT",
-  "type": "module",
   "devDependencies": {
     "@actions/core": "^3.0.0",
     "@types/node": "^24.12.0",
+    "oxlint": "^1.56.0",
     "rolldown": "^1.0.0-rc.10",
     "typescript": "^5.0.0",
     "vitest": "^4.1.0"

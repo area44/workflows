@@ -50,11 +50,11 @@ runs:
           *) "$PACKAGE_MANAGER" install ;;
         esac
 
-    - name: Run scripts
+    - name: Run fixer scripts
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-      run: node "${GITHUB_ACTION_PATH}/../dist/autofix.js" "$PACKAGE_MANAGER"
+      run: node "${GITHUB_ACTION_PATH}/../dist/fixer.js" "$PACKAGE_MANAGER"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1
