@@ -12,9 +12,8 @@
   "scripts": {
     "build": "rolldown -c rolldown.config.mjs",
     "test": "vitest run",
-    "format": "oxfmt . --write",
-    "lint": "oxlint .",
-    "all": "npm run format && npm run lint && npm run build && npm run test"
+    "format": "oxfmt . --write --ignore-path .oxfmtignore",
+    "all": "npm run format && npm run build && npm run test"
   },
   "devDependencies": {
     "@actions/core": "^3.0.0",

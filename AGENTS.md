@@ -18,8 +18,7 @@ This repository contains reusable GitHub Actions workflows and composite actions
 
 - **Build**: Use `npm run build` to bundle the project using Rolldown.
 - **Minification**: Output files are minified (`minify: true` in `rolldown.config.mjs`).
-- **Formatting**: Use `npm run format` to format the project using `oxfmt`. The `dist/` folder is ignored via `.oxlintrc.json` and `.oxfmtrc.json`.
-- **Linting**: Use `npm run lint` to lint the project using `oxlint`.
+- **Formatting**: Use `npm run format` to format the project using `oxfmt`. The `dist/` folder is ignored via `.oxfmtignore`.
 - **Node.js**: The project uses Node 24 and targets the Node platform for bundling.
 
 ## Testing
