@@ -1,4 +1,4 @@
-# AGENT.md
+# area44/workflows
 
 This file provides context and instructions for AI agents working on the @area44/workflows repository.
 

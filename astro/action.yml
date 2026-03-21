@@ -11,7 +11,6 @@ inputs:
   build-command:
     description: "Optional build command override (e.g., 'npm run build')"
     required: false
-    default: "npm run build"
 
 outputs:
   node-version:

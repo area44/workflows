@@ -39,7 +39,7 @@ jobs:
 | --------------- | --------------------------------------------- | --------------- |
 | `path`          | The directory where the built site is located | `dist`          |
 | `node-version`  | Optional Node.js version override             | (auto-detected) |
-| `build-command` | Optional build command override               | `npm run build` |
+| `build-command` | Optional build command override               |                 |
 
 ## Outputs
 

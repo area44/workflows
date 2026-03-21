@@ -50,7 +50,7 @@ runs:
           *) "$PACKAGE_MANAGER" install ;;
         esac
 
-    - name: Run scripts
+    - name: Run fixer scripts
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}

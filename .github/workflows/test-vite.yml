@@ -1,4 +1,4 @@
-name: test-vite
+name: Test Vite action
 on:
   push:
     branches: [main]
@@ -12,20 +12,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Dummy Project
+      - name: Setup Project
         run: |
-          rm -rf dummy-vite
-          mkdir -p dummy-vite
-          cd dummy-vite
-          echo '{"name": "dummy-vite", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          rm -rf vite-project
+          mkdir -p vite-project
+          cd vite-project
+          echo '{"name": "vite-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
           npm install --no-package-lock
 
       - name: Test Vite Action
         uses: ./vite
         id: vite_action
         with:
-          path: dummy-vite/dist
-          build-command: "cd dummy-vite && npm run build"
+          path: vite-project/dist
+          build-command: "cd vite-project && npm run build"
 
       - name: Verify Vite Outputs
         run: |

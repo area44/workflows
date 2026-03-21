@@ -1,4 +1,4 @@
-name: fixer.ci
+name: Test autofix action
 on:
   push:
     branches: [main]
@@ -12,14 +12,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Dummy Project
+      - name: Setup Project
         run: |
-          rm -rf dummy-fixer
-          mkdir -p dummy-fixer
-          cd dummy-fixer
-          echo '{"name": "dummy-fixer", "scripts": {"lint": "echo linting"}}' > package.json
+          rm -rf autofix-project
+          mkdir -p autofix-project
+          cd autofix-project
+          echo '{"name": "autofix-project", "scripts": {"lint": "echo linting"}}' > package.json
           npm install --no-package-lock
 
       - name: Test Autofix Script
         run: node ../dist/fixer.js npm
-        working-directory: dummy-fixer
+        working-directory: autofix-project

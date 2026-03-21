@@ -1,11 +1,11 @@
-# area44/fixer.ci
+# area44/autofix
 
-Run linting/formatting scripts and push fixes using fixer.ci.
+Run linting/formatting scripts and push fixes using autofix.ci.
 
 ## Usage
 
 ```yaml
-name: fixer.ci
+name: autofix.ci
 on:
   push:
     branches: ["main"]

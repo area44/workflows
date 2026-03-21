@@ -8,6 +8,7 @@ const sharedConfig = {
     dir: "dist",
     format: "esm",
     entryFileNames: "[name].js",
+    minify: true,
     banner: "/* eslint-disable */",
   },
   resolve: {
