@@ -1,5 +1,5 @@
-import fs from "fs";
 import * as core from "@actions/core";
+import fs from "fs";
 
 /**
  * Detects Node.js version and package manager from the environment.
@@ -20,8 +20,8 @@ export function detectNodeVersion(): string {
         return pkg.engines.node;
       }
     }
-  } catch (err: any) {
-    core.warning(`Failed to detect Node.js version: ${err.message}`);
+  } catch (error: any) {
+    core.warning(`Failed to detect Node.js version: ${error.message}`);
   }
   return "lts/*";
 }
@@ -33,11 +33,18 @@ export interface PackageManager {
 
 export function detectPackageManager(): PackageManager {
   try {
-    if (fs.existsSync("pnpm-lock.yaml")) return { name: "pnpm", version: "latest" };
-    if (fs.existsSync("yarn.lock")) return { name: "yarn", version: "latest" };
-    if (fs.existsSync("package-lock.json")) return { name: "npm", version: "latest" };
-    if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock"))
+    if (fs.existsSync("pnpm-lock.yaml")) {
+      return { name: "pnpm", version: "latest" };
+    }
+    if (fs.existsSync("yarn.lock")) {
+      return { name: "yarn", version: "latest" };
+    }
+    if (fs.existsSync("package-lock.json")) {
+      return { name: "npm", version: "latest" };
+    }
+    if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock")) {
       return { name: "bun", version: "latest" };
+    }
 
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
@@ -47,8 +54,8 @@ export function detectPackageManager(): PackageManager {
         return { name, version: version || "latest" };
       }
     }
-  } catch (err: any) {
-    core.warning(`Failed to detect package manager: ${err.message}`);
+  } catch (error: any) {
+    core.warning(`Failed to detect package manager: ${error.message}`);
   }
   return { name: "npm", version: "latest" };
 }
