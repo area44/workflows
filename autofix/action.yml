@@ -42,12 +42,12 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
-        if [ -z "$PACKAGE_MANAGER" ]; then
-          echo "PACKAGE_MANAGER is not set"
-          exit 1
-        fi
-
-        "$PACKAGE_MANAGER" install
+        case "$PACKAGE_MANAGER" in
+          pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
+          bun) bun install ;;
+          yarn) yarn install --prefer-offline ;;
+          npm) npm install ;;
+        esac
 
     - name: Run fixer scripts
       shell: bash
