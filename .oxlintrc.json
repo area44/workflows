@@ -1,0 +1,10 @@
+{
+  "ignorePatterns": ["dist/"],
+  "rules": {
+    "curly": "error",
+    "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "no-magic-numbers": ["error", { "ignore": [0, 1] }],
+    "sort-imports": "error",
+    "sort-keys": "error"
+  }
+}

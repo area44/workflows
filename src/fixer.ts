@@ -1,11 +1,13 @@
-import fs from "fs";
-import { execSync } from "child_process";
 import * as core from "@actions/core";
+import { execSync } from "child_process";
+import fs from "fs";
 
 /**
  * Runs common lint/format scripts if they exist in package.json.
  * Usage: node fixer.js [package_manager]
  */
+
+const DEFAULT_ARG_INDEX = 2;
 
 export function executeFixer(): void {
   if (!fs.existsSync("package.json")) {
@@ -16,13 +18,14 @@ export function executeFixer(): void {
   let pkg: any;
   try {
     pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-  } catch (err: any) {
-    core.setFailed(`Failed to parse package.json: ${err.message}`);
+  } catch (error: any) {
+    core.setFailed(`Failed to parse package.json: ${error.message}`);
     return;
   }
 
   const scripts = pkg.scripts || {};
-  const packageManager = core.getInput("package-manager") || process.argv[2] || "npm";
+  const packageManager =
+    core.getInput("package-manager") || process.argv[DEFAULT_ARG_INDEX] || "npm";
 
   // Priority list of script combinations to try
   const combinations = [
@@ -48,8 +51,8 @@ export function executeFixer(): void {
       core.info(`Executing: ${packageManager} run ${script}`);
       try {
         execSync(`${packageManager} run ${script}`, { stdio: "inherit" });
-      } catch (err: any) {
-        core.setFailed(`Script "${script}" failed with exit code ${err.status}`);
+      } catch (error: any) {
+        core.setFailed(`Script "${script}" failed with exit code ${error.status}`);
         return;
       }
     }

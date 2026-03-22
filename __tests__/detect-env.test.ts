@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import fs from "fs";
 import * as core from "@actions/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { detectNodeVersion, detectPackageManager } from "../src/detect-env";
+import fs from "fs";
 
 vi.mock("fs");
 vi.mock("@actions/core");

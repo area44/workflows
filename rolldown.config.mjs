@@ -1,16 +1,16 @@
-import { defineConfig } from "rolldown";
 import { builtinModules } from "node:module";
+import { defineConfig } from "rolldown";
 
 const sharedConfig = {
-  platform: "node",
   external: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
   output: {
-    dir: "dist",
-    format: "esm",
-    entryFileNames: "[name].js",
-    minify: true,
     banner: "/* eslint-disable */",
+    dir: "dist",
+    entryFileNames: "[name].js",
+    format: "esm",
+    minify: true,
   },
+  platform: "node",
   resolve: {
     conditionNames: ["node", "import"],
   },

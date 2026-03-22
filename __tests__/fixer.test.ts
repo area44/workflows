@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import fs from "fs";
-import { execSync } from "child_process";
 import * as core from "@actions/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { execSync } from "child_process";
 import { executeFixer } from "../src/fixer";
+import fs from "fs";
 
 vi.mock("fs");
 vi.mock("child_process");
