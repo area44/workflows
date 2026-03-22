@@ -1,10 +1,27 @@
 {
-  "ignorePatterns": ["dist/"],
-  "rules": {
-    "curly": "error",
-    "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
-    "no-magic-numbers": ["error", { "ignore": [0, 1] }],
-    "sort-imports": "error",
-    "sort-keys": "error"
-  }
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "react",
+    "react-perf",
+    "import",
+    "jsx-a11y",
+    "node",
+    "promise",
+    "vitest",
+    "vue"
+  ],
+  "ignorePatterns": [
+    "*.min.*",
+    "*.map",
+    "**/public",
+    "**/build",
+    "**/dist",
+    "**/out",
+    "**/.github",
+    "**/.next",
+    "**/.astro",
+    "**/.netlify"
+  ]
 }
