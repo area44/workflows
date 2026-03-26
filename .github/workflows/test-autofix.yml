@@ -1,4 +1,4 @@
-name: Test autofix action
+name: autofix.ci
 on:
   push:
     branches: [main]

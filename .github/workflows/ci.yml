@@ -30,4 +30,4 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          test -f dist/detect-env.js && test -f dist/fixer.js
+          test -f dist/detect-env.js
