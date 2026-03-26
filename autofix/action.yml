@@ -1,4 +1,4 @@
-name: area44/lint-format
+name: area44/autofix
 description: Run lint/format scripts with autofix.ci integration
 inputs:
   node-version:
