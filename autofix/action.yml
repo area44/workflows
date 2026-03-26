@@ -49,7 +49,7 @@ runs:
           npm) npm install ;;
         esac
 
-    - name: Run fixer scripts
+    - name: Run lint/format scripts
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
@@ -67,28 +67,28 @@ runs:
           }
 
           if has_script "check"; then
-            echo "Detected fixer scripts: check"
+            echo "Detected lint/format scripts: check"
             run_script "check"
           elif has_script "format" && has_script "lint"; then
-            echo "Detected fixer scripts: format, lint"
+            echo "Detected lint/format scripts: format, lint"
             run_script "format" && run_script "lint"
           elif has_script "fmt" && has_script "lint"; then
-            echo "Detected fixer scripts: fmt, lint"
+            echo "Detected lint/format scripts: fmt, lint"
             run_script "fmt" && run_script "lint"
           elif has_script "lint"; then
-            echo "Detected fixer scripts: lint"
+            echo "Detected lint/format scripts: lint"
             run_script "lint"
           elif has_script "format"; then
-            echo "Detected fixer scripts: format"
+            echo "Detected lint/format scripts: format"
             run_script "format"
           elif has_script "fmt"; then
-            echo "Detected fixer scripts: fmt"
+            echo "Detected lint/format scripts: fmt"
             run_script "fmt"
           else
-            echo "No matching fixer scripts (check, format, lint, etc.) found in package.json."
+            echo "No matching lint/format scripts (check, format, lint, etc.) found in package.json."
           fi
         else
-          echo "No package.json found. Skipping fixer scripts."
+          echo "No package.json found. Skipping lint/format scripts."
         fi
 
     - name: Run autofix.ci
