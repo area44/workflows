@@ -1,5 +1,5 @@
-name: area44/autofix.ci
-description: Run autofix.ci
+name: area44/lint-format
+description: Run lint/format scripts with autofix.ci integration
 inputs:
   node-version:
     description: "Optional Node.js version override"
