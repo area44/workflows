@@ -20,6 +20,7 @@ jobs:
           echo '{"name": "autofix-project", "scripts": {"lint": "echo linting"}}' > package.json
           npm install --no-package-lock
 
-      - name: Test Autofix Script
-        run: node ../dist/fixer.js npm
-        working-directory: autofix-project
+      - name: Test Autofix Action
+        uses: ./autofix
+        with:
+          node-version: "24"

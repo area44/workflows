@@ -53,7 +53,43 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-      run: node "${GITHUB_ACTION_PATH}/../dist/fixer.js" "$PACKAGE_MANAGER"
+      run: |
+        if [ -f "package.json" ]; then
+          SCRIPTS=$(jq -r '.scripts // {} | keys | .[]' package.json)
+
+          run_script() {
+            echo "Executing: $PACKAGE_MANAGER run $1"
+            $PACKAGE_MANAGER run "$1" || { echo "::error::Script \"$1\" failed"; return 1; }
+          }
+
+          has_script() {
+            echo "$SCRIPTS" | grep -q "^$1$"
+          }
+
+          if has_script "check"; then
+            echo "Detected fixer scripts: check"
+            run_script "check"
+          elif has_script "format" && has_script "lint"; then
+            echo "Detected fixer scripts: format, lint"
+            run_script "format" && run_script "lint"
+          elif has_script "fmt" && has_script "lint"; then
+            echo "Detected fixer scripts: fmt, lint"
+            run_script "fmt" && run_script "lint"
+          elif has_script "lint"; then
+            echo "Detected fixer scripts: lint"
+            run_script "lint"
+          elif has_script "format"; then
+            echo "Detected fixer scripts: format"
+            run_script "format"
+          elif has_script "fmt"; then
+            echo "Detected fixer scripts: fmt"
+            run_script "fmt"
+          else
+            echo "No matching fixer scripts (check, format, lint, etc.) found in package.json."
+          fi
+        else
+          echo "No package.json found. Skipping fixer scripts."
+        fi
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1

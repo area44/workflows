@@ -25,9 +25,9 @@ This repository contains reusable GitHub Actions workflows and composite actions
 - **Unit Tests**: Use Vitest for unit testing. Tests are located in `__tests__/`. Run them with `npm run test`.
 - **Integration Tests**: Integration tests are split into separate workflow files (`.github/workflows/`) to ensure isolated runs and avoid artifact name conflicts.
 - **Environment Detection**: Core environment detection logic is in `src/detect-env.ts`.
-- **Fixer Logic**: Core logic for running lint/format scripts is in `src/fixer.ts` (function `executeFixer`).
+- **Fixer Logic**: Core logic for running lint/format scripts is implemented directly in `autofix/action.yml` using bash.
 
 ## Coding Preferences
 
-- Use descriptive names for internal functions (e.g., `setOutputs`, `executeFixer`) rather than generic names.
+- Use descriptive names for internal functions (e.g., `setOutputs`, `detectNodeVersion`) rather than generic names.
 - Always include an 'eslint-disable' banner in generated files via rolldown config.

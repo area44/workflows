@@ -21,8 +21,4 @@ export default defineConfig([
     ...sharedConfig,
     input: { "detect-env": "src/detect-env.ts" },
   },
-  {
-    ...sharedConfig,
-    input: { fixer: "src/fixer.ts" },
-  },
 ]);
