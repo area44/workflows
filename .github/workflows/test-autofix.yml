@@ -1,4 +1,4 @@
-name: Test autofix action
+name: Test Autofix action
 on:
   push:
     branches: [main]
