@@ -1,0 +1,41 @@
+name: Test Autofix action
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Project
+        run: |
+          rm -rf autofix-project
+          mkdir -p autofix-project
+          cd autofix-project
+          echo '{"name": "autofix-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
+          npm install --no-package-lock
+
+      - name: Detect Node.js version and package manager
+        shell: bash
+        id: detect_env
+        run: node "dist/detect-env.js"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.detect_env.outputs.node_version }}
+
+      - name: Run lint script (Direct Test)
+        run: |
+          cd autofix-project
+          npm run lint
