@@ -30,9 +30,9 @@ jobs:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-| :--- | :--- | :--- | :--- |
-| `node-version` | Optional Node.js version override (e.g., '24', 'lts/*') | No | Detected from `.nvmrc` or `package.json` |
+| Input          | Description                                              | Required | Default                                  |
+| :------------- | :------------------------------------------------------- | :------- | :--------------------------------------- |
+| `node-version` | Optional Node.js version override (e.g., '24', 'lts/\*') | No       | Detected from `.nvmrc` or `package.json` |
 
 ## Tools Used
 
