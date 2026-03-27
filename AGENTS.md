@@ -1,4 +1,4 @@
-# area44/workflows
+# Agent Guide
 
 This file provides context and instructions for AI agents working on the @area44/workflows repository.
 
