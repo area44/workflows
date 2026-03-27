@@ -1,6 +1,0 @@
-{
-  "name": "autofix-project",
-  "scripts": {
-    "lint": "echo \"linting...\""
-  }
-}
