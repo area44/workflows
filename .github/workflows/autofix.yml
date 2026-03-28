@@ -9,11 +9,13 @@ permissions:
   contents: write
 
 jobs:
-  autofix:
+  lint-format:
     runs-on: ubuntu-slim
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Run autofix
-        uses: area44/workflows/autofix@v4.0.2
+      - name: Run lint and format
+        uses: ./lint-format

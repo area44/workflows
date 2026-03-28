@@ -1,28 +1,24 @@
-# area44/autofix
+# area44/autofix (Legacy)
+
+> [!IMPORTANT]
+> This action has been renamed to **area44/lint-format**. This folder is kept for backward compatibility, but it is recommended to update your workflows to use the new name.
 
 Run linting/formatting scripts and push fixes using autofix.ci.
 
-## Usage
+## Usage (Recommended)
+
+Please refer to the [area44/lint-format](../lint-format/README.md) documentation.
 
 ```yaml
-name: autofix.ci
-on:
-  push:
-    branches: ["main"]
-  pull_request:
+- name: Run lint and format
+  uses: area44/workflows/lint-format@main
+```
 
-permissions:
-  contents: write
+## Legacy Usage
 
-jobs:
-  autofix:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run autofix
-        uses: area44/workflows/autofix@main
+```yaml
+- name: Run autofix
+  uses: area44/workflows/autofix@main
 ```
 
 ## Inputs

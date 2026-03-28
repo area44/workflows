@@ -10,11 +10,10 @@
   },
   "type": "module",
   "scripts": {
-    "format": "oxfmt . --write",
-    "lint": "oxlint . --config .oxlintrc.json",
-    "build": "rolldown -c rolldown.config.mjs",
-    "test": "vitest run",
-    "all": "npm run format && npm run lint && npm run build && npm run test"
+    "format": "oxfmt",
+    "lint": "oxlint",
+    "build": "rolldown",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@actions/core": "^3.0.0",
