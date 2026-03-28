@@ -5,7 +5,8 @@ Run linting/formatting scripts.
 ## Usage
 
 ```yaml
-name: Lint/Format
+name: autofix.ci # needed to securely identify the workflow
+
 on:
   push:
     branches: ["main"]

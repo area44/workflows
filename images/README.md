@@ -7,7 +7,7 @@ This composite action optimizes images (SVGs, PNGs, JPEGs, and GIFs).
 Create a workflow file (e.g., `.github/workflows/images.yml`) in your repository:
 
 ```yaml
-name: images.ci
+name: images.ci # needed to securely identify the workflow
 
 on:
   push:
