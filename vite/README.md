@@ -28,6 +28,9 @@ jobs:
 
       - name: Build Vite site
         uses: area44/workflows/vite@main
+        with:
+          # Optional: node-version: '24'
+          # Optional: path: 'dist'
 ```
 
 ## Inputs

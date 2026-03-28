@@ -1,4 +1,4 @@
-name: Test Autofix action
+name: Test Lint/Format action
 on:
   push:
     branches: [main]
@@ -19,10 +19,10 @@ jobs:
 
       - name: Setup Project
         run: |
-          rm -rf autofix-project
-          mkdir -p autofix-project
-          cd autofix-project
-          echo '{"name": "autofix-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
+          rm -rf lint-format-project
+          mkdir -p lint-format-project
+          cd lint-format-project
+          echo '{"name": "lint-format-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
           npm install --no-package-lock
 
       - name: Detect Node.js version and package manager
@@ -37,5 +37,5 @@ jobs:
 
       - name: Run lint script (Direct Test)
         run: |
-          cd autofix-project
+          cd lint-format-project
           npm run lint
