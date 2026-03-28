@@ -1,11 +1,11 @@
 # area44/lint-format
 
-Run linting/formatting scripts and push fixes using autofix.ci.
+Run linting/formatting scripts.
 
 ## Usage
 
 ```yaml
-name: autofix.ci
+name: Lint/Format
 on:
   push:
     branches: ["main"]
