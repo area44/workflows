@@ -1,10 +1,10 @@
 # area44/images
 
-This composite action optimizes images (SVGs, PNGs, JPEGs, and GIFs) in your repository and automatically commits the changes using [autofix.ci](https://autofix.ci).
+This composite action optimizes images (SVGs, PNGs, JPEGs, and GIFs).
 
 ## Usage
 
-Create a workflow file (e.g., `.github/workflows/images.ci.yml`) in your repository:
+Create a workflow file (e.g., `.github/workflows/images.yml`) in your repository:
 
 ```yaml
 name: images.ci
@@ -26,12 +26,10 @@ jobs:
       - uses: area44/workflows/images@main
 ```
 
-> **Note**: For security reasons, the workflow file must be named exactly `images.ci.yml` or similar for `autofix.ci` to function correctly in some environments, although the action itself is flexible.
-
 ## Inputs
 
 | Input          | Description                                              | Required | Default                                  |
-| :------------- | :------------------------------------------------------- | :------- | :--------------------------------------- |
+| -------------- | -------------------------------------------------------- | -------- | ---------------------------------------- |
 | `node-version` | Optional Node.js version override (e.g., '24', 'lts/\*') | No       | Detected from `.nvmrc` or `package.json` |
 
 ## Tools Used

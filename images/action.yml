@@ -1,5 +1,5 @@
 name: area44/images
-description: Optimize images in the repository
+description: Optimize images
 inputs:
   node-version:
     description: "Optional Node.js version override"
