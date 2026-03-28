@@ -1,4 +1,4 @@
-name: Test Lint/Format action
+name: Test Other action
 on:
   push:
     branches: [main]
@@ -19,10 +19,10 @@ jobs:
 
       - name: Setup Project
         run: |
-          rm -rf lint-format-project
-          mkdir -p lint-format-project
-          cd lint-format-project
-          echo '{"name": "lint-format-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
+          rm -rf other-project
+          mkdir -p other-project
+          cd other-project
+          echo '{"name": "other-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
           npm install --no-package-lock
 
       - name: Detect Node.js version and package manager
@@ -37,5 +37,5 @@ jobs:
 
       - name: Run lint script (Direct Test)
         run: |
-          cd lint-format-project
+          cd other-project
           npm run lint

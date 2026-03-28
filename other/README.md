@@ -1,4 +1,4 @@
-# area44/lint-format
+# area44/other
 
 Run linting/formatting scripts.
 
@@ -16,14 +16,14 @@ permissions:
   contents: write
 
 jobs:
-  lint-format:
+  other:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Run lint and format
-        uses: area44/workflows/lint-format@main
+        uses: area44/workflows/other@main
 ```
 
 ## Inputs

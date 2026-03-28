@@ -38,4 +38,4 @@ jobs:
 - **OptiPNG**: For PNG optimization.
 - **Jpegoptim**: For JPEG optimization.
 - **Gifsicle**: For GIF optimization.
-- **autofix.ci**: For automatically committing the optimized images.
+- **other**: For automatically committing the optimized images.
