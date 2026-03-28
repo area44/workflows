@@ -30,7 +30,7 @@ jobs:
 
 ## Inputs
 
-| Name           | Description                                                 | Default         |
-| -------------- | ----------------------------------------------------------- | --------------- |
-| `node-version` | Optional Node.js version override                           | (auto-detected) |
+| Name           | Description                                                   | Default         |
+| -------------- | ------------------------------------------------------------- | --------------- |
+| `node-version` | Optional Node.js version override                             | (auto-detected) |
 | `autofix-bot`  | The bot to use for autofix ('autofix-ci' or 'github-actions') | `autofix-ci`    |
