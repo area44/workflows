@@ -1,0 +1,21 @@
+name: autofix.ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  lint-format:
+    runs-on: ubuntu-slim
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run lint and format
+        uses: ./lint-format
