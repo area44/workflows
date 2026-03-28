@@ -1,0 +1,63 @@
+name: area44/images
+description: Optimize images
+inputs:
+  node-version:
+    description: "Optional Node.js version override"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect Node.js version and package manager
+      shell: bash
+      id: detect_env
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
+
+    - name: Setup PNPM
+      if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
+      uses: pnpm/action-setup@v5
+      with:
+        version: ${{ steps.detect_env.outputs.package_manager_version }}
+
+    - name: Setup Bun
+      if: ${{ steps.detect_env.outputs.package_manager == 'bun' }}
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+        cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
+        cache-dependency-path: |
+          **/package-lock.json
+          **/pnpm-lock.yaml
+          **/yarn.lock
+          **/bun.lock
+          **/bun.lockb
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if command -v apt-get >/dev/null; then
+          sudo apt-get update && sudo apt-get install -y optipng jpegoptim gifsicle
+        fi
+
+    - name: Optimize Images
+      shell: bash
+      run: |
+        echo "Optimizing SVGs..."
+        npx svgo -r . || true
+
+        echo "Optimizing PNGs..."
+        find . -name "*.png" -not -path "./node_modules/*" -exec optipng -o2 {} + || true
+
+        echo "Optimizing JPEGs..."
+        find . \( -name "*.jpg" -o -name "*.jpeg" \) -not -path "./node_modules/*" -exec jpegoptim --strip-all {} + || true
+
+        echo "Optimizing GIFs..."
+        find . -name "*.gif" -not -path "./node_modules/*" -exec gifsicle -O3 --batch {} + || true
+
+    - name: Run autofix.ci
+      uses: autofix-ci/action@v1

@@ -4,14 +4,14 @@ This file provides context and instructions for AI agents working on the @area44
 
 ## Project Overview
 
-This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Lint/Format) for the AREA44 ecosystem.
+This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Lint/Format, Images) for the AREA44 ecosystem.
 
 ## Core Directives
 
 - **ES Modules**: The project is configured as an ES module (`"type": "module"` in `package.json`). Build artifacts in `dist/` are also generated as ESM.
 - **Tracked Build Artifacts**: The `dist/` folder is tracked in the repository to allow composite actions to be used directly without a build step in consuming workflows.
 - **Clean Distribution**: The `dist/` directory must only contain final bundled JavaScript files. Do not include source files or redundant artifacts.
-- **Compatibility**: Preserve original `action.yml` files in root directories (astro/, autofix/, lint-format/, vite/) and maintain original public inputs/outputs for backward compatibility.
+- **Compatibility**: Preserve original `action.yml` files in root directories (astro/, lint-format/, images/, vite/) and maintain original public inputs/outputs for backward compatibility.
 - **No Shared Chunks**: `rolldown.config.mjs` uses separate configurations for each entry point to prevent shared chunks that cause "require" errors in ESM-based GitHub Actions runners.
 
 ## Development & Build
