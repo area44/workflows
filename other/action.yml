@@ -1,9 +1,13 @@
-name: area44/lint-format
-description: Run lint/format scripts
+name: area44/other
+description: Run miscellaneous scripts (lint/format, etc.)
 inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
+  autofix-bot:
+    description: "The bot to use for autofix ('autofix-ci' or 'github-actions')"
+    required: false
+    default: "autofix-ci"
 
 runs:
   using: "composite"
@@ -92,4 +96,14 @@ runs:
         fi
 
     - name: Run autofix.ci
+      if: ${{ inputs.autofix-bot == 'autofix-ci' }}
       uses: autofix-ci/action@v1
+
+    - name: Run github-actions[bot]
+      if: ${{ inputs.autofix-bot == 'github-actions' }}
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "chore: autofix scripts"
+        commit_user_name: "github-actions[bot]"
+        commit_user_email: "github-actions[bot]@users.noreply.github.com"
+        commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
