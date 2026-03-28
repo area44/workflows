@@ -6,7 +6,7 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 
 - **[Astro](./astro/README.md)**: Build and deploy Astro sites.
 - **[Vite](./vite/README.md)**: Build and deploy Vite sites.
-- **[Autofix](./autofix/README.md)**: Run lint/format scripts and integrate with autofix.ci.
+- **[Lint/Format](./lint-format/README.md)**: Run lint/format scripts and integrate with autofix.ci.
 
 ## License
 
