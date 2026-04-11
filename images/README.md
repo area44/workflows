@@ -1,6 +1,6 @@
 # area44/images
 
-This composite action optimizes images (SVGs, PNGs, JPEGs, and GIFs).
+This composite action optimizes images (SVGs, PNGs, JPEGs, and GIFs) and can optionally convert them to next-gen formats (WebP, AVIF).
 
 ## Usage
 
@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: area44/workflows/images@main
+        with:
+          convert-webp: true
+          convert-avif: true
 ```
 
 ## Inputs
@@ -31,6 +34,8 @@ jobs:
 | Input          | Description                                              | Required | Default                                  |
 | -------------- | -------------------------------------------------------- | -------- | ---------------------------------------- |
 | `node-version` | Optional Node.js version override (e.g., '24', 'lts/\*') | No       | Detected from `.nvmrc` or `package.json` |
+| `convert-webp` | Whether to convert PNG/JPEG images to WebP               | No       | `false`                                  |
+| `convert-avif` | Whether to convert PNG/JPEG images to AVIF               | No       | `false`                                  |
 
 ## Tools Used
 
@@ -38,4 +43,6 @@ jobs:
 - **OptiPNG**: For PNG optimization.
 - **Jpegoptim**: For JPEG optimization.
 - **Gifsicle**: For GIF optimization.
-- **autofix.ci**: For automatically committing the optimized images.
+- **WebP (cwebp)**: For WebP conversion.
+- **libavif (avifenc)**: For AVIF conversion.
+- **autofix.ci**: For automatically committing the optimized and converted images.
