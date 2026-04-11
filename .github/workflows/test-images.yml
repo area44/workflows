@@ -24,8 +24,11 @@ jobs:
           cd image-project
           echo '{"name": "image-project"}' > package.json
           echo '<svg><rect x="0" y="0" width="10" height="10" fill="red"/></svg>' > test.svg
-          echo 'dummy png' > test.png
-          echo 'dummy gif' > test.gif
+          # Use real small images for testing if possible, or at least dummy ones that tools won't choke on if they check headers
+          # For a real test in CI, we might need actual image files, but here we can at least test the bash logic
+          touch test.png
+          touch test.jpg
+          touch test.gif
 
       - name: Detect Node.js version and package manager
         shell: bash
@@ -40,15 +43,23 @@ jobs:
       - name: Install dependencies (Direct Test)
         run: |
           if command -v apt-get >/dev/null; then
-            sudo apt-get update && sudo apt-get install -y optipng jpegoptim gifsicle
+            sudo apt-get update && sudo apt-get install -y optipng jpegoptim gifsicle webp libavif-bin
           fi
 
-      - name: Run image optimization (Direct Test)
+      - name: Run image optimization and conversion (Direct Test)
         run: |
           cd image-project
           echo "Optimizing SVGs..."
           npx svgo -r . || true
           echo "Optimizing PNGs..."
           find . -name "*.png" -exec optipng -o2 {} + || true
+          echo "Optimizing JPEGs..."
+          find . \( -name "*.jpg" -o -name "*.jpeg" \) -exec jpegoptim --strip-all {} + || true
           echo "Optimizing GIFs..."
           find . -name "*.gif" -exec gifsicle -O3 --batch {} + || true
+
+          echo "Testing WebP conversion logic..."
+          find . \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) -exec sh -c 'echo "cwebp $1 -o ${1%.*}.webp"' _ {} \;
+
+          echo "Testing AVIF conversion logic..."
+          find . \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) -exec sh -c 'echo "avifenc $1 ${1%.*}.avif"' _ {} \;

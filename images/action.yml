@@ -4,6 +4,14 @@ inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
+  convert-webp:
+    description: "Whether to convert images to WebP"
+    required: false
+    default: "false"
+  convert-avif:
+    description: "Whether to convert images to AVIF"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -41,11 +49,14 @@ runs:
       shell: bash
       run: |
         if command -v apt-get >/dev/null; then
-          sudo apt-get update && sudo apt-get install -y optipng jpegoptim gifsicle
+          sudo apt-get update && sudo apt-get install -y optipng jpegoptim gifsicle webp libavif-bin
         fi
 
     - name: Optimize Images
       shell: bash
+      env:
+        CONVERT_WEBP: ${{ inputs.convert-webp }}
+        CONVERT_AVIF: ${{ inputs.convert-avif }}
       run: |
         echo "Optimizing SVGs..."
         npx svgo -r . || true
@@ -58,6 +69,16 @@ runs:
 
         echo "Optimizing GIFs..."
         find . -name "*.gif" -not -path "./node_modules/*" -exec gifsicle -O3 --batch {} + || true
+
+        if [ "$CONVERT_WEBP" = "true" ]; then
+          echo "Converting images to WebP..."
+          find . \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) -not -path "./node_modules/*" -exec sh -c 'cwebp -quiet -q 80 "$1" -o "${1%.*}.webp"' _ {} \; || true
+        fi
+
+        if [ "$CONVERT_AVIF" = "true" ]; then
+          echo "Converting images to AVIF..."
+          find . \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) -not -path "./node_modules/*" -exec sh -c 'avifenc --quiet --jobs all "$1" "${1%.*}.avif"' _ {} \; || true
+        fi
 
     - name: Run autofix.ci
       uses: autofix-ci/action@v1
