@@ -37,10 +37,12 @@ runs:
           **/bun.lock
           **/bun.lockb
 
-    - name: Approve pnpm builds
+    - name: Prepare PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
       shell: bash
-      run: pnpm approve-builds esbuild sharp || true
+      run: |
+        echo "PNPM_SKIP_CHECK_BUILDS=true" >> "$GITHUB_ENV"
+        pnpm approve-builds esbuild sharp || true
 
     - name: Install dependencies
       shell: bash

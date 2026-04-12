@@ -52,6 +52,11 @@ runs:
           **/bun.lock
           **/bun.lockb
 
+    - name: Prepare PNPM
+      if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
+      shell: bash
+      run: echo "PNPM_SKIP_CHECK_BUILDS=true" >> "$GITHUB_ENV"
+
     - name: Set site variables
       shell: bash
       env:
@@ -68,7 +73,6 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-        PNPM_SKIP_CHECK_BUILDS: "true"
       run: |
         case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
@@ -82,7 +86,6 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-        PNPM_SKIP_CHECK_BUILDS: "true"
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         if [[ -n "$BUILD_COMMAND" ]]; then
