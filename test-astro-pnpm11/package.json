@@ -1,0 +1,17 @@
+{
+  "name": "test-astro-pnpm11",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "astro build"
+  },
+  "dependencies": {
+    "astro": "^6.1.5"
+  },
+  "packageManager": "pnpm@11.0.0-rc.0"
+}

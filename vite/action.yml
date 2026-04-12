@@ -70,7 +70,7 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
         case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --frozen-lockfile --config.only-built-dependencies-error=false ;;
+          pnpm) pnpm install --frozen-lockfile --ignore-scripts ;;
           bun) bun install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
