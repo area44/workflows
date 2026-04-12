@@ -68,6 +68,7 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
+        PNPM_SKIP_CHECK_BUILDS: "true"
       run: |
         case "$PACKAGE_MANAGER" in
           pnpm) pnpm install --frozen-lockfile ;;
@@ -81,6 +82,7 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
+        PNPM_SKIP_CHECK_BUILDS: "true"
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         if [[ -n "$BUILD_COMMAND" ]]; then
