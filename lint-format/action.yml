@@ -43,7 +43,7 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
       run: |
         case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
+          pnpm) pnpm install --prefer-offline --no-frozen-lockfile --ignore-scripts ;;
           bun) bun install ;;
           yarn) yarn install --prefer-offline ;;
           npm) npm install ;;

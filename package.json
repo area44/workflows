@@ -12,7 +12,7 @@
   "scripts": {
     "format": "oxfmt",
     "lint": "oxlint",
-    "build": "rolldown",
+    "build": "rolldown -c rolldown.config.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
