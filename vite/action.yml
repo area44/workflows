@@ -30,7 +30,7 @@ runs:
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@v6
       with:
         version: ${{ steps.detect_env.outputs.package_manager_version }}
 
@@ -55,7 +55,9 @@ runs:
     - name: Prepare PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
       shell: bash
-      run: echo "PNPM_SKIP_CHECK_BUILDS=true" >> "$GITHUB_ENV"
+      run: |
+        echo "PNPM_SKIP_CHECK_BUILDS=true" >> "$GITHUB_ENV"
+        pnpm config set only-allow-built-dependencies false
 
     - name: Set site variables
       shell: bash

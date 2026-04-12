@@ -15,7 +15,7 @@ runs:
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@v6
       with:
         version: ${{ steps.detect_env.outputs.package_manager_version }}
 
@@ -42,6 +42,7 @@ runs:
       shell: bash
       run: |
         echo "PNPM_SKIP_CHECK_BUILDS=true" >> "$GITHUB_ENV"
+        pnpm config set only-allow-built-dependencies false
         pnpm approve-builds esbuild sharp || true
 
     - name: Install dependencies
