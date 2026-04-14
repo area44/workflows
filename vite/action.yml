@@ -90,6 +90,6 @@ runs:
         fi
 
     - name: Upload site artifact
-      uses: actions/upload-pages-artifact@v4
+      uses: actions/upload-pages-artifact@v5
       with:
         path: ${{ inputs.path }}
