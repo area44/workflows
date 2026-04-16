@@ -1,0 +1,32 @@
+name: Test Vite+ action
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Project
+        run: |
+          rm -rf vp-project
+          mkdir -p vp-project
+          cd vp-project
+          echo '{"name": "vp-project"}' > package.json
+          npm install --no-package-lock
+
+      - name: Test Vite+ Action
+        uses: ./vite-plus
+        id: vite_plus_action
+        with:
+          path: vp-project/dist
+          build-command: "mkdir -p vp-project/dist && touch vp-project/dist/index.html"
+
+      - name: Verify Vite+ Outputs
+        run: |
+          if [ -z "${{ steps.vite_plus_action.outputs.node-version }}" ]; then exit 1; fi

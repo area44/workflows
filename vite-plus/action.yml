@@ -1,0 +1,65 @@
+name: area44/vite-plus
+description: Build and Deploy with Vite+
+inputs:
+  path:
+    description: "The directory where the built site is located"
+    required: false
+    default: "dist"
+  node-version:
+    description: "Optional Node.js version override (e.g., '24', 'lts/*')"
+    required: false
+  build-command:
+    description: "Optional build command override (e.g., 'vp build')"
+    required: false
+
+outputs:
+  node-version:
+    description: "The Node.js version used"
+    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+  version:
+    description: "The version of Vite+ installed"
+    value: ${{ steps.setup_vp.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect Node.js version and package manager
+      shell: bash
+      id: detect_env
+      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
+
+    - name: Setup Vite+
+      id: setup_vp
+      uses: voidzero-dev/setup-vp@v1
+      with:
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+        cache: true
+        run-install: true
+
+    - name: Set site variables
+      shell: bash
+      env:
+        REPO: ${{ github.event.repository.name }}
+        OWNER: ${{ github.repository_owner }}
+      run: |
+        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
+          echo "BASE=/" >> "$GITHUB_ENV"
+        else
+          echo "BASE=/${REPO}/" >> "$GITHUB_ENV"
+        fi
+
+    - name: Build Vite+ site
+      shell: bash
+      env:
+        BUILD_COMMAND: ${{ inputs.build-command }}
+      run: |
+        if [[ -n "$BUILD_COMMAND" ]]; then
+          eval "$BUILD_COMMAND"
+        else
+          vp build
+        fi
+
+    - name: Upload site artifact
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: ${{ inputs.path }}
