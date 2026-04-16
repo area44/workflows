@@ -30,3 +30,7 @@ jobs:
       - name: Verify Vite+ Outputs
         run: |
           if [ -z "${{ steps.vite_plus_action.outputs.node-version }}" ]; then exit 1; fi
+          if [ "$VITE_SITE_URL" != "https://${{ github.repository_owner }}.github.io" ]; then
+            echo "VITE_SITE_URL is not set correctly: $VITE_SITE_URL"
+            exit 1
+          fi

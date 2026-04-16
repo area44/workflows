@@ -17,7 +17,7 @@ jobs:
           rm -rf vite-project
           mkdir -p vite-project
           cd vite-project
-          echo '{"name": "vite-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          echo '{"name": "vite-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html" }}' > package.json
           npm install --no-package-lock
 
       - name: Test Vite Action
@@ -30,3 +30,7 @@ jobs:
       - name: Verify Vite Outputs
         run: |
           if [ -z "${{ steps.vite_action.outputs.node-version }}" ]; then exit 1; fi
+          if [ "$VITE_SITE_URL" != "https://${{ github.repository_owner }}.github.io" ]; then
+            echo "VITE_SITE_URL is not set correctly: $VITE_SITE_URL"
+            exit 1
+          fi
