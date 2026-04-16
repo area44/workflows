@@ -58,6 +58,7 @@ runs:
         REPO: ${{ github.event.repository.name }}
         OWNER: ${{ github.repository_owner }}
       run: |
+        echo "VITE_SITE_URL=https://${OWNER}.github.io" >> "$GITHUB_ENV"
         if [[ "$REPO" == "${OWNER}.github.io" ]]; then
           echo "BASE=/" >> "$GITHUB_ENV"
         else
