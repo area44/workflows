@@ -33,6 +33,15 @@ export interface PackageManager {
 
 export function detectPackageManager(): PackageManager {
   try {
+    if (fs.existsSync("package.json")) {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      if (pkg.packageManager) {
+        const [name, version] = pkg.packageManager.split("@");
+        core.info(`Found packageManager in package.json: ${name}@${version || "latest"}`);
+        return { name, version: version || "latest" };
+      }
+    }
+
     if (fs.existsSync("pnpm-lock.yaml")) {
       return { name: "pnpm", version: "latest" };
     }
@@ -44,15 +53,6 @@ export function detectPackageManager(): PackageManager {
     }
     if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock")) {
       return { name: "bun", version: "latest" };
-    }
-
-    if (fs.existsSync("package.json")) {
-      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (pkg.packageManager) {
-        const [name, version] = pkg.packageManager.split("@");
-        core.info(`Found packageManager in package.json: ${name}@${version || "latest"}`);
-        return { name, version: version || "latest" };
-      }
     }
   } catch (error: any) {
     core.warning(`Failed to detect package manager: ${error.message}`);
