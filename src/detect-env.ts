@@ -64,11 +64,6 @@ export function writeOutput(nodeVersion: string, pm: PackageManager): void {
   core.setOutput("node_version", nodeVersion);
   core.setOutput("package_manager", pm.name);
   core.setOutput("package_manager_version", pm.version);
-
-  core.info(`Detected values:
-node_version=${nodeVersion}
-package_manager=${pm.name}
-package_manager_version=${pm.version}`);
 }
 
 export function run(): void {
