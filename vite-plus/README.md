@@ -43,7 +43,9 @@ jobs:
 
 ## Outputs
 
-| Name           | Description               |
-| -------------- | ------------------------- |
-| `node-version` | The Node.js version used  |
-| `version`      | The version of Vite+ used |
+| Name                      | Description                             |
+| ------------------------- | --------------------------------------- |
+| `node-version`            | The Node.js version used                |
+| `package-manager`         | The package manager used                |
+| `package-manager-version` | The version of the package manager used |
+| `vp-version`              | The version of Vite+ used               |

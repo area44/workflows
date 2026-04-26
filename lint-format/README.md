@@ -31,3 +31,11 @@ jobs:
 | Name           | Description                       | Default         |
 | -------------- | --------------------------------- | --------------- |
 | `node-version` | Optional Node.js version override | (auto-detected) |
+
+## Outputs
+
+| Name                      | Description                             |
+| ------------------------- | --------------------------------------- |
+| `node-version`            | The Node.js version used                |
+| `package-manager`         | The package manager used                |
+| `package-manager-version` | The version of the package manager used |

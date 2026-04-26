@@ -16,7 +16,13 @@ outputs:
   node-version:
     description: "The Node.js version used"
     value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
-  version:
+  package-manager:
+    description: "The package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager }}
+  package-manager-version:
+    description: "The version of the package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager_version }}
+  vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.version }}
 

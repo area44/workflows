@@ -46,3 +46,11 @@ jobs:
 - **WebP (cwebp)**: For WebP conversion.
 - **libavif (avifenc)**: For AVIF conversion.
 - **autofix.ci**: For automatically committing the optimized and converted images.
+
+## Outputs
+
+| Name                      | Description                             |
+| ------------------------- | --------------------------------------- |
+| `node-version`            | The Node.js version used                |
+| `package-manager`         | The package manager used                |
+| `package-manager-version` | The version of the package manager used |
