@@ -41,18 +41,31 @@ export function detectPackageManager(): PackageManager {
         core.info(`Found packageManager in package.json: ${name}@${version || "latest"}`);
         return { name, version: version || "latest" };
       }
+
+      if (pkg.engines) {
+        for (const pm of ["pnpm", "yarn", "npm", "bun"]) {
+          if (pkg.engines[pm]) {
+            core.info(`Found ${pm} in package.json engines: ${pkg.engines[pm]}`);
+            return { name: pm, version: pkg.engines[pm] };
+          }
+        }
+      }
     }
 
     if (fs.existsSync("pnpm-lock.yaml")) {
+      core.info("Found pnpm-lock.yaml, using pnpm@latest");
       return { name: "pnpm", version: "latest" };
     }
     if (fs.existsSync("yarn.lock")) {
+      core.info("Found yarn.lock, using yarn@latest");
       return { name: "yarn", version: "latest" };
     }
     if (fs.existsSync("package-lock.json")) {
+      core.info("Found package-lock.json, using npm@latest");
       return { name: "npm", version: "latest" };
     }
     if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock")) {
+      core.info("Found bun.lockb or bun.lock, using bun@latest");
       return { name: "bun", version: "latest" };
     }
   } catch (error: any) {

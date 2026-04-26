@@ -5,6 +5,17 @@ inputs:
     description: "Optional Node.js version override"
     required: false
 
+outputs:
+  node-version:
+    description: "The Node.js version used"
+    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+  package-manager:
+    description: "The package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager }}
+  package-manager-version:
+    description: "The version of the package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager_version }}
+
 runs:
   using: "composite"
   steps:

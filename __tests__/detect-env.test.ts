@@ -42,21 +42,25 @@ describe("detect-env", () => {
     it("should detect pnpm-lock.yaml", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "pnpm-lock.yaml");
       expect(detectPackageManager().name).toBe("pnpm");
+      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@latest");
     });
 
     it("should detect yarn.lock", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "yarn.lock");
       expect(detectPackageManager().name).toBe("yarn");
+      expect(core.info).toHaveBeenCalledWith("Found yarn.lock, using yarn@latest");
     });
 
     it("should detect package-lock.json", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "package-lock.json");
       expect(detectPackageManager().name).toBe("npm");
+      expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@latest");
     });
 
     it("should detect bun.lockb", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "bun.lockb");
       expect(detectPackageManager().name).toBe("bun");
+      expect(core.info).toHaveBeenCalledWith("Found bun.lockb or bun.lock, using bun@latest");
     });
 
     it("should detect packageManager in package.json", () => {
@@ -68,6 +72,18 @@ describe("detect-env", () => {
       expect(pm.version).toBe("9.0.0");
       expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Found packageManager in package.json: pnpm@9.0.0"),
+      );
+    });
+
+    it("should detect package manager in package.json engines", () => {
+      vi.mocked(fs.existsSync).mockImplementation((path) => path === "package.json");
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ engines: { pnpm: ">=9.0.0" } }));
+
+      const pm = detectPackageManager();
+      expect(pm.name).toBe("pnpm");
+      expect(pm.version).toBe(">=9.0.0");
+      expect(core.info).toHaveBeenCalledWith(
+        expect.stringContaining("Found pnpm in package.json engines: >=9.0.0"),
       );
     });
 

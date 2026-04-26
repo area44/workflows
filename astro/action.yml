@@ -19,6 +19,9 @@ outputs:
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package_manager }}
+  package-manager-version:
+    description: "The version of the package manager used"
+    value: ${{ steps.detect_env.outputs.package_manager_version }}
 
 runs:
   using: "composite"
