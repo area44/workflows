@@ -34,6 +34,7 @@ describe("detect-env", () => {
     it("should return lts/* if no version is found", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
       expect(detectNodeVersion()).toBe("lts/*");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
   });
 
@@ -68,6 +69,14 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith(
         expect.stringContaining("Found packageManager in package.json: pnpm@9.0.0"),
       );
+    });
+
+    it("should return default npm if no lockfile or packageManager is found", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const pm = detectPackageManager();
+      expect(pm.name).toBe("npm");
+      expect(pm.version).toBe("latest");
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
     });
   });
 });

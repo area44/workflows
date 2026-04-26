@@ -23,6 +23,7 @@ export function detectNodeVersion(): string {
   } catch (error: any) {
     core.warning(`Failed to detect Node.js version: ${error.message}`);
   }
+  core.info("Node.js version not specified, using lts/*");
   return "lts/*";
 }
 
@@ -57,6 +58,7 @@ export function detectPackageManager(): PackageManager {
   } catch (error: any) {
     core.warning(`Failed to detect package manager: ${error.message}`);
   }
+  core.info("Package manager not specified, using npm@latest");
   return { name: "npm", version: "latest" };
 }
 
@@ -70,7 +72,6 @@ export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);
-  core.info(`Final detection - Node: ${nodeVersion}, PM: ${pm.name}@${pm.version}`);
 }
 
 run();
