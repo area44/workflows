@@ -22,7 +22,7 @@ outputs:
   package-manager-version:
     description: "The version of the package manager used"
     value: ${{ steps.detect_env.outputs.package_manager_version }}
-  version:
+  vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.version }}
 

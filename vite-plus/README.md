@@ -48,4 +48,4 @@ jobs:
 | `node-version`            | The Node.js version used                |
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
-| `version`                 | The version of Vite+ used               |
+| `vp-version`              | The version of Vite+ used               |
