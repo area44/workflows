@@ -54,7 +54,6 @@ runs:
           **/pnpm-lock.yaml
           **/yarn.lock
           **/bun.lock
-          **/bun.lockb
 
     - name: Install dependencies
       shell: bash

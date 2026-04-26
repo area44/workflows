@@ -64,8 +64,8 @@ export function detectPackageManager(): PackageManager {
       core.info("Found package-lock.json, using npm@latest");
       return { name: "npm", version: "latest" };
     }
-    if (fs.existsSync("bun.lockb") || fs.existsSync("bun.lock")) {
-      core.info("Found bun.lockb or bun.lock, using bun@latest");
+    if (fs.existsSync("bun.lock")) {
+      core.info("Found bun.lock, using bun@latest");
       return { name: "bun", version: "latest" };
     }
   } catch (error: any) {
