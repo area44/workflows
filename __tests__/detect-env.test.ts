@@ -57,10 +57,10 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@latest");
     });
 
-    it("should detect bun.lockb", () => {
-      vi.mocked(fs.existsSync).mockImplementation((path) => path === "bun.lockb");
+    it("should detect bun.lock", () => {
+      vi.mocked(fs.existsSync).mockImplementation((path) => path === "bun.lock");
       expect(detectPackageManager().name).toBe("bun");
-      expect(core.info).toHaveBeenCalledWith("Found bun.lockb or bun.lock, using bun@latest");
+      expect(core.info).toHaveBeenCalledWith("Found bun.lock, using bun@latest");
     });
 
     it("should detect packageManager in package.json", () => {
