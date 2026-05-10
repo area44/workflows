@@ -17,10 +17,10 @@
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
-    "@types/node": "^24.12.2",
-    "oxfmt": "^0.47.0",
-    "oxlint": "^1.62.0",
-    "rolldown": "^1.0.0-rc.18",
+    "@types/node": "^24.12.3",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
+    "rolldown": "^1.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   }
