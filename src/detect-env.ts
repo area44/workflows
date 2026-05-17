@@ -13,6 +13,11 @@ export function detectNodeVersion(): string {
       core.info(`Found .nvmrc: ${version}`);
       return version;
     }
+    if (fs.existsSync(".node-version")) {
+      const version = fs.readFileSync(".node-version", "utf8").trim();
+      core.info(`Found .node-version: ${version}`);
+      return version;
+    }
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
       if (pkg.engines && pkg.engines.node) {

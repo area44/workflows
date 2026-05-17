@@ -21,7 +21,15 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc: 20"));
     });
 
-    it("should return version from package.json engines if .nvmrc does not exist", () => {
+    it("should return version from .node-version if it exists and .nvmrc does not", () => {
+      vi.mocked(fs.existsSync).mockImplementation((path) => path === ".node-version");
+      vi.mocked(fs.readFileSync).mockReturnValue("22");
+
+      expect(detectNodeVersion()).toBe("22");
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining("Found .node-version: 22"));
+    });
+
+    it("should return version from package.json engines if .nvmrc and .node-version do not exist", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "package.json");
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ engines: { node: ">=18" } }));
 
