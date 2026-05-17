@@ -65,7 +65,7 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
   },
   pack: {
-    entry: ["src/detect-env.ts"],
+    entry: { "detect-env": "src/detect-env.ts" },
     deps: {
       neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
