@@ -3,12 +3,13 @@
     "target": "esnext",
     "module": "esnext",
     "lib": ["esnext"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "__tests__/**/*", "vite.config.ts"]
 }

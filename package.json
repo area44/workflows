@@ -10,18 +10,23 @@
   },
   "type": "module",
   "scripts": {
-    "format": "oxfmt",
-    "lint": "oxlint",
-    "build": "rolldown",
-    "test": "vitest run"
+    "format": "vp fmt",
+    "lint": "vp lint",
+    "build": "vp pack",
+    "test": "vp test run",
+    "prepare": "vp config"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
     "@types/node": "^24.12.4",
-    "oxfmt": "^0.50.0",
-    "oxlint": "^1.65.0",
-    "rolldown": "^1.0.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
-  }
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vite-plus": "latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+  },
+  "packageManager": "npm@11.14.1"
 }
