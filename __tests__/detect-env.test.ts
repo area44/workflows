@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import fs from "fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { detectNodeVersion, detectPackageManager } from "../src/detect-env";
 
