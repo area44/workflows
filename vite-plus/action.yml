@@ -36,7 +36,7 @@ runs:
 
     - name: Setup Vite+
       id: setup_vp
-      uses: voidzero-dev/setup-vp@v1
+      uses: voidzero-dev/setup-vp@ca1c46663915d6c1042ae23bd39ab85718bfb0fa # v1
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
         cache: true
@@ -68,6 +68,6 @@ runs:
         fi
 
     - name: Upload site artifact
-      uses: actions/upload-pages-artifact@v5
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
         path: ${{ inputs.path }}
