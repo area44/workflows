@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
-    "@types/node": "^24.12.4",
+    "@types/node": "^24.13.0",
     "typescript": "^6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plus": "latest",
