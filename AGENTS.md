@@ -4,7 +4,7 @@ This file provides context and instructions for AI agents working on the @area44
 
 ## Project Overview
 
-This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Vite-Plus, Lint-Format, Images) for the AREA44 ecosystem.
+This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Vite-Plus, Lint-Format) for the AREA44 ecosystem.
 
 ## Core Directives
 
@@ -33,7 +33,6 @@ This repository contains reusable GitHub Actions workflows and composite actions
 ## GitHub Actions Logic
 
 - **Dynamic Environment Variables**: The Vite and Vite-Plus actions dynamically set `VITE_SITE_URL` and `BASE` based on the repository context (project site vs. user/org page).
-- **Images Action**: Optimizes media using standard tools (`svgo`, `optipng`, etc.) and supports WebP/AVIF conversion with automated system package installation.
 - **Autofix CI**: Integration with `autofix-ci/action@v1` requires the workflow name to be `autofix.ci` and the file to be `autofix.yml` or `autofix.ci.yml`.
 
 ## Coding Preferences
