@@ -1,10 +1,15 @@
 import * as core from "@actions/core";
-import fs from "fs";
+import fs from "node:fs";
 
 /**
  * Detects Node.js version and package manager from the environment.
  * Outputs the results to GITHUB_OUTPUT.
  */
+
+export interface PackageManager {
+  name: string;
+  version: string;
+}
 
 export function detectNodeVersion(): string {
   try {
@@ -20,21 +25,17 @@ export function detectNodeVersion(): string {
     }
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (pkg.engines && pkg.engines.node) {
+      if (pkg.engines?.node) {
         core.info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
         return pkg.engines.node;
       }
     }
-  } catch (error: any) {
-    core.warning(`Failed to detect Node.js version: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`Failed to detect Node.js version: ${message}`);
   }
   core.info("Node.js version not specified, using lts/*");
   return "lts/*";
-}
-
-export interface PackageManager {
-  name: string;
-  version: string;
 }
 
 export function detectPackageManager(): PackageManager {
@@ -42,9 +43,9 @@ export function detectPackageManager(): PackageManager {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
       if (pkg.packageManager) {
-        const [name, version] = pkg.packageManager.split("@");
-        core.info(`Found packageManager in package.json: ${name}@${version || "latest"}`);
-        return { name, version: version || "latest" };
+        const [name, version = "latest"] = pkg.packageManager.split("@");
+        core.info(`Found packageManager in package.json: ${name}@${version}`);
+        return { name, version };
       }
 
       if (pkg.engines) {
@@ -73,8 +74,9 @@ export function detectPackageManager(): PackageManager {
       core.info("Found bun.lock, using bun@latest");
       return { name: "bun", version: "latest" };
     }
-  } catch (error: any) {
-    core.warning(`Failed to detect package manager: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`Failed to detect package manager: ${message}`);
   }
   core.info("Package manager not specified, using npm@latest");
   return { name: "npm", version: "latest" };
@@ -92,4 +94,6 @@ export function run(): void {
   writeOutput(nodeVersion, pm);
 }
 
-run();
+if (process.env.NODE_ENV !== "test") {
+  run();
+}
