@@ -26,7 +26,7 @@ This repository contains reusable GitHub Actions workflows and composite actions
 
 ## Testing
 
-- **Unit Tests**: Use Vitest (via `npx vitest run`) for unit testing logic in `__tests__/`.
+- **Unit Tests**: Use Vitest (via `vp test`) for unit testing logic in `__tests__/`.
 - **Integration Tests**: Split into separate workflow files (e.g., `test-astro.yml`, `test-lint-format.yml`) to ensure isolated runs.
 - **Environment Detection**: Logic in `src/detect-env.ts` detects Node.js version (checking `.nvmrc`, `.node-version`, `engines`) and package manager.
 
