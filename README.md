@@ -8,7 +8,6 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 - **[Vite](./vite/README.md)**: Build and deploy Vite sites.
 - **[Vite+](./vite-plus/README.md)**: Build and deploy Vite+ sites.
 - **[Lint/Format](./lint-format/README.md)**: Run lint/format scripts.
-- **[Images](./images/README.md)**: Optimize images (SVGs, PNGs, JPEGs).
 
 ## License
 

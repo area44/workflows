@@ -13,7 +13,7 @@
     "format": "vp fmt",
     "lint": "vp lint",
     "build": "vp pack && mv dist/detect-env.mjs dist/detect-env.js",
-    "test": "vp test run",
+    "test": "npx vitest run",
     "prepare": "vp config"
   },
   "devDependencies": {
