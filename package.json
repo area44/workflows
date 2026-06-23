@@ -13,8 +13,7 @@
     "format": "vp fmt",
     "lint": "vp lint",
     "build": "vp pack && mv dist/detect-env.mjs dist/detect-env.js",
-    "test": "vp test run",
-    "prepare": "vp config"
+    "test": "vp test"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
