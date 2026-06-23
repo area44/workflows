@@ -1,4 +1,4 @@
-## Project Overview
+# Project Overview
 
 This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Vite-Plus, Lint-Format) for the AREA44 ecosystem.
 
