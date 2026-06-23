@@ -28,7 +28,7 @@ runs:
   steps:
     - name: Setup environment
       id: setup
-      uses: ./common/setup
+      uses: ./setup
       with:
         node-version: ${{ inputs.node-version }}
 
