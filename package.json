@@ -12,7 +12,7 @@
   "scripts": {
     "format": "vp fmt",
     "lint": "vp lint",
-    "build": "vp pack && mv dist/detect-env.mjs dist/detect-env.js",
+    "build": "vp pack && mv dist/detect-env.mjs dist/detect-env.js && mv dist/run-scripts.mjs dist/run-scripts.js",
     "test": "vp test"
   },
   "devDependencies": {
