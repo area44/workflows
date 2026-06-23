@@ -8,98 +8,29 @@ inputs:
 outputs:
   node-version:
     description: "The Node.js version used"
-    value: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+    value: ${{ steps.setup.outputs.node-version }}
   package-manager:
     description: "The package manager used"
-    value: ${{ steps.detect_env.outputs.package_manager }}
+    value: ${{ steps.setup.outputs.package-manager }}
   package-manager-version:
     description: "The version of the package manager used"
-    value: ${{ steps.detect_env.outputs.package_manager_version }}
+    value: ${{ steps.setup.outputs.package-manager-version }}
 
 runs:
   using: "composite"
   steps:
-    - name: Detect Node.js version and package manager
-      shell: bash
-      id: detect_env
-      run: node "${GITHUB_ACTION_PATH}/../dist/detect-env.js"
-
-    - name: Setup PNPM
-      if: ${{ steps.detect_env.outputs.package_manager == 'pnpm' }}
-      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+    - name: Setup environment
+      id: setup
+      uses: ./setup
       with:
-        version: ${{ steps.detect_env.outputs.package_manager_version }}
-
-    - name: Setup Bun
-      if: ${{ steps.detect_env.outputs.package_manager == 'bun' }}
-      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      with:
-        bun-version: ${{ steps.detect_env.outputs.package_manager_version }}
-
-    - name: Setup Node.js
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-      with:
-        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
-        cache: ${{ steps.detect_env.outputs.package_manager != 'bun' && steps.detect_env.outputs.package_manager || '' }}
-        cache-dependency-path: |
-          **/package-lock.json
-          **/pnpm-lock.yaml
-          **/yarn.lock
-          **/bun.lock
-
-    - name: Install dependencies
-      shell: bash
-      env:
-        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --prefer-offline --no-frozen-lockfile ;;
-          bun) bun install ;;
-          yarn) yarn install --prefer-offline ;;
-          npm) npm install ;;
-        esac
+        node-version: ${{ inputs.node-version }}
+        frozen-lockfile: "false"
 
     - name: Run lint/format scripts
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package_manager }}
-      run: |
-        if [ -f "package.json" ]; then
-          SCRIPTS=$(jq -r '.scripts // {} | keys | .[]' package.json)
-
-          run_script() {
-            echo "Executing: $PACKAGE_MANAGER run $1"
-            $PACKAGE_MANAGER run "$1" || { echo "::error::Script \"$1\" failed"; return 1; }
-          }
-
-          has_script() {
-            echo "$SCRIPTS" | grep -q "^$1$"
-          }
-
-          if has_script "check"; then
-            echo "Detected lint/format scripts: check"
-            run_script "check"
-          elif has_script "format" && has_script "lint"; then
-            echo "Detected lint/format scripts: format, lint"
-            run_script "format" && run_script "lint"
-          elif has_script "fmt" && has_script "lint"; then
-            echo "Detected lint/format scripts: fmt, lint"
-            run_script "fmt" && run_script "lint"
-          elif has_script "lint"; then
-            echo "Detected lint/format scripts: lint"
-            run_script "lint"
-          elif has_script "format"; then
-            echo "Detected lint/format scripts: format"
-            run_script "format"
-          elif has_script "fmt"; then
-            echo "Detected lint/format scripts: fmt"
-            run_script "fmt"
-          else
-            echo "No matching lint/format scripts (check, format, lint, etc.) found in package.json."
-          fi
-        else
-          echo "No package.json found. Skipping lint/format scripts."
-        fi
+        PACKAGE_MANAGER: ${{ steps.setup.outputs.package-manager }}
+      run: node "${{ github.action_path }}/../dist/run-scripts.js"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1

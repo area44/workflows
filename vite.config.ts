@@ -1,23 +1,26 @@
 import { builtinModules } from "node:module";
 import { defineConfig } from "vite-plus";
 
+const ignorePatterns = [
+  "*.min.*",
+  "*.map",
+  "**/public",
+  "**/build",
+  "**/dist",
+  "**/out",
+  "**/.github",
+  "**/.next",
+  "**/.astro",
+  "**/.netlify",
+  "**/*.gen.*",
+];
+
 export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
   fmt: {
-    ignorePatterns: [
-      "*.min.*",
-      "*.map",
-      "**/public",
-      "**/build",
-      "**/dist",
-      "**/out",
-      "**/.github",
-      "**/.next",
-      "**/.astro",
-      "**/.netlify",
-    ],
+    ignorePatterns,
     sortImports: {
       groups: [
         "type-import",
@@ -43,18 +46,7 @@ export default defineConfig({
       "vitest",
       "vue",
     ],
-    ignorePatterns: [
-      "*.min.*",
-      "*.map",
-      "**/public",
-      "**/build",
-      "**/dist",
-      "**/out",
-      "**/.github",
-      "**/.next",
-      "**/.astro",
-      "**/.netlify",
-    ],
+    ignorePatterns,
     options: {
       typeAware: true,
       typeCheck: true,
@@ -65,7 +57,10 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
   },
   pack: {
-    entry: { "detect-env": "src/detect-env.ts" },
+    entry: {
+      "detect-env": "src/detect-env.ts",
+      "run-scripts": "src/run-scripts.ts",
+    },
     deps: {
       neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
