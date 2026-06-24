@@ -12,7 +12,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -33,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: ${{ steps.detect_env.outputs.node_version }}
+          node-version: ${{ steps.detect_env.outputs.node-version }}
 
       - name: Run lint script (Direct Test)
         run: |
