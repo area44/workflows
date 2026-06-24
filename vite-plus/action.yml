@@ -41,8 +41,6 @@ runs:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: true
         run-install: true
-      env:
-        NPM_CONFIG_LEGACY_PEER_DEPS: true
 
     - name: Set site variables
       shell: bash
