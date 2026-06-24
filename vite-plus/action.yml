@@ -15,13 +15,13 @@ inputs:
 outputs:
   node-version:
     description: "The Node.js version used"
-    value: ${{ steps.detect_env.outputs.node_version }}
+    value: ${{ steps.detect_env.outputs.node-version }}
   package-manager:
     description: "The package manager used"
-    value: ${{ steps.detect_env.outputs.package_manager }}
+    value: ${{ steps.detect_env.outputs.package-manager }}
   package-manager-version:
     description: "The version of the package manager used"
-    value: ${{ steps.detect_env.outputs.package_manager_version }}
+    value: ${{ steps.detect_env.outputs.package-manager-version }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.vp-version }}
@@ -38,7 +38,7 @@ runs:
       id: setup_vp
       uses: voidzero-dev/setup-vp@2dec1e33f4ab2c6d5bce1b0c4607961bb1a3f7a1 # v1
       with:
-        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node_version }}
+        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: true
         run-install: true
 

@@ -83,9 +83,9 @@ export function detectPackageManager(): PackageManager {
 }
 
 export function writeOutput(nodeVersion: string, pm: PackageManager): void {
-  core.setOutput("node_version", nodeVersion);
-  core.setOutput("package_manager", pm.name);
-  core.setOutput("package_manager_version", pm.version);
+  core.setOutput("node-version", nodeVersion);
+  core.setOutput("package-manager", pm.name);
+  core.setOutput("package-manager-version", pm.version);
 }
 
 export function run(): void {
