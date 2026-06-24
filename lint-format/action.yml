@@ -28,8 +28,6 @@ runs:
 
     - name: Run lint/format scripts
       shell: bash
-      env:
-        PACKAGE_MANAGER: ${{ steps.setup.outputs.package-manager }}
       run: node "${{ github.action_path }}/../dist/run-scripts.js"
 
     - name: Run autofix.ci
