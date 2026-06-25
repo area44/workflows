@@ -1,9 +1,9 @@
 name: Test Lint/Format action
 on:
   push:
-    branches: [main]
+    branches: ["main"]
   pull_request:
-    branches: [main]
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -23,7 +23,7 @@ jobs:
           echo '{"name": "lint-format-project", "scripts": {"lint": "echo \"linting...\""}}' > package.json
           npm install --no-package-lock
 
-      - name: Detect Node.js version and package manager
+      - name: Detect enviroment
         shell: bash
         id: detect_env
         run: node "dist/detect-env.mjs"
