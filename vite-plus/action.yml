@@ -42,20 +42,6 @@ runs:
         cache: true
         run-install: true
 
-    - name: Set site variables
-      shell: bash
-      env:
-        REPO: ${{ github.event.repository.name }}
-        OWNER: ${{ github.repository_owner }}
-      run: |
-        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-          echo "VITE_SITE_URL=https://${OWNER}.github.io" >> "$GITHUB_ENV"
-          echo "BASE=/" >> "$GITHUB_ENV"
-        else
-          echo "VITE_SITE_URL=https://${OWNER}.github.io/${REPO}" >> "$GITHUB_ENV"
-          echo "BASE=/${REPO}/" >> "$GITHUB_ENV"
-        fi
-
     - name: Build Vite+ site
       shell: bash
       env:

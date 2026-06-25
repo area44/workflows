@@ -82,6 +82,30 @@ export function detectPackageManager(): PackageManager {
   return { name: "npm", version: "latest" };
 }
 
+export function setSiteVariables(): void {
+  const repoFull = process.env.GITHUB_REPOSITORY || "";
+  const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
+  const repo = repoFull.split("/")[1] || "";
+
+  if (!owner || !repo) {
+    core.warning("GITHUB_REPOSITORY or GITHUB_REPOSITORY_OWNER not set. Skipping site variables.");
+    return;
+  }
+
+  const site = `https://${owner}.github.io`;
+  const isPrimary = repo === `${owner}.github.io`;
+  const base = isPrimary ? "/" : `/${repo}/`;
+  const siteWithRepo = isPrimary ? site : `${site}/${repo}`;
+
+  core.exportVariable("SITE", site);
+  core.exportVariable("VITE_SITE_URL", siteWithRepo);
+  core.exportVariable("BASE", base);
+
+  core.info(`Set SITE=${site}`);
+  core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
+  core.info(`Set BASE=${base}`);
+}
+
 export function writeOutput(nodeVersion: string, pm: PackageManager): void {
   core.setOutput("node-version", nodeVersion);
   core.setOutput("package-manager", pm.name);
@@ -92,6 +116,7 @@ export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);
+  setSiteVariables();
 }
 
 if (process.env.NODE_ENV !== "test") {

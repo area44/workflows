@@ -58,28 +58,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --frozen-lockfile ;;
-          bun) bun install --frozen-lockfile ;;
-          yarn) yarn install --frozen-lockfile ;;
-          npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) "$PACKAGE_MANAGER" install ;;
-        esac
-
-    - name: Set site variables
-      shell: bash
-      env:
-        REPO: ${{ github.event.repository.name }}
-        OWNER: ${{ github.repository_owner }}
-      run: |
-        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-          echo "VITE_SITE_URL=https://${OWNER}.github.io" >> "$GITHUB_ENV"
-          echo "BASE=/" >> "$GITHUB_ENV"
-        else
-          echo "VITE_SITE_URL=https://${OWNER}.github.io/$REPO" >> "$GITHUB_ENV"
-          echo "BASE=/$REPO/" >> "$GITHUB_ENV"
-        fi
+        FROZEN: "true"
+      run: node "${{ github.action_path }}/../dist/setup.js"
 
     - name: Build Vite site
       shell: bash
