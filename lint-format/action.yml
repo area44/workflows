@@ -4,10 +4,6 @@ inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
-  working-directory:
-    description: "The directory where the project is located"
-    required: false
-    default: "."
 
 outputs:
   node-version:
@@ -26,7 +22,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js" "${{ inputs.working-directory }}"
+      run: node "${{ github.action_path }}/../dist/detect-env.js"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -46,14 +42,13 @@ runs:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: ${{ steps.detect_env.outputs.package-manager != 'bun' && steps.detect_env.outputs.package-manager || '' }}
         cache-dependency-path: |
-          ${{ inputs.working-directory }}/**/package-lock.json
-          ${{ inputs.working-directory }}/**/pnpm-lock.yaml
-          ${{ inputs.working-directory }}/**/yarn.lock
-          ${{ inputs.working-directory }}/**/bun.lock
+          **/package-lock.json
+          **/pnpm-lock.yaml
+          **/yarn.lock
+          **/bun.lock
 
     - name: Install dependencies
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
@@ -71,10 +66,10 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
         case "$PACKAGE_MANAGER" in
-          bun) bun run "${{ github.action_path }}/../dist/run-scripts.js" "${{ inputs.working-directory }}" ;;
-          pnpm) pnpm exec node "${{ github.action_path }}/../dist/run-scripts.js" "${{ inputs.working-directory }}" ;;
-          yarn) yarn node "${{ github.action_path }}/../dist/run-scripts.js" "${{ inputs.working-directory }}" ;;
-          *) npm exec -- node "${{ github.action_path }}/../dist/run-scripts.js" "${{ inputs.working-directory }}" ;;
+          bun) bun run "${{ github.action_path }}/../dist/run-scripts.js" ;;
+          pnpm) pnpm exec node "${{ github.action_path }}/../dist/run-scripts.js" ;;
+          yarn) yarn node "${{ github.action_path }}/../dist/run-scripts.js" ;;
+          *) npm exec -- node "${{ github.action_path }}/../dist/run-scripts.js" ;;
         esac
 
     - name: Run autofix.ci

@@ -13,13 +13,12 @@ describe("run-scripts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.PACKAGE_MANAGER = "npm";
-    process.argv = ["node", "run-scripts.js", "."];
   });
 
   it("should skip if package.json does not exist", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     run();
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining("No package.json found in"));
+    expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
   });
 
   it("should run 'check' script if it exists", () => {
@@ -30,7 +29,7 @@ describe("run-scripts", () => {
 
     run();
 
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining("Executing: npm run check in"));
+    expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
     expect(execSync).toHaveBeenCalledWith("npm run check", expect.any(Object));
   });
 
