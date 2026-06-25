@@ -18,7 +18,7 @@ describe("run-scripts", () => {
   it("should skip if package.json does not exist", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     run();
-    expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping lint/format scripts.");
+    expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
   });
 
   it("should run 'check' script if it exists", () => {

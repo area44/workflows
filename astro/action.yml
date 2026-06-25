@@ -1,5 +1,5 @@
 name: area44/astro
-description: Build and Deploy Astro Site
+description: Build and Deploy with Astro
 inputs:
   path:
     description: "The directory where the built site is located"
