@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Detects Node.js version and package manager from the environment.
@@ -11,20 +12,23 @@ export interface PackageManager {
   version: string;
 }
 
-export function detectNodeVersion(): string {
+export function detectNodeVersion(cwd: string): string {
   try {
-    if (fs.existsSync(".nvmrc")) {
-      const version = fs.readFileSync(".nvmrc", "utf8").trim();
+    const nvmrcPath = path.join(cwd, ".nvmrc");
+    if (fs.existsSync(nvmrcPath)) {
+      const version = fs.readFileSync(nvmrcPath, "utf8").trim();
       core.info(`Found .nvmrc: ${version}`);
       return version;
     }
-    if (fs.existsSync(".node-version")) {
-      const version = fs.readFileSync(".node-version", "utf8").trim();
+    const nodeVersionPath = path.join(cwd, ".node-version");
+    if (fs.existsSync(nodeVersionPath)) {
+      const version = fs.readFileSync(nodeVersionPath, "utf8").trim();
       core.info(`Found .node-version: ${version}`);
       return version;
     }
-    if (fs.existsSync("package.json")) {
-      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    const pkgPath = path.join(cwd, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
       if (pkg.engines?.node) {
         core.info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
         return pkg.engines.node;
@@ -38,10 +42,11 @@ export function detectNodeVersion(): string {
   return "lts/*";
 }
 
-export function detectPackageManager(): PackageManager {
+export function detectPackageManager(cwd: string): PackageManager {
   try {
-    if (fs.existsSync("package.json")) {
-      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    const pkgPath = path.join(cwd, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
       if (pkg.packageManager) {
         const [name, version = "latest"] = pkg.packageManager.split("@");
         core.info(`Found packageManager in package.json: ${name}@${version}`);
@@ -58,19 +63,19 @@ export function detectPackageManager(): PackageManager {
       }
     }
 
-    if (fs.existsSync("pnpm-lock.yaml")) {
+    if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml"))) {
       core.info("Found pnpm-lock.yaml, using pnpm@latest");
       return { name: "pnpm", version: "latest" };
     }
-    if (fs.existsSync("yarn.lock")) {
+    if (fs.existsSync(path.join(cwd, "yarn.lock"))) {
       core.info("Found yarn.lock, using yarn@latest");
       return { name: "yarn", version: "latest" };
     }
-    if (fs.existsSync("package-lock.json")) {
+    if (fs.existsSync(path.join(cwd, "package-lock.json"))) {
       core.info("Found package-lock.json, using npm@latest");
       return { name: "npm", version: "latest" };
     }
-    if (fs.existsSync("bun.lock")) {
+    if (fs.existsSync(path.join(cwd, "bun.lock"))) {
       core.info("Found bun.lock, using bun@latest");
       return { name: "bun", version: "latest" };
     }
@@ -89,8 +94,10 @@ export function writeOutput(nodeVersion: string, pm: PackageManager): void {
 }
 
 export function run(): void {
-  const nodeVersion = detectNodeVersion();
-  const pm = detectPackageManager();
+  const cwd = process.argv[2] || process.cwd();
+  core.info(`Detecting environment in: ${cwd}`);
+  const nodeVersion = detectNodeVersion(cwd);
+  const pm = detectPackageManager(cwd);
   writeOutput(nodeVersion, pm);
 }
 

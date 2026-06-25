@@ -11,6 +11,10 @@ inputs:
   build-command:
     description: "Optional build command override (e.g., 'vp build')"
     required: false
+  working-directory:
+    description: "The directory where the project is located"
+    required: false
+    default: "."
 
 outputs:
   node-version:
@@ -32,6 +36,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
+      working-directory: ${{ inputs.working-directory }}
       run: node "${{ github.action_path }}/../dist/detect-env.js"
 
     - name: Setup Vite+
@@ -41,6 +46,7 @@ runs:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: true
         run-install: true
+        cwd: ${{ inputs.working-directory }}
 
     - name: Set site variables
       shell: bash
@@ -58,6 +64,7 @@ runs:
 
     - name: Build Vite+ site
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
@@ -70,4 +77,4 @@ runs:
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
-        path: ${{ inputs.path }}
+        path: ${{ inputs.working-directory }}/${{ inputs.path }}

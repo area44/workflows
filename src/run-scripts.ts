@@ -1,9 +1,10 @@
 import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
 /**
- * Detects and runs lint/format scripts from package.json.
+ * Detects and runs scripts from package.json.
  */
 
 interface PackageJson {
@@ -12,20 +13,23 @@ interface PackageJson {
 
 export function run(): void {
   try {
-    if (!fs.existsSync("package.json")) {
-      core.info("No package.json found. Skipping lint/format scripts.");
+    const cwd = process.argv[2] || process.cwd();
+    const pkgPath = path.join(cwd, "package.json");
+
+    if (!fs.existsSync(pkgPath)) {
+      core.info(`No package.json found in ${cwd}. Skipping scripts.`);
       return;
     }
 
-    const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    const pkg: PackageJson = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
     const scripts = pkg.scripts || {};
     const pm = process.env.PACKAGE_MANAGER || "npm";
 
     const runScript = (name: string): boolean => {
       if (scripts[name]) {
-        core.info(`Executing: ${pm} run ${name}`);
+        core.info(`Executing: ${pm} run ${name} in ${cwd}`);
         try {
-          execSync(`${pm} run ${name}`, { stdio: "inherit" });
+          execSync(`${pm} run ${name}`, { stdio: "inherit", cwd });
           return true;
         } catch {
           core.error(`Script "${name}" failed`);
@@ -35,8 +39,11 @@ export function run(): void {
       return false;
     };
 
-    if (runScript("check")) {
-      core.info("Detected and executed lint/format script: check");
+    // Priority for testing
+    if (runScript("test")) {
+      core.info("Detected and executed test script: test");
+    } else if (runScript("check")) {
+      core.info("Detected and executed script: check");
     } else if (scripts.format && scripts.lint) {
       core.info("Detected lint/format scripts: format, lint");
       runScript("format");
@@ -46,15 +53,13 @@ export function run(): void {
       runScript("fmt");
       runScript("lint");
     } else if (runScript("lint")) {
-      core.info("Detected and executed lint/format script: lint");
+      core.info("Detected and executed script: lint");
     } else if (runScript("format")) {
-      core.info("Detected and executed lint/format script: format");
+      core.info("Detected and executed script: format");
     } else if (runScript("fmt")) {
-      core.info("Detected and executed lint/format script: fmt");
+      core.info("Detected and executed script: fmt");
     } else {
-      core.info(
-        "No matching lint/format scripts (check, format, lint, etc.) found in package.json.",
-      );
+      core.info("No matching scripts (test, check, format, lint, etc.) found in package.json.");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
