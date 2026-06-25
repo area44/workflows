@@ -6,10 +6,10 @@ inputs:
     required: false
     default: "dist"
   node-version:
-    description: "Optional Node.js version override (e.g., '24', 'lts/*')"
+    description: "Optional Node.js version override"
     required: false
   build-command:
-    description: "Optional build command override (e.g., 'npm run build')"
+    description: "Optional build command override"
     required: false
 
 outputs:
@@ -26,7 +26,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Detect Node.js version and package manager
+    - name: Detect enviroment
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"

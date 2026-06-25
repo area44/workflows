@@ -19,7 +19,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Detect Node.js version and package manager
+    - name: Detect enviroment
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"

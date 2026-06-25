@@ -34,6 +34,7 @@ export default defineConfig({
     },
   },
   lint: {
+    ignorePatterns,
     plugins: [
       "typescript",
       "unicorn",
@@ -46,7 +47,6 @@ export default defineConfig({
       "vitest",
       "vue",
     ],
-    ignorePatterns,
     options: {
       typeAware: true,
       typeCheck: true,
