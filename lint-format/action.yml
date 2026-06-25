@@ -1,5 +1,5 @@
-name: area44/lint-format
-description: Run lint/format scripts
+name: Lint and Format
+description: Automatically lint and format code using project-defined scripts and autofix.ci
 inputs:
   node-version:
     description: "Optional Node.js version override"
@@ -22,7 +22,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -51,26 +51,14 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --no-frozen-lockfile ;;
-          bun) bun install ;;
-          yarn) yarn install ;;
-          npm) npm install ;;
-          *) "$PACKAGE_MANAGER" install ;;
-        esac
+        FROZEN: "false"
+      run: node "${{ github.action_path }}/../dist/setup.mjs"
 
     - name: Run lint/format scripts
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          bun) bun run "${{ github.action_path }}/../dist/run-scripts.js" ;;
-          pnpm) pnpm exec node "${{ github.action_path }}/../dist/run-scripts.js" ;;
-          yarn) yarn node "${{ github.action_path }}/../dist/run-scripts.js" ;;
-          *) npm exec -- node "${{ github.action_path }}/../dist/run-scripts.js" ;;
-        esac
+      run: node "${{ github.action_path }}/../dist/run-scripts.mjs"
 
     - name: Run autofix.ci
       uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1

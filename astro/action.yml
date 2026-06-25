@@ -1,5 +1,5 @@
-name: area44/astro
-description: Build and Deploy with Astro
+name: Build and Deploy Astro Site
+description: Optimized build and deployment for Astro projects on GitHub Pages
 inputs:
   path:
     description: "The directory where the built site is located"
@@ -29,7 +29,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -58,27 +58,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --frozen-lockfile ;;
-          bun) bun install --frozen-lockfile ;;
-          yarn) yarn install --frozen-lockfile ;;
-          npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) "$PACKAGE_MANAGER" install ;;
-        esac
-
-    - name: Set site variables
-      shell: bash
-      env:
-        REPO: ${{ github.event.repository.name }}
-        OWNER: ${{ github.repository_owner }}
-      run: |
-        echo "SITE=https://${OWNER}.github.io" >> "$GITHUB_ENV"
-        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-          echo "BASE=/" >> "$GITHUB_ENV"
-        else
-          echo "BASE=/$REPO/" >> "$GITHUB_ENV"
-        fi
+        FROZEN: "true"
+      run: node "${{ github.action_path }}/../dist/setup.mjs"
 
     - name: Build Astro site
       shell: bash

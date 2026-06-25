@@ -1,5 +1,5 @@
-name: area44/vite-plus
-description: Build and Deploy with Vite+
+name: Build and Deploy Vite+ Site
+description: Optimized build and deployment for Vite+ projects on GitHub Pages
 inputs:
   path:
     description: "The directory where the built site is located"
@@ -32,7 +32,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup Vite+
       id: setup_vp
@@ -41,20 +41,6 @@ runs:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: true
         run-install: true
-
-    - name: Set site variables
-      shell: bash
-      env:
-        REPO: ${{ github.event.repository.name }}
-        OWNER: ${{ github.repository_owner }}
-      run: |
-        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-          echo "VITE_SITE_URL=https://${OWNER}.github.io" >> "$GITHUB_ENV"
-          echo "BASE=/" >> "$GITHUB_ENV"
-        else
-          echo "VITE_SITE_URL=https://${OWNER}.github.io/${REPO}" >> "$GITHUB_ENV"
-          echo "BASE=/${REPO}/" >> "$GITHUB_ENV"
-        fi
 
     - name: Build Vite+ site
       shell: bash

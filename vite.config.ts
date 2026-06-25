@@ -60,6 +60,7 @@ export default defineConfig({
     entry: {
       "detect-env": "src/detect-env.ts",
       "run-scripts": "src/run-scripts.ts",
+      setup: "src/setup.ts",
     },
     deps: {
       neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],

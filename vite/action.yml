@@ -1,5 +1,5 @@
-name: area44/vite
-description: Build and Deploy with Vite
+name: Build and Deploy Vite Site
+description: Optimized build and deployment for Vite projects on GitHub Pages
 inputs:
   path:
     description: "The directory where the built site is located"
@@ -29,7 +29,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -58,28 +58,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        case "$PACKAGE_MANAGER" in
-          pnpm) pnpm install --frozen-lockfile ;;
-          bun) bun install --frozen-lockfile ;;
-          yarn) yarn install --frozen-lockfile ;;
-          npm) [[ -f package-lock.json ]] && npm ci || npm install ;;
-          *) "$PACKAGE_MANAGER" install ;;
-        esac
-
-    - name: Set site variables
-      shell: bash
-      env:
-        REPO: ${{ github.event.repository.name }}
-        OWNER: ${{ github.repository_owner }}
-      run: |
-        if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-          echo "VITE_SITE_URL=https://${OWNER}.github.io" >> "$GITHUB_ENV"
-          echo "BASE=/" >> "$GITHUB_ENV"
-        else
-          echo "VITE_SITE_URL=https://${OWNER}.github.io/$REPO" >> "$GITHUB_ENV"
-          echo "BASE=/$REPO/" >> "$GITHUB_ENV"
-        fi
+        FROZEN: "true"
+      run: node "${{ github.action_path }}/../dist/setup.mjs"
 
     - name: Build Vite site
       shell: bash
