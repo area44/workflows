@@ -11,6 +11,39 @@ interface PackageJson {
   scripts?: Record<string, string>;
 }
 
+function runCommand(pm: string, name: string, cwd: string): boolean {
+  core.info(`Executing: ${pm} run ${name} in ${cwd}`);
+  try {
+    execSync(`${pm} run ${name}`, { stdio: "inherit", cwd });
+    return true;
+  } catch {
+    core.error(`Script "${name}" failed`);
+    process.exit(1);
+  }
+}
+
+function executeScripts(scripts: Record<string, string>, pm: string, cwd: string): void {
+  const runner = (name: string) => (scripts[name] ? runCommand(pm, name, cwd) : false);
+
+  if (runner("test")) {
+    core.info("Detected and executed test script: test");
+  } else if (runner("check")) {
+    core.info("Detected and executed script: check");
+  } else if (scripts.format && scripts.lint) {
+    core.info("Detected lint/format scripts: format, lint");
+    runner("format");
+    runner("lint");
+  } else if (scripts.fmt && scripts.lint) {
+    core.info("Detected lint/format scripts: fmt, lint");
+    runner("fmt");
+    runner("lint");
+  } else if (runner("lint") || runner("format") || runner("fmt")) {
+    // Already executed via runner call
+  } else {
+    core.info("No matching scripts (test, check, format, lint, etc.) found in package.json.");
+  }
+}
+
 export function run(): void {
   try {
     const cwd = process.argv[2] || process.cwd();
@@ -25,42 +58,7 @@ export function run(): void {
     const scripts = pkg.scripts || {};
     const pm = process.env.PACKAGE_MANAGER || "npm";
 
-    const runScript = (name: string): boolean => {
-      if (scripts[name]) {
-        core.info(`Executing: ${pm} run ${name} in ${cwd}`);
-        try {
-          execSync(`${pm} run ${name}`, { stdio: "inherit", cwd });
-          return true;
-        } catch {
-          core.error(`Script "${name}" failed`);
-          process.exit(1);
-        }
-      }
-      return false;
-    };
-
-    // Priority for testing
-    if (runScript("test")) {
-      core.info("Detected and executed test script: test");
-    } else if (runScript("check")) {
-      core.info("Detected and executed script: check");
-    } else if (scripts.format && scripts.lint) {
-      core.info("Detected lint/format scripts: format, lint");
-      runScript("format");
-      runScript("lint");
-    } else if (scripts.fmt && scripts.lint) {
-      core.info("Detected lint/format scripts: fmt, lint");
-      runScript("fmt");
-      runScript("lint");
-    } else if (runScript("lint")) {
-      core.info("Detected and executed script: lint");
-    } else if (runScript("format")) {
-      core.info("Detected and executed script: format");
-    } else if (runScript("fmt")) {
-      core.info("Detected and executed script: fmt");
-    } else {
-      core.info("No matching scripts (test, check, format, lint, etc.) found in package.json.");
-    }
+    executeScripts(scripts, pm, cwd);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.setFailed(`Failed to run scripts: ${message}`);

@@ -9,7 +9,6 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 - **[Vite+](./vite-plus/README.md)**: Build and deploy Vite+ sites.
 - **[Lint/Format](./lint-format/README.md)**: Run lint/format scripts.
 - **[Test](./test/README.md)**: Run test scripts.
-- **[Setup](./setup/README.md)**: Shared setup for AREA44 composite actions.
 
 ## License
 

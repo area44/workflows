@@ -24,13 +24,17 @@ jobs:
 
       - name: Run lint and format
         uses: area44/workflows/lint-format@main
+        with:
+          # Optional: node-version: '24'
+          # Optional: working-directory: 'packages/app'
 ```
 
 ## Inputs
 
-| Name           | Description                       | Default         |
-| -------------- | --------------------------------- | --------------- |
-| `node-version` | Optional Node.js version override | (auto-detected) |
+| Name                | Description                                | Default         |
+| ------------------- | ------------------------------------------ | --------------- |
+| `node-version`      | Optional Node.js version override          | (auto-detected) |
+| `working-directory` | The directory where the project is located | `.`             |
 
 ## Outputs
 

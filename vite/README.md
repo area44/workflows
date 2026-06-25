@@ -31,15 +31,17 @@ jobs:
         with:
           # Optional: node-version: '24'
           # Optional: path: 'dist'
+          # Optional: working-directory: 'packages/app'
 ```
 
 ## Inputs
 
-| Name            | Description                                   | Default         |
-| --------------- | --------------------------------------------- | --------------- |
-| `path`          | The directory where the built site is located | `dist`          |
-| `node-version`  | Optional Node.js version override             | (auto-detected) |
-| `build-command` | Optional build command override               |                 |
+| Name                | Description                                   | Default         |
+| ------------------- | --------------------------------------------- | --------------- |
+| `path`              | The directory where the built site is located | `dist`          |
+| `node-version`      | Optional Node.js version override             | (auto-detected) |
+| `build-command`     | Optional build command override               |                 |
+| `working-directory` | The directory where the project is located    | `.`             |
 
 ## Outputs
 

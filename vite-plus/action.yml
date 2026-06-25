@@ -36,8 +36,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      working-directory: ${{ inputs.working-directory }}
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.js" "${{ inputs.working-directory }}"
 
     - name: Setup Vite+
       id: setup_vp
