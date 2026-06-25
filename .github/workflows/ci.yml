@@ -16,7 +16,7 @@ jobs:
       - name: Detect Node.js version and package manager
         shell: bash
         id: detect_env
-        run: node "dist/detect-env.js"
+        run: node "dist/detect-env.mjs"
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -36,4 +36,4 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          test -f dist/detect-env.js
+          test -f dist/detect-env.mjs && test -f dist/setup.mjs && test -f dist/run-scripts.mjs
