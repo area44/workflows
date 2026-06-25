@@ -1,5 +1,5 @@
-name: area44/astro
-description: Build and Deploy with Astro
+name: Build and Deploy Astro Site
+description: Optimized build and deployment for Astro projects on GitHub Pages
 inputs:
   path:
     description: "The directory where the built site is located"
@@ -29,7 +29,7 @@ runs:
     - name: Detect Node.js version and package manager
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.js"
+      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -59,7 +59,7 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
         FROZEN: "true"
-      run: node "${{ github.action_path }}/../dist/setup.js"
+      run: node "${{ github.action_path }}/../dist/setup.mjs"
 
     - name: Build Astro site
       shell: bash
