@@ -55,6 +55,9 @@ export default defineConfig({
   test: {
     globals: true,
     include: ["__tests__/**/*.test.ts"],
+    benchmark: {
+      include: ["__tests__/**/*.bench.ts"],
+    },
   },
   pack: {
     entry: {

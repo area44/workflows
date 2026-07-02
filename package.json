@@ -13,7 +13,8 @@
     "format": "vp fmt",
     "lint": "vp lint",
     "build": "vp pack",
-    "test": "vp test"
+    "test": "vp test",
+    "benchmark": "vp test bench"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
