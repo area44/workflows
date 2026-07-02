@@ -2,12 +2,7 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  detectNodeVersion,
-  detectPackageManager,
-  shouldSetSiteVariables,
-  setSiteVariables,
-} from "../src/detect-env";
+import { detectNodeVersion, detectPackageManager, setSiteVariables } from "../src/detect-env";
 
 vi.mock("node:fs");
 vi.mock("@actions/core");
@@ -112,60 +107,61 @@ describe("detect-env", () => {
     });
   });
 
-  describe("shouldSetSiteVariables", () => {
-    it("should return true for astro action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
-      expect(shouldSetSiteVariables()).toBe(true);
-    });
-
-    it("should return true for vite action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
-      expect(shouldSetSiteVariables()).toBe(true);
-    });
-
-    it("should return true for vite-plus action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
-      expect(shouldSetSiteVariables()).toBe(true);
-    });
-
-    it("should return false for other actions", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/lint-format";
-      expect(shouldSetSiteVariables()).toBe(false);
-    });
-
-    it("should return false if GITHUB_ACTION_PATH is not set", () => {
-      delete process.env.GITHUB_ACTION_PATH;
-      expect(shouldSetSiteVariables()).toBe(false);
-    });
-  });
-
   describe("setSiteVariables", () => {
-    it("should set variables correctly for project site", () => {
+    it("should set SITE and BASE for astro action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
       process.env.GITHUB_REPOSITORY = "user/repo";
       process.env.GITHUB_REPOSITORY_OWNER = "user";
 
       setSiteVariables();
 
       expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith(
-        "VITE_SITE_URL",
-        "https://user.github.io/repo",
-      );
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
+      expect(core.exportVariable).not.toHaveBeenCalledWith("VITE_SITE_URL", expect.any(String));
     });
 
-    it("should set variables correctly for user site", () => {
-      process.env.GITHUB_REPOSITORY = "user/user.github.io";
+    it("should set VITE_SITE_URL for vite action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
+      process.env.GITHUB_REPOSITORY = "user/repo";
       process.env.GITHUB_REPOSITORY_OWNER = "user";
 
       setSiteVariables();
 
-      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("VITE_SITE_URL", "https://user.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/");
+      expect(core.exportVariable).toHaveBeenCalledWith(
+        "VITE_SITE_URL",
+        "https://user.github.io/repo",
+      );
+      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
+      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+    });
+
+    it("should set VITE_SITE_URL for vite-plus action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith(
+        "VITE_SITE_URL",
+        "https://user.github.io/repo",
+      );
+      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
+      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+    });
+
+    it("should not set any variables for other actions", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/lint-format";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).not.toHaveBeenCalled();
     });
 
     it("should skip if repo or owner is missing", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
       delete process.env.GITHUB_REPOSITORY;
       delete process.env.GITHUB_REPOSITORY_OWNER;
 
