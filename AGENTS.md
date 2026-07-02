@@ -18,3 +18,12 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->
+
+## Rust Migration Research
+
+In response to inquiries about migrating these TypeScript utilities to Rust for performance:
+
+- **Findings:** A Rust proof-of-concept for `detect-env` showed execution times of ~15ms compared to ~100ms for the TypeScript/Node.js version.
+- **Conclusion:** The ~85ms saving is negligible in the context of typical CI workflows (which run for minutes).
+- **Trade-offs:** Migrating would introduce significant complexity in cross-platform binary distribution and maintenance.
+- **Recommendation:** Retain the TypeScript implementation for ease of maintenance and alignment with the Vite+ ecosystem.
