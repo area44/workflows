@@ -1,4 +1,3 @@
-import { builtinModules } from "node:module";
 import { defineConfig } from "vite-plus";
 
 const ignorePatterns = [
@@ -56,21 +55,43 @@ export default defineConfig({
     globals: true,
     include: ["__tests__/**/*.test.ts"],
   },
-  pack: {
-    entry: {
-      "detect-env": "src/detect-env.ts",
-      "run-scripts": "src/run-scripts.ts",
-      setup: "src/setup.ts",
+  pack: [
+    {
+      entry: { "detect-env": "src/detect-env.ts" },
+      deps: { alwaysBundle: [/.*/], onlyBundle: false },
+      banner: { js: "/* eslint-disable */" },
+      clean: true,
+      outDir: "dist",
+      format: "esm",
+      minify: {
+        compress: true,
+        mangle: { keepNames: { function: true, class: true } },
+      },
+      platform: "node",
     },
-    deps: {
-      neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
+    {
+      entry: { "run-scripts": "src/run-scripts.ts" },
+      deps: { alwaysBundle: [/.*/], onlyBundle: false },
+      banner: { js: "/* eslint-disable */" },
+      outDir: "dist",
+      format: "esm",
+      minify: {
+        compress: true,
+        mangle: { keepNames: { function: true, class: true } },
+      },
+      platform: "node",
     },
-    banner: {
-      js: "/* eslint-disable */",
+    {
+      entry: { setup: "src/setup.ts" },
+      deps: { alwaysBundle: [/.*/], onlyBundle: false },
+      banner: { js: "/* eslint-disable */" },
+      outDir: "dist",
+      format: "esm",
+      minify: {
+        compress: true,
+        mangle: { keepNames: { function: true, class: true } },
+      },
+      platform: "node",
     },
-    outDir: "dist",
-    format: "esm",
-    minify: true,
-    platform: "node",
-  },
+  ],
 });
