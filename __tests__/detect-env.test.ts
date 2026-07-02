@@ -147,7 +147,10 @@ describe("detect-env", () => {
       setSiteVariables();
 
       expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("VITE_SITE_URL", "https://user.github.io/repo");
+      expect(core.exportVariable).toHaveBeenCalledWith(
+        "VITE_SITE_URL",
+        "https://user.github.io/repo",
+      );
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
     });
 
