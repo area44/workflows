@@ -1,11 +1,6 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
-/**
- * Detects Node.js version and package manager from the environment.
- * Outputs the results to GITHUB_OUTPUT.
- */
-
 export interface PackageManager {
   name: string;
   version: string;
@@ -83,6 +78,8 @@ export function detectPackageManager(): PackageManager {
 }
 
 export function setSiteVariables(): void {
+  const actionPath = process.env.GITHUB_ACTION_PATH || "";
+  const actionName = actionPath.split("/").pop() || "";
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
   const repo = repoFull.split("/")[1] || "";
@@ -97,13 +94,17 @@ export function setSiteVariables(): void {
   const base = isPrimary ? "/" : `/${repo}/`;
   const siteWithRepo = isPrimary ? site : `${site}/${repo}`;
 
-  core.exportVariable("SITE", site);
-  core.exportVariable("VITE_SITE_URL", siteWithRepo);
-  core.exportVariable("BASE", base);
+  if (actionName === "astro") {
+    core.exportVariable("SITE", site);
+    core.exportVariable("BASE", base);
+    core.info(`Set SITE=${site}`);
+    core.info(`Set BASE=${base}`);
+  }
 
-  core.info(`Set SITE=${site}`);
-  core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
-  core.info(`Set BASE=${base}`);
+  if (actionName === "vite" || actionName === "vite-plus") {
+    core.exportVariable("VITE_SITE_URL", siteWithRepo);
+    core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
+  }
 }
 
 export function writeOutput(nodeVersion: string, pm: PackageManager): void {

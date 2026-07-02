@@ -2,10 +2,6 @@ import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 
-/**
- * Detects and runs scripts from package.json.
- */
-
 interface PackageJson {
   scripts?: Record<string, string>;
 }

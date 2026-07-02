@@ -1,15 +1,18 @@
 import * as core from "@actions/core";
-import fs from "fs";
+import fs from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { detectNodeVersion, detectPackageManager } from "../src/detect-env";
+import { detectNodeVersion, detectPackageManager, setSiteVariables } from "../src/detect-env";
 
-vi.mock("fs");
+vi.mock("node:fs");
 vi.mock("@actions/core");
 
 describe("detect-env", () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...originalEnv };
   });
 
   describe("detectNodeVersion", () => {
@@ -101,6 +104,71 @@ describe("detect-env", () => {
       expect(pm.name).toBe("npm");
       expect(pm.version).toBe("latest");
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+    });
+  });
+
+  describe("setSiteVariables", () => {
+    it("should set SITE and BASE for astro action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
+      expect(core.exportVariable).not.toHaveBeenCalledWith("VITE_SITE_URL", expect.any(String));
+    });
+
+    it("should set VITE_SITE_URL for vite action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith(
+        "VITE_SITE_URL",
+        "https://user.github.io/repo",
+      );
+      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
+      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+    });
+
+    it("should set VITE_SITE_URL for vite-plus action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith(
+        "VITE_SITE_URL",
+        "https://user.github.io/repo",
+      );
+      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
+      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+    });
+
+    it("should not set any variables for other actions", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/lint-format";
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).not.toHaveBeenCalled();
+    });
+
+    it("should skip if repo or owner is missing", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      delete process.env.GITHUB_REPOSITORY;
+      delete process.env.GITHUB_REPOSITORY_OWNER;
+
+      setSiteVariables();
+
+      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("not set"));
+      expect(core.exportVariable).not.toHaveBeenCalled();
     });
   });
 });

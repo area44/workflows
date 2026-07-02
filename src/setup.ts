@@ -2,10 +2,6 @@ import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 
-/**
- * Handles dependency installation for different package managers.
- */
-
 function runCommand(command: string): void {
   core.info(`Executing: ${command}`);
   try {
