@@ -1,15 +1,23 @@
 import * as core from "@actions/core";
-import fs from "fs";
+import fs from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { detectNodeVersion, detectPackageManager } from "../src/detect-env";
+import {
+  detectNodeVersion,
+  detectPackageManager,
+  shouldSetSiteVariables,
+  setSiteVariables,
+} from "../src/detect-env";
 
-vi.mock("fs");
+vi.mock("node:fs");
 vi.mock("@actions/core");
 
 describe("detect-env", () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...originalEnv };
   });
 
   describe("detectNodeVersion", () => {
@@ -101,6 +109,67 @@ describe("detect-env", () => {
       expect(pm.name).toBe("npm");
       expect(pm.version).toBe("latest");
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+    });
+  });
+
+  describe("shouldSetSiteVariables", () => {
+    it("should return true for astro action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      expect(shouldSetSiteVariables()).toBe(true);
+    });
+
+    it("should return true for vite action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
+      expect(shouldSetSiteVariables()).toBe(true);
+    });
+
+    it("should return true for vite-plus action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
+      expect(shouldSetSiteVariables()).toBe(true);
+    });
+
+    it("should return false for other actions", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/lint-format";
+      expect(shouldSetSiteVariables()).toBe(false);
+    });
+
+    it("should return false if GITHUB_ACTION_PATH is not set", () => {
+      delete process.env.GITHUB_ACTION_PATH;
+      expect(shouldSetSiteVariables()).toBe(false);
+    });
+  });
+
+  describe("setSiteVariables", () => {
+    it("should set variables correctly for project site", () => {
+      process.env.GITHUB_REPOSITORY = "user/repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("VITE_SITE_URL", "https://user.github.io/repo");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
+    });
+
+    it("should set variables correctly for user site", () => {
+      process.env.GITHUB_REPOSITORY = "user/user.github.io";
+      process.env.GITHUB_REPOSITORY_OWNER = "user";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("VITE_SITE_URL", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/");
+    });
+
+    it("should skip if repo or owner is missing", () => {
+      delete process.env.GITHUB_REPOSITORY;
+      delete process.env.GITHUB_REPOSITORY_OWNER;
+
+      setSiteVariables();
+
+      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("not set"));
+      expect(core.exportVariable).not.toHaveBeenCalled();
     });
   });
 });

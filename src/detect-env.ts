@@ -82,6 +82,20 @@ export function detectPackageManager(): PackageManager {
   return { name: "npm", version: "latest" };
 }
 
+export function shouldSetSiteVariables(): boolean {
+  const actionPath = process.env.GITHUB_ACTION_PATH || "";
+  const actionName = actionPath.split("/").pop() || "";
+  const supportedActions = ["astro", "vite", "vite-plus"];
+
+  const shouldSet = supportedActions.includes(actionName);
+  if (shouldSet) {
+    core.info(`Action "${actionName}" is supported for site variables.`);
+  } else {
+    core.info(`Action "${actionName}" is not supported for site variables. Skipping.`);
+  }
+  return shouldSet;
+}
+
 export function setSiteVariables(): void {
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
@@ -116,7 +130,10 @@ export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);
-  setSiteVariables();
+
+  if (shouldSetSiteVariables()) {
+    setSiteVariables();
+  }
 }
 
 if (process.env.NODE_ENV !== "test") {
