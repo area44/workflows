@@ -82,9 +82,21 @@ export function detectPackageManager(): PackageManager {
   return { name: "npm", version: "latest" };
 }
 
-export function setSiteVariables(): void {
+export function shouldSetSiteVariables(): boolean {
   const actionPath = process.env.GITHUB_ACTION_PATH || "";
   const actionName = actionPath.split("/").pop() || "";
+  const supportedActions = ["astro", "vite", "vite-plus"];
+
+  const shouldSet = supportedActions.includes(actionName);
+  if (shouldSet) {
+    core.info(`Action "${actionName}" is supported for site variables.`);
+  } else {
+    core.info(`Action "${actionName}" is not supported for site variables. Skipping.`);
+  }
+  return shouldSet;
+}
+
+export function setSiteVariables(): void {
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
   const repo = repoFull.split("/")[1] || "";
@@ -99,17 +111,13 @@ export function setSiteVariables(): void {
   const base = isPrimary ? "/" : `/${repo}/`;
   const siteWithRepo = isPrimary ? site : `${site}/${repo}`;
 
-  if (actionName === "astro") {
-    core.exportVariable("SITE", site);
-    core.exportVariable("BASE", base);
-    core.info(`Set SITE=${site}`);
-    core.info(`Set BASE=${base}`);
-  }
+  core.exportVariable("SITE", site);
+  core.exportVariable("VITE_SITE_URL", siteWithRepo);
+  core.exportVariable("BASE", base);
 
-  if (actionName === "vite" || actionName === "vite-plus") {
-    core.exportVariable("VITE_SITE_URL", siteWithRepo);
-    core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
-  }
+  core.info(`Set SITE=${site}`);
+  core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
+  core.info(`Set BASE=${base}`);
 }
 
 export function writeOutput(nodeVersion: string, pm: PackageManager): void {
@@ -122,7 +130,10 @@ export function run(): void {
   const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
   writeOutput(nodeVersion, pm);
-  setSiteVariables();
+
+  if (shouldSetSiteVariables()) {
+    setSiteVariables();
+  }
 }
 
 if (process.env.NODE_ENV !== "test") {
