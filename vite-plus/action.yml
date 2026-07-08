@@ -36,7 +36,7 @@ runs:
 
     - name: Setup Vite+
       id: setup_vp
-      uses: voidzero-dev/setup-vp@13e7afb99c66525824db54e107d667216e795d37 # v1
+      uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
         cache: true
