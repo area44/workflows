@@ -117,37 +117,28 @@ describe("detect-env", () => {
 
       expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
-      expect(core.exportVariable).not.toHaveBeenCalledWith("VITE_SITE_URL", expect.any(String));
     });
 
-    it("should set VITE_SITE_URL for vite action", () => {
+    it("should set SITE and BASE for vite action", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
       process.env.GITHUB_REPOSITORY = "user/repo";
       process.env.GITHUB_REPOSITORY_OWNER = "user";
 
       setSiteVariables();
 
-      expect(core.exportVariable).toHaveBeenCalledWith(
-        "VITE_SITE_URL",
-        "https://user.github.io/repo",
-      );
-      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
-      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
     });
 
-    it("should set VITE_SITE_URL for vite-plus action", () => {
+    it("should set SITE and BASE for vite-plus action", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
       process.env.GITHUB_REPOSITORY = "user/repo";
       process.env.GITHUB_REPOSITORY_OWNER = "user";
 
       setSiteVariables();
 
-      expect(core.exportVariable).toHaveBeenCalledWith(
-        "VITE_SITE_URL",
-        "https://user.github.io/repo",
-      );
-      expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
-      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://user.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
     });
 
     it("should not set any variables for other actions", () => {
