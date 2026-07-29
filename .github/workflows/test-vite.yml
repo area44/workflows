@@ -33,12 +33,11 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           [[ -n "${{ steps.vite_action.outputs.node-version }}" ]] || { echo "Node version output missing"; false; }
+          EXPECTED_SITE="https://${OWNER}.github.io"
           if [[ "$REPO" == "${OWNER}.github.io" ]]; then
-            EXPECTED_URL="https://${OWNER}.github.io"
             EXPECTED_BASE="/"
           else
-            EXPECTED_URL="https://${OWNER}.github.io/${REPO}"
             EXPECTED_BASE="/${REPO}/"
           fi
-          [[ "$VITE_SITE_URL" == "$EXPECTED_URL" ]] || { echo "VITE_SITE_URL is not set correctly: $VITE_SITE_URL (expected $EXPECTED_URL)"; false; }
+          [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE is not set correctly: $SITE (expected $EXPECTED_SITE)"; false; }
           [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE is not set correctly: $BASE (expected $EXPECTED_BASE)"; false; }
