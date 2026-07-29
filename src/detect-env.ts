@@ -103,7 +103,9 @@ export function setSiteVariables(): void {
 
   if (actionName === "vite" || actionName === "vite-plus") {
     core.exportVariable("VITE_SITE_URL", siteWithRepo);
+    core.exportVariable("BASE", base);
     core.info(`Set VITE_SITE_URL=${siteWithRepo}`);
+    core.info(`Set BASE=${base}`);
   }
 }
 

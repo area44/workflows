@@ -56,12 +56,8 @@ export default defineConfig({
     globals: true,
     include: ["__tests__/**/*.test.ts"],
   },
-  pack: {
-    entry: {
-      "detect-env": "src/detect-env.ts",
-      "run-scripts": "src/run-scripts.ts",
-      setup: "src/setup.ts",
-    },
+  pack: ["detect-env", "run-scripts", "setup"].map((name) => ({
+    entry: { [name]: `src/${name}.ts` },
     deps: {
       neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
@@ -72,5 +68,5 @@ export default defineConfig({
     format: "esm",
     minify: true,
     platform: "node",
-  },
+  })),
 });

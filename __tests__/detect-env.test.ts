@@ -131,8 +131,8 @@ describe("detect-env", () => {
         "VITE_SITE_URL",
         "https://user.github.io/repo",
       );
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
       expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
-      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
     });
 
     it("should set VITE_SITE_URL for vite-plus action", () => {
@@ -146,8 +146,8 @@ describe("detect-env", () => {
         "VITE_SITE_URL",
         "https://user.github.io/repo",
       );
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/repo/");
       expect(core.exportVariable).not.toHaveBeenCalledWith("SITE", expect.any(String));
-      expect(core.exportVariable).not.toHaveBeenCalledWith("BASE", expect.any(String));
     });
 
     it("should not set any variables for other actions", () => {
