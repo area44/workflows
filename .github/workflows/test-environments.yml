@@ -131,7 +131,7 @@ jobs:
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
 
           # Create isolated mock project
-          echo '{"name": "mock-project", "dependencies": {"minimist": "^1.2.8"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html", "lint": "echo linting...", "format": "echo formatting..."}}' > package.json
+          echo '{"name": "mock-project", "packageManager": "${{ matrix.package-manager }}@latest", "dependencies": {"minimist": "^1.2.8"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html", "lint": "echo linting...", "format": "echo formatting..."}}' > package.json
 
           # Generate appropriate lockfiles for detection and ensure cache files resolve
           case "${{ matrix.package-manager }}" in
@@ -163,7 +163,19 @@ jobs:
           fi
 
       - name: Verify Environment Detection outputs
+        env:
+          GITHUB_ACTION_PATH: /home/runner/work/_actions/owner/repo/v1/${{ matrix.tool }}
+          GITHUB_REPOSITORY: owner/project-repo
+          GITHUB_REPOSITORY_OWNER: owner
         run: |
+          # Re-detect SITE and BASE directly in the asserting environment
+          # to ensure they are available in GITHUB_ENV or process.env
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            eval $(bun "dist/detect-env.mjs" | grep -E '^Set (SITE|BASE)=' | sed 's/Set //')
+          else
+            eval $(node "dist/detect-env.mjs" | grep -E '^Set (SITE|BASE)=' | sed 's/Set //')
+          fi
+
           # Assert GHA output values
           DETECTED_PM="${{ steps.detect_env.outputs.package-manager }}"
           [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
