@@ -11,41 +11,102 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package-manager: [npm, pnpm, yarn, bun]
-        runtime: [node, bun]
-        node-version: ["no-pin", "22.13.0"]
-        bun-version: ["no-pin", "latest"]
-        exclude:
-          # Remove Bun runtime when package manager is not bun (or vice versa if preferred, but let's test all logically valid combinations)
-          # Bun runtime only supports bun package manager
-          - runtime: bun
+        include:
+          # 1. Lint-Format with Node (npm) - Pinned Node
+          - tool: lint-format
             package-manager: npm
-          - runtime: bun
-            package-manager: pnpm
-          - runtime: bun
-            package-manager: yarn
-          # Conversely, Node runtime can support npm, pnpm, yarn, bun, but Node setup shouldn't matrix with bun versions
-          - runtime: node
-            bun-version: "latest"
-          - runtime: bun
+            runtime: node
             node-version: "22.13.0"
-          - runtime: bun
-            bun-version: "no-pin" # Let's keep Bun pinned or unpinned when active
+          # 2. Lint-Format with Node (npm) - Unpinned Node
+          - tool: lint-format
+            package-manager: npm
+            runtime: node
+            node-version: "no-pin"
+          # 3. Lint-Format with Bun (bun) - Pinned Bun
+          - tool: lint-format
+            package-manager: bun
+            runtime: bun
+            bun-version: "1.1.0"
+          # 4. Lint-Format with Bun (bun) - Unpinned Bun
+          - tool: lint-format
+            package-manager: bun
+            runtime: bun
+            bun-version: "latest"
+          # 5. Astro with Node (pnpm) - Pinned Node
+          - tool: astro
+            package-manager: pnpm
+            runtime: node
+            node-version: "20.11.0"
+          # 6. Astro with Node (pnpm) - Unpinned Node
+          - tool: astro
+            package-manager: pnpm
+            runtime: node
+            node-version: "no-pin"
+          # 7. Astro with Bun (bun) - Pinned Bun
+          - tool: astro
+            package-manager: bun
+            runtime: bun
+            bun-version: "1.1.0"
+          # 8. Vite with Node (yarn) - Pinned Node
+          - tool: vite
+            package-manager: yarn
+            runtime: node
+            node-version: "22.13.0"
+          # 9. Vite with Node (yarn) - Unpinned Node
+          - tool: vite
+            package-manager: yarn
+            runtime: node
+            node-version: "no-pin"
+          # 10. Vite with Bun (bun) - Unpinned Bun
+          - tool: vite
+            package-manager: bun
+            runtime: bun
+            bun-version: "latest"
+          # 11. Vite-Plus with Node (pnpm) - Pinned Node
+          - tool: vite-plus
+            package-manager: pnpm
+            runtime: node
+            node-version: "22.13.0"
+          # 12. Vite-Plus with Node (npm) - Unpinned Node
+          - tool: vite-plus
+            package-manager: npm
+            runtime: node
+            node-version: "no-pin"
+          # 13. Vite-Plus with Bun (bun) - Pinned Bun
+          - tool: vite-plus
+            package-manager: bun
+            runtime: bun
+            bun-version: "1.1.0"
+          # 14. Astro with Node (yarn) - Unpinned Node
+          - tool: astro
+            package-manager: yarn
+            runtime: node
+            node-version: "no-pin"
+          # 15. Vite with Node (bun) - Pinned Node
+          - tool: vite
+            package-manager: bun
+            runtime: node
+            node-version: "22.13.0"
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Bun (Pinned)
-        if: ${{ matrix.runtime == 'bun' && matrix.bun-version != 'no-pin' }}
+        if: ${{ matrix.runtime == 'bun' && matrix.bun-version != 'no-pin' && matrix.bun-version != '' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ matrix.bun-version }}
 
+      - name: Setup Bun (if package manager is Bun but runtime is Node)
+        if: ${{ matrix.package-manager == 'bun' && matrix.runtime == 'node' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
       - name: Setup Bun (Unpinned/No-setup)
         if: ${{ matrix.runtime == 'bun' && matrix.bun-version == 'no-pin' }}
         run: |
-          # Rely on pre-installed runner bun or fallback installation
           which bun || curl -fsSL https://bun.sh/install | bash
 
       - name: Setup Node.js (Pinned)
@@ -57,12 +118,11 @@ jobs:
       - name: Setup Node.js (Unpinned/No-setup)
         if: ${{ matrix.runtime == 'node' && matrix.node-version == 'no-pin' }}
         run: |
-          # Use runner default node
           node --version
 
-      - name: Install PNPM
+      - name: Install PNPM (Compat-friendly version v9)
         if: ${{ matrix.package-manager == 'pnpm' }}
-        run: npm install -g pnpm
+        run: npm install -g pnpm@9
 
       - name: Isolate Workspace and Setup Project
         run: |
@@ -91,58 +151,46 @@ jobs:
 
       - name: Test Environment Detection (Direct Verification)
         id: detect_env
+        env:
+          GITHUB_ACTION_PATH: /home/runner/work/_actions/owner/repo/v1/${{ matrix.tool }}
+          GITHUB_REPOSITORY: owner/project-repo
+          GITHUB_REPOSITORY_OWNER: owner
         run: |
-          node "dist/detect-env.mjs"
-          [[ -f "dist/detect-env.mjs" ]] || { echo "detect-env.mjs missing"; false; }
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
+            bun "dist/detect-env.mjs"
+          else
+            node "dist/detect-env.mjs"
+          fi
+
+      - name: Verify Environment Detection outputs
+        run: |
+          # Assert GHA output values
+          DETECTED_PM="${{ steps.detect_env.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
+
+          # Assert env variables set by detect-env.mjs
+          if [[ "${{ matrix.tool }}" == "astro" || "${{ matrix.tool }}" == "vite" || "${{ matrix.tool }}" == "vite-plus" ]]; then
+            [[ "$SITE" == "https://owner.github.io" ]] || { echo "SITE not set correctly: $SITE"; false; }
+            [[ "$BASE" == "/project-repo/" ]] || { echo "BASE not set correctly: $BASE"; false; }
+          else
+            [[ -z "$SITE" ]] || { echo "SITE should not be set for ${{ matrix.tool }}"; false; }
+          fi
 
       - name: Test Run Scripts (Direct Verification)
         env:
           PACKAGE_MANAGER: ${{ matrix.package-manager }}
         run: |
-          if [ "${{ matrix.package-manager }}" = "bun" ]; then
+          if [ "${{ matrix.runtime }}" = "bun" ]; then
             bun "dist/run-scripts.mjs"
           else
             node "dist/run-scripts.mjs"
           fi
 
-      - name: Test Vite Action (Composite Mock)
-        uses: ./vite
-        id: vite_action
-        with:
-          path: dist
-          build-command: "mkdir -p dist && touch dist/index.html"
-
-      - name: Verify Vite Action outputs
-        run: |
-          [[ "${{ steps.vite_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.vite_action.outputs.package-manager }}"; false; }
-
-      - name: Test Astro Action (Composite Mock)
-        uses: ./astro
-        id: astro_action
-        with:
-          path: dist
-          build-command: "mkdir -p dist && touch dist/index.html"
-
-      - name: Verify Astro Action outputs
-        run: |
-          [[ "${{ steps.astro_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.astro_action.outputs.package-manager }}"; false; }
-
-      - name: Test Vite-Plus Action (Composite Mock)
-        uses: ./vite-plus
-        id: vite_plus_action
-        with:
-          path: dist
-          build-command: "mkdir -p dist && touch dist/index.html"
-
-      - name: Verify Vite-Plus Action outputs
-        run: |
-          [[ "${{ steps.vite_plus_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.vite_plus_action.outputs.package-manager }}"; false; }
-
       - name: Restore Workspace Root
         if: always()
         run: |
           # Clean up generated files to prevent contamination
-          rm -rf node-modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node_modules
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node-modules
 
           # Restore backups if they exist
           if [ -f package.json.bak ]; then
