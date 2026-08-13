@@ -116,21 +116,25 @@ jobs:
           # Ensure the package manager runs install successfully and touch standard lockfile on completion
           case "${{ matrix.package-manager }}" in
             npm)
-              npm install
+              npm ci
               ;;
             pnpm)
               pnpm install --no-frozen-lockfile
-              touch pnpm-lock.yaml
               ;;
             yarn)
-              yarn install --no-node-linker
-              touch yarn.lock
+              yarn install --frozen-lockfile
               ;;
             bun)
-              bun install || true
-              touch bun.lock
+              bun install --frozen-lockfile
               ;;
           esac
+
+      - name: Test Run Scripts Runner (Integration Verification)
+        env:
+          PACKAGE_MANAGER: ${{ matrix.package-manager }}
+        run: |
+          # Assert that run-scripts runner correctly executes the mock format & lint scripts
+          node "dist/run-scripts.mjs"
 
       - name: Test Astro Action
         if: ${{ matrix.tool == 'astro' }}
@@ -210,7 +214,7 @@ jobs:
         if: always()
         run: |
           # Clean up copied and generated files
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node-modules dist
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node-modules dist package-lock.json
 
           # Restore backups if they exist
           if [ -f package.json.bak ]; then
