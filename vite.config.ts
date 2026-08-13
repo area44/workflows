@@ -1,4 +1,3 @@
-import { builtinModules } from "node:module";
 import { defineConfig } from "vite-plus";
 
 const ignorePatterns = [
@@ -56,11 +55,8 @@ export default defineConfig({
     globals: true,
     include: ["__tests__/**/*.test.ts"],
   },
-  pack: ["detect-env", "run-scripts", "setup"].map((name) => ({
+  pack: ["detect-env", "run-scripts"].map((name) => ({
     entry: { [name]: `src/${name}.ts` },
-    deps: {
-      neverBundle: [...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
-    },
     banner: {
       js: "/* eslint-disable */",
     },

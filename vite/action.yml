@@ -33,9 +33,12 @@ runs:
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      uses: pnpm/setup@v2
       with:
         version: ${{ steps.detect_env.outputs.package-manager-version }}
+        runtime: node@${{ inputs.node-version || steps.detect_env.outputs.node-version }}
+        install: false
+        cache: true
 
     - name: Setup Bun
       if: ${{ steps.detect_env.outputs.package-manager == 'bun' }}
@@ -44,22 +47,43 @@ runs:
         bun-version: ${{ steps.detect_env.outputs.package-manager-version }}
 
     - name: Setup Node.js
+      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' && steps.detect_env.outputs.package-manager != 'bun' }}
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
-        cache: ${{ steps.detect_env.outputs.package-manager != 'bun' && steps.detect_env.outputs.package-manager || '' }}
+        cache: ${{ steps.detect_env.outputs.package-manager }}
         cache-dependency-path: |
           **/package-lock.json
-          **/pnpm-lock.yaml
           **/yarn.lock
-          **/bun.lock
 
     - name: Install dependencies
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-        FROZEN: "true"
-      run: node "${{ github.action_path }}/../dist/setup.mjs"
+      run: |
+        PM="${PACKAGE_MANAGER:-npm}"
+        echo "Installing dependencies with $PM"
+        case "$PM" in
+          pnpm)
+            pnpm install --frozen-lockfile
+            ;;
+          bun)
+            bun install --frozen-lockfile
+            ;;
+          yarn)
+            yarn install --frozen-lockfile
+            ;;
+          npm)
+            if [ -f "package-lock.json" ]; then
+              npm ci
+            else
+              npm install
+            fi
+            ;;
+          *)
+            "$PM" install
+            ;;
+        esac
 
     - name: Build Vite site
       shell: bash
