@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   detectNodeVersion,
@@ -18,6 +18,10 @@ describe("detect-env", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
     process.env = { ...originalEnv };
   });
 

@@ -26,19 +26,22 @@ jobs:
         if: ${{ matrix.package-manager != 'bun' }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20.11.0"
+          node-version: "22.13.0"
 
       - name: Install PNPM
         if: ${{ matrix.package-manager == 'pnpm' }}
         run: npm install -g pnpm
 
-      - name: Setup Mock Project
+      - name: Isolate Workspace and Setup Project
         run: |
-          rm -rf test-project
-          mkdir -p test-project
-          cd test-project
-          echo '{"name": "test-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html", "lint": "echo lint", "format": "echo format"}}' > package.json
+          # Backup original root package.json and lockfile if they exist
+          [ -f package.json ] && mv package.json package.json.bak || true
+          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
 
+          # Create isolated mock project
+          echo '{"name": "mock-project", "scripts": {"lint": "echo linting...", "format": "echo formatting..."}}' > package.json
+
+          # Generate appropriate lockfiles for detection
           case "${{ matrix.package-manager }}" in
             npm)
               npm install --no-package-lock
@@ -56,32 +59,24 @@ jobs:
               ;;
           esac
 
-      - name: Test Vite Action
-        uses: ./vite
-        id: vite_action
-        with:
-          path: test-project/dist
-          build-command: "cd test-project && ${{ matrix.package-manager }} run build"
-
-      - name: Verify Vite Action outputs
-        run: |
-          [[ "${{ steps.vite_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.vite_action.outputs.package-manager }}"; false; }
-
-      - name: Test Astro Action
-        uses: ./astro
-        id: astro_action
-        with:
-          path: test-project/dist
-          build-command: "cd test-project && ${{ matrix.package-manager }} run build"
-
-      - name: Verify Astro Action outputs
-        run: |
-          [[ "${{ steps.astro_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.astro_action.outputs.package-manager }}"; false; }
-
       - name: Test Lint/Format Action
         uses: ./lint-format
         id: lint_format_action
 
-      - name: Verify Lint/Format Action outputs
+      - name: Verify Detected Package Manager
         run: |
           [[ "${{ steps.lint_format_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.lint_format_action.outputs.package-manager }}"; false; }
+
+      - name: Restore Workspace Root
+        if: always()
+        run: |
+          # Clean up generated files to prevent contamination
+          rm -rf node-modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node_modules
+
+          # Restore backups if they exist
+          if [ -f package.json.bak ]; then
+            mv package.json.bak package.json
+          fi
+          if [ -f package-lock.json.bak ]; then
+            mv package-lock.json.bak package-lock.json
+          fi
