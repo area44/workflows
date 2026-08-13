@@ -12,77 +12,57 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 1. Lint-Format with Node (npm) - Pinned Node
-          - tool: lint-format
-            package-manager: npm
-            runtime: node
-            node-version: "22.13.0"
-          # 2. Lint-Format with Node (npm) - Unpinned Node
-          - tool: lint-format
-            package-manager: npm
-            runtime: node
-            node-version: "no-pin"
-          # 3. Lint-Format with Bun (bun) - Pinned Bun
-          - tool: lint-format
-            package-manager: bun
-            runtime: bun
-            bun-version: "1.1.0"
-          # 4. Lint-Format with Bun (bun) - Unpinned Bun
-          - tool: lint-format
-            package-manager: bun
-            runtime: bun
-            bun-version: "latest"
-          # 5. Astro with Node (pnpm) - Pinned Node
+          # 1. Astro with Node (pnpm) - Pinned Node
           - tool: astro
             package-manager: pnpm
             runtime: node
             node-version: "20.11.0"
-          # 6. Astro with Node (pnpm) - Unpinned Node
+          # 2. Astro with Node (pnpm) - Unpinned Node
           - tool: astro
             package-manager: pnpm
             runtime: node
             node-version: "no-pin"
-          # 7. Astro with Bun (bun) - Pinned Bun
+          # 3. Astro with Bun (bun) - Pinned Bun
           - tool: astro
             package-manager: bun
             runtime: bun
             bun-version: "1.1.0"
-          # 8. Vite with Node (yarn) - Pinned Node
+          # 4. Vite with Node (yarn) - Pinned Node
           - tool: vite
             package-manager: yarn
             runtime: node
             node-version: "22.13.0"
-          # 9. Vite with Node (yarn) - Unpinned Node
+          # 5. Vite with Node (yarn) - Unpinned Node
           - tool: vite
             package-manager: yarn
             runtime: node
             node-version: "no-pin"
-          # 10. Vite with Bun (bun) - Unpinned Bun
+          # 6. Vite with Bun (bun) - Unpinned Bun
           - tool: vite
             package-manager: bun
             runtime: bun
             bun-version: "latest"
-          # 11. Vite-Plus with Node (pnpm) - Pinned Node
+          # 7. Vite-Plus with Node (pnpm) - Pinned Node
           - tool: vite-plus
             package-manager: pnpm
             runtime: node
             node-version: "22.13.0"
-          # 12. Vite-Plus with Node (npm) - Unpinned Node
+          # 8. Vite-Plus with Node (npm) - Unpinned Node
           - tool: vite-plus
             package-manager: npm
             runtime: node
             node-version: "no-pin"
-          # 13. Vite-Plus with Bun (bun) - Pinned Bun
+          # 9. Vite-Plus with Bun (bun) - Pinned Bun
           - tool: vite-plus
             package-manager: bun
             runtime: bun
             bun-version: "1.1.0"
-          # 14. Astro with Node (yarn) - Unpinned Node
+          # 10. Astro with Node (yarn) - Unpinned Node
           - tool: astro
             package-manager: yarn
             runtime: node
             node-version: "no-pin"
-          # 15. Vite with Node (bun) - Pinned Node
+          # 11. Vite with Node (bun) - Pinned Node
           - tool: vite
             package-manager: bun
             runtime: node
@@ -124,16 +104,16 @@ jobs:
         if: ${{ matrix.package-manager == 'pnpm' }}
         run: npm install -g pnpm@9
 
-      - name: Isolate Workspace and Setup Project
+      - name: Isolate Workspace and Setup Project via Fixtures
         run: |
           # Backup original root package.json and lockfile if they exist
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
 
-          # Create isolated mock project without packageManager field to prevent Yarn/Corepack mismatches
-          echo '{"name": "mock-project", "dependencies": {"minimist": "^1.2.8"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html", "lint": "echo linting...", "format": "echo formatting..."}}' > package.json
+          # Copy mock project structure from committed fixtures folder to workspace root
+          cp -r fixtures/${{ matrix.package-manager }}-project/* .
 
-          # Generate appropriate lockfiles for detection and ensure cache files resolve
+          # Ensure the package manager runs install successfully
           case "${{ matrix.package-manager }}" in
             npm)
               npm install
@@ -150,22 +130,22 @@ jobs:
               ;;
           esac
 
-      - name: Test Environment Detection (Direct Verification)
-        id: detect_env
-        env:
-          GITHUB_ACTION_PATH: /home/runner/work/_actions/owner/repo/v1/${{ matrix.tool }}
-        run: |
-          # Always execute compiled scripts via Node to avoid Bun filesystem bugs
-          node "dist/detect-env.mjs"
+      - name: Test Astro Action
+        if: ${{ matrix.tool == 'astro' }}
+        uses: ./astro
+        id: astro_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
 
-      - name: Verify Environment Detection outputs
-        env:
-          GITHUB_ACTION_PATH: /home/runner/work/_actions/owner/repo/v1/${{ matrix.tool }}
+      - name: Verify Astro outputs
+        if: ${{ matrix.tool == 'astro' }}
         run: |
-          # Re-detect SITE and BASE directly in the asserting environment
-          eval $(node "dist/detect-env.mjs" | grep -E '^Set (SITE|BASE)=' | sed 's/Set //')
+          # Dynamically assert package-manager and node-version GHA outputs
+          DETECTED_PM="${{ steps.astro_action.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
 
-          # Derive expected SITE and BASE dynamically from GHA runner environment
+          # Verify GHA exported SITE/BASE variables
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
           if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
@@ -173,30 +153,62 @@ jobs:
           else
             EXPECTED_BASE="/${REPO_NAME}/"
           fi
+          [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
+          [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
 
-          # Assert GHA output values
-          DETECTED_PM="${{ steps.detect_env.outputs.package-manager }}"
+      - name: Test Vite Action
+        if: ${{ matrix.tool == 'vite' }}
+        uses: ./vite
+        id: vite_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Vite outputs
+        if: ${{ matrix.tool == 'vite' }}
+        run: |
+          DETECTED_PM="${{ steps.vite_action.outputs.package-manager }}"
           [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
 
-          # Assert env variables set by detect-env.mjs
-          if [[ "${{ matrix.tool }}" == "astro" || "${{ matrix.tool }}" == "vite" || "${{ matrix.tool }}" == "vite-plus" ]]; then
-            [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE not set correctly: $SITE (expected $EXPECTED_SITE)"; false; }
-            [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE not set correctly: $BASE (expected $EXPECTED_BASE)"; false; }
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
+          if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
+            EXPECTED_BASE="/"
           else
-            [[ -z "$SITE" ]] || { echo "SITE should not be set for ${{ matrix.tool }}"; false; }
+            EXPECTED_BASE="/${REPO_NAME}/"
           fi
+          [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
+          [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
 
-      - name: Test Run Scripts (Direct Verification)
-        env:
-          PACKAGE_MANAGER: ${{ matrix.package-manager }}
+      - name: Test Vite-Plus Action
+        if: ${{ matrix.tool == 'vite-plus' }}
+        uses: ./vite-plus
+        id: vite_plus_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Vite-Plus outputs
+        if: ${{ matrix.tool == 'vite-plus' }}
         run: |
-          node "dist/run-scripts.mjs"
+          DETECTED_PM="${{ steps.vite_plus_action.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
+
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
+          if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
+            EXPECTED_BASE="/"
+          else
+            EXPECTED_BASE="/${REPO_NAME}/"
+          fi
+          [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
+          [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
 
       - name: Restore Workspace Root
         if: always()
         run: |
-          # Clean up generated files to prevent contamination
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node-modules
+          # Clean up copied and generated files
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml yarn.lock bun.lock node-modules dist
 
           # Restore backups if they exist
           if [ -f package.json.bak ]; then

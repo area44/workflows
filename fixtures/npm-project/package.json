@@ -1,0 +1,11 @@
+{
+  "name": "mock-npm-project",
+  "scripts": {
+    "build": "mkdir -p dist && touch dist/index.html",
+    "lint": "echo linting...",
+    "format": "echo formatting..."
+  },
+  "dependencies": {
+    "minimist": "^1.2.8"
+  }
+}
