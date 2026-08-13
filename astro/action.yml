@@ -62,7 +62,7 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
-        echo "Installing dependencies with $PM (frozen)"
+        echo "Installing dependencies with $PM"
         case "$PM" in
           pnpm)
             pnpm install --frozen-lockfile
