@@ -113,16 +113,18 @@ jobs:
           # Copy mock project structure from committed fixtures folder to workspace root
           cp -r fixtures/${{ matrix.package-manager }}-project/* .
 
-          # Ensure the package manager runs install successfully
+          # Ensure the package manager runs install successfully and touch standard lockfile on completion
           case "${{ matrix.package-manager }}" in
             npm)
               npm install
               ;;
             pnpm)
               pnpm install --no-frozen-lockfile
+              touch pnpm-lock.yaml
               ;;
             yarn)
               yarn install --no-node-linker
+              touch yarn.lock
               ;;
             bun)
               bun install || true
