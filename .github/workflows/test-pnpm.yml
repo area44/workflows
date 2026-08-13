@@ -14,18 +14,15 @@ jobs:
 
       - name: Setup Project
         run: |
-          rm -rf pnpm-project
-          mkdir -p pnpm-project
-          cd pnpm-project
-          echo '{"name": "pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html" }}' > package.json
-          touch pnpm-lock.yaml
+          mv package.json package.json.bak
+          echo '{"name": "test-pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          npx pnpm install
 
       - name: Test Vite Action with PNPM
         uses: ./vite
         id: vite_action
         with:
-          path: pnpm-project/dist
-          build-command: "cd pnpm-project && pnpm run build"
+          path: dist
 
       - name: Verify Vite Outputs
         run: |
@@ -40,18 +37,15 @@ jobs:
 
       - name: Setup Project
         run: |
-          rm -rf pnpm-project
-          mkdir -p pnpm-project
-          cd pnpm-project
-          echo '{"name": "pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html" }}' > package.json
-          touch pnpm-lock.yaml
+          mv package.json package.json.bak
+          echo '{"name": "test-pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          npx pnpm install
 
       - name: Test Astro Action with PNPM
         uses: ./astro
         id: astro_action
         with:
-          path: pnpm-project/dist
-          build-command: "cd pnpm-project && pnpm run build"
+          path: dist
 
       - name: Verify Astro Outputs
         run: |
