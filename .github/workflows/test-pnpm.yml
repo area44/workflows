@@ -1,0 +1,53 @@
+name: Test PNPM integration
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-vite-pnpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Project
+        run: |
+          mv package.json package.json.bak
+          echo '{"name": "test-pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          npx pnpm install
+
+      - name: Test Vite Action with PNPM
+        uses: ./vite
+        id: vite_action
+        with:
+          path: dist
+
+      - name: Verify Vite Outputs
+        run: |
+          [[ "${{ steps.vite_action.outputs.package-manager }}" == "pnpm" ]] || { echo "Expected package manager pnpm, got ${{ steps.vite_action.outputs.package-manager }}"; false; }
+          [[ -n "${{ steps.vite_action.outputs.node-version }}" ]] || { echo "Node version output missing"; false; }
+
+  test-astro-pnpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Project
+        run: |
+          mv package.json package.json.bak
+          echo '{"name": "test-pnpm-project", "scripts": {"build": "mkdir -p dist && touch dist/index.html"}}' > package.json
+          npx pnpm install
+
+      - name: Test Astro Action with PNPM
+        uses: ./astro
+        id: astro_action
+        with:
+          path: dist
+
+      - name: Verify Astro Outputs
+        run: |
+          [[ "${{ steps.astro_action.outputs.package-manager }}" == "pnpm" ]] || { echo "Expected package manager pnpm, got ${{ steps.astro_action.outputs.package-manager }}"; false; }
+          [[ -n "${{ steps.astro_action.outputs.node-version }}" ]] || { echo "Node version output missing"; false; }
