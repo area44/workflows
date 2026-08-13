@@ -33,9 +33,10 @@ runs:
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      uses: pnpm/setup@v2
       with:
         version: ${{ steps.detect_env.outputs.package-manager-version }}
+        install: false
 
     - name: Setup Bun
       if: ${{ steps.detect_env.outputs.package-manager == 'bun' }}
