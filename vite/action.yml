@@ -62,11 +62,41 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
         FROZEN: "true"
       run: |
-        if [ "${{ steps.detect_env.outputs.package-manager }}" = "bun" ]; then
-          bun "${{ github.action_path }}/../dist/setup.mjs"
-        else
-          node "${{ github.action_path }}/../dist/setup.mjs"
-        fi
+        PM="${PACKAGE_MANAGER:-npm}"
+        echo "Installing dependencies with $PM (frozen: $FROZEN)"
+        case "$PM" in
+          pnpm)
+            if [ "$FROZEN" = "true" ]; then
+              pnpm install --frozen-lockfile
+            else
+              pnpm install --no-frozen-lockfile
+            fi
+            ;;
+          bun)
+            if [ "$FROZEN" = "true" ]; then
+              bun install --frozen-lockfile
+            else
+              bun install
+            fi
+            ;;
+          yarn)
+            if [ "$FROZEN" = "true" ]; then
+              yarn install --frozen-lockfile
+            else
+              yarn install
+            fi
+            ;;
+          npm)
+            if [ "$FROZEN" = "true" ] && [ -f "package-lock.json" ]; then
+              npm ci
+            else
+              npm install
+            fi
+            ;;
+          *)
+            "$PM" install
+            ;;
+        esac
 
     - name: Build Vite site
       shell: bash
