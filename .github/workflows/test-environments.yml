@@ -12,21 +12,53 @@ jobs:
       fail-fast: false
       matrix:
         package-manager: [npm, pnpm, yarn, bun]
+        runtime: [node, bun]
+        node-version: ["no-pin", "22.13.0"]
+        bun-version: ["no-pin", "latest"]
+        exclude:
+          # Remove Bun runtime when package manager is not bun (or vice versa if preferred, but let's test all logically valid combinations)
+          # Bun runtime only supports bun package manager
+          - runtime: bun
+            package-manager: npm
+          - runtime: bun
+            package-manager: pnpm
+          - runtime: bun
+            package-manager: yarn
+          # Conversely, Node runtime can support npm, pnpm, yarn, bun, but Node setup shouldn't matrix with bun versions
+          - runtime: node
+            bun-version: "latest"
+          - runtime: bun
+            node-version: "22.13.0"
+          - runtime: bun
+            bun-version: "no-pin" # Let's keep Bun pinned or unpinned when active
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Bun
-        if: ${{ matrix.package-manager == 'bun' }}
+      - name: Setup Bun (Pinned)
+        if: ${{ matrix.runtime == 'bun' && matrix.bun-version != 'no-pin' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: ${{ matrix.bun-version }}
 
-      - name: Setup Node.js
-        if: ${{ matrix.package-manager != 'bun' }}
+      - name: Setup Bun (Unpinned/No-setup)
+        if: ${{ matrix.runtime == 'bun' && matrix.bun-version == 'no-pin' }}
+        run: |
+          # Rely on pre-installed runner bun or fallback installation
+          which bun || curl -fsSL https://bun.sh/install | bash
+
+      - name: Setup Node.js (Pinned)
+        if: ${{ matrix.runtime == 'node' && matrix.node-version != 'no-pin' }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.13.0"
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup Node.js (Unpinned/No-setup)
+        if: ${{ matrix.runtime == 'node' && matrix.node-version == 'no-pin' }}
+        run: |
+          # Use runner default node
+          node --version
 
       - name: Install PNPM
         if: ${{ matrix.package-manager == 'pnpm' }}
@@ -38,8 +70,8 @@ jobs:
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
 
-          # Create isolated mock project with a realistic dependency
-          echo '{"name": "mock-project", "dependencies": {"minimist": "^1.2.8"}, "scripts": {"lint": "echo linting...", "format": "echo formatting..."}}' > package.json
+          # Create isolated mock project
+          echo '{"name": "mock-project", "dependencies": {"minimist": "^1.2.8"}, "scripts": {"build": "mkdir -p dist && touch dist/index.html", "lint": "echo linting...", "format": "echo formatting..."}}' > package.json
 
           # Generate appropriate lockfiles for detection and ensure cache files resolve
           case "${{ matrix.package-manager }}" in
@@ -72,6 +104,39 @@ jobs:
           else
             node "dist/run-scripts.mjs"
           fi
+
+      - name: Test Vite Action (Composite Mock)
+        uses: ./vite
+        id: vite_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Vite Action outputs
+        run: |
+          [[ "${{ steps.vite_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.vite_action.outputs.package-manager }}"; false; }
+
+      - name: Test Astro Action (Composite Mock)
+        uses: ./astro
+        id: astro_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Astro Action outputs
+        run: |
+          [[ "${{ steps.astro_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.astro_action.outputs.package-manager }}"; false; }
+
+      - name: Test Vite-Plus Action (Composite Mock)
+        uses: ./vite-plus
+        id: vite_plus_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Vite-Plus Action outputs
+        run: |
+          [[ "${{ steps.vite_plus_action.outputs.package-manager }}" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got ${{ steps.vite_plus_action.outputs.package-manager }}"; false; }
 
       - name: Restore Workspace Root
         if: always()
