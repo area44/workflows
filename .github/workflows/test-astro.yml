@@ -1,0 +1,58 @@
+name: Test Astro Composite Action
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-astro:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.13.0"
+
+      - name: Isolate Workspace and Setup Project via Astro Mock
+        run: |
+          [ -f package.json ] && mv package.json package.json.bak || true
+          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
+          cp -r __tests__/fixtures/astro-project/* .
+          npm ci
+
+      - name: Test Astro Action
+        uses: ./astro
+        id: astro_action
+        with:
+          path: dist
+          build-command: "mkdir -p dist && touch dist/index.html"
+
+      - name: Verify Astro outputs
+        run: |
+          DETECTED_PM="${{ steps.astro_action.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "npm" ]] || { echo "Expected npm, got $DETECTED_PM"; false; }
+
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
+          if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
+            EXPECTED_BASE="/"
+          else
+            EXPECTED_BASE="/${REPO_NAME}/"
+          fi
+          [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
+          [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
+
+      - name: Restore Workspace Root
+        if: always()
+        run: |
+          rm -rf node_modules package.json package-lock.json dist
+          if [ -f package.json.bak ]; then
+            mv package.json.bak package.json
+          fi
+          if [ -f package-lock.json.bak ]; then
+            mv package-lock.json.bak package-lock.json
+          fi

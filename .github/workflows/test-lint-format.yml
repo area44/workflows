@@ -1,0 +1,45 @@
+name: Test Lint-Format Composite Action
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-lint-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.13.0"
+
+      - name: Isolate Workspace and Setup Project via TypeScript Mock
+        run: |
+          [ -f package.json ] && mv package.json package.json.bak || true
+          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
+          cp -r __tests__/fixtures/typescript-project/* .
+          yarn install --frozen-lockfile
+
+      - name: Test Lint-Format Action
+        uses: ./lint-format
+        id: lint_format_action
+
+      - name: Verify Lint-Format outputs
+        run: |
+          DETECTED_PM="${{ steps.lint_format_action.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "yarn" ]] || { echo "Expected yarn, got $DETECTED_PM"; false; }
+
+      - name: Restore Workspace Root
+        if: always()
+        run: |
+          rm -rf node_modules package.json yarn.lock
+          if [ -f package.json.bak ]; then
+            mv package.json.bak package.json
+          fi
+          if [ -f package-lock.json.bak ]; then
+            mv package-lock.json.bak package-lock.json
+          fi

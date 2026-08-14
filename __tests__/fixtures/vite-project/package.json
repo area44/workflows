@@ -1,0 +1,11 @@
+{
+  "name": "mock-vite-project",
+  "scripts": {
+    "build": "mkdir -p dist && touch dist/index.html",
+    "lint": "echo vite linting...",
+    "format": "echo vite formatting..."
+  },
+  "dependencies": {
+    "vite": "^5.0.0"
+  }
+}

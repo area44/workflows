@@ -1,0 +1,10 @@
+{
+  "name": "mock-typescript-project",
+  "scripts": {
+    "lint": "echo ts linting...",
+    "format": "echo ts formatting..."
+  },
+  "dependencies": {
+    "typescript": "^5.0.0"
+  }
+}
