@@ -5,7 +5,8 @@
     "lint": "echo 'linting'"
   },
   "dependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.8.2"
   },
-  "packageManager": "pnpm@11.21.0"
+  "packageManager": "pnpm@11.21.0",
+  "type": "module"
 }
