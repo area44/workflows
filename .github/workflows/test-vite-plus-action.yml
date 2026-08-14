@@ -31,7 +31,6 @@ jobs:
         id: vite_plus_action
         with:
           path: dist
-          build-command: "mkdir -p dist && touch dist/index.html"
 
       - name: Verify Vite-Plus outputs
         run: |
@@ -51,7 +50,7 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
           fi
