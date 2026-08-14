@@ -7,5 +7,10 @@
   },
   "dependencies": {
     "vite": "^5.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
