@@ -105,11 +105,11 @@ describe("detect-env", () => {
 
     it("should detect packageManager without version in package.json and use default 'latest'", () => {
       vi.mocked(fs.existsSync).mockImplementation((path) => path === "package.json");
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ packageManager: "yarn" }));
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ packageManager: "bun" }));
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "yarn", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: yarn@latest");
+      expect(pm).toEqual({ name: "bun", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
     });
 
     it("should detect pnpm from package.json engines if packageManager field is missing", () => {
@@ -119,15 +119,6 @@ describe("detect-env", () => {
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "pnpm", version: ">=8.0.0" });
       expect(core.info).toHaveBeenCalledWith("Found pnpm in package.json engines: >=8.0.0");
-    });
-
-    it("should detect yarn from package.json engines", () => {
-      vi.mocked(fs.existsSync).mockImplementation((path) => path === "package.json");
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ engines: { yarn: "^3.0.0" } }));
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "yarn", version: "^3.0.0" });
-      expect(core.info).toHaveBeenCalledWith("Found yarn in package.json engines: ^3.0.0");
     });
 
     it("should detect npm from package.json engines", () => {
@@ -154,14 +145,6 @@ describe("detect-env", () => {
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "pnpm", version: "latest" });
       expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@latest");
-    });
-
-    it("should check fallback lockfiles in order: yarn.lock", () => {
-      vi.mocked(fs.existsSync).mockImplementation((path) => path === "yarn.lock");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "yarn", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found yarn.lock, using yarn@latest");
     });
 
     it("should check fallback lockfiles in order: package-lock.json", () => {

@@ -44,7 +44,7 @@ export function detectPackageManager(): PackageManager {
       }
 
       if (pkg.engines) {
-        for (const pm of ["pnpm", "yarn", "npm", "bun"]) {
+        for (const pm of ["pnpm", "npm", "bun"]) {
           if (pkg.engines[pm]) {
             core.info(`Found ${pm} in package.json engines: ${pkg.engines[pm]}`);
             return { name: pm, version: pkg.engines[pm] };
@@ -56,10 +56,6 @@ export function detectPackageManager(): PackageManager {
     if (fs.existsSync("pnpm-lock.yaml")) {
       core.info("Found pnpm-lock.yaml, using pnpm@latest");
       return { name: "pnpm", version: "latest" };
-    }
-    if (fs.existsSync("yarn.lock")) {
-      core.info("Found yarn.lock, using yarn@latest");
-      return { name: "yarn", version: "latest" };
     }
     if (fs.existsSync("package-lock.json")) {
       core.info("Found package-lock.json, using npm@latest");

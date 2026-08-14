@@ -2,3 +2,4 @@ packages:
   - "."
 allowBuilds:
   esbuild: false
+minimumReleaseAge: 0

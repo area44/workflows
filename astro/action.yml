@@ -54,7 +54,6 @@ runs:
         cache: ${{ steps.detect_env.outputs.package-manager }}
         cache-dependency-path: |
           **/package-lock.json
-          **/yarn.lock
 
     - name: Install dependencies
       shell: bash
@@ -69,9 +68,6 @@ runs:
             ;;
           bun)
             bun install --frozen-lockfile
-            ;;
-          yarn)
-            yarn install --frozen-lockfile
             ;;
           npm)
             if [ -f "package-lock.json" ]; then
