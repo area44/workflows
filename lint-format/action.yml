@@ -47,7 +47,6 @@ runs:
         cache: ${{ steps.detect_env.outputs.package-manager }}
         cache-dependency-path: |
           **/package-lock.json
-          **/yarn.lock
 
     - name: Install dependencies
       shell: bash
@@ -62,9 +61,6 @@ runs:
             ;;
           bun)
             bun install
-            ;;
-          yarn)
-            yarn install
             ;;
           npm)
             npm install
