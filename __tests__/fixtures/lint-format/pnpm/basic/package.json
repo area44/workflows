@@ -1,0 +1,10 @@
+{
+  "name": "astro-pnpm-basic",
+  "scripts": {
+    "build": "astro build"
+  },
+  "dependencies": {
+    "astro": "^7.0.0"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

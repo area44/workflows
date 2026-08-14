@@ -30,8 +30,6 @@ function executeScripts(scripts: Record<string, string>, pm: string): void {
     core.info("Detected lint/format scripts: fmt, lint");
     runner("fmt");
     runner("lint");
-  } else if (runner("lint") || runner("format") || runner("fmt")) {
-    // Already executed via runner call
   } else {
     core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
   }
