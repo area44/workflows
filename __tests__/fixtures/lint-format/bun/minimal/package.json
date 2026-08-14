@@ -1,0 +1,10 @@
+{
+  "name": "lint-format-bun-minimal",
+  "scripts": {
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
+  },
+  "dependencies": {
+    "typescript": "^5.0.0"
+  }
+}

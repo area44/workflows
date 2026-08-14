@@ -7,6 +7,8 @@ const ignorePatterns = [
   "**/build",
   "**/dist",
   "**/out",
+  "**/tests",
+  "**/__tests__",
   "**/.github",
   "**/.next",
   "**/.astro",
@@ -57,9 +59,6 @@ export default defineConfig({
   },
   pack: ["detect-env", "run-scripts"].map((name) => ({
     entry: { [name]: `src/${name}.ts` },
-    banner: {
-      js: "/* eslint-disable */",
-    },
     outDir: "dist",
     format: "esm",
     minify: true,

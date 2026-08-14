@@ -1,0 +1,10 @@
+{
+  "name": "vite-npm-basic",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "vite": "^8.2.1"
+  },
+  "packageManager": "npm@11.19.0"
+}

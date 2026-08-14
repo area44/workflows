@@ -1,0 +1,10 @@
+{
+  "name": "vite-plus-pnpm-basic",
+  "scripts": {
+    "build": "vp build"
+  },
+  "dependencies": {
+    "vite-plus": "^0.2.9"
+  },
+  "packageManager": "pnpm@11.21.0"
+}

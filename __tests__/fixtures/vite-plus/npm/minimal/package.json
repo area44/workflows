@@ -1,0 +1,9 @@
+{
+  "name": "vite-plus-npm-minimal",
+  "scripts": {
+    "build": "vp build"
+  },
+  "dependencies": {
+    "vite-plus": "^0.2.9"
+  }
+}
