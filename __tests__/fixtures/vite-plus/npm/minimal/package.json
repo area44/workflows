@@ -1,9 +1,9 @@
 {
-  "name": "astro-npm-minimal",
+  "name": "vite-plus-npm-minimal",
   "scripts": {
-    "build": "astro build"
+    "build": "vp build"
   },
   "dependencies": {
-    "astro": "^7.0.0"
+    "vite-plus": "^0.2.9"
   }
 }

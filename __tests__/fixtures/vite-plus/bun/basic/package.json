@@ -1,9 +1,9 @@
 {
-  "name": "astro-bun-basic",
+  "name": "vite-plus-bun-basic",
   "scripts": {
-    "build": "astro build"
+    "build": "vp build"
   },
   "dependencies": {
-    "astro": "^7.0.0"
+    "vite-plus": "^0.2.9"
   }
 }

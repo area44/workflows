@@ -8,21 +8,23 @@ on:
 jobs:
   test-astro:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pm: [npm, pnpm, bun]
+        type: [basic, minimal]
+      fail-fast: false
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22.13.0"
 
       - name: Isolate Workspace and Setup Project via Astro Mock
         run: |
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
-          cp -r __tests__/fixtures/astro-project/* .
-          npm install
+          [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
+          [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
+          [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
+          cp -r __tests__/fixtures/astro/${{ matrix.pm }}/${{ matrix.type }}/* .
 
       - name: Test Astro Action
         uses: ./astro
@@ -34,7 +36,7 @@ jobs:
       - name: Verify Astro outputs
         run: |
           DETECTED_PM="${{ steps.astro_action.outputs.package-manager }}"
-          [[ "$DETECTED_PM" == "npm" ]] || { echo "Expected npm, got $DETECTED_PM"; false; }
+          [[ "$DETECTED_PM" == "${{ matrix.pm }}" ]] || { echo "Expected ${{ matrix.pm }}, got $DETECTED_PM"; false; }
 
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
@@ -49,10 +51,19 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json dist
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
           fi
           if [ -f package-lock.json.bak ]; then
             mv package-lock.json.bak package-lock.json
+          fi
+          if [ -f pnpm-lock.yaml.bak ]; then
+            mv pnpm-lock.yaml.bak pnpm-lock.yaml
+          fi
+          if [ -f pnpm-workspace.yaml.bak ]; then
+            mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
+          fi
+          if [ -f bun.lock.bak ]; then
+            mv bun.lock.bak bun.lock
           fi

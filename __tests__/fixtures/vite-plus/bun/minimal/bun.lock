@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "vite-plus-bun-basic",
+      "name": "vite-plus-bun-minimal",
       "dependencies": {
         "vite-plus": "^0.2.9",
       },
