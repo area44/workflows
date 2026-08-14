@@ -67,6 +67,26 @@ jobs:
             package-manager: bun
             runtime: node
             node-version: "22.13.0"
+          # 12. Lint-Format with Node (pnpm)
+          - tool: lint-format
+            package-manager: pnpm
+            runtime: node
+            node-version: "22.13.0"
+          # 13. Lint-Format with Node (npm)
+          - tool: lint-format
+            package-manager: npm
+            runtime: node
+            node-version: "no-pin"
+          # 14. Lint-Format with Node (yarn)
+          - tool: lint-format
+            package-manager: yarn
+            runtime: node
+            node-version: "no-pin"
+          # 15. Lint-Format with Bun (bun)
+          - tool: lint-format
+            package-manager: bun
+            runtime: bun
+            bun-version: "1.1.0"
 
     steps:
       - name: Checkout
@@ -128,13 +148,6 @@ jobs:
               bun install --frozen-lockfile
               ;;
           esac
-
-      - name: Test Run Scripts Runner (Integration Verification)
-        env:
-          PACKAGE_MANAGER: ${{ matrix.package-manager }}
-        run: |
-          # Assert that run-scripts runner correctly executes the mock format & lint scripts
-          node "dist/run-scripts.mjs"
 
       - name: Test Astro Action
         if: ${{ matrix.tool == 'astro' }}
@@ -209,6 +222,19 @@ jobs:
           fi
           [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
           [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
+
+      - name: Test Lint-Format Action
+        if: ${{ matrix.tool == 'lint-format' }}
+        uses: ./lint-format
+        id: lint_format_action
+        with:
+          node-version: ${{ matrix.node-version != 'no-pin' && matrix.node-version || '' }}
+
+      - name: Verify Lint-Format outputs
+        if: ${{ matrix.tool == 'lint-format' }}
+        run: |
+          DETECTED_PM="${{ steps.lint_format_action.outputs.package-manager }}"
+          [[ "$DETECTED_PM" == "${{ matrix.package-manager }}" ]] || { echo "Expected ${{ matrix.package-manager }}, got $DETECTED_PM"; false; }
 
       - name: Restore Workspace Root
         if: always()
