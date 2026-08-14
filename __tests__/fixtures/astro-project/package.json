@@ -1,0 +1,11 @@
+{
+  "name": "mock-astro-project",
+  "scripts": {
+    "build": "mkdir -p dist && touch dist/index.html",
+    "lint": "echo astro linting...",
+    "format": "echo astro formatting..."
+  },
+  "dependencies": {
+    "astro": "^4.0.0"
+  }
+}
