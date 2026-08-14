@@ -25,7 +25,7 @@ jobs:
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
           cp -r __tests__/fixtures/vite-project/* .
-          pnpm install --frozen-lockfile
+          pnpm install --no-frozen-lockfile
 
       - name: Test Vite Action
         uses: ./vite
