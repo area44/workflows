@@ -31,7 +31,6 @@ runs:
         version: ${{ steps.detect_env.outputs.package-manager-version }}
         runtime: node@${{ startsWith(inputs.node-version || steps.detect_env.outputs.node-version, 'lts') && 'lts' || (inputs.node-version || steps.detect_env.outputs.node-version) }}
         install: false
-        cache: true
 
     - name: Setup Bun
       if: ${{ steps.detect_env.outputs.package-manager == 'bun' }}
@@ -44,31 +43,6 @@ runs:
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
-        cache: ${{ steps.detect_env.outputs.package-manager }}
-        cache-dependency-path: |
-          **/package-lock.json
-
-    - name: Install dependencies
-      shell: bash
-      env:
-        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        PM="${PACKAGE_MANAGER:-npm}"
-        echo "Installing dependencies with $PM"
-        case "$PM" in
-          pnpm)
-            pnpm install --no-frozen-lockfile
-            ;;
-          bun)
-            bun install
-            ;;
-          npm)
-            npm install
-            ;;
-          *)
-            "$PM" install
-            ;;
-        esac
 
     - name: Run lint/format scripts
       shell: bash
