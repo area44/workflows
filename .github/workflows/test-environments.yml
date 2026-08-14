@@ -111,7 +111,7 @@ jobs:
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
 
           # Copy mock project structure from committed fixtures folder to workspace root
-          cp -r fixtures/${{ matrix.package-manager }}-project/* .
+          cp -r __tests__/fixtures/${{ matrix.package-manager }}-project/* .
 
           # Ensure the package manager runs install successfully and touch standard lockfile on completion
           case "${{ matrix.package-manager }}" in
@@ -119,7 +119,7 @@ jobs:
               npm ci
               ;;
             pnpm)
-              pnpm install --no-frozen-lockfile
+              pnpm install --frozen-lockfile
               ;;
             yarn)
               yarn install --frozen-lockfile
