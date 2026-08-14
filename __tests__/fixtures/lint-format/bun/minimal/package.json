@@ -1,9 +1,10 @@
 {
-  "name": "astro-bun-minimal",
+  "name": "lint-format-bun-minimal",
   "scripts": {
-    "build": "astro build"
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
   },
   "dependencies": {
-    "astro": "^7.0.0"
+    "typescript": "^5.0.0"
   }
 }

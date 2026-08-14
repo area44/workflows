@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "lint-format-bun-basic",
+      "name": "lint-format-bun-minimal",
       "dependencies": {
         "typescript": "^5.0.0",
       },
