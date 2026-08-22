@@ -26,7 +26,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Detect enviroment
+    - name: Detect environment
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
@@ -61,7 +61,6 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
-        echo "Installing dependencies with $PM"
         case "$PM" in
           pnpm)
             pnpm install --frozen-lockfile

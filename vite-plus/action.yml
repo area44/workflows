@@ -29,7 +29,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Detect enviroment
+    - name: Detect environment
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
