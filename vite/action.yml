@@ -88,10 +88,8 @@ runs:
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         if [[ -n "$BUILD_COMMAND" ]]; then
-          echo "Executing custom build command: $BUILD_COMMAND"
           eval "$BUILD_COMMAND"
         else
-          echo "Building site using $PACKAGE_MANAGER"
           "$PACKAGE_MANAGER" run build
         fi
 

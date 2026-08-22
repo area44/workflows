@@ -75,7 +75,6 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
-        echo "Running lint and format scripts"
         if [ "${{ steps.detect_env.outputs.package-manager }}" = "bun" ]; then
           bun "${{ github.action_path }}/../dist/run-scripts.mjs"
         else
