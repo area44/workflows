@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Detect enviroment
+      - name: Detect environment
         shell: bash
         id: detect_env
         run: node "dist/detect-env.mjs"

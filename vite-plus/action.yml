@@ -29,7 +29,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Detect enviroment
+    - name: Detect environment
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
@@ -48,8 +48,10 @@ runs:
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         if [[ -n "$BUILD_COMMAND" ]]; then
+          echo "Executing custom build command: $BUILD_COMMAND"
           eval "$BUILD_COMMAND"
         else
+          echo "Building site using Vite+"
           vp build
         fi
 
