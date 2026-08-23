@@ -4,11 +4,17 @@ inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
+  bun-version:
+    description: "Optional Bun version override"
+    required: false
 
 outputs:
   node-version:
     description: "The Node.js version used"
     value: ${{ steps.detect_env.outputs.node-version }}
+  bun-version:
+    description: "The Bun version used"
+    value: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version }}
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package-manager }}
@@ -25,7 +31,7 @@ runs:
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
-      if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
+      if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' && !inputs.bun-version }}
       uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
       with:
         version: ${{ steps.detect_env.outputs.package-manager-version }}
@@ -34,13 +40,13 @@ runs:
         cache: true
 
     - name: Setup Bun
-      if: ${{ steps.detect_env.outputs.package-manager == 'bun' }}
+      if: ${{ steps.detect_env.outputs.package-manager == 'bun' || inputs.bun-version }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
-        bun-version: ${{ steps.detect_env.outputs.package-manager-version }}
+        bun-version: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version || steps.detect_env.outputs.package-manager-version }}
 
     - name: Setup Node.js
-      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' && steps.detect_env.outputs.package-manager != 'bun' }}
+      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' && steps.detect_env.outputs.package-manager != 'bun' && !inputs.bun-version }}
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
@@ -52,8 +58,12 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
+        BUN_VERSION: ${{ inputs.bun-version }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
+        if [ -n "$BUN_VERSION" ]; then
+          PM="bun"
+        fi
         case "$PM" in
           pnpm)
             pnpm install --no-frozen-lockfile
@@ -73,11 +83,12 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
+        BUN_VERSION: ${{ inputs.bun-version }}
       run: |
-        if [ "${{ steps.detect_env.outputs.package-manager }}" = "bun" ]; then
-          bun "${{ github.action_path }}/../dist/run-scripts.mjs"
+        if [ "${{ steps.detect_env.outputs.package-manager }}" = "bun" ] || [ -n "$BUN_VERSION" ]; then
+          bun "${{ github.action_path }}/../dist/run-lint-format.mjs"
         else
-          node "${{ github.action_path }}/../dist/run-scripts.mjs"
+          node "${{ github.action_path }}/../dist/run-lint-format.mjs"
         fi
 
     - name: Run autofix.ci

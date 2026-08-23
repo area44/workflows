@@ -8,6 +8,9 @@ inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
+  bun-version:
+    description: "Optional Bun version override"
+    required: false
   build-command:
     description: "Optional build command override"
     required: false
@@ -16,6 +19,9 @@ outputs:
   node-version:
     description: "The Node.js version used"
     value: ${{ steps.detect_env.outputs.node-version }}
+  bun-version:
+    description: "The Bun version used"
+    value: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version }}
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package-manager }}
@@ -39,6 +45,7 @@ runs:
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
         node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
+        bun-version: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version }}
         cache: true
         run-install: true
 

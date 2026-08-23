@@ -6,7 +6,7 @@ export interface PackageManager {
   version: string;
 }
 
-export function detectNodeVersion(): string {
+export function detectNodeVersion(pmName?: string): string {
   try {
     if (fs.existsSync(".nvmrc")) {
       const version = fs.readFileSync(".nvmrc", "utf8").trim();
@@ -28,6 +28,9 @@ export function detectNodeVersion(): string {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect Node.js version: ${message}`);
+  }
+  if (pmName === "bun") {
+    return "";
   }
   core.info("Node.js version not specified, using lts/*");
   return "lts/*";
@@ -61,8 +64,8 @@ export function detectPackageManager(): PackageManager {
       core.info("Found package-lock.json, using npm@latest");
       return { name: "npm", version: "latest" };
     }
-    if (fs.existsSync("bun.lock")) {
-      core.info("Found bun.lock, using bun@latest");
+    if (fs.existsSync("bun.lock") || fs.existsSync("bun.lockb")) {
+      core.info("Found bun lockfile, using bun@latest");
       return { name: "bun", version: "latest" };
     }
   } catch (error) {
@@ -71,6 +74,23 @@ export function detectPackageManager(): PackageManager {
   }
   core.info("Package manager not specified, using npm@latest");
   return { name: "npm", version: "latest" };
+}
+
+export function detectBunVersion(pm: PackageManager): string {
+  if (pm.name === "bun") {
+    return pm.version;
+  }
+  try {
+    if (fs.existsSync("package.json")) {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      if (pkg.engines?.bun) {
+        return pkg.engines.bun;
+      }
+    }
+  } catch {
+    // Ignore detection errors
+  }
+  return "";
 }
 
 export function setSiteVariables(): void {
@@ -97,16 +117,22 @@ export function setSiteVariables(): void {
   }
 }
 
-export function writeOutput(nodeVersion: string, pm: PackageManager): void {
+export function writeOutput(
+  nodeVersion: string,
+  pm: PackageManager,
+  bunVersion: string = "",
+): void {
   core.setOutput("node-version", nodeVersion);
+  core.setOutput("bun-version", bunVersion);
   core.setOutput("package-manager", pm.name);
   core.setOutput("package-manager-version", pm.version);
 }
 
 export function run(): void {
-  const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
-  writeOutput(nodeVersion, pm);
+  const nodeVersion = detectNodeVersion(pm.name);
+  const bunVersion = detectBunVersion(pm);
+  writeOutput(nodeVersion, pm, bunVersion);
   setSiteVariables();
 }
 
