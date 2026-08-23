@@ -6,7 +6,7 @@ export interface PackageManager {
   version: string;
 }
 
-export function detectNodeVersion(): string {
+export function detectNodeVersion(pmName?: string, bunVersion?: string): string {
   try {
     if (fs.existsSync(".nvmrc")) {
       const version = fs.readFileSync(".nvmrc", "utf8").trim();
@@ -28,6 +28,9 @@ export function detectNodeVersion(): string {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect Node.js version: ${message}`);
+  }
+  if (pmName === "bun" || Boolean(bunVersion)) {
+    return "";
   }
   core.info("Node.js version not specified, using lts/*");
   return "lts/*";
@@ -73,6 +76,30 @@ export function detectPackageManager(): PackageManager {
   return { name: "npm", version: "latest" };
 }
 
+export function detectBunVersion(pm: PackageManager): string {
+  if (pm.name === "bun") {
+    return pm.version;
+  }
+  try {
+    if (fs.existsSync("package.json")) {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      if (pkg.engines?.bun) {
+        return pkg.engines.bun;
+      }
+    }
+  } catch {
+    // Ignore detection errors
+  }
+  return "";
+}
+
+export function detectRuntime(pm: PackageManager, bunVersion: string): "bun" | "node" {
+  if (pm.name === "bun" || Boolean(bunVersion)) {
+    return "bun";
+  }
+  return "node";
+}
+
 export function setSiteVariables(): void {
   const actionPath = process.env.GITHUB_ACTION_PATH || "";
   const actionName = actionPath.split("/").pop() || "";
@@ -97,16 +124,25 @@ export function setSiteVariables(): void {
   }
 }
 
-export function writeOutput(nodeVersion: string, pm: PackageManager): void {
+export function writeOutput(
+  nodeVersion: string,
+  pm: PackageManager,
+  bunVersion: string = "",
+  runtime: "bun" | "node" = "node",
+): void {
   core.setOutput("node-version", nodeVersion);
+  core.setOutput("bun-version", bunVersion);
   core.setOutput("package-manager", pm.name);
   core.setOutput("package-manager-version", pm.version);
+  core.setOutput("runtime", runtime);
 }
 
 export function run(): void {
-  const nodeVersion = detectNodeVersion();
   const pm = detectPackageManager();
-  writeOutput(nodeVersion, pm);
+  const bunVersion = detectBunVersion(pm);
+  const nodeVersion = detectNodeVersion(pm.name, bunVersion);
+  const runtime = detectRuntime(pm, bunVersion);
+  writeOutput(nodeVersion, pm, bunVersion, runtime);
   setSiteVariables();
 }
 

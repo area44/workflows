@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  detectBunVersion,
   detectNodeVersion,
   detectPackageManager,
   run,
@@ -64,14 +65,21 @@ describe("detect-env", () => {
         action: "astro",
         pm: "bun",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "",
         expectedPm: { name: "bun", version: "latest" },
+      },
+      {
+        action: "astro",
+        pm: "pnpm-bun",
+        type: "basic",
+        expectedNode: "",
+        expectedPm: { name: "pnpm", version: "11.21.0" },
       },
       {
         action: "astro",
         pm: "bun",
         type: "minimal",
-        expectedNode: "lts/*",
+        expectedNode: "",
         expectedPm: { name: "bun", version: "latest" },
       },
       {
@@ -110,8 +118,9 @@ describe("detect-env", () => {
         const fixturePath = path.join(fixturesDir, action, pm, type);
         process.chdir(fixturePath);
 
-        const nodeVer = detectNodeVersion();
         const pkgManager = detectPackageManager();
+        const bunVer = detectBunVersion(pkgManager);
+        const nodeVer = detectNodeVersion(pkgManager.name, bunVer);
 
         expect(nodeVer).toBe(expectedNode);
         expect(pkgManager).toEqual(expectedPm);
@@ -148,21 +157,29 @@ describe("detect-env", () => {
       );
     });
 
-    it("should fall back to lts/* if package.json exists but engines.node is missing", () => {
+    it("should return empty string and not log recommendation if package manager is bun and no node config exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
-      expect(detectNodeVersion()).toBe("lts/*");
+      expect(detectNodeVersion("bun")).toBe("");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should fall back to lts/* if package.json exists but engines.node is missing for non-bun package manager", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
+
+      expect(detectNodeVersion("npm")).toBe("lts/*");
       expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
-    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/*", () => {
+    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/* for non-bun", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("SyntaxError: Unexpected token");
       });
 
-      expect(detectNodeVersion()).toBe("lts/*");
+      expect(detectNodeVersion("npm")).toBe("lts/*");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: SyntaxError: Unexpected token",
       );
@@ -181,7 +198,7 @@ describe("detect-env", () => {
       );
     });
 
-    it("should fall back to lts/* if no node configuration files exist", () => {
+    it("should fall back to lts/* if no node configuration files exist and pm is not bun", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
       expect(detectNodeVersion()).toBe("lts/*");
@@ -293,6 +310,31 @@ describe("detect-env", () => {
     });
   });
 
+  describe("detectBunVersion unit edge cases", () => {
+    it("should return pm.version when pm.name is bun", () => {
+      const pm = { name: "bun", version: "1.1.20" };
+      expect(detectBunVersion(pm)).toBe("1.1.20");
+    });
+
+    it("should detect engines.bun from package.json if pm.name is not bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
+      );
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe(">=1.0.0");
+    });
+
+    it("should return empty string if pm is not bun and package.json does not specify engines.bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("");
+    });
+  });
+
   describe("setSiteVariables", () => {
     it("should set SITE and BASE variables for a standard repository in the astro action", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -379,12 +421,14 @@ describe("detect-env", () => {
   });
 
   describe("writeOutput", () => {
-    it("should output node-version and package manager details correctly", () => {
-      writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" });
+    it("should output node-version, bun-version, package manager, and runtime details correctly", () => {
+      writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "", "node");
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
     });
   });
 
@@ -400,10 +444,46 @@ describe("detect-env", () => {
       run();
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "24.19.0");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.19.0");
       expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/my-site/");
+    });
+
+    it("should detect bun and omit node recommendation for bun project fixture", () => {
+      const fixturePath = path.join(fixturesDir, "astro/bun/basic");
+      process.chdir(fixturePath);
+
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_REPOSITORY = "owner/my-bun-site";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+
+      run();
+
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should detect pnpm package manager and bun engine version for pnpm-bun fixture", () => {
+      const fixturePath = path.join(fixturesDir, "astro/pnpm-bun/basic");
+      process.chdir(fixturePath);
+
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_REPOSITORY = "owner/my-pnpm-bun-site";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+
+      run();
+
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "bun");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
   });
 });

@@ -8,6 +8,9 @@ inputs:
   node-version:
     description: "Optional Node.js version override"
     required: false
+  bun-version:
+    description: "Optional Bun version override"
+    required: false
   build-command:
     description: "Optional build command override"
     required: false
@@ -16,12 +19,18 @@ outputs:
   node-version:
     description: "The Node.js version used"
     value: ${{ steps.detect_env.outputs.node-version }}
+  bun-version:
+    description: "The Bun version used"
+    value: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version }}
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package-manager }}
   package-manager-version:
     description: "The version of the package manager used"
     value: ${{ steps.detect_env.outputs.package-manager-version }}
+  runtime:
+    description: "The runtime used (node or bun)"
+    value: ${{ inputs.bun-version && 'bun' || steps.detect_env.outputs.runtime }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.vp-version }}
@@ -33,6 +42,12 @@ runs:
       shell: bash
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
+
+    - name: Setup Bun
+      if: ${{ inputs.bun-version || steps.detect_env.outputs.runtime == 'bun' }}
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version || steps.detect_env.outputs.package-manager-version }}
 
     - name: Setup Vite+
       id: setup_vp
