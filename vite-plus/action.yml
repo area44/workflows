@@ -43,6 +43,12 @@ runs:
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
+    - name: Setup Bun
+      if: ${{ inputs.bun-version || steps.detect_env.outputs.runtime == 'bun' }}
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version || steps.detect_env.outputs.package-manager-version }}
+
     - name: Setup Vite+
       id: setup_vp
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1

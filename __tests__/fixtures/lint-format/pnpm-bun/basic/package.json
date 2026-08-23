@@ -1,8 +1,8 @@
 {
   "name": "lint-format-pnpm-bun-basic",
   "scripts": {
-    "format": "echo format",
-    "lint": "echo lint"
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
   },
   "packageManager": "pnpm@11.21.0",
   "engines": {

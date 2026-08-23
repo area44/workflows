@@ -3,6 +3,9 @@
   "scripts": {
     "build": "vp build"
   },
+  "dependencies": {
+    "vite-plus": "^0.2.9"
+  },
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "bun": ">=1.0.0"
