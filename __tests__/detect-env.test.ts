@@ -70,6 +70,13 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        pm: "pnpm-bun",
+        type: "basic",
+        expectedNode: "",
+        expectedPm: { name: "pnpm", version: "11.21.0" },
+      },
+      {
+        action: "astro",
         pm: "bun",
         type: "minimal",
         expectedNode: "",
@@ -112,7 +119,8 @@ describe("detect-env", () => {
         process.chdir(fixturePath);
 
         const pkgManager = detectPackageManager();
-        const nodeVer = detectNodeVersion(pkgManager.name);
+        const bunVer = detectBunVersion(pkgManager);
+        const nodeVer = detectNodeVersion(pkgManager.name, bunVer);
 
         expect(nodeVer).toBe(expectedNode);
         expect(pkgManager).toEqual(expectedPm);
@@ -456,6 +464,23 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should detect pnpm package manager and bun engine version for pnpm-bun fixture", () => {
+      const fixturePath = path.join(fixturesDir, "astro/pnpm-bun/basic");
+      process.chdir(fixturePath);
+
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_REPOSITORY = "owner/my-pnpm-bun-site";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+
+      run();
+
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
   });

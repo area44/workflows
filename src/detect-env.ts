@@ -6,7 +6,7 @@ export interface PackageManager {
   version: string;
 }
 
-export function detectNodeVersion(pmName?: string): string {
+export function detectNodeVersion(pmName?: string, bunVersion?: string): string {
   try {
     if (fs.existsSync(".nvmrc")) {
       const version = fs.readFileSync(".nvmrc", "utf8").trim();
@@ -29,7 +29,7 @@ export function detectNodeVersion(pmName?: string): string {
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect Node.js version: ${message}`);
   }
-  if (pmName === "bun") {
+  if (pmName === "bun" || Boolean(bunVersion)) {
     return "";
   }
   core.info("Node.js version not specified, using lts/*");
@@ -130,8 +130,8 @@ export function writeOutput(
 
 export function run(): void {
   const pm = detectPackageManager();
-  const nodeVersion = detectNodeVersion(pm.name);
   const bunVersion = detectBunVersion(pm);
+  const nodeVersion = detectNodeVersion(pm.name, bunVersion);
   writeOutput(nodeVersion, pm, bunVersion);
   setSiteVariables();
 }
