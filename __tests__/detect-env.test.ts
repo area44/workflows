@@ -262,15 +262,7 @@ describe("detect-env", () => {
 
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
-    });
-
-    it("should check fallback lockfiles in order: bun.lockb", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lockb");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
+      expect(core.info).toHaveBeenCalledWith("Found bun.lock, using bun@latest");
     });
 
     it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
