@@ -58,7 +58,6 @@ runs:
         bun-version: ${{ steps.detect_env.outputs.bun-version || 'latest' }}
 
     - name: Setup Vite+
-      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' }}
       id: setup_vp
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
