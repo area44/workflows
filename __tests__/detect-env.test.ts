@@ -421,13 +421,14 @@ describe("detect-env", () => {
   });
 
   describe("writeOutput", () => {
-    it("should output node-version, bun-version, and package manager details correctly", () => {
-      writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "");
+    it("should output node-version, bun-version, package manager, and runtime details correctly", () => {
+      writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "", "node");
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
     });
   });
 
@@ -481,6 +482,7 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "bun");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
   });

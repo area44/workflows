@@ -1,0 +1,11 @@
+{
+  "name": "vite-plus-pnpm-bun-basic",
+  "scripts": {
+    "build": "vp build"
+  },
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "type": "module"
+}

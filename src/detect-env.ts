@@ -93,6 +93,13 @@ export function detectBunVersion(pm: PackageManager): string {
   return "";
 }
 
+export function detectRuntime(pm: PackageManager, bunVersion: string): "bun" | "node" {
+  if (pm.name === "bun" || Boolean(bunVersion)) {
+    return "bun";
+  }
+  return "node";
+}
+
 export function setSiteVariables(): void {
   const actionPath = process.env.GITHUB_ACTION_PATH || "";
   const actionName = actionPath.split("/").pop() || "";
@@ -121,18 +128,21 @@ export function writeOutput(
   nodeVersion: string,
   pm: PackageManager,
   bunVersion: string = "",
+  runtime: "bun" | "node" = "node",
 ): void {
   core.setOutput("node-version", nodeVersion);
   core.setOutput("bun-version", bunVersion);
   core.setOutput("package-manager", pm.name);
   core.setOutput("package-manager-version", pm.version);
+  core.setOutput("runtime", runtime);
 }
 
 export function run(): void {
   const pm = detectPackageManager();
   const bunVersion = detectBunVersion(pm);
   const nodeVersion = detectNodeVersion(pm.name, bunVersion);
-  writeOutput(nodeVersion, pm, bunVersion);
+  const runtime = detectRuntime(pm, bunVersion);
+  writeOutput(nodeVersion, pm, bunVersion, runtime);
   setSiteVariables();
 }
 

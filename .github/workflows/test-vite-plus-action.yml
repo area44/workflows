@@ -10,8 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pm: [npm, pnpm, bun]
+        pm: [npm, pnpm, bun, pnpm-bun]
         type: [basic, minimal]
+        exclude:
+          - pm: pnpm-bun
+            type: minimal
       fail-fast: false
     steps:
       - name: Checkout
@@ -33,7 +36,11 @@ jobs:
       - name: Verify Vite-Plus outputs
         run: |
           DETECTED_PM="${{ steps.vite_plus_action.outputs.package-manager }}"
-          [[ "$DETECTED_PM" == "${{ matrix.pm }}" ]] || { echo "Expected ${{ matrix.pm }}, got $DETECTED_PM"; false; }
+          EXPECTED_PM="${{ matrix.pm }}"
+          if [[ "$EXPECTED_PM" == "pnpm-bun" ]]; then
+            EXPECTED_PM="pnpm"
+          fi
+          [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
 
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"

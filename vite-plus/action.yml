@@ -28,6 +28,9 @@ outputs:
   package-manager-version:
     description: "The version of the package manager used"
     value: ${{ steps.detect_env.outputs.package-manager-version }}
+  runtime:
+    description: "The runtime used (node or bun)"
+    value: ${{ inputs.bun-version && 'bun' || steps.detect_env.outputs.runtime }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.vp-version }}
