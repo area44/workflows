@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   detectBunVersion,
+  detectEnv,
   detectNodeVersion,
   detectPackageManager,
+  detectRuntime,
+  parseRuntimeInput,
   run,
   setSiteVariables,
   writeOutput,
@@ -31,6 +34,46 @@ describe("detect-env", () => {
     vi.restoreAllMocks();
   });
 
+  describe("parseRuntimeInput", () => {
+    it("should parse node@24 format", () => {
+      const result = parseRuntimeInput("node@24");
+      expect(result).toEqual({
+        specifiedRuntime: "node",
+        nodeVersion: "24",
+        bunVersion: undefined,
+      });
+    });
+
+    it("should parse bun@1.4 format", () => {
+      const result = parseRuntimeInput("bun@1.4");
+      expect(result).toEqual({
+        specifiedRuntime: "bun",
+        nodeVersion: undefined,
+        bunVersion: "1.4",
+      });
+    });
+
+    it("should parse node@24,bun@1.4 format", () => {
+      const result = parseRuntimeInput("node@24,bun@1.4");
+      expect(result).toEqual({
+        specifiedRuntime: "both",
+        nodeVersion: "24",
+        bunVersion: "1.4",
+      });
+    });
+
+    it("should parse both keyword", () => {
+      const result = parseRuntimeInput("both");
+      expect(result).toEqual({
+        specifiedRuntime: "both",
+      });
+    });
+
+    it("should return empty object for empty input", () => {
+      expect(parseRuntimeInput("")).toEqual({});
+    });
+  });
+
   describe("Fixture-based tests", () => {
     const cases = [
       {
@@ -38,94 +81,145 @@ describe("detect-env", () => {
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
+        expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
+        expectedRuntime: "node",
       },
       {
         action: "astro",
         pm: "npm",
         type: "minimal",
         expectedNode: "lts/*",
+        expectedBun: "",
         expectedPm: { name: "npm", version: "latest" },
+        expectedRuntime: "node",
       },
       {
         action: "astro",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
+        expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedRuntime: "node",
       },
       {
         action: "astro",
         pm: "pnpm",
         type: "minimal",
         expectedNode: "lts/*",
+        expectedBun: "",
         expectedPm: { name: "pnpm", version: "latest" },
+        expectedRuntime: "node",
       },
       {
         action: "astro",
         pm: "bun",
         type: "basic",
         expectedNode: "",
+        expectedBun: "latest",
         expectedPm: { name: "bun", version: "latest" },
+        expectedRuntime: "bun",
       },
       {
         action: "astro",
         pm: "pnpm-bun",
         type: "basic",
-        expectedNode: "",
+        expectedNode: "lts/*",
+        expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedRuntime: "both",
       },
       {
         action: "astro",
         pm: "bun",
         type: "minimal",
         expectedNode: "",
+        expectedBun: "latest",
         expectedPm: { name: "bun", version: "latest" },
+        expectedRuntime: "bun",
       },
       {
         action: "lint-format",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
+        expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
+        expectedRuntime: "node",
       },
       {
         action: "lint-format",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
+        expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedRuntime: "node",
       },
       {
         action: "vite",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
+        expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
+        expectedRuntime: "node",
       },
       {
         action: "vite-plus",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
+        expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedRuntime: "node",
       },
     ];
 
     it.each(cases)(
       "should detect correct environment for fixture $action/$pm/$type",
-      ({ action, pm, type, expectedNode, expectedPm }) => {
+      ({ action, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
         const fixturePath = path.join(fixturesDir, action, pm, type);
         process.chdir(fixturePath);
 
-        const pkgManager = detectPackageManager();
-        const bunVer = detectBunVersion(pkgManager);
-        const nodeVer = detectNodeVersion(pkgManager.name, bunVer);
+        const env = detectEnv();
 
-        expect(nodeVer).toBe(expectedNode);
-        expect(pkgManager).toEqual(expectedPm);
+        expect(env.nodeVersion).toBe(expectedNode);
+        expect(env.bunVersion).toBe(expectedBun);
+        expect(env.pm).toEqual(expectedPm);
+        expect(env.runtime).toBe(expectedRuntime);
       },
     );
+  });
+
+  describe("detectEnv unit edge cases", () => {
+    it("should respect explicit runtime input node@22", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("node@22");
+
+      expect(env.runtime).toBe("node");
+      expect(env.nodeVersion).toBe("22");
+      expect(env.bunVersion).toBe("");
+    });
+
+    it("should respect explicit runtime input bun@1.4", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("bun@1.4");
+
+      expect(env.runtime).toBe("bun");
+      expect(env.nodeVersion).toBe("");
+      expect(env.bunVersion).toBe("1.4");
+    });
+
+    it("should respect explicit runtime input node@22,bun@1.4", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("node@22,bun@1.4");
+
+      expect(env.runtime).toBe("both");
+      expect(env.nodeVersion).toBe("22");
+      expect(env.bunVersion).toBe("1.4");
+    });
   });
 
   describe("detectNodeVersion unit edge cases", () => {
@@ -270,7 +364,7 @@ describe("detect-env", () => {
 
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun.lock, using bun@latest");
+      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
     });
 
     it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
@@ -332,6 +426,26 @@ describe("detect-env", () => {
 
       const pm = { name: "npm", version: "10.0.0" };
       expect(detectBunVersion(pm)).toBe("");
+    });
+  });
+
+  describe("detectRuntime", () => {
+    it("should detect node when only node signals are present", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
+      const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
+      expect(runtime).toBe("node");
+    });
+
+    it("should detect bun when only bun signals are present", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
+      expect(runtime).toBe("bun");
+    });
+
+    it("should detect both when node and bun signals are present", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
+      const runtime = detectRuntime({ name: "npm", version: "latest" }, ">=1.0.0");
+      expect(runtime).toBe("both");
     });
   });
 
@@ -478,12 +592,11 @@ describe("detect-env", () => {
 
       run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "lts/*");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "bun");
-      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "both");
     });
   });
 });

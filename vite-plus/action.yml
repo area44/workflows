@@ -5,11 +5,8 @@ inputs:
     description: "The directory where the built site is located"
     required: false
     default: "dist"
-  node-version:
-    description: "Optional Node.js version override"
-    required: false
-  bun-version:
-    description: "Optional Bun version override"
+  runtime:
+    description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
     required: false
   build-command:
     description: "Optional build command override"
@@ -21,7 +18,7 @@ outputs:
     value: ${{ steps.detect_env.outputs.node-version }}
   bun-version:
     description: "The Bun version used"
-    value: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version }}
+    value: ${{ steps.detect_env.outputs.bun-version }}
   package-manager:
     description: "The package manager used"
     value: ${{ steps.detect_env.outputs.package-manager }}
@@ -29,8 +26,8 @@ outputs:
     description: "The version of the package manager used"
     value: ${{ steps.detect_env.outputs.package-manager-version }}
   runtime:
-    description: "The runtime used (node or bun)"
-    value: ${{ inputs.bun-version && 'bun' || steps.detect_env.outputs.runtime }}
+    description: "The runtime used (node, bun, or both)"
+    value: ${{ steps.detect_env.outputs.runtime }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.vp-version }}
@@ -41,19 +38,31 @@ runs:
     - name: Detect environment
       shell: bash
       id: detect_env
+      env:
+        INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
+    - name: Setup PNPM
+      if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
+      uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
+      with:
+        version: ${{ steps.detect_env.outputs.package-manager-version }}
+        runtime: ${{ (steps.detect_env.outputs.runtime == 'bun' || steps.detect_env.outputs.runtime == 'both') && format('bun@{0}', steps.detect_env.outputs.bun-version || 'latest') || format('node@{0}', steps.detect_env.outputs.node-version && !startsWith(steps.detect_env.outputs.node-version, 'lts') && steps.detect_env.outputs.node-version || 'lts') }}
+        install: false
+        cache: true
+
     - name: Setup Bun
-      if: ${{ inputs.bun-version || steps.detect_env.outputs.runtime == 'bun' }}
+      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' && (steps.detect_env.outputs.runtime == 'bun' || steps.detect_env.outputs.runtime == 'both') }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
-        bun-version: ${{ inputs.bun-version || steps.detect_env.outputs.bun-version || steps.detect_env.outputs.package-manager-version }}
+        bun-version: ${{ steps.detect_env.outputs.bun-version || 'latest' }}
 
     - name: Setup Vite+
+      if: ${{ steps.detect_env.outputs.package-manager != 'pnpm' }}
       id: setup_vp
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
-        node-version: ${{ inputs.node-version || steps.detect_env.outputs.node-version }}
+        node-version: ${{ steps.detect_env.outputs.node-version }}
         cache: true
         run-install: true
 
