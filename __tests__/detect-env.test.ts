@@ -56,7 +56,7 @@ describe("detect-env", () => {
     it("should parse node@24,bun@1.4 format", () => {
       const result = parseRuntimeInput("node@24,bun@1.4");
       expect(result).toEqual({
-        specifiedRuntime: "both",
+        specifiedRuntime: "node",
         nodeVersion: "24",
         bunVersion: "1.4",
       });
@@ -65,7 +65,9 @@ describe("detect-env", () => {
     it("should parse both keyword", () => {
       const result = parseRuntimeInput("both");
       expect(result).toEqual({
-        specifiedRuntime: "both",
+        specifiedRuntime: undefined,
+        nodeVersion: undefined,
+        bunVersion: "latest",
       });
     });
 
@@ -128,7 +130,7 @@ describe("detect-env", () => {
         expectedNode: "lts/*",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
-        expectedRuntime: "both",
+        expectedRuntime: "node",
       },
       {
         action: "astro",
@@ -212,11 +214,11 @@ describe("detect-env", () => {
       expect(env.bunVersion).toBe("1.4");
     });
 
-    it("should respect explicit runtime input node@22,bun@1.4", () => {
+    it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
       const env = detectEnv("node@22,bun@1.4");
 
-      expect(env.runtime).toBe("both");
+      expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe("22");
       expect(env.bunVersion).toBe("1.4");
     });
@@ -405,7 +407,16 @@ describe("detect-env", () => {
   });
 
   describe("detectBunVersion unit edge cases", () => {
-    it("should return pm.version when pm.name is bun", () => {
+    it("should detect version from .bun-version if present", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".bun-version");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(" 1.1.20 \n" as any);
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("1.1.20");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.20");
+    });
+
+    it("should return pm.version when pm.name is bun and version is not latest", () => {
       const pm = { name: "bun", version: "1.1.20" };
       expect(detectBunVersion(pm)).toBe("1.1.20");
     });
@@ -420,9 +431,15 @@ describe("detect-env", () => {
       expect(detectBunVersion(pm)).toBe(">=1.0.0");
     });
 
-    it("should return empty string if pm is not bun and package.json does not specify engines.bun", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
+    it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("latest");
+    });
+
+    it("should return empty string if pm is not bun and bun is not detected", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
       const pm = { name: "npm", version: "10.0.0" };
       expect(detectBunVersion(pm)).toBe("");
@@ -430,22 +447,14 @@ describe("detect-env", () => {
   });
 
   describe("detectRuntime", () => {
-    it("should detect node when only node signals are present", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
+    it("should detect node when pm is npm", () => {
       const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
       expect(runtime).toBe("node");
     });
 
-    it("should detect bun when only bun signals are present", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    it("should detect bun when pm is bun or bunVersion is present", () => {
       const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
       expect(runtime).toBe("bun");
-    });
-
-    it("should detect both when node and bun signals are present", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
-      const runtime = detectRuntime({ name: "npm", version: "latest" }, ">=1.0.0");
-      expect(runtime).toBe("both");
     });
   });
 
@@ -596,7 +605,7 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "both");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
     });
   });
 });
