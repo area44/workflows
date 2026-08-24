@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pm: [npm, pnpm, bun, pnpm-bun]
+        pm: [npm, pnpm, bun, bun/pnpm-bun]
         type: [basic, minimal]
         exclude:
-          - pm: pnpm-bun
+          - pm: bun/pnpm-bun
             type: minimal
       fail-fast: false
     steps:
@@ -27,7 +27,11 @@ jobs:
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          cp -r __tests__/fixtures/vite/${{ matrix.pm }}/${{ matrix.type }}/* .
+          if [ "${{ matrix.pm }}" = "bun/pnpm-bun" ]; then
+            cp -r __tests__/fixtures/vite/${{ matrix.pm }}/* .
+          else
+            cp -r __tests__/fixtures/vite/${{ matrix.pm }}/${{ matrix.type }}/* .
+          fi
 
       - name: Test Vite Action
         uses: ./vite
@@ -37,7 +41,7 @@ jobs:
         run: |
           DETECTED_PM="${{ steps.vite_action.outputs.package-manager }}"
           EXPECTED_PM="${{ matrix.pm }}"
-          if [[ "$EXPECTED_PM" == "pnpm-bun" ]]; then
+          if [[ "$EXPECTED_PM" == "bun/pnpm-bun" ]]; then
             EXPECTED_PM="pnpm"
           fi
           [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }

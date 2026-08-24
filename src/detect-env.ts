@@ -13,11 +13,61 @@ export interface DetectedEnv {
   runtime: "node" | "bun";
 }
 
+function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): string | undefined {
+  if (pkg.devEngines) {
+    if (pkg.devEngines.runtime) {
+      const runtimes = Array.isArray(pkg.devEngines.runtime)
+        ? pkg.devEngines.runtime
+        : [pkg.devEngines.runtime];
+      for (const r of runtimes) {
+        if (typeof r === "string" && r.toLowerCase().startsWith(runtimeName)) {
+          const atIdx = r.indexOf("@");
+          return atIdx !== -1 ? r.slice(atIdx + 1) : "latest";
+        } else if (typeof r === "object" && r !== null && r.name === runtimeName) {
+          return r.version || "latest";
+        }
+      }
+    }
+    if (pkg.devEngines[runtimeName]) {
+      const val = pkg.devEngines[runtimeName];
+      return typeof val === "string" ? val : val.version || "latest";
+    }
+  }
+  return undefined;
+}
+
+function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
+  if (!pkg.devEngines) return undefined;
+
+  if (pkg.devEngines.packageManager) {
+    const pm = Array.isArray(pkg.devEngines.packageManager)
+      ? pkg.devEngines.packageManager[0]
+      : pkg.devEngines.packageManager;
+
+    if (typeof pm === "string") {
+      const [name, version = "latest"] = pm.split("@");
+      return { name, version };
+    } else if (typeof pm === "object" && pm !== null && pm.name) {
+      return { name: pm.name, version: pm.version || "latest" };
+    }
+  }
+
+  for (const pm of ["pnpm", "npm", "bun"]) {
+    if (pkg.devEngines[pm]) {
+      const val = pkg.devEngines[pm];
+      const version = typeof val === "string" ? val : val.version || "latest";
+      return { name: pm, version };
+    }
+  }
+
+  return undefined;
+}
+
 function hasNodeEngine(): boolean {
   try {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      return Boolean(pkg.engines?.node);
+      return getDevEngineRuntimeVersion(pkg, "node") !== undefined;
     }
   } catch {
     // Ignore detection errors
@@ -29,7 +79,7 @@ function hasBunEngine(): boolean {
   try {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      return Boolean(pkg.engines?.bun);
+      return getDevEngineRuntimeVersion(pkg, "bun") !== undefined;
     }
   } catch {
     // Ignore detection errors
@@ -51,9 +101,10 @@ export function detectNodeVersion(pmName?: string): string {
     }
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (pkg.engines?.node) {
-        core.info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
-        return pkg.engines.node;
+      const devVersion = getDevEngineRuntimeVersion(pkg, "node");
+      if (devVersion) {
+        core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
+        return devVersion;
       }
     }
   } catch (error) {
@@ -82,13 +133,12 @@ export function detectPackageManager(): PackageManager {
         return { name, version };
       }
 
-      if (pkg.engines) {
-        for (const pm of ["pnpm", "npm", "bun"]) {
-          if (pkg.engines[pm]) {
-            core.info(`Found ${pm} in package.json engines: ${pkg.engines[pm]}`);
-            return { name: pm, version: pkg.engines[pm] };
-          }
-        }
+      const devPm = getDevEnginePackageManager(pkg);
+      if (devPm) {
+        core.info(
+          `Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`,
+        );
+        return devPm;
       }
     }
 
@@ -124,9 +174,10 @@ export function detectBunVersion(pm: PackageManager): string {
     }
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (pkg.engines?.bun) {
-        core.info(`Found Bun version in package.json engines: ${pkg.engines.bun}`);
-        return pkg.engines.bun;
+      const devVersion = getDevEngineRuntimeVersion(pkg, "bun");
+      if (devVersion) {
+        core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
+        return devVersion;
       }
     }
   } catch (error) {
