@@ -28,7 +28,7 @@ runs:
     - name: Detect environment
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
+      run: bash "${{ github.action_path }}/../src/detect-env.sh"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -79,12 +79,7 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-      run: |
-        if [ "$PACKAGE_MANAGER" = "bun" ]; then
-          bun "${{ github.action_path }}/../dist/run-lint-format.mjs"
-        else
-          node "${{ github.action_path }}/../dist/run-lint-format.mjs"
-        fi
+      run: bash "${{ github.action_path }}/../src/run-lint-format.sh"
 
     - name: Run autofix.ci
       if: ${{ github.workflow == 'autofix.ci' }}

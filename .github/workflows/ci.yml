@@ -16,7 +16,7 @@ jobs:
       - name: Detect environment
         shell: bash
         id: detect_env
-        run: node "dist/detect-env.mjs"
+        run: bash "src/detect-env.sh"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -31,9 +31,6 @@ jobs:
       - name: Run Main Tests
         run: npm test
 
-      - name: Build
-        run: npm run build
-
-      - name: Verify build artifacts
+      - name: Verify shell scripts
         run: |
-          test -f dist/detect-env.mjs && test -f dist/run-lint-format.mjs
+          test -f src/detect-env.sh && test -f src/run-lint-format.sh && test -f src/site-variables.sh

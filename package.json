@@ -12,11 +12,9 @@
   "scripts": {
     "format": "vp fmt",
     "lint": "vp lint",
-    "build": "vp pack",
     "test": "vp test"
   },
   "devDependencies": {
-    "@actions/core": "^3.0.1",
     "@types/node": "^24.13.3",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@^0.2.9",

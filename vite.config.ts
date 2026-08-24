@@ -56,12 +56,6 @@ export default defineConfig({
   test: {
     globals: true,
     include: ["__tests__/**/*.test.ts"],
+    testTimeout: 15000,
   },
-  pack: ["detect-env", "run-lint-format", "site-variables"].map((name) => ({
-    entry: { [name]: `src/${name}.ts` },
-    outDir: "dist",
-    format: "esm",
-    minify: true,
-    platform: "node",
-  })),
 });
