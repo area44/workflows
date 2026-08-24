@@ -322,6 +322,7 @@ describe("detect-env", () => {
     const cases = [
       {
         action: "astro",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -331,6 +332,7 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "npm",
         type: "minimal",
         expectedNode: "lts/*",
@@ -340,6 +342,7 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
@@ -349,6 +352,7 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "pnpm",
         type: "minimal",
         expectedNode: "lts/*",
@@ -358,6 +362,7 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "bun",
         pm: "bun",
         type: "basic",
         expectedNode: "",
@@ -367,8 +372,9 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
-        pm: "bun/pnpm-bun",
-        type: "",
+        runtime: "bun",
+        pm: "pnpm",
+        type: "basic",
         expectedNode: "lts/*",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
@@ -376,6 +382,7 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "bun",
         pm: "bun",
         type: "minimal",
         expectedNode: "",
@@ -385,6 +392,7 @@ describe("detect-env", () => {
       },
       {
         action: "lint-format",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -394,6 +402,7 @@ describe("detect-env", () => {
       },
       {
         action: "lint-format",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
@@ -403,6 +412,7 @@ describe("detect-env", () => {
       },
       {
         action: "vite",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -412,6 +422,7 @@ describe("detect-env", () => {
       },
       {
         action: "vite-plus",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
         expectedNode: "lts/*",
@@ -422,9 +433,9 @@ describe("detect-env", () => {
     ];
 
     it.each(cases)(
-      "should detect correct environment for fixture $action/$pm/$type",
-      ({ action, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
-        const fixturePath = type ? path.join(fixturesDir, action, pm, type) : path.join(fixturesDir, action, pm);
+      "should detect correct environment for fixture $action/$runtime/$pm/$type",
+      ({ action, runtime: rt, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
+        const fixturePath = path.join(fixturesDir, action, rt, pm, type);
         process.chdir(fixturePath);
 
         const env = detectEnv();
@@ -451,7 +462,7 @@ describe("detect-env", () => {
 
   describe("run", () => {
     it("should coordinate environment detection and write action output on fixture project", () => {
-      const fixturePath = path.join(fixturesDir, "astro/npm/basic");
+      const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -467,7 +478,7 @@ describe("detect-env", () => {
     });
 
     it("should detect bun and omit node recommendation for bun project fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/basic");
+      const fixturePath = path.join(fixturesDir, "astro/bun/bun/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -483,8 +494,8 @@ describe("detect-env", () => {
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
-    it("should detect pnpm package manager and bun engine version for pnpm-bun fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm-bun");
+    it("should detect pnpm package manager and bun engine version for pnpm fixture in bun runtime", () => {
+      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";

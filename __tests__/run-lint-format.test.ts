@@ -27,8 +27,8 @@ describe("run-lint-format", () => {
   describe("Fixture-based test cases", () => {
     const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
 
-    it("should run format and lint scripts for lint-format/npm/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "lint-format/npm/basic");
+    it("should run format and lint scripts for lint-format/node/npm/basic fixture", () => {
+      const fixturePath = path.join(fixturesDir, "lint-format/node/npm/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "npm";
 
@@ -40,8 +40,8 @@ describe("run-lint-format", () => {
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
-    it("should run format and lint scripts using pnpm for lint-format/pnpm/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "lint-format/pnpm/basic");
+    it("should run format and lint scripts using pnpm for lint-format/node/pnpm/basic fixture", () => {
+      const fixturePath = path.join(fixturesDir, "lint-format/node/pnpm/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "pnpm";
 
@@ -53,8 +53,8 @@ describe("run-lint-format", () => {
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
-    it("should run format and lint scripts using bun for lint-format/bun/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "lint-format/bun/basic");
+    it("should run format and lint scripts using bun for lint-format/bun/bun/basic fixture", () => {
+      const fixturePath = path.join(fixturesDir, "lint-format/bun/bun/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "bun";
 

@@ -10,10 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pm: [npm, pnpm, bun, bun/pnpm-bun]
+        runtime: [node, bun]
+        pm: [npm, pnpm, bun]
         type: [basic, minimal]
         exclude:
-          - pm: bun/pnpm-bun
+          - runtime: node
+            pm: bun
+          - runtime: bun
+            pm: npm
+          - runtime: bun
+            pm: pnpm
             type: minimal
       fail-fast: false
     steps:
@@ -27,11 +33,7 @@ jobs:
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          if [ "${{ matrix.pm }}" = "bun/pnpm-bun" ]; then
-            cp -r __tests__/fixtures/vite/${{ matrix.pm }}/* .
-          else
-            cp -r __tests__/fixtures/vite/${{ matrix.pm }}/${{ matrix.type }}/* .
-          fi
+          cp -r __tests__/fixtures/vite/${{ matrix.runtime }}/${{ matrix.pm }}/${{ matrix.type }}/* .
 
       - name: Test Vite Action
         uses: ./vite
@@ -41,9 +43,6 @@ jobs:
         run: |
           DETECTED_PM="${{ steps.vite_action.outputs.package-manager }}"
           EXPECTED_PM="${{ matrix.pm }}"
-          if [[ "$EXPECTED_PM" == "bun/pnpm-bun" ]]; then
-            EXPECTED_PM="pnpm"
-          fi
           [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
 
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
