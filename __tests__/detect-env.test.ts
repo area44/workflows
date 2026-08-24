@@ -34,6 +34,136 @@ describe("detect-env", () => {
     vi.restoreAllMocks();
   });
 
+  describe("detectRuntime", () => {
+    it("should detect node when pm is npm", () => {
+      const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
+      expect(runtime).toBe("node");
+    });
+
+    it("should detect bun when pm is bun or bunVersion is present", () => {
+      const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
+      expect(runtime).toBe("bun");
+    });
+  });
+
+  describe("detectNodeVersion", () => {
+    it("should return version from .nvmrc if it exists and trim whitespace", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
+      vi.spyOn(fs, "readFileSync").mockReturnValue("  20.11.0\n" as any);
+
+      expect(detectNodeVersion()).toBe("20.11.0");
+      expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.11.0");
+    });
+
+    it("should return version from .node-version if .nvmrc does not exist and .node-version exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".node-version");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(" 22.0.0 \n" as any);
+
+      expect(detectNodeVersion()).toBe("22.0.0");
+      expect(core.info).toHaveBeenCalledWith("Found .node-version: 22.0.0");
+    });
+
+    it("should return Node.js version from package.json engines if nvmrc and node-version are missing", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { node: ">=18.0.0" } }) as any,
+      );
+
+      expect(detectNodeVersion()).toBe(">=18.0.0");
+      expect(core.info).toHaveBeenCalledWith(
+        "Found Node.js version in package.json engines: >=18.0.0",
+      );
+    });
+
+    it("should return empty string and not log recommendation if package manager is bun and no node config exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
+
+      expect(detectNodeVersion("bun")).toBe("");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should fall back to lts/* if package.json exists but engines.node is missing for non-bun package manager", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
+
+      expect(detectNodeVersion("npm")).toBe("lts/*");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/* for non-bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw new Error("SyntaxError: Unexpected token");
+      });
+
+      expect(detectNodeVersion("npm")).toBe("lts/*");
+      expect(core.warning).toHaveBeenCalledWith(
+        "Failed to detect Node.js version: SyntaxError: Unexpected token",
+      );
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+
+    it("should catch non-Error exceptions gracefully during detection", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw "Raw string error";
+      });
+
+      expect(detectNodeVersion()).toBe("lts/*");
+      expect(core.warning).toHaveBeenCalledWith(
+        "Failed to detect Node.js version: Raw string error",
+      );
+    });
+
+    it("should fall back to lts/* if no node configuration files exist and pm is not bun", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      expect(detectNodeVersion()).toBe("lts/*");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+    });
+  });
+
+  describe("detectBunVersion", () => {
+    it("should detect version from .bun-version if present", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".bun-version");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(" 1.1.20 \n" as any);
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("1.1.20");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.20");
+    });
+
+    it("should return pm.version when pm.name is bun and version is not latest", () => {
+      const pm = { name: "bun", version: "1.1.20" };
+      expect(detectBunVersion(pm)).toBe("1.1.20");
+    });
+
+    it("should detect engines.bun from package.json if pm.name is not bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
+      );
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe(">=1.0.0");
+    });
+
+    it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("latest");
+    });
+
+    it("should return empty string if pm is not bun and bun is not detected", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe("");
+    });
+  });
+
   describe("parseRuntimeInput", () => {
     it("should parse node@24 format", () => {
       const result = parseRuntimeInput("node@24");
@@ -73,6 +203,139 @@ describe("detect-env", () => {
 
     it("should return empty object for empty input", () => {
       expect(parseRuntimeInput("")).toEqual({});
+    });
+  });
+
+  describe("detectPackageManager", () => {
+    it("should detect packageManager without version in package.json and use default 'latest'", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ packageManager: "bun" }) as any);
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "bun", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
+    });
+
+    it("should detect pnpm from package.json engines if packageManager field is missing", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { pnpm: ">=8.0.0" } }) as any,
+      );
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "pnpm", version: ">=8.0.0" });
+      expect(core.info).toHaveBeenCalledWith("Found pnpm in package.json engines: >=8.0.0");
+    });
+
+    it("should detect npm from package.json engines", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { npm: "10.x" } }) as any,
+      );
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "npm", version: "10.x" });
+      expect(core.info).toHaveBeenCalledWith("Found npm in package.json engines: 10.x");
+    });
+
+    it("should detect bun from package.json engines", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
+      );
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "bun", version: ">=1.0.0" });
+      expect(core.info).toHaveBeenCalledWith("Found bun in package.json engines: >=1.0.0");
+    });
+
+    it("should check fallback lockfiles in order: pnpm-lock.yaml", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "pnpm", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@latest");
+    });
+
+    it("should check fallback lockfiles in order: package-lock.json", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package-lock.json");
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@latest");
+    });
+
+    it("should check fallback lockfiles in order: bun.lock", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "bun", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
+    });
+
+    it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+    });
+
+    it("should handle JSON parser errors or read errors gracefully and use npm fallback", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw new Error("Broken File System");
+      });
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Failed to detect package manager: Broken File System",
+      );
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+    });
+
+    it("should handle raw exceptions gracefully inside detectPackageManager", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw "Unexpected raw string error";
+      });
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Failed to detect package manager: Unexpected raw string error",
+      );
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+    });
+  });
+
+  describe("detectEnv", () => {
+    it("should respect explicit runtime input node@22", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("node@22");
+
+      expect(env.runtime).toBe("node");
+      expect(env.nodeVersion).toBe("22");
+      expect(env.bunVersion).toBe("");
+    });
+
+    it("should respect explicit runtime input bun@1.4", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("bun@1.4");
+
+      expect(env.runtime).toBe("bun");
+      expect(env.nodeVersion).toBe("");
+      expect(env.bunVersion).toBe("1.4");
+    });
+
+    it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      const env = detectEnv("node@22,bun@1.4");
+
+      expect(env.runtime).toBe("node");
+      expect(env.nodeVersion).toBe("22");
+      expect(env.bunVersion).toBe("1.4");
     });
   });
 
@@ -193,269 +456,6 @@ describe("detect-env", () => {
         expect(env.runtime).toBe(expectedRuntime);
       },
     );
-  });
-
-  describe("detectEnv unit edge cases", () => {
-    it("should respect explicit runtime input node@22", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = detectEnv("node@22");
-
-      expect(env.runtime).toBe("node");
-      expect(env.nodeVersion).toBe("22");
-      expect(env.bunVersion).toBe("");
-    });
-
-    it("should respect explicit runtime input bun@1.4", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = detectEnv("bun@1.4");
-
-      expect(env.runtime).toBe("bun");
-      expect(env.nodeVersion).toBe("");
-      expect(env.bunVersion).toBe("1.4");
-    });
-
-    it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = detectEnv("node@22,bun@1.4");
-
-      expect(env.runtime).toBe("node");
-      expect(env.nodeVersion).toBe("22");
-      expect(env.bunVersion).toBe("1.4");
-    });
-  });
-
-  describe("detectNodeVersion unit edge cases", () => {
-    it("should return version from .nvmrc if it exists and trim whitespace", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
-      vi.spyOn(fs, "readFileSync").mockReturnValue("  20.11.0\n" as any);
-
-      expect(detectNodeVersion()).toBe("20.11.0");
-      expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.11.0");
-    });
-
-    it("should return version from .node-version if .nvmrc does not exist and .node-version exists", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".node-version");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(" 22.0.0 \n" as any);
-
-      expect(detectNodeVersion()).toBe("22.0.0");
-      expect(core.info).toHaveBeenCalledWith("Found .node-version: 22.0.0");
-    });
-
-    it("should return Node.js version from package.json engines if nvmrc and node-version are missing", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { node: ">=18.0.0" } }) as any,
-      );
-
-      expect(detectNodeVersion()).toBe(">=18.0.0");
-      expect(core.info).toHaveBeenCalledWith(
-        "Found Node.js version in package.json engines: >=18.0.0",
-      );
-    });
-
-    it("should return empty string and not log recommendation if package manager is bun and no node config exists", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
-
-      expect(detectNodeVersion("bun")).toBe("");
-      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
-    });
-
-    it("should fall back to lts/* if package.json exists but engines.node is missing for non-bun package manager", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
-
-      expect(detectNodeVersion("npm")).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
-    });
-
-    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/* for non-bun", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw new Error("SyntaxError: Unexpected token");
-      });
-
-      expect(detectNodeVersion("npm")).toBe("lts/*");
-      expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect Node.js version: SyntaxError: Unexpected token",
-      );
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
-    });
-
-    it("should catch non-Error exceptions gracefully during detection", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw "Raw string error";
-      });
-
-      expect(detectNodeVersion()).toBe("lts/*");
-      expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect Node.js version: Raw string error",
-      );
-    });
-
-    it("should fall back to lts/* if no node configuration files exist and pm is not bun", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-
-      expect(detectNodeVersion()).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
-    });
-  });
-
-  describe("detectPackageManager unit edge cases", () => {
-    it("should detect packageManager without version in package.json and use default 'latest'", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ packageManager: "bun" }) as any);
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
-    });
-
-    it("should detect pnpm from package.json engines if packageManager field is missing", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { pnpm: ">=8.0.0" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "pnpm", version: ">=8.0.0" });
-      expect(core.info).toHaveBeenCalledWith("Found pnpm in package.json engines: >=8.0.0");
-    });
-
-    it("should detect npm from package.json engines", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { npm: "10.x" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "10.x" });
-      expect(core.info).toHaveBeenCalledWith("Found npm in package.json engines: 10.x");
-    });
-
-    it("should detect bun from package.json engines", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: ">=1.0.0" });
-      expect(core.info).toHaveBeenCalledWith("Found bun in package.json engines: >=1.0.0");
-    });
-
-    it("should check fallback lockfiles in order: pnpm-lock.yaml", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "pnpm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@latest");
-    });
-
-    it("should check fallback lockfiles in order: package-lock.json", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package-lock.json");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@latest");
-    });
-
-    it("should check fallback lockfiles in order: bun.lock", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
-    });
-
-    it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
-    });
-
-    it("should handle JSON parser errors or read errors gracefully and use npm fallback", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw new Error("Broken File System");
-      });
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect package manager: Broken File System",
-      );
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
-    });
-
-    it("should handle raw exceptions gracefully inside detectPackageManager", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw "Unexpected raw string error";
-      });
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect package manager: Unexpected raw string error",
-      );
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
-    });
-  });
-
-  describe("detectBunVersion unit edge cases", () => {
-    it("should detect version from .bun-version if present", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".bun-version");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(" 1.1.20 \n" as any);
-
-      const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("1.1.20");
-      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.20");
-    });
-
-    it("should return pm.version when pm.name is bun and version is not latest", () => {
-      const pm = { name: "bun", version: "1.1.20" };
-      expect(detectBunVersion(pm)).toBe("1.1.20");
-    });
-
-    it("should detect engines.bun from package.json if pm.name is not bun", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
-      );
-
-      const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe(">=1.0.0");
-    });
-
-    it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
-
-      const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("latest");
-    });
-
-    it("should return empty string if pm is not bun and bun is not detected", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-
-      const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("");
-    });
-  });
-
-  describe("detectRuntime", () => {
-    it("should detect node when pm is npm", () => {
-      const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
-      expect(runtime).toBe("node");
-    });
-
-    it("should detect bun when pm is bun or bunVersion is present", () => {
-      const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
-      expect(runtime).toBe("bun");
-    });
   });
 
   describe("setSiteVariables", () => {

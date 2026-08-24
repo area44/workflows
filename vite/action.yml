@@ -67,12 +67,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
-        if [ "$RUNTIME" = "bun" ] && [ "$PM" != "pnpm" ]; then
-          PM="bun"
-        fi
         case "$PM" in
           pnpm)
             pnpm install --frozen-lockfile
@@ -96,13 +92,9 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
-        if [ "$RUNTIME" = "bun" ] && [ "$PM" != "pnpm" ]; then
-          PM="bun"
-        fi
         if [[ -n "$BUILD_COMMAND" ]]; then
           eval "$BUILD_COMMAND"
         else

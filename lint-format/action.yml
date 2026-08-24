@@ -60,12 +60,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
-        if [ "$RUNTIME" = "bun" ] && [ "$PM" != "pnpm" ]; then
-          PM="bun"
-        fi
         case "$PM" in
           pnpm)
             pnpm install --no-frozen-lockfile
@@ -85,9 +81,8 @@ runs:
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
-        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
       run: |
-        if [ "$RUNTIME" = "bun" ]; then
+        if [ "$PACKAGE_MANAGER" = "bun" ]; then
           bun "${{ github.action_path }}/../dist/run-lint-format.mjs"
         else
           node "${{ github.action_path }}/../dist/run-lint-format.mjs"
