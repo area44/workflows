@@ -28,8 +28,6 @@ runs:
     - name: Detect environment
       shell: bash
       id: detect_env
-      env:
-        INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
     - name: Setup PNPM
