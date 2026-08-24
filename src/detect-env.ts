@@ -141,7 +141,9 @@ export function detectPackageManager(): PackageManager {
 
       const devPm = getDevEnginePackageManager(pkg);
       if (devPm) {
-        core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
+        core.info(
+          `Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`,
+        );
         return devPm;
       }
 
