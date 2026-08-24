@@ -75,18 +75,6 @@ describe("detect-env", () => {
       );
     });
 
-    it("should return Node.js version from package.json engines if devEngines is missing", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { node: ">=18.0.0" } }) as any,
-      );
-
-      expect(detectNodeVersion()).toBe(">=18.0.0");
-      expect(core.info).toHaveBeenCalledWith(
-        "Found Node.js version in package.json engines: >=18.0.0",
-      );
-    });
-
     it("should return empty string and not log recommendation if package manager is bun and no node config exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
@@ -160,16 +148,6 @@ describe("detect-env", () => {
       const pm = { name: "npm", version: "10.0.0" };
       expect(detectBunVersion(pm)).toBe(">=1.1.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: >=1.1.0");
-    });
-
-    it("should detect engines.bun from package.json if pm.name is not bun and devEngines is missing", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
-      );
-
-      const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe(">=1.0.0");
     });
 
     it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
@@ -250,38 +228,6 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json devEngines: pnpm@9.0.0");
     });
 
-    it("should detect pnpm from package.json engines if packageManager and devEngines fields are missing", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { pnpm: ">=8.0.0" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "pnpm", version: ">=8.0.0" });
-      expect(core.info).toHaveBeenCalledWith("Found pnpm in package.json engines: >=8.0.0");
-    });
-
-    it("should detect npm from package.json engines", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { npm: "10.x" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "10.x" });
-      expect(core.info).toHaveBeenCalledWith("Found npm in package.json engines: 10.x");
-    });
-
-    it("should detect bun from package.json engines", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
-      );
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: ">=1.0.0" });
-      expect(core.info).toHaveBeenCalledWith("Found bun in package.json engines: >=1.0.0");
-    });
 
     it("should check fallback lockfiles in order: pnpm-lock.yaml", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");

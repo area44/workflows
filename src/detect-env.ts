@@ -67,8 +67,7 @@ function hasNodeEngine(): boolean {
   try {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (getDevEngineRuntimeVersion(pkg, "node") !== undefined) return true;
-      return Boolean(pkg.engines?.node);
+      return getDevEngineRuntimeVersion(pkg, "node") !== undefined;
     }
   } catch {
     // Ignore detection errors
@@ -80,8 +79,7 @@ function hasBunEngine(): boolean {
   try {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      if (getDevEngineRuntimeVersion(pkg, "bun") !== undefined) return true;
-      return Boolean(pkg.engines?.bun);
+      return getDevEngineRuntimeVersion(pkg, "bun") !== undefined;
     }
   } catch {
     // Ignore detection errors
@@ -107,10 +105,6 @@ export function detectNodeVersion(pmName?: string): string {
       if (devVersion) {
         core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
         return devVersion;
-      }
-      if (pkg.engines?.node) {
-        core.info(`Found Node.js version in package.json engines: ${pkg.engines.node}`);
-        return pkg.engines.node;
       }
     }
   } catch (error) {
@@ -145,15 +139,6 @@ export function detectPackageManager(): PackageManager {
           `Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`,
         );
         return devPm;
-      }
-
-      if (pkg.engines) {
-        for (const pm of ["pnpm", "npm", "bun"]) {
-          if (pkg.engines[pm]) {
-            core.info(`Found ${pm} in package.json engines: ${pkg.engines[pm]}`);
-            return { name: pm, version: pkg.engines[pm] };
-          }
-        }
       }
     }
 
@@ -193,10 +178,6 @@ export function detectBunVersion(pm: PackageManager): string {
       if (devVersion) {
         core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
         return devVersion;
-      }
-      if (pkg.engines?.bun) {
-        core.info(`Found Bun version in package.json engines: ${pkg.engines.bun}`);
-        return pkg.engines.bun;
       }
     }
   } catch (error) {
