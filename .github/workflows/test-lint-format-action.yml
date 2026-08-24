@@ -14,8 +14,6 @@ jobs:
         pm: [npm, pnpm, bun]
         type: [basic, minimal]
         exclude:
-          - runtime: node
-            pm: bun
           - runtime: bun
             pm: npm
           - runtime: bun
@@ -48,7 +46,7 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock .node-version
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
           fi

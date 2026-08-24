@@ -4,12 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { run } from "../src/run-lint-format";
+import { run } from "../src/lint-format";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");
 
-describe("run-lint-format", () => {
+describe("lint-format", () => {
   const originalEnv = { ...process.env };
   const originalCwd = process.cwd();
 

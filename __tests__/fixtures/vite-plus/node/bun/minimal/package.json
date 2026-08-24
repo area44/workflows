@@ -1,0 +1,10 @@
+{
+  "name": "vite-plus-bun-minimal",
+  "scripts": {
+    "build": "vp build"
+  },
+  "dependencies": {
+    "vite-plus": "^0.2.9"
+  },
+  "type": "module"
+}
