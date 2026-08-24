@@ -37,6 +37,10 @@ runs:
       id: detect_env
       run: node "${{ github.action_path }}/../dist/detect-env.mjs"
 
+    - name: Set site variables
+      shell: bash
+      run: node "${{ github.action_path }}/../dist/site-variables.mjs"
+
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
       uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2

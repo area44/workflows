@@ -23,3 +23,7 @@ export function setSiteVariables(): void {
     core.info(`Set BASE=${base}`);
   }
 }
+
+if (process.env.NODE_ENV !== "test") {
+  setSiteVariables();
+}

@@ -1,10 +1,6 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
-import { setSiteVariables } from "./site-variables.js";
-
-export { setSiteVariables };
-
 export interface PackageManager {
   name: string;
   version: string;
@@ -292,7 +288,6 @@ export function run(): void {
   const runtimeInput = core.getInput("runtime");
   const env = detectEnv(runtimeInput);
   writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
-  setSiteVariables();
 }
 
 if (process.env.NODE_ENV !== "test") {
