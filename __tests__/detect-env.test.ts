@@ -63,7 +63,19 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found .node-version: 22.0.0");
     });
 
-    it("should return Node.js version from package.json engines if nvmrc and node-version are missing", () => {
+    it("should return Node.js version from package.json devEngines if nvmrc and node-version are missing", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: { name: "node", version: ">=20.0.0" } } }) as any,
+      );
+
+      expect(detectNodeVersion()).toBe(">=20.0.0");
+      expect(core.info).toHaveBeenCalledWith(
+        "Found Node.js version in package.json devEngines: >=20.0.0",
+      );
+    });
+
+    it("should return Node.js version from package.json engines if devEngines is missing", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ engines: { node: ">=18.0.0" } }) as any,
@@ -139,7 +151,18 @@ describe("detect-env", () => {
       expect(detectBunVersion(pm)).toBe("1.1.20");
     });
 
-    it("should detect engines.bun from package.json if pm.name is not bun", () => {
+    it("should detect devEngines.runtime bun from package.json if pm.name is not bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: { name: "bun", version: ">=1.1.0" } } }) as any,
+      );
+
+      const pm = { name: "npm", version: "10.0.0" };
+      expect(detectBunVersion(pm)).toBe(">=1.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: >=1.1.0");
+    });
+
+    it("should detect engines.bun from package.json if pm.name is not bun and devEngines is missing", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ engines: { bun: ">=1.0.0" } }) as any,
@@ -216,7 +239,18 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
     });
 
-    it("should detect pnpm from package.json engines if packageManager field is missing", () => {
+    it("should detect packageManager from package.json devEngines if packageManager field is missing", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { packageManager: { name: "pnpm", version: "9.0.0" } } }) as any,
+      );
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "pnpm", version: "9.0.0" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json devEngines: pnpm@9.0.0");
+    });
+
+    it("should detect pnpm from package.json engines if packageManager and devEngines fields are missing", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ engines: { pnpm: ">=8.0.0" } }) as any,
@@ -388,8 +422,8 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
-        pm: "pnpm-bun",
-        type: "basic",
+        pm: "bun/pnpm-bun",
+        type: "",
         expectedNode: "lts/*",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
@@ -445,7 +479,7 @@ describe("detect-env", () => {
     it.each(cases)(
       "should detect correct environment for fixture $action/$pm/$type",
       ({ action, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
-        const fixturePath = path.join(fixturesDir, action, pm, type);
+        const fixturePath = type ? path.join(fixturesDir, action, pm, type) : path.join(fixturesDir, action, pm);
         process.chdir(fixturePath);
 
         const env = detectEnv();
@@ -592,7 +626,7 @@ describe("detect-env", () => {
     });
 
     it("should detect pnpm package manager and bun engine version for pnpm-bun fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/pnpm-bun/basic");
+      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm-bun");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
