@@ -29,8 +29,7 @@ jobs:
       - name: Build Astro site
         uses: area44/workflows/astro@main
         with:
-          # Optional: node-version: '24'
-          # Optional: bun-version: 'latest'
+          # Optional: runtime: 'node@24'
           # Optional: path: 'dist'
 ```
 
@@ -39,8 +38,7 @@ jobs:
 | Name            | Description                                   | Default         |
 | --------------- | --------------------------------------------- | --------------- |
 | `path`          | The directory where the built site is located | `dist`          |
-| `node-version`  | Optional Node.js version override             | (auto-detected) |
-| `bun-version`   | Optional Bun version override                 | (auto-detected) |
+| `runtime`       | Optional runtime and version override         | (auto-detected) |
 | `build-command` | Optional build command override               |                 |
 
 ## Outputs
@@ -51,3 +49,4 @@ jobs:
 | `bun-version`             | The Bun version used                    |
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
+| `runtime`                 | The runtime used                        |

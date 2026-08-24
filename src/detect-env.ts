@@ -6,7 +6,38 @@ export interface PackageManager {
   version: string;
 }
 
-export function detectNodeVersion(pmName?: string, bunVersion?: string): string {
+export interface DetectedEnv {
+  nodeVersion: string;
+  bunVersion: string;
+  pm: PackageManager;
+  runtime: "node" | "bun";
+}
+
+function hasNodeEngine(): boolean {
+  try {
+    if (fs.existsSync("package.json")) {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      return Boolean(pkg.engines?.node);
+    }
+  } catch {
+    // Ignore detection errors
+  }
+  return false;
+}
+
+function hasBunEngine(): boolean {
+  try {
+    if (fs.existsSync("package.json")) {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      return Boolean(pkg.engines?.bun);
+    }
+  } catch {
+    // Ignore detection errors
+  }
+  return false;
+}
+
+export function detectNodeVersion(pmName?: string): string {
   try {
     if (fs.existsSync(".nvmrc")) {
       const version = fs.readFileSync(".nvmrc", "utf8").trim();
@@ -29,7 +60,12 @@ export function detectNodeVersion(pmName?: string, bunVersion?: string): string 
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect Node.js version: ${message}`);
   }
-  if (pmName === "bun" || Boolean(bunVersion)) {
+  if (
+    pmName === "bun" &&
+    !hasNodeEngine() &&
+    !fs.existsSync(".nvmrc") &&
+    !fs.existsSync(".node-version")
+  ) {
     return "";
   }
   core.info("Node.js version not specified, using lts/*");
@@ -64,8 +100,8 @@ export function detectPackageManager(): PackageManager {
       core.info("Found package-lock.json, using npm@latest");
       return { name: "npm", version: "latest" };
     }
-    if (fs.existsSync("bun.lock")) {
-      core.info("Found bun.lock, using bun@latest");
+    if (fs.existsSync("bun.lock") || fs.existsSync("bun.lockb")) {
+      core.info("Found bun lockfile, using bun@latest");
       return { name: "bun", version: "latest" };
     }
   } catch (error) {
@@ -77,23 +113,79 @@ export function detectPackageManager(): PackageManager {
 }
 
 export function detectBunVersion(pm: PackageManager): string {
-  if (pm.name === "bun") {
-    return pm.version;
-  }
   try {
+    if (fs.existsSync(".bun-version")) {
+      const version = fs.readFileSync(".bun-version", "utf8").trim();
+      core.info(`Found .bun-version: ${version}`);
+      return version;
+    }
+    if (pm.name === "bun" && pm.version && pm.version !== "latest") {
+      return pm.version;
+    }
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
       if (pkg.engines?.bun) {
+        core.info(`Found Bun version in package.json engines: ${pkg.engines.bun}`);
         return pkg.engines.bun;
       }
     }
-  } catch {
-    // Ignore detection errors
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`Failed to detect Bun version: ${message}`);
   }
+
+  const isBunDetected =
+    pm.name === "bun" || fs.existsSync("bun.lock") || fs.existsSync("bun.lockb") || hasBunEngine();
+
+  if (isBunDetected) {
+    return "latest";
+  }
+
   return "";
 }
 
-export function detectRuntime(pm: PackageManager, bunVersion: string): "bun" | "node" {
+export function parseRuntimeInput(runtimeInput: string): {
+  specifiedRuntime?: "node" | "bun";
+  nodeVersion?: string;
+  bunVersion?: string;
+} {
+  if (!runtimeInput) return {};
+
+  const trimmed = runtimeInput.trim().toLowerCase();
+  const parts = trimmed.split(/[\s,]+/);
+  let specifiedRuntime: "node" | "bun" | undefined;
+  let nodeVersion: string | undefined;
+  let bunVersion: string | undefined;
+
+  let hasBun = false;
+
+  for (const part of parts) {
+    if (part === "both") {
+      hasBun = true;
+    } else if (part.startsWith("node")) {
+      if (!specifiedRuntime) specifiedRuntime = "node";
+      const atIdx = part.indexOf("@");
+      if (atIdx !== -1) {
+        nodeVersion = part.slice(atIdx + 1);
+      }
+    } else if (part.startsWith("bun")) {
+      hasBun = true;
+      if (!specifiedRuntime) specifiedRuntime = "bun";
+      const atIdx = part.indexOf("@");
+      if (atIdx !== -1) {
+        bunVersion = part.slice(atIdx + 1);
+      }
+    }
+  }
+
+  return {
+    specifiedRuntime,
+    nodeVersion,
+    bunVersion: bunVersion || (hasBun ? "latest" : undefined),
+  };
+}
+
+export function detectRuntime(pm: PackageManager, bunVersion: string): "node" | "bun" {
   if (pm.name === "bun" || Boolean(bunVersion)) {
     return "bun";
   }
@@ -137,12 +229,38 @@ export function writeOutput(
   core.setOutput("runtime", runtime);
 }
 
-export function run(): void {
+export function detectEnv(runtimeInput: string = core.getInput("runtime")): DetectedEnv {
+  const parsed = parseRuntimeInput(runtimeInput);
   const pm = detectPackageManager();
-  const bunVersion = detectBunVersion(pm);
-  const nodeVersion = detectNodeVersion(pm.name, bunVersion);
-  const runtime = detectRuntime(pm, bunVersion);
-  writeOutput(nodeVersion, pm, bunVersion, runtime);
+  const detectedBunVer = detectBunVersion(pm);
+
+  let runtime: "node" | "bun";
+  if (parsed.specifiedRuntime) {
+    runtime = parsed.specifiedRuntime;
+  } else if (pm.name === "bun") {
+    runtime = "bun";
+  } else {
+    runtime = "node";
+  }
+
+  const detectedNodeVer = detectNodeVersion(runtime === "bun" ? "bun" : pm.name);
+
+  const bunVer = parsed.bunVersion ?? detectedBunVer;
+  const nodeVer =
+    parsed.nodeVersion ?? (runtime === "bun" && !parsed.nodeVersion ? "" : detectedNodeVer);
+
+  return {
+    nodeVersion: nodeVer,
+    bunVersion: bunVer,
+    pm,
+    runtime,
+  };
+}
+
+export function run(): void {
+  const runtimeInput = core.getInput("runtime");
+  const env = detectEnv(runtimeInput);
+  writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
   setSiteVariables();
 }
 
