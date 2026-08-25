@@ -1,6 +1,9 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+export const DEFAULT_NODE_VERSION = "24";
+export const DEFAULT_BUN_VERSION = "1.4";
+
 export interface PackageManager {
   name: string;
   version: string;
@@ -14,6 +17,7 @@ export interface DetectedEnv {
 }
 
 function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): string | undefined {
+  const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
   if (pkg.devEngines) {
     if (pkg.devEngines.runtime) {
       const runtimes = Array.isArray(pkg.devEngines.runtime)
@@ -22,15 +26,15 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
       for (const r of runtimes) {
         if (typeof r === "string" && r.toLowerCase().startsWith(runtimeName)) {
           const atIdx = r.indexOf("@");
-          return atIdx !== -1 ? r.slice(atIdx + 1) : "latest";
+          return atIdx !== -1 ? r.slice(atIdx + 1) : defaultVersion;
         } else if (typeof r === "object" && r !== null && r.name === runtimeName) {
-          return r.version || "latest";
+          return r.version || defaultVersion;
         }
       }
     }
     if (pkg.devEngines[runtimeName]) {
       const val = pkg.devEngines[runtimeName];
-      return typeof val === "string" ? val : val.version || "latest";
+      return typeof val === "string" ? val : val.version || defaultVersion;
     }
   }
   return undefined;
@@ -119,8 +123,8 @@ export function detectNodeVersion(pmName?: string): string {
   ) {
     return "";
   }
-  core.info("Node.js version not specified, using 24");
-  return "24";
+  core.info(`Node.js version not specified, using ${DEFAULT_NODE_VERSION}`);
+  return DEFAULT_NODE_VERSION;
 }
 
 export function detectPackageManager(): PackageManager {
@@ -189,7 +193,7 @@ export function detectBunVersion(pm: PackageManager): string {
     pm.name === "bun" || fs.existsSync("bun.lock") || fs.existsSync("bun.lockb") || hasBunEngine();
 
   if (isBunDetected) {
-    return "latest";
+    return DEFAULT_BUN_VERSION;
   }
 
   return "";
@@ -232,7 +236,7 @@ export function parseRuntimeInput(runtimeInput: string): {
   return {
     specifiedRuntime,
     nodeVersion,
-    bunVersion: bunVersion || (hasBun ? "latest" : undefined),
+    bunVersion: bunVersion || (hasBun ? DEFAULT_BUN_VERSION : undefined),
   };
 }
 

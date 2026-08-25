@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
   detectBunVersion,
   detectEnv,
   detectNodeVersion,
@@ -31,6 +33,13 @@ describe("detect-env", () => {
     process.chdir(originalCwd);
     process.env = { ...originalEnv };
     vi.restoreAllMocks();
+  });
+
+  describe("runtime constants", () => {
+    it("should export default runtime versions", () => {
+      expect(DEFAULT_NODE_VERSION).toBe("24");
+      expect(DEFAULT_BUN_VERSION).toBe("1.4");
+    });
   });
 
   describe("detectRuntime", () => {
@@ -149,11 +158,11 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: >=1.1.0");
     });
 
-    it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
+    it("should fall back to 1.4 if bun lockfile exists and no specific version was specified", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("latest");
+      expect(detectBunVersion(pm)).toBe("1.4");
     });
 
     it("should return empty string if pm is not bun and bun is not detected", () => {
@@ -197,7 +206,7 @@ describe("detect-env", () => {
       expect(result).toEqual({
         specifiedRuntime: undefined,
         nodeVersion: undefined,
-        bunVersion: "latest",
+        bunVersion: "1.4",
       });
     });
 
@@ -366,7 +375,7 @@ describe("detect-env", () => {
         pm: "bun",
         type: "basic",
         expectedNode: "",
-        expectedBun: "latest",
+        expectedBun: "1.4",
         expectedPm: { name: "bun", version: "latest" },
         expectedRuntime: "bun",
       },
@@ -386,7 +395,7 @@ describe("detect-env", () => {
         pm: "bun",
         type: "minimal",
         expectedNode: "",
-        expectedBun: "latest",
+        expectedBun: "1.4",
         expectedPm: { name: "bun", version: "latest" },
         expectedRuntime: "bun",
       },
@@ -488,7 +497,7 @@ describe("detect-env", () => {
       run();
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
