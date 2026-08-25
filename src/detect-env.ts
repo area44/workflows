@@ -1,9 +1,16 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+// renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";
+
+// renovate: datasource=npm depName=bun
 export const DEFAULT_BUN_VERSION = "1.4";
+
+// renovate: datasource=npm depName=npm
 export const DEFAULT_NPM_VERSION = "12";
+
+// renovate: datasource=npm depName=pnpm
 export const DEFAULT_PNPM_VERSION = "11";
 
 export function getDefaultPackageManagerVersion(pmName: string): string {

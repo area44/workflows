@@ -1,3 +1,13 @@
 {
-  "extends": ["github>area44/renovate-config"]
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>area44/renovate-config"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^src/detect-env\\.ts$"],
+      "matchStrings": [
+        "//\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s*\\nexport const \\w+ = \"(?<currentValue>[^\"]+)\";"
+      ]
+    }
+  ]
 }
