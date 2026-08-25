@@ -81,9 +81,9 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
         if [ "$PACKAGE_MANAGER" = "bun" ]; then
-          bun "${{ github.action_path }}/../dist/run-lint-format.mjs"
+          bun "${{ github.action_path }}/../dist/lint-format.mjs"
         else
-          node "${{ github.action_path }}/../dist/run-lint-format.mjs"
+          node "${{ github.action_path }}/../dist/lint-format.mjs"
         fi
 
     - name: Run autofix.ci

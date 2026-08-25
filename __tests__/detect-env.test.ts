@@ -79,28 +79,28 @@ describe("detect-env", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
       expect(detectNodeVersion("bun")).toBe("");
-      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should fall back to lts/* if package.json exists but engines.node is missing for non-bun package manager", () => {
+    it("should fall back to 24 if package.json exists but engines.node is missing for non-bun package manager", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
-      expect(detectNodeVersion("npm")).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(detectNodeVersion("npm")).toBe("24");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/* for non-bun", () => {
+    it("should catch JSON parsing errors or other read errors and warn, then fall back to 24 for non-bun", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("SyntaxError: Unexpected token");
       });
 
-      expect(detectNodeVersion("npm")).toBe("lts/*");
+      expect(detectNodeVersion("npm")).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: SyntaxError: Unexpected token",
       );
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
     it("should catch non-Error exceptions gracefully during detection", () => {
@@ -109,17 +109,17 @@ describe("detect-env", () => {
         throw "Raw string error";
       });
 
-      expect(detectNodeVersion()).toBe("lts/*");
+      expect(detectNodeVersion()).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: Raw string error",
       );
     });
 
-    it("should fall back to lts/* if no node configuration files exist and pm is not bun", () => {
+    it("should fall back to 24 if no node configuration files exist and pm is not bun", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      expect(detectNodeVersion()).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(detectNodeVersion()).toBe("24");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
   });
 
@@ -322,6 +322,7 @@ describe("detect-env", () => {
     const cases = [
       {
         action: "astro",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -331,33 +332,37 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "npm",
         type: "minimal",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "npm", version: "latest" },
         expectedRuntime: "node",
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
       },
       {
         action: "astro",
+        runtime: "node",
         pm: "pnpm",
         type: "minimal",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "latest" },
         expectedRuntime: "node",
       },
       {
         action: "astro",
+        runtime: "bun",
         pm: "bun",
         type: "basic",
         expectedNode: "",
@@ -367,15 +372,17 @@ describe("detect-env", () => {
       },
       {
         action: "astro",
-        pm: "bun/pnpm-bun",
-        type: "",
-        expectedNode: "lts/*",
+        runtime: "bun",
+        pm: "pnpm",
+        type: "basic",
+        expectedNode: "24",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
       },
       {
         action: "astro",
+        runtime: "bun",
         pm: "bun",
         type: "minimal",
         expectedNode: "",
@@ -385,6 +392,7 @@ describe("detect-env", () => {
       },
       {
         action: "lint-format",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -394,15 +402,17 @@ describe("detect-env", () => {
       },
       {
         action: "lint-format",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
       },
       {
         action: "vite",
+        runtime: "node",
         pm: "npm",
         type: "basic",
         expectedNode: "24.19.0",
@@ -412,9 +422,10 @@ describe("detect-env", () => {
       },
       {
         action: "vite-plus",
+        runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
@@ -422,9 +433,9 @@ describe("detect-env", () => {
     ];
 
     it.each(cases)(
-      "should detect correct environment for fixture $action/$pm/$type",
-      ({ action, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
-        const fixturePath = type ? path.join(fixturesDir, action, pm, type) : path.join(fixturesDir, action, pm);
+      "should detect correct environment for fixture $action/$runtime/$pm/$type",
+      ({ action, runtime: rt, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
+        const fixturePath = path.join(fixturesDir, action, rt, pm, type);
         process.chdir(fixturePath);
 
         const env = detectEnv();
@@ -451,7 +462,7 @@ describe("detect-env", () => {
 
   describe("run", () => {
     it("should coordinate environment detection and write action output on fixture project", () => {
-      const fixturePath = path.join(fixturesDir, "astro/npm/basic");
+      const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -467,7 +478,7 @@ describe("detect-env", () => {
     });
 
     it("should detect bun and omit node recommendation for bun project fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/basic");
+      const fixturePath = path.join(fixturesDir, "astro/bun/bun/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -483,8 +494,8 @@ describe("detect-env", () => {
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
-    it("should detect pnpm package manager and bun engine version for pnpm-bun fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm-bun");
+    it("should detect pnpm package manager and bun engine version for pnpm fixture in bun runtime", () => {
+      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm/basic");
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
@@ -493,7 +504,7 @@ describe("detect-env", () => {
 
       run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "lts/*");
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
