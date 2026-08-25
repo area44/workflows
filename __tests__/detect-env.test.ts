@@ -79,28 +79,28 @@ describe("detect-env", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
       expect(detectNodeVersion("bun")).toBe("");
-      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should fall back to lts/* if package.json exists but engines.node is missing for non-bun package manager", () => {
+    it("should fall back to 24 if package.json exists but engines.node is missing for non-bun package manager", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
-      expect(detectNodeVersion("npm")).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(detectNodeVersion("npm")).toBe("24");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should catch JSON parsing errors or other read errors and warn, then fall back to lts/* for non-bun", () => {
+    it("should catch JSON parsing errors or other read errors and warn, then fall back to 24 for non-bun", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("SyntaxError: Unexpected token");
       });
 
-      expect(detectNodeVersion("npm")).toBe("lts/*");
+      expect(detectNodeVersion("npm")).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: SyntaxError: Unexpected token",
       );
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
     it("should catch non-Error exceptions gracefully during detection", () => {
@@ -109,17 +109,17 @@ describe("detect-env", () => {
         throw "Raw string error";
       });
 
-      expect(detectNodeVersion()).toBe("lts/*");
+      expect(detectNodeVersion()).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: Raw string error",
       );
     });
 
-    it("should fall back to lts/* if no node configuration files exist and pm is not bun", () => {
+    it("should fall back to 24 if no node configuration files exist and pm is not bun", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      expect(detectNodeVersion()).toBe("lts/*");
-      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      expect(detectNodeVersion()).toBe("24");
+      expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
   });
 
@@ -335,7 +335,7 @@ describe("detect-env", () => {
         runtime: "node",
         pm: "npm",
         type: "minimal",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "npm", version: "latest" },
         expectedRuntime: "node",
@@ -345,7 +345,7 @@ describe("detect-env", () => {
         runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
@@ -355,7 +355,7 @@ describe("detect-env", () => {
         runtime: "node",
         pm: "pnpm",
         type: "minimal",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "latest" },
         expectedRuntime: "node",
@@ -375,7 +375,7 @@ describe("detect-env", () => {
         runtime: "bun",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
@@ -405,7 +405,7 @@ describe("detect-env", () => {
         runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
@@ -425,7 +425,7 @@ describe("detect-env", () => {
         runtime: "node",
         pm: "pnpm",
         type: "basic",
-        expectedNode: "lts/*",
+        expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
@@ -504,7 +504,7 @@ describe("detect-env", () => {
 
       run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "lts/*");
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");

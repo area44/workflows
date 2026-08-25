@@ -119,8 +119,8 @@ export function detectNodeVersion(pmName?: string): string {
   ) {
     return "";
   }
-  core.info("Node.js version not specified, using lts/*");
-  return "lts/*";
+  core.info("Node.js version not specified, using 24");
+  return "24";
 }
 
 export function detectPackageManager(): PackageManager {
