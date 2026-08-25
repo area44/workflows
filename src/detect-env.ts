@@ -3,6 +3,10 @@ import fs from "node:fs";
 
 export const DEFAULT_NODE_VERSION = "24";
 export const DEFAULT_BUN_VERSION = "1.4";
+export const DEFAULT_PACKAGE_MANAGER = "npm";
+export const DEFAULT_PACKAGE_MANAGER_VERSION = "latest";
+export const DEFAULT_NPM_VERSION = "latest";
+export const DEFAULT_PNPM_VERSION = "latest";
 
 export interface PackageManager {
   name: string;
@@ -49,17 +53,23 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
       : pkg.devEngines.packageManager;
 
     if (typeof pm === "string") {
-      const [name, version = "latest"] = pm.split("@");
+      const [name, version = DEFAULT_PACKAGE_MANAGER_VERSION] = pm.split("@");
       return { name, version };
     } else if (typeof pm === "object" && pm !== null && pm.name) {
-      return { name: pm.name, version: pm.version || "latest" };
+      return { name: pm.name, version: pm.version || DEFAULT_PACKAGE_MANAGER_VERSION };
     }
   }
 
   for (const pm of ["pnpm", "npm", "bun"]) {
     if (pkg.devEngines[pm]) {
       const val = pkg.devEngines[pm];
-      const version = typeof val === "string" ? val : val.version || "latest";
+      const defaultVer =
+        pm === "bun"
+          ? DEFAULT_BUN_VERSION
+          : pm === "pnpm"
+            ? DEFAULT_PNPM_VERSION
+            : DEFAULT_NPM_VERSION;
+      const version = typeof val === "string" ? val : val.version || defaultVer;
       return { name: pm, version };
     }
   }
@@ -132,7 +142,7 @@ export function detectPackageManager(): PackageManager {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
       if (pkg.packageManager) {
-        const [name, version = "latest"] = pkg.packageManager.split("@");
+        const [name, version = DEFAULT_PACKAGE_MANAGER_VERSION] = pkg.packageManager.split("@");
         core.info(`Found packageManager in package.json: ${name}@${version}`);
         return { name, version };
       }
@@ -147,23 +157,25 @@ export function detectPackageManager(): PackageManager {
     }
 
     if (fs.existsSync("pnpm-lock.yaml")) {
-      core.info("Found pnpm-lock.yaml, using pnpm@latest");
-      return { name: "pnpm", version: "latest" };
+      core.info(`Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`);
+      return { name: "pnpm", version: DEFAULT_PNPM_VERSION };
     }
     if (fs.existsSync("package-lock.json")) {
-      core.info("Found package-lock.json, using npm@latest");
-      return { name: "npm", version: "latest" };
+      core.info(`Found package-lock.json, using npm@${DEFAULT_NPM_VERSION}`);
+      return { name: "npm", version: DEFAULT_NPM_VERSION };
     }
     if (fs.existsSync("bun.lock") || fs.existsSync("bun.lockb")) {
-      core.info("Found bun lockfile, using bun@latest");
-      return { name: "bun", version: "latest" };
+      core.info(`Found bun lockfile, using bun@${DEFAULT_BUN_VERSION}`);
+      return { name: "bun", version: DEFAULT_BUN_VERSION };
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect package manager: ${message}`);
   }
-  core.info("Package manager not specified, using npm@latest");
-  return { name: "npm", version: "latest" };
+  core.info(
+    `Package manager not specified, using ${DEFAULT_PACKAGE_MANAGER}@${DEFAULT_PACKAGE_MANAGER_VERSION}`,
+  );
+  return { name: DEFAULT_PACKAGE_MANAGER, version: DEFAULT_PACKAGE_MANAGER_VERSION };
 }
 
 export function detectBunVersion(pm: PackageManager): string {

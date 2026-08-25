@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
+  DEFAULT_NPM_VERSION,
+  DEFAULT_PACKAGE_MANAGER,
+  DEFAULT_PACKAGE_MANAGER_VERSION,
+  DEFAULT_PNPM_VERSION,
   detectBunVersion,
   detectEnv,
   detectNodeVersion,
@@ -36,9 +40,13 @@ describe("detect-env", () => {
   });
 
   describe("runtime constants", () => {
-    it("should export default runtime versions", () => {
+    it("should export default runtime and package manager versions", () => {
       expect(DEFAULT_NODE_VERSION).toBe("24");
       expect(DEFAULT_BUN_VERSION).toBe("1.4");
+      expect(DEFAULT_PACKAGE_MANAGER).toBe("npm");
+      expect(DEFAULT_PACKAGE_MANAGER_VERSION).toBe("latest");
+      expect(DEFAULT_NPM_VERSION).toBe("latest");
+      expect(DEFAULT_PNPM_VERSION).toBe("latest");
     });
   });
 
@@ -257,8 +265,8 @@ describe("detect-env", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
+      expect(pm).toEqual({ name: "bun", version: "1.4" });
+      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@1.4");
     });
 
     it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
@@ -376,7 +384,7 @@ describe("detect-env", () => {
         type: "basic",
         expectedNode: "",
         expectedBun: "1.4",
-        expectedPm: { name: "bun", version: "latest" },
+        expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
       },
       {
@@ -396,7 +404,7 @@ describe("detect-env", () => {
         type: "minimal",
         expectedNode: "",
         expectedBun: "1.4",
-        expectedPm: { name: "bun", version: "latest" },
+        expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
       },
       {
@@ -499,7 +507,7 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
