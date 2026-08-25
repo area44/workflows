@@ -4,11 +4,16 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
+  DEFAULT_NPM_VERSION,
+  DEFAULT_PNPM_VERSION,
   detectBunVersion,
   detectEnv,
   detectNodeVersion,
   detectPackageManager,
   detectRuntime,
+  getDefaultPackageManagerVersion,
   parseRuntimeInput,
   run,
   writeOutput,
@@ -31,6 +36,18 @@ describe("detect-env", () => {
     process.chdir(originalCwd);
     process.env = { ...originalEnv };
     vi.restoreAllMocks();
+  });
+
+  describe("runtime constants", () => {
+    it("should export default runtime and package manager versions", () => {
+      expect(DEFAULT_NODE_VERSION).toBe("24");
+      expect(DEFAULT_BUN_VERSION).toBe("1.4");
+      expect(DEFAULT_NPM_VERSION).toBe("12");
+      expect(DEFAULT_PNPM_VERSION).toBe("11");
+      expect(getDefaultPackageManagerVersion("npm")).toBe("12");
+      expect(getDefaultPackageManagerVersion("pnpm")).toBe("11");
+      expect(getDefaultPackageManagerVersion("bun")).toBe("1.4");
+    });
   });
 
   describe("detectRuntime", () => {
@@ -149,11 +166,11 @@ describe("detect-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: >=1.1.0");
     });
 
-    it("should fall back to latest if bun lockfile exists and no specific version was specified", () => {
+    it("should fall back to 1.4 if bun lockfile exists and no specific version was specified", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("latest");
+      expect(detectBunVersion(pm)).toBe("1.4");
     });
 
     it("should return empty string if pm is not bun and bun is not detected", () => {
@@ -197,7 +214,7 @@ describe("detect-env", () => {
       expect(result).toEqual({
         specifiedRuntime: undefined,
         nodeVersion: undefined,
-        bunVersion: "latest",
+        bunVersion: "1.4",
       });
     });
 
@@ -207,13 +224,13 @@ describe("detect-env", () => {
   });
 
   describe("detectPackageManager", () => {
-    it("should detect packageManager without version in package.json and use default 'latest'", () => {
+    it("should detect packageManager without version in package.json and use default version for that PM", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ packageManager: "bun" }) as any);
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
+      expect(pm).toEqual({ name: "bun", version: "1.4" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4");
     });
 
     it("should detect packageManager from package.json devEngines if packageManager field is missing", () => {
@@ -232,32 +249,32 @@ describe("detect-env", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "pnpm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@latest");
+      expect(pm).toEqual({ name: "pnpm", version: "11" });
+      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@11");
     });
 
     it("should check fallback lockfiles in order: package-lock.json", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package-lock.json");
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@latest");
+      expect(pm).toEqual({ name: "npm", version: "12" });
+      expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@12");
     });
 
     it("should check fallback lockfiles in order: bun.lock", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@latest");
+      expect(pm).toEqual({ name: "bun", version: "1.4" });
+      expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@1.4");
     });
 
-    it("should fallback to default npm@latest if no lockfiles or configuration exists", () => {
+    it("should fallback to default npm@12 if no lockfiles or configuration exists", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+      expect(pm).toEqual({ name: "npm", version: "12" });
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
 
     it("should handle JSON parser errors or read errors gracefully and use npm fallback", () => {
@@ -267,11 +284,11 @@ describe("detect-env", () => {
       });
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect package manager: Broken File System",
       );
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
 
     it("should handle raw exceptions gracefully inside detectPackageManager", () => {
@@ -281,11 +298,11 @@ describe("detect-env", () => {
       });
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "npm", version: "latest" });
+      expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect package manager: Unexpected raw string error",
       );
-      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@latest");
+      expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
   });
 
@@ -337,7 +354,7 @@ describe("detect-env", () => {
         type: "minimal",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "npm", version: "latest" },
+        expectedPm: { name: "npm", version: "12" },
         expectedRuntime: "node",
       },
       {
@@ -357,7 +374,7 @@ describe("detect-env", () => {
         type: "minimal",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "latest" },
+        expectedPm: { name: "pnpm", version: "11" },
         expectedRuntime: "node",
       },
       {
@@ -366,8 +383,8 @@ describe("detect-env", () => {
         pm: "bun",
         type: "basic",
         expectedNode: "",
-        expectedBun: "latest",
-        expectedPm: { name: "bun", version: "latest" },
+        expectedBun: "1.4",
+        expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
       },
       {
@@ -386,8 +403,8 @@ describe("detect-env", () => {
         pm: "bun",
         type: "minimal",
         expectedNode: "",
-        expectedBun: "latest",
-        expectedPm: { name: "bun", version: "latest" },
+        expectedBun: "1.4",
+        expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
       },
       {
@@ -488,9 +505,9 @@ describe("detect-env", () => {
       run();
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 

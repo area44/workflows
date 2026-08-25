@@ -1,6 +1,30 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+// renovate: datasource=node-version depName=node versioning=node
+export const DEFAULT_NODE_VERSION = "24";
+
+// renovate: datasource=npm depName=bun
+export const DEFAULT_BUN_VERSION = "1.4";
+
+// renovate: datasource=npm depName=npm
+export const DEFAULT_NPM_VERSION = "12";
+
+// renovate: datasource=npm depName=pnpm
+export const DEFAULT_PNPM_VERSION = "11";
+
+export function getDefaultPackageManagerVersion(pmName: string): string {
+  switch (pmName.toLowerCase()) {
+    case "pnpm":
+      return DEFAULT_PNPM_VERSION;
+    case "bun":
+      return DEFAULT_BUN_VERSION;
+    case "npm":
+    default:
+      return DEFAULT_NPM_VERSION;
+  }
+}
+
 export interface PackageManager {
   name: string;
   version: string;
@@ -14,6 +38,7 @@ export interface DetectedEnv {
 }
 
 function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): string | undefined {
+  const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
   if (pkg.devEngines) {
     if (pkg.devEngines.runtime) {
       const runtimes = Array.isArray(pkg.devEngines.runtime)
@@ -22,15 +47,15 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
       for (const r of runtimes) {
         if (typeof r === "string" && r.toLowerCase().startsWith(runtimeName)) {
           const atIdx = r.indexOf("@");
-          return atIdx !== -1 ? r.slice(atIdx + 1) : "latest";
+          return atIdx !== -1 ? r.slice(atIdx + 1) : defaultVersion;
         } else if (typeof r === "object" && r !== null && r.name === runtimeName) {
-          return r.version || "latest";
+          return r.version || defaultVersion;
         }
       }
     }
     if (pkg.devEngines[runtimeName]) {
       const val = pkg.devEngines[runtimeName];
-      return typeof val === "string" ? val : val.version || "latest";
+      return typeof val === "string" ? val : val.version || defaultVersion;
     }
   }
   return undefined;
@@ -45,17 +70,18 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
       : pkg.devEngines.packageManager;
 
     if (typeof pm === "string") {
-      const [name, version = "latest"] = pm.split("@");
-      return { name, version };
+      const [name, version] = pm.split("@");
+      return { name, version: version || getDefaultPackageManagerVersion(name) };
     } else if (typeof pm === "object" && pm !== null && pm.name) {
-      return { name: pm.name, version: pm.version || "latest" };
+      return { name: pm.name, version: pm.version || getDefaultPackageManagerVersion(pm.name) };
     }
   }
 
   for (const pm of ["pnpm", "npm", "bun"]) {
     if (pkg.devEngines[pm]) {
       const val = pkg.devEngines[pm];
-      const version = typeof val === "string" ? val : val.version || "latest";
+      const defaultVer = getDefaultPackageManagerVersion(pm);
+      const version = typeof val === "string" ? val : val.version || defaultVer;
       return { name: pm, version };
     }
   }
@@ -119,8 +145,8 @@ export function detectNodeVersion(pmName?: string): string {
   ) {
     return "";
   }
-  core.info("Node.js version not specified, using 24");
-  return "24";
+  core.info(`Node.js version not specified, using ${DEFAULT_NODE_VERSION}`);
+  return DEFAULT_NODE_VERSION;
 }
 
 export function detectPackageManager(): PackageManager {
@@ -128,9 +154,10 @@ export function detectPackageManager(): PackageManager {
     if (fs.existsSync("package.json")) {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
       if (pkg.packageManager) {
-        const [name, version = "latest"] = pkg.packageManager.split("@");
-        core.info(`Found packageManager in package.json: ${name}@${version}`);
-        return { name, version };
+        const [name, version] = pkg.packageManager.split("@");
+        const pmVersion = version || getDefaultPackageManagerVersion(name);
+        core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
+        return { name, version: pmVersion };
       }
 
       const devPm = getDevEnginePackageManager(pkg);
@@ -143,23 +170,23 @@ export function detectPackageManager(): PackageManager {
     }
 
     if (fs.existsSync("pnpm-lock.yaml")) {
-      core.info("Found pnpm-lock.yaml, using pnpm@latest");
-      return { name: "pnpm", version: "latest" };
+      core.info(`Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`);
+      return { name: "pnpm", version: DEFAULT_PNPM_VERSION };
     }
     if (fs.existsSync("package-lock.json")) {
-      core.info("Found package-lock.json, using npm@latest");
-      return { name: "npm", version: "latest" };
+      core.info(`Found package-lock.json, using npm@${DEFAULT_NPM_VERSION}`);
+      return { name: "npm", version: DEFAULT_NPM_VERSION };
     }
     if (fs.existsSync("bun.lock") || fs.existsSync("bun.lockb")) {
-      core.info("Found bun lockfile, using bun@latest");
-      return { name: "bun", version: "latest" };
+      core.info(`Found bun lockfile, using bun@${DEFAULT_BUN_VERSION}`);
+      return { name: "bun", version: DEFAULT_BUN_VERSION };
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.warning(`Failed to detect package manager: ${message}`);
   }
-  core.info("Package manager not specified, using npm@latest");
-  return { name: "npm", version: "latest" };
+  core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);
+  return { name: "npm", version: DEFAULT_NPM_VERSION };
 }
 
 export function detectBunVersion(pm: PackageManager): string {
@@ -189,7 +216,7 @@ export function detectBunVersion(pm: PackageManager): string {
     pm.name === "bun" || fs.existsSync("bun.lock") || fs.existsSync("bun.lockb") || hasBunEngine();
 
   if (isBunDetected) {
-    return "latest";
+    return DEFAULT_BUN_VERSION;
   }
 
   return "";
@@ -232,7 +259,7 @@ export function parseRuntimeInput(runtimeInput: string): {
   return {
     specifiedRuntime,
     nodeVersion,
-    bunVersion: bunVersion || (hasBun ? "latest" : undefined),
+    bunVersion: bunVersion || (hasBun ? DEFAULT_BUN_VERSION : undefined),
   };
 }
 
