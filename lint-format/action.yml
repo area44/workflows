@@ -75,7 +75,7 @@ runs:
             ;;
         esac
 
-    - name: Run lint/format scripts
+    - name: Run lint and format
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}

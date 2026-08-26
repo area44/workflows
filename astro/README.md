@@ -37,7 +37,7 @@ jobs:
 
 | Name            | Description                                   | Default         |
 | --------------- | --------------------------------------------- | --------------- |
-| `path`          | The directory where the built site is located | `dist`          |
+| `path`          | Directory where the built site is located     | `dist`          |
 | `runtime`       | Optional runtime and version override         | (auto-detected) |
 | `build-command` | Custom build command                          |                 |
 

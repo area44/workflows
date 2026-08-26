@@ -10,7 +10,7 @@ jobs:
     name: Unit Test and Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Detect environment
@@ -28,10 +28,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run main tests
+      - name: Run tests
         run: npm test
 
-      - name: Build
+      - name: Build project
         run: npm run build
 
       - name: Verify build artifacts
