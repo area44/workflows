@@ -39,7 +39,7 @@ jobs:
 | --------------- | --------------------------------------------- | --------------- |
 | `path`          | The directory where the built site is located | `dist`          |
 | `runtime`       | Optional runtime and version override         | (auto-detected) |
-| `build-command` | Optional build command override               |                 |
+| `build-command` | Custom build command                          |                 |
 
 ## Outputs
 
