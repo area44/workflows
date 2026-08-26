@@ -35,11 +35,11 @@ jobs:
 
 ## Inputs
 
-| Name            | Description                                   | Default         |
-| --------------- | --------------------------------------------- | --------------- |
-| `path`          | Directory where the built site is located     | `dist`          |
-| `runtime`       | Optional runtime and version override         | (auto-detected) |
-| `build-command` | Custom build command                          |                 |
+| Name            | Description                               | Default         |
+| --------------- | ----------------------------------------- | --------------- |
+| `path`          | Directory where the built site is located | `dist`          |
+| `runtime`       | Optional runtime and version override     | (auto-detected) |
+| `build-command` | Custom build command                      |                 |
 
 ## Outputs
 
