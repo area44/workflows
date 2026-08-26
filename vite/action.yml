@@ -2,14 +2,14 @@ name: Build and Deploy Vite Site
 description: Optimized build and deployment for Vite projects on GitHub Pages
 inputs:
   path:
-    description: "The directory where the built site is located"
+    description: "Directory where the built site is located"
     required: false
     default: "dist"
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
     required: false
   build-command:
-    description: "Optional build command override"
+    description: "Custom build command"
     required: false
 
 outputs:
