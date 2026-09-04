@@ -99,7 +99,7 @@ describe("detect-env", () => {
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should fall back to 24 if package.json exists but engines.node is missing for non-bun package manager", () => {
+    it("should fall back to 24 if package.json exists but devEngines is missing for non-bun package manager", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
