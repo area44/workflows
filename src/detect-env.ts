@@ -11,7 +11,7 @@ export const DEFAULT_BUN_VERSION = "1.4";
 export const DEFAULT_NPM_VERSION = "12";
 
 // renovate: datasource=npm depName=pnpm
-export const DEFAULT_PNPM_VERSION = "11";
+export const DEFAULT_PNPM_VERSION = "12";
 
 export function getDefaultPackageManagerVersion(pmName: string): string {
   switch (pmName.toLowerCase()) {
