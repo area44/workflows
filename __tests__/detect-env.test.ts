@@ -43,9 +43,9 @@ describe("detect-env", () => {
       expect(DEFAULT_NODE_VERSION).toBe("24");
       expect(DEFAULT_BUN_VERSION).toBe("1.4");
       expect(DEFAULT_NPM_VERSION).toBe("12");
-      expect(DEFAULT_PNPM_VERSION).toBe("11");
+      expect(DEFAULT_PNPM_VERSION).toBe("12");
       expect(getDefaultPackageManagerVersion("npm")).toBe("12");
-      expect(getDefaultPackageManagerVersion("pnpm")).toBe("11");
+      expect(getDefaultPackageManagerVersion("pnpm")).toBe("12");
       expect(getDefaultPackageManagerVersion("bun")).toBe("1.4");
     });
   });
