@@ -249,8 +249,10 @@ describe("detect-env", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");
 
       const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "pnpm", version: "11" });
-      expect(core.info).toHaveBeenCalledWith("Found pnpm-lock.yaml, using pnpm@11");
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(core.info).toHaveBeenCalledWith(
+        `Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`,
+      );
     });
 
     it("should check fallback lockfiles in order: package-lock.json", () => {
@@ -374,7 +376,7 @@ describe("detect-env", () => {
         type: "minimal",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11" },
+        expectedPm: { name: "pnpm", version: DEFAULT_PNPM_VERSION },
         expectedRuntime: "node",
       },
       {
