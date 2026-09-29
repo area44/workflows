@@ -218,13 +218,29 @@ jobs:
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
           cp -r "$FIXTURE_DIR"/* .
 
-      - name: Test Action
-        uses: ./${{ matrix.action }}
-        id: action_step
+      - name: Test Astro Action
+        if: matrix.action == 'astro'
+        uses: ./astro
+        id: astro
+
+      - name: Test Lint-Format Action
+        if: matrix.action == 'lint-format'
+        uses: ./lint-format
+        id: lint-format
+
+      - name: Test Vite Action
+        if: matrix.action == 'vite'
+        uses: ./vite
+        id: vite
+
+      - name: Test Vite-Plus Action
+        if: matrix.action == 'vite-plus'
+        uses: ./vite-plus
+        id: vite-plus
 
       - name: Verify outputs
         run: |
-          DETECTED_PM="${{ steps.action_step.outputs.package-manager }}"
+          DETECTED_PM="${{ steps.astro.outputs.package-manager }}${{ steps.lint-format.outputs.package-manager }}${{ steps.vite.outputs.package-manager }}${{ steps.vite-plus.outputs.package-manager }}"
           EXPECTED_PM="${{ matrix.pm }}"
           [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
 
