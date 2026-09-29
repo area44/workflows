@@ -1,0 +1,261 @@
+name: Test Actions
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-action:
+    name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Astro action
+          - action: astro
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
+
+          # Lint-Format action
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: false
+
+          # Vite action
+          - action: vite
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
+
+          # Vite-Plus action
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Workspace
+        run: |
+          FIXTURE_DIR="__tests__/fixtures/${{ matrix.action }}/${{ matrix.runtime }}/${{ matrix.pm }}/${{ matrix.type }}"
+          if [ ! -d "$FIXTURE_DIR" ]; then
+            echo "Error: Missing expected fixture directory for matrix combination '${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})': $FIXTURE_DIR"
+            exit 1
+          fi
+          [ -f package.json ] && mv package.json package.json.bak || true
+          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
+          [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
+          [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
+          [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
+          cp -r "$FIXTURE_DIR"/* .
+
+      - name: Test Action
+        uses: ./${{ matrix.action }}
+        id: action_step
+
+      - name: Verify outputs
+        run: |
+          DETECTED_PM="${{ steps.action_step.outputs.package-manager }}"
+          EXPECTED_PM="${{ matrix.pm }}"
+          [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
+
+          if [[ "${{ matrix.verify_site }}" == "true" ]]; then
+            REPO_NAME="${GITHUB_REPOSITORY#*/}"
+            EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
+            if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
+              EXPECTED_BASE="/"
+            else
+              EXPECTED_BASE="/${REPO_NAME}/"
+            fi
+            [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
+            [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
+          fi
+
+      - name: Restore Workspace Root
+        if: always()
+        run: |
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
+          if [ -f package.json.bak ]; then
+            mv package.json.bak package.json
+          fi
+          if [ -f package-lock.json.bak ]; then
+            mv package-lock.json.bak package-lock.json
+          fi
+          if [ -f pnpm-lock.yaml.bak ]; then
+            mv pnpm-lock.yaml.bak pnpm-lock.yaml
+          fi
+          if [ -f pnpm-workspace.yaml.bak ]; then
+            mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
+          fi
+          if [ -f bun.lock.bak ]; then
+            mv bun.lock.bak bun.lock
+          fi
