@@ -6,6 +6,70 @@ export interface ParsedCommand {
   args: string[];
 }
 
+interface TokenizerState {
+  currentToken: string;
+  inDoubleQuote: boolean;
+  inSingleQuote: boolean;
+  escaped: boolean;
+}
+
+function processChar(char: string, state: TokenizerState, tokens: string[]): TokenizerState {
+  const { currentToken, inDoubleQuote, inSingleQuote, escaped } = state;
+
+  if (escaped) {
+    return { currentToken: currentToken + char, inDoubleQuote, inSingleQuote, escaped: false };
+  }
+
+  if (char === "\\") {
+    return { currentToken, inDoubleQuote, inSingleQuote, escaped: true };
+  }
+
+  if (char === '"' && !inSingleQuote) {
+    return { currentToken, inDoubleQuote: !inDoubleQuote, inSingleQuote, escaped: false };
+  }
+
+  if (char === "'" && !inDoubleQuote) {
+    return { currentToken, inDoubleQuote, inSingleQuote: !inSingleQuote, escaped: false };
+  }
+
+  if (/\s/.test(char) && !inDoubleQuote && !inSingleQuote) {
+    if (currentToken.length > 0) {
+      tokens.push(currentToken);
+    }
+    return { currentToken: "", inDoubleQuote, inSingleQuote, escaped: false };
+  }
+
+  return { currentToken: currentToken + char, inDoubleQuote, inSingleQuote, escaped: false };
+}
+
+function tokenizeCommand(trimmed: string): string[] {
+  const tokens: string[] = [];
+  let state: TokenizerState = {
+    currentToken: "",
+    inDoubleQuote: false,
+    inSingleQuote: false,
+    escaped: false,
+  };
+
+  for (let i = 0; i < trimmed.length; i++) {
+    state = processChar(trimmed[i], state, tokens);
+  }
+
+  if (state.escaped) {
+    state.currentToken += "\\";
+  }
+
+  if (state.inDoubleQuote || state.inSingleQuote) {
+    throw new Error("Unterminated quote in build command string.");
+  }
+
+  if (state.currentToken.length > 0) {
+    tokens.push(state.currentToken);
+  }
+
+  return tokens;
+}
+
 /**
  * Parses a command line string into an executable command and an array of arguments,
  * respecting single/double quotes and escaped characters, without using shell expansion.
@@ -16,58 +80,7 @@ export function parseCommand(cmdStr: string): ParsedCommand {
     throw new Error("Build command string is empty.");
   }
 
-  const tokens: string[] = [];
-  let currentToken = "";
-  let inDoubleQuote = false;
-  let inSingleQuote = false;
-  let escaped = false;
-
-  for (let i = 0; i < trimmed.length; i++) {
-    const char = trimmed[i];
-
-    if (escaped) {
-      currentToken += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-
-    if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      continue;
-    }
-
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-      continue;
-    }
-
-    if (/\s/.test(char) && !inDoubleQuote && !inSingleQuote) {
-      if (currentToken.length > 0) {
-        tokens.push(currentToken);
-        currentToken = "";
-      }
-      continue;
-    }
-
-    currentToken += char;
-  }
-
-  if (escaped) {
-    currentToken += "\\";
-  }
-
-  if (inDoubleQuote || inSingleQuote) {
-    throw new Error("Unterminated quote in build command string.");
-  }
-
-  if (currentToken.length > 0) {
-    tokens.push(currentToken);
-  }
+  const tokens = tokenizeCommand(trimmed);
 
   if (tokens.length === 0) {
     throw new Error("Failed to parse build command: no valid executable found.");
