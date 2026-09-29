@@ -11,67 +11,83 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 
 ## Environment Contract
 
-Environment detection is handled by `src/detect-env.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).
+Environment detection is executed by `src/detect-env.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).
 
-### Produced Action Outputs
+### Output Contract
 
-| Name                      | Description                                                              | Example Values               |
-| ------------------------- | ------------------------------------------------------------------------ | ---------------------------- |
-| `runtime`                 | Resolved runtime environment (`"node"` or `"bun"`).                      | `"node"`, `"bun"`            |
-| `node-version`            | Target Node.js version (empty string if Bun runtime without Node input). | `"24"`, `"22.0.0"`, `""`     |
-| `bun-version`             | Target Bun version (empty string if Bun is not requested or detected).   | `"1.4"`, `"1.1.20"`, `""`    |
-| `package-manager`         | Resolved package manager (`"npm"`, `"pnpm"`, or `"bun"`).                | `"npm"`, `"pnpm"`, `"bun"`   |
-| `package-manager-version` | Resolved package manager version.                                        | `"12"`, `"11.21.0"`, `"1.4"` |
+The `detectEnv()` function resolves workspace configuration and writes the following step outputs:
 
-### Authoritative Detection Precedence
+| Output Name               | Type                           | Description                                                                                  | Example Values               |
+| ------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------- | ---------------------------- |
+| `runtime`                 | `"node"` \| `"bun"`            | The resolved runtime environment.                                                            | `"node"`, `"bun"`            |
+| `node-version`            | `string`                       | The resolved Node.js version (empty string if Bun runtime without explicit Node.js version). | `"24"`, `"22.0.0"`, `""`     |
+| `bun-version`             | `string`                       | The resolved Bun version (empty string if Bun is neither requested nor detected).            | `"1.4"`, `"1.1.20"`, `""`    |
+| `package-manager`         | `"npm"` \| `"pnpm"` \| `"bun"` | The resolved package manager name.                                                           | `"npm"`, `"pnpm"`, `"bun"`   |
+| `package-manager-version` | `string`                       | The resolved package manager version string.                                                 | `"12"`, `"11.21.0"`, `"1.4"` |
 
-#### 1. Runtime Determination (`runtime`)
+### Workspace Detection Precedence
 
-1. **Explicit `runtime` input**: The first specified runtime token (`node` or `bun`) in the `runtime` action input string (e.g. `node@24`, `bun@1.4`).
-2. **Package Manager**: Defaults to `bun` if the detected package manager is `bun`.
-3. **Fallback Default**: `node`.
+Individual detector functions discover settings from project configuration files in the workspace:
 
-#### 2. Package Manager Detection (`package-manager` & `package-manager-version`)
+#### Package Manager Detector (`detectPackageManager`)
 
-1. `package.json.packageManager` field (e.g., `"pnpm@11.21.0"` or `"bun"`). If no version tag is supplied, defaults to the standard version for that package manager.
-2. `package.json.devEngines`:
-   - `devEngines.packageManager`: Supports string (`"pnpm@11.21.0"`), object (`{ "name": "pnpm", "version": "11.21.0" }`), or array (evaluates first element).
-   - `devEngines[pm]`: Evaluates `devEngines.pnpm`, `devEngines.npm`, and `devEngines.bun` in order.
-3. **Lockfiles** (evaluated in exact order if `package.json` does not specify a package manager):
-   - `pnpm-lock.yaml` -> `pnpm`
-   - `package-lock.json` -> `npm`
-   - `bun.lock` or `bun.lockb` -> `bun`
+1. `package.json` -> `packageManager` field (e.g., `"pnpm@11.21.0"`, `"bun"`, or `"npm"`). If the version tag is omitted, uses the fallback default for that package manager.
+2. `package.json` -> `devEngines`:
+   - `devEngines.packageManager`: Supports string (`"pnpm@11.21.0"`), object (`{ "name": "pnpm", "version": "11.21.0" }`), or array (evaluates the first element).
+   - `devEngines[pm]`: Evaluates `devEngines.pnpm`, `devEngines.npm`, and `devEngines.bun` in that exact order (string or object `{ "version": "..." }`).
+3. **Lockfiles** (evaluated in exact order if `package.json` provides no package manager configuration):
+   1. `pnpm-lock.yaml` -> `pnpm@12`
+   2. `package-lock.json` -> `npm@12`
+   3. `bun.lock` or `bun.lockb` -> `bun@1.4`
 4. **Fallback Default**: `npm@12`.
 
-#### 3. Node.js Version Detection (`node-version`)
+#### Node.js Version Detector (`detectNodeVersion`)
 
-1. **Explicit `runtime` input**: Version specified in `runtime` input string (e.g. `node@22`).
-2. `.nvmrc` file content (trimmed).
-3. `.node-version` file content (trimmed).
-4. `package.json.devEngines`:
-   - `devEngines.runtime`: String, object, or array matching `"node"`.
-   - `devEngines.node`: String or object.
-5. **Fallback Default**:
-   - Empty string (`""`) if runtime resolves to `bun` and no explicit Node version was supplied via `runtime` input.
-   - `"24"` if runtime resolves to `node`.
+1. `.nvmrc` file content (trimmed).
+2. `.node-version` file content (trimmed).
+3. `package.json` -> `devEngines`:
+   - `devEngines.runtime`: String, object, or array element with `name: "node"` or starting with `"node"` (e.g. `"node@20"`).
+   - `devEngines.node`: String or object `{ "version": "..." }`.
+4. **Fallback Default**:
+   - Empty string (`""`) if package manager context is `bun` and no Node.js configuration (`.nvmrc`, `.node-version`, or `devEngines` for Node.js) exists.
+   - `"24"` otherwise.
 
-#### 4. Bun Version Detection (`bun-version`)
+#### Bun Version Detector (`detectBunVersion`)
 
-1. **Explicit `runtime` input**: Version specified in `runtime` input string (e.g. `bun@1.4` or `both`).
-2. `.bun-version` file content (trimmed).
-3. **Package Manager**: If the detected package manager is `bun` and version is not `"latest"`, uses the package manager version.
-4. `package.json.devEngines`:
-   - `devEngines.runtime`: String, object, or array matching `"bun"`.
-   - `devEngines.bun`: String or object.
-5. **Auto-detection Fallback**: If Bun is detected via lockfile (`bun.lock`/`bun.lockb`), package manager `bun`, or `devEngines`, defaults to `"1.4"`.
-6. **Fallback Default**: Empty string (`""`) if Bun is neither requested nor detected.
+1. `.bun-version` file content (trimmed).
+2. Package Manager Version: Uses `pm.version` if the detected package manager is `bun` and version is not `"latest"`.
+3. `package.json` -> `devEngines`:
+   - `devEngines.runtime`: String, object, or array element with `name: "bun"` or starting with `"bun"` (e.g. `"bun@1.4"`).
+   - `devEngines.bun`: String or object `{ "version": "..." }`.
+4. **Auto-detection Fallback**: `"1.4"` if Bun is detected via lockfile (`bun.lock` or `bun.lockb`), package manager `bun`, or Bun `devEngines`.
+5. **Fallback Default**: Empty string (`""`) if Bun is neither requested nor detected.
 
-#### Default Versions
+### Final Resolution Precedence (`detectEnv`)
 
-- Node.js: `"24"` (`DEFAULT_NODE_VERSION`)
-- Bun: `"1.4"` (`DEFAULT_BUN_VERSION`)
-- npm: `"12"` (`DEFAULT_NPM_VERSION`)
-- pnpm: `"12"` (`DEFAULT_PNPM_VERSION`)
+The `detectEnv()` entrypoint merges explicit `runtime` action inputs with workspace-detected values:
+
+1. **Input Token Parsing**:
+   - Parses tokens from the explicit `runtime` action input string (split by whitespace or comma).
+   - `both`: Requests Bun setup alongside Node.js, defaulting Bun version to `"1.4"` if no explicit Bun version is attached.
+   - First token starting with `"node"` or `"bun"` sets the primary resolved `runtime` (`"node"` or `"bun"`).
+   - Extracts explicit version tags if present (e.g. `node@22` sets explicit Node.js version `"22"`, `bun@1.4` sets explicit Bun version `"1.4"`).
+2. **Package Manager Resolution**: Calls `detectPackageManager()`.
+3. **Bun Version Resolution**: Uses explicit `bunVersion` from `runtime` input if provided (or `"1.4"` if `both` or `bun` without version tag was passed in input); otherwise uses detected Bun version from `detectBunVersion()`.
+4. **Runtime Choice Resolution**:
+   - Uses explicit `specifiedRuntime` from `runtime` action input if provided.
+   - Else uses `"bun"` if detected package manager is `bun`.
+   - Else defaults to `"node"`.
+5. **Node.js Version Resolution**:
+   - Uses explicit `nodeVersion` from `runtime` action input if provided.
+   - Else if primary resolved `runtime` is `"bun"`, resolves `node-version` output to empty string (`""`).
+   - Else uses detected Node.js version from `detectNodeVersion()`.
+
+### Default Fallback Versions
+
+- **Node.js**: `"24"` (`DEFAULT_NODE_VERSION`)
+- **Bun**: `"1.4"` (`DEFAULT_BUN_VERSION`)
+- **npm**: `"12"` (`DEFAULT_NPM_VERSION`)
+- **pnpm**: `"12"` (`DEFAULT_PNPM_VERSION`)
 
 ## License
 

@@ -690,6 +690,89 @@ describe("detect-env", () => {
       expect(detectBunVersion(pm)).toBe("1.4.2");
     });
 
+    it("devEngines.[pm] precedence: devEngines.pnpm beats devEngines.npm and devEngines.bun when all are present", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({
+          devEngines: {
+            pnpm: "9.1.0",
+            npm: "10.0.0",
+            bun: "1.4.0",
+          },
+        }) as any,
+      );
+
+      const pm = detectPackageManager();
+      expect(pm).toEqual({ name: "pnpm", version: "9.1.0" });
+    });
+
+    it("parses runtime = 'both' to set bunVersion while defaulting runtime to node", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      const env = detectEnv("both");
+
+      expect(env.runtime).toBe("node");
+      expect(env.nodeVersion).toBe(DEFAULT_NODE_VERSION);
+      expect(env.bunVersion).toBe(DEFAULT_BUN_VERSION);
+    });
+
+    it("evaluates runtime input order: node@20,bun@1.2 sets specifiedRuntime to node, bun@1.2,node@20 sets specifiedRuntime to bun", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      const env1 = detectEnv("node@20,bun@1.2");
+      expect(env1.runtime).toBe("node");
+      expect(env1.nodeVersion).toBe("20");
+      expect(env1.bunVersion).toBe("1.2");
+
+      const env2 = detectEnv("bun@1.2,node@20");
+      expect(env2.runtime).toBe("bun");
+      expect(env2.nodeVersion).toBe("20");
+      expect(env2.bunVersion).toBe("1.2");
+    });
+
+    it("preserves project Node version when runtime input is 'node' without version tag, and sets default Bun version when runtime input is 'bun' without version tag", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) =>
+        [".nvmrc", ".bun-version"].includes(p as string),
+      );
+      vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
+        if (p === ".nvmrc") return "20.11.0\n" as any;
+        if (p === ".bun-version") return "1.3.5\n" as any;
+        return "" as any;
+      });
+
+      // runtime = "node" without @version -> keeps detected .nvmrc version
+      const envNode = detectEnv("node");
+      expect(envNode.runtime).toBe("node");
+      expect(envNode.nodeVersion).toBe("20.11.0");
+
+      // runtime = "bun" without @version -> parseRuntimeInput resolves bunVersion to DEFAULT_BUN_VERSION ("1.4")
+      const envBun = detectEnv("bun");
+      expect(envBun.runtime).toBe("bun");
+      expect(envBun.bunVersion).toBe(DEFAULT_BUN_VERSION);
+      expect(envBun.nodeVersion).toBe("");
+    });
+
+    it("explicit runtime input with @version consistently overrides detected project versions", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) =>
+        [".nvmrc", ".bun-version"].includes(p as string),
+      );
+      vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
+        if (p === ".nvmrc") return "20.11.0\n" as any;
+        if (p === ".bun-version") return "1.1.0\n" as any;
+        return "" as any;
+      });
+
+      const envNodeOverride = detectEnv("node@22");
+      expect(envNodeOverride.nodeVersion).toBe("22");
+
+      const envBunOverride = detectEnv("bun@1.4");
+      expect(envBunOverride.bunVersion).toBe("1.4");
+
+      const envBothOverride = detectEnv("node@22,bun@1.4");
+      expect(envBothOverride.nodeVersion).toBe("22");
+      expect(envBothOverride.bunVersion).toBe("1.4");
+    });
+
     it("falls back to default versions when no configuration or lockfiles exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
