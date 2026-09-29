@@ -17,13 +17,14 @@ Environment detection is executed by `src/detect-env.ts` and shared across compo
 
 The `detectEnv()` function resolves workspace configuration and writes the following step outputs:
 
-| Output Name               | Type                           | Description                                                                                  | Example Values               |
-| ------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------- | ---------------------------- |
-| `runtime`                 | `"node"` \| `"bun"`            | The resolved runtime environment.                                                            | `"node"`, `"bun"`            |
-| `node-version`            | `string`                       | The resolved Node.js version (empty string if Bun runtime without explicit Node.js version). | `"24"`, `"22.0.0"`, `""`     |
-| `bun-version`             | `string`                       | The resolved Bun version (empty string if Bun is neither requested nor detected).            | `"1.4"`, `"1.1.20"`, `""`    |
-| `package-manager`         | `"npm"` \| `"pnpm"` \| `"bun"` | The resolved package manager name.                                                           | `"npm"`, `"pnpm"`, `"bun"`   |
-| `package-manager-version` | `string`                       | The resolved package manager version string.                                                 | `"12"`, `"11.21.0"`, `"1.4"` |
+| Output Name               | Type                           | Description                                                                                                                | Example Values                         |
+| ------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `runtime`                 | `"node"` \| `"bun"`            | The resolved runtime environment.                                                                                          | `"node"`, `"bun"`                      |
+| `node-version`            | `string`                       | The resolved Node.js version (empty string if Bun runtime without explicit Node.js version).                               | `"24"`, `"22.0.0"`, `""`               |
+| `bun-version`             | `string`                       | The resolved Bun version (empty string if Bun is neither requested nor detected).                                          | `"1.4"`, `"1.1.20"`, `""`              |
+| `package-manager`         | `"npm"` \| `"pnpm"` \| `"bun"` | The resolved package manager name.                                                                                         | `"npm"`, `"pnpm"`, `"bun"`             |
+| `package-manager-version` | `string`                       | The resolved package manager version string.                                                                               | `"12"`, `"11.21.0"`, `"1.4"`           |
+| `pnpm-runtime`            | `string`                       | Specialized adapter output for `pnpm/setup` (`bun@<ver>`, `node@<ver>`, or `node@lts`), not a generic runtime abstraction. | `"node@24"`, `"bun@1.4"`, `"node@lts"` |
 
 ### Workspace Detection Precedence
 
