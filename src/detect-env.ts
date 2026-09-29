@@ -316,6 +316,19 @@ export function detectRuntime(pm: PackageManager, bunVersion: string): "node" | 
 }
 
 /**
+ * Formats the runtime argument for pnpm/setup based on detected Bun or Node.js versions.
+ */
+export function getPnpmRuntime(bunVersion: string, nodeVersion: string): string {
+  if (bunVersion) {
+    return `bun@${bunVersion}`;
+  }
+  if (nodeVersion && !nodeVersion.startsWith("lts")) {
+    return `node@${nodeVersion}`;
+  }
+  return "node@lts";
+}
+
+/**
  * Writes the detected environment values to GitHub Actions outputs.
  */
 export function writeOutput(
@@ -329,6 +342,7 @@ export function writeOutput(
   core.setOutput("package-manager", pm.name);
   core.setOutput("package-manager-version", pm.version);
   core.setOutput("runtime", runtime);
+  core.setOutput("pnpm-runtime", getPnpmRuntime(bunVersion, nodeVersion));
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   detectPackageManager,
   detectRuntime,
   getDefaultPackageManagerVersion,
+  getPnpmRuntime,
   parseRuntimeInput,
   run,
   writeOutput,
@@ -59,6 +60,24 @@ describe("detect-env", () => {
     it("should detect bun when pm is bun or bunVersion is present", () => {
       const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
       expect(runtime).toBe("bun");
+    });
+  });
+
+  describe("getPnpmRuntime", () => {
+    it("should format bun runtime when bunVersion is non-empty", () => {
+      expect(getPnpmRuntime("1.4", "")).toBe("bun@1.4");
+      expect(getPnpmRuntime("1.4", "24")).toBe("bun@1.4");
+    });
+
+    it("should format node runtime when nodeVersion is non-empty and does not start with lts", () => {
+      expect(getPnpmRuntime("", "24")).toBe("node@24");
+      expect(getPnpmRuntime("", "22.0.0")).toBe("node@22.0.0");
+    });
+
+    it("should format node@lts when nodeVersion starts with lts or is empty", () => {
+      expect(getPnpmRuntime("", "lts/*")).toBe("node@lts");
+      expect(getPnpmRuntime("", "lts/iron")).toBe("node@lts");
+      expect(getPnpmRuntime("", "")).toBe("node@lts");
     });
   });
 
@@ -786,7 +805,7 @@ describe("detect-env", () => {
   });
 
   describe("writeOutput", () => {
-    it("should output node-version, bun-version, package manager, and runtime details correctly", () => {
+    it("should output node-version, bun-version, package manager, runtime, and pnpm-runtime details correctly", () => {
       writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "", "node");
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
@@ -794,6 +813,7 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("pnpm-runtime", "node@20.10.0");
     });
   });
 
