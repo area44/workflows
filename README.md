@@ -90,6 +90,17 @@ The `detectEnv()` entrypoint merges explicit `runtime` action inputs with worksp
 - **npm**: `"12"` (`DEFAULT_NPM_VERSION`)
 - **pnpm**: `"12"` (`DEFAULT_PNPM_VERSION`)
 
+## Build Command Execution Contract
+
+Build commands across composite actions (`astro`, `vite`, `vite-plus`) are executed via `src/build-command.ts`. Custom `build-command` inputs and project defaults are parsed into executable binaries and argument arrays without shell expansion or interpolation.
+
+- **Safe Argument Parsing**: Supports single quotes, double quotes, and backslash escapes so path names and options with spaces or special characters are preserved.
+- **Shell Injection Prevention**: Metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values rather than shell operators.
+- **Deterministic Defaults**: When no custom `build-command` is provided:
+  - `astro` and `vite` default to `<package-manager> run build`.
+  - `vite-plus` defaults to `vpr build`.
+- **Error Propagation**: Non-zero exit codes and command errors propagate directly with actionable messages via `core.setFailed`.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

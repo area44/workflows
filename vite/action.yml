@@ -96,11 +96,10 @@ runs:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
-        PM="${PACKAGE_MANAGER:-npm}"
-        if [[ -n "$BUILD_COMMAND" ]]; then
-          eval "$BUILD_COMMAND"
+        if [ "${{ steps.detect_env.outputs.runtime }}" = "bun" ]; then
+          bun "${{ github.action_path }}/../dist/build-command.mjs"
         else
-          "$PM" run build
+          node "${{ github.action_path }}/../dist/build-command.mjs"
         fi
 
     - name: Upload site artifact
