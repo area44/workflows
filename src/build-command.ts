@@ -35,95 +35,68 @@ interface TokenizerState {
   wasQuoted: boolean;
 }
 
+function shouldEscapeBackslash(nextChar: string | undefined, inDoubleQuote: boolean): boolean {
+  if (!nextChar) {
+    return false;
+  }
+  if (nextChar === '"' || nextChar === "'" || nextChar === "\\") {
+    return true;
+  }
+  return !inDoubleQuote && /\s/.test(nextChar);
+}
+
+function handleBackslash(nextChar: string | undefined, state: TokenizerState): TokenizerState {
+  if (shouldEscapeBackslash(nextChar, state.inDoubleQuote)) {
+    return { ...state, escaped: true };
+  }
+  return { ...state, currentToken: state.currentToken + "\\", escaped: false };
+}
+
+function handleWhitespace(state: TokenizerState, tokens: string[]): TokenizerState {
+  if (state.currentToken.length > 0 || state.wasQuoted) {
+    tokens.push(state.currentToken);
+  }
+  return { ...state, currentToken: "", escaped: false, wasQuoted: false };
+}
+
+function handleSingleQuoteState(char: string, state: TokenizerState): TokenizerState {
+  if (char === "'") {
+    return { ...state, inSingleQuote: false, escaped: false, wasQuoted: true };
+  }
+  return { ...state, currentToken: state.currentToken + char, escaped: false };
+}
+
 function processChar(
   char: string,
   nextChar: string | undefined,
   state: TokenizerState,
   tokens: string[],
 ): TokenizerState {
-  const { currentToken, inDoubleQuote, inSingleQuote, escaped, wasQuoted } = state;
-
-  if (escaped) {
-    return {
-      currentToken: currentToken + char,
-      inDoubleQuote,
-      inSingleQuote,
-      escaped: false,
-      wasQuoted,
-    };
+  if (state.escaped) {
+    return { ...state, currentToken: state.currentToken + char, escaped: false };
   }
 
-  // Inside single quotes: all characters including backslashes are literal
-  if (inSingleQuote) {
-    if (char === "'") {
-      return { currentToken, inDoubleQuote, inSingleQuote: false, escaped: false, wasQuoted: true };
-    }
-    return {
-      currentToken: currentToken + char,
-      inDoubleQuote,
-      inSingleQuote: true,
-      escaped: false,
-      wasQuoted,
-    };
+  if (state.inSingleQuote) {
+    return handleSingleQuoteState(char, state);
   }
 
-  // Outside single quotes: handle backslash escape contextually
   if (char === "\\") {
-    // Escape when followed by quotes, spaces, backslashes, or inside double quotes if followed by quote/backslash
-    if (
-      inDoubleQuote
-        ? nextChar === '"' || nextChar === "\\" || nextChar === "'"
-        : nextChar === '"' ||
-          nextChar === "'" ||
-          nextChar === "\\" ||
-          (nextChar && /\s/.test(nextChar))
-    ) {
-      return { currentToken, inDoubleQuote, inSingleQuote, escaped: true, wasQuoted };
-    }
-    // Otherwise (e.g. Windows paths like C:\project\dist, C:\Users\test), treat backslash as literal
-    return {
-      currentToken: currentToken + "\\",
-      inDoubleQuote,
-      inSingleQuote,
-      escaped: false,
-      wasQuoted,
-    };
+    return handleBackslash(nextChar, state);
   }
 
-  if (char === '"' && !inSingleQuote) {
-    return {
-      currentToken,
-      inDoubleQuote: !inDoubleQuote,
-      inSingleQuote,
-      escaped: false,
-      wasQuoted: true,
-    };
+  if (char === '"') {
+    return { ...state, inDoubleQuote: !state.inDoubleQuote, escaped: false, wasQuoted: true };
   }
 
-  if (char === "'" && !inDoubleQuote) {
-    return {
-      currentToken,
-      inDoubleQuote,
-      inSingleQuote: !inSingleQuote,
-      escaped: false,
-      wasQuoted: true,
-    };
+  if (char === "'") {
+    return { ...state, inSingleQuote: !state.inSingleQuote, escaped: false, wasQuoted: true };
   }
 
-  if (/\s/.test(char) && !inDoubleQuote && !inSingleQuote) {
-    if (currentToken.length > 0 || wasQuoted) {
-      tokens.push(currentToken);
-    }
-    return { currentToken: "", inDoubleQuote, inSingleQuote, escaped: false, wasQuoted: false };
+  if (/\s/.test(char) && !state.inDoubleQuote) {
+    return handleWhitespace(state, tokens);
   }
 
-  return {
-    currentToken: currentToken + char,
-    inDoubleQuote,
-    inSingleQuote,
-    escaped: false,
-    wasQuoted,
-  };
+  return { ...state, currentToken: state.currentToken + char, escaped: false };
 }
 
 function tokenizeCommand(trimmed: string): string[] {
