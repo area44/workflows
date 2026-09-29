@@ -6,40 +6,124 @@ export interface ParsedCommand {
   args: string[];
 }
 
+/**
+ * Sanitizes command strings for logging to prevent accidental credential/token exposure.
+ */
+export function sanitizeCommandString(cmdStr: string): string {
+  return (
+    cmdStr
+      // Mask URLs containing authentication credentials (e.g. https://user:pass@host)
+      .replace(/(https?:\/\/)[^:@\s]+:[^@\s]+@/gi, "$1***:***@")
+      // Mask sensitive CLI flag values (e.g. --token=secret, --key secret, -t secret)
+      .replace(
+        /(--(?:token|auth|password|secret|key|api-key|access-token|pat)(?:=|\s+))([^\s]+)/gi,
+        "$1***",
+      )
+      // Mask common token formats (GitHub PATs, npm tokens, Slack tokens)
+      .replace(
+        /(ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{60,}|npm_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9_-]{20,})/g,
+        "***",
+      )
+  );
+}
+
 interface TokenizerState {
   currentToken: string;
   inDoubleQuote: boolean;
   inSingleQuote: boolean;
   escaped: boolean;
+  wasQuoted: boolean;
 }
 
-function processChar(char: string, state: TokenizerState, tokens: string[]): TokenizerState {
-  const { currentToken, inDoubleQuote, inSingleQuote, escaped } = state;
+function processChar(
+  char: string,
+  nextChar: string | undefined,
+  state: TokenizerState,
+  tokens: string[],
+): TokenizerState {
+  const { currentToken, inDoubleQuote, inSingleQuote, escaped, wasQuoted } = state;
 
   if (escaped) {
-    return { currentToken: currentToken + char, inDoubleQuote, inSingleQuote, escaped: false };
+    return {
+      currentToken: currentToken + char,
+      inDoubleQuote,
+      inSingleQuote,
+      escaped: false,
+      wasQuoted,
+    };
   }
 
+  // Inside single quotes: all characters including backslashes are literal
+  if (inSingleQuote) {
+    if (char === "'") {
+      return { currentToken, inDoubleQuote, inSingleQuote: false, escaped: false, wasQuoted: true };
+    }
+    return {
+      currentToken: currentToken + char,
+      inDoubleQuote,
+      inSingleQuote: true,
+      escaped: false,
+      wasQuoted,
+    };
+  }
+
+  // Outside single quotes: handle backslash escape contextually
   if (char === "\\") {
-    return { currentToken, inDoubleQuote, inSingleQuote, escaped: true };
+    // Escape when followed by quotes, spaces, backslashes, or inside double quotes if followed by quote/backslash
+    if (
+      inDoubleQuote
+        ? nextChar === '"' || nextChar === "\\" || nextChar === "'"
+        : nextChar === '"' ||
+          nextChar === "'" ||
+          nextChar === "\\" ||
+          (nextChar && /\s/.test(nextChar))
+    ) {
+      return { currentToken, inDoubleQuote, inSingleQuote, escaped: true, wasQuoted };
+    }
+    // Otherwise (e.g. Windows paths like C:\project\dist, C:\Users\test), treat backslash as literal
+    return {
+      currentToken: currentToken + "\\",
+      inDoubleQuote,
+      inSingleQuote,
+      escaped: false,
+      wasQuoted,
+    };
   }
 
   if (char === '"' && !inSingleQuote) {
-    return { currentToken, inDoubleQuote: !inDoubleQuote, inSingleQuote, escaped: false };
+    return {
+      currentToken,
+      inDoubleQuote: !inDoubleQuote,
+      inSingleQuote,
+      escaped: false,
+      wasQuoted: true,
+    };
   }
 
   if (char === "'" && !inDoubleQuote) {
-    return { currentToken, inDoubleQuote, inSingleQuote: !inSingleQuote, escaped: false };
+    return {
+      currentToken,
+      inDoubleQuote,
+      inSingleQuote: !inSingleQuote,
+      escaped: false,
+      wasQuoted: true,
+    };
   }
 
   if (/\s/.test(char) && !inDoubleQuote && !inSingleQuote) {
-    if (currentToken.length > 0) {
+    if (currentToken.length > 0 || wasQuoted) {
       tokens.push(currentToken);
     }
-    return { currentToken: "", inDoubleQuote, inSingleQuote, escaped: false };
+    return { currentToken: "", inDoubleQuote, inSingleQuote, escaped: false, wasQuoted: false };
   }
 
-  return { currentToken: currentToken + char, inDoubleQuote, inSingleQuote, escaped: false };
+  return {
+    currentToken: currentToken + char,
+    inDoubleQuote,
+    inSingleQuote,
+    escaped: false,
+    wasQuoted,
+  };
 }
 
 function tokenizeCommand(trimmed: string): string[] {
@@ -49,10 +133,11 @@ function tokenizeCommand(trimmed: string): string[] {
     inDoubleQuote: false,
     inSingleQuote: false,
     escaped: false,
+    wasQuoted: false,
   };
 
   for (let i = 0; i < trimmed.length; i++) {
-    state = processChar(trimmed[i], state, tokens);
+    state = processChar(trimmed[i], trimmed[i + 1], state, tokens);
   }
 
   if (state.escaped) {
@@ -63,7 +148,7 @@ function tokenizeCommand(trimmed: string): string[] {
     throw new Error("Unterminated quote in build command string.");
   }
 
-  if (state.currentToken.length > 0) {
+  if (state.currentToken.length > 0 || state.wasQuoted) {
     tokens.push(state.currentToken);
   }
 
@@ -82,7 +167,7 @@ export function parseCommand(cmdStr: string): ParsedCommand {
 
   const tokens = tokenizeCommand(trimmed);
 
-  if (tokens.length === 0) {
+  if (tokens.length === 0 || !tokens[0]) {
     throw new Error("Failed to parse build command: no valid executable found.");
   }
 
@@ -104,25 +189,26 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
 
   const commandToParse = customCommand || defaultCommand;
 
-  core.info(`Preparing build command: "${commandToParse}"`);
+  core.info(`Preparing build command: "${sanitizeCommandString(commandToParse)}"`);
 
   let parsed: ParsedCommand;
   try {
     parsed = parseCommand(commandToParse);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(`Failed to parse build command "${commandToParse}": ${msg}`);
+    core.setFailed(
+      `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+    );
     if (exitOnFailure) {
       process.exit(1);
     }
     return 1;
   }
 
-  core.info(
-    `Executing build command: ${parsed.command} ${parsed.args
-      .map((a) => (a.includes(" ") ? `"${a}"` : a))
-      .join(" ")}`,
-  );
+  const sanitizedArgs = parsed.args.map((a) => (a.includes(" ") ? `"${a}"` : a));
+  const sanitizedDisplay = `${parsed.command} ${sanitizedArgs.join(" ")}`.trim();
+
+  core.info(`Executing build command: ${sanitizeCommandString(sanitizedDisplay)}`);
 
   try {
     const exitCode = await exec.exec(parsed.command, parsed.args, {
@@ -130,7 +216,9 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     });
 
     if (exitCode !== 0) {
-      core.setFailed(`Build command failed with exit code ${exitCode}: ${commandToParse}`);
+      core.setFailed(
+        `Build command failed with exit code ${exitCode}: ${sanitizeCommandString(commandToParse)}`,
+      );
       if (exitOnFailure) {
         process.exit(exitCode);
       }
@@ -138,7 +226,9 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     return exitCode;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(`Failed to execute build command "${commandToParse}": ${msg}`);
+    core.setFailed(
+      `Failed to execute build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+    );
     if (exitOnFailure) {
       process.exit(1);
     }

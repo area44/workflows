@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { parseCommand, runBuildCommand } from "../src/build-command";
+import { parseCommand, runBuildCommand, sanitizeCommandString } from "../src/build-command";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -17,6 +17,38 @@ describe("build-command", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+  });
+
+  describe("sanitizeCommandString", () => {
+    it("should mask URLs containing auth credentials", () => {
+      expect(sanitizeCommandString("git clone https://user:secret-token@github.com/repo.git")).toBe(
+        "git clone https://***:***@github.com/repo.git",
+      );
+    });
+
+    it("should mask sensitive CLI flag values", () => {
+      expect(sanitizeCommandString("npm run build --token=secret-value")).toBe(
+        "npm run build --token=***",
+      );
+
+      expect(sanitizeCommandString("pnpm deploy --api-key my-secret-key")).toBe(
+        "pnpm deploy --api-key ***",
+      );
+
+      expect(sanitizeCommandString("tool --auth my-pass")).toBe("tool --auth ***");
+    });
+
+    it("should mask common secret tokens like GitHub PATs", () => {
+      expect(
+        sanitizeCommandString("npm run build --token ghp_123456789012345678901234567890123456"),
+      ).toBe("npm run build --token ***");
+    });
+
+    it("should leave non-sensitive commands unchanged", () => {
+      expect(sanitizeCommandString("npm run build --outDir dist")).toBe(
+        "npm run build --outDir dist",
+      );
+    });
   });
 
   describe("parseCommand", () => {
@@ -37,8 +69,49 @@ describe("build-command", () => {
       });
     });
 
+    it("should handle single quote backslashes and Windows/Unix paths correctly", () => {
+      // Inside single quotes, all backslashes must be preserved as literal
+      expect(parseCommand("node build.js 'C:\\project\\dist' 'C:\\Users\\test'")).toEqual({
+        command: "node",
+        args: ["build.js", "C:\\project\\dist", "C:\\Users\\test"],
+      });
+
+      // Windows paths in double quotes or unquoted
+      expect(parseCommand('node build.js "C:\\project\\dist" "C:\\Users\\test"')).toEqual({
+        command: "node",
+        args: ["build.js", "C:\\project\\dist", "C:\\Users\\test"],
+      });
+
+      expect(parseCommand("node build.js C:\\project\\dist C:\\Users\\test")).toEqual({
+        command: "node",
+        args: ["build.js", "C:\\project\\dist", "C:\\Users\\test"],
+      });
+    });
+
+    it("should preserve empty quoted arguments", () => {
+      expect(parseCommand('tool --output ""')).toEqual({
+        command: "tool",
+        args: ["--output", ""],
+      });
+
+      expect(parseCommand("tool --output ''")).toEqual({
+        command: "tool",
+        args: ["--output", ""],
+      });
+
+      expect(parseCommand('tool "" ""')).toEqual({
+        command: "tool",
+        args: ["", ""],
+      });
+
+      expect(parseCommand("tool '' ''")).toEqual({
+        command: "tool",
+        args: ["", ""],
+      });
+    });
+
     it("should handle arguments containing spaces inside double or single quotes", () => {
-      expect(parseCommand("npm run build -- --outDir \"dist dir\"")).toEqual({
+      expect(parseCommand('npm run build -- --outDir "dist dir"')).toEqual({
         command: "npm",
         args: ["run", "build", "--", "--outDir", "dist dir"],
       });
@@ -133,8 +206,8 @@ describe("build-command", () => {
       expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
     });
 
-    it("should execute custom BUILD_COMMAND when provided", async () => {
-      process.env.BUILD_COMMAND = "npm run build:pages -- --outDir 'my dist'";
+    it("should execute custom BUILD_COMMAND when provided and sanitize logs", async () => {
+      process.env.BUILD_COMMAND = "npm run build --token ghp_secret1234567890123456789012345";
       process.env.DEFAULT_BUILD_COMMAND = "vpr build";
 
       vi.mocked(exec.exec).mockResolvedValue(0);
@@ -142,12 +215,12 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(0);
-      expect(core.info).toHaveBeenCalledWith(
-        'Preparing build command: "npm run build:pages -- --outDir \'my dist\'"',
+      expect(core.info).toHaveBeenCalledWith('Preparing build command: "npm run build --token ***"');
+      expect(exec.exec).toHaveBeenCalledWith(
+        "npm",
+        ["run", "build", "--token", "ghp_secret1234567890123456789012345"],
+        { ignoreReturnCode: true },
       );
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "build:pages", "--", "--outDir", "my dist"], {
-        ignoreReturnCode: true,
-      });
     });
 
     it("should handle failing build command with non-zero exit code and set workflow failure", async () => {
@@ -166,7 +239,9 @@ describe("build-command", () => {
     it("should handle exec throwing an exception and report actionable error message", async () => {
       process.env.BUILD_COMMAND = "nonexistent-cmd arg";
 
-      vi.mocked(exec.exec).mockRejectedValue(new Error("Unable to locate executable file: nonexistent-cmd"));
+      vi.mocked(exec.exec).mockRejectedValue(
+        new Error("Unable to locate executable file: nonexistent-cmd"),
+      );
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
