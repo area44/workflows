@@ -10,18 +10,196 @@ jobs:
     name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        action: [astro, lint-format, vite, vite-plus]
-        runtime: [node, bun]
-        pm: [npm, pnpm, bun]
-        type: [basic, minimal]
-        exclude:
-          - runtime: bun
+        include:
+          # Astro action
+          - action: astro
+            runtime: node
             pm: npm
-          - runtime: bun
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
             pm: pnpm
             type: minimal
-      fail-fast: false
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: astro
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
+
+          # Lint-Format action
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: false
+          - action: lint-format
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: false
+
+          # Vite action
+          - action: vite
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
+
+          # Vite-Plus action
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: basic
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: minimal
+            verify_site: true
+          - action: vite-plus
+            runtime: bun
+            pm: pnpm
+            type: basic
+            verify_site: true
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -45,7 +223,7 @@ jobs:
           EXPECTED_PM="${{ matrix.pm }}"
           [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
 
-          if [[ "${{ matrix.action }}" != "lint-format" ]]; then
+          if [[ "${{ matrix.verify_site }}" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
             EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
             if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then
