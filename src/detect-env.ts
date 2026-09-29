@@ -1,18 +1,25 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+/** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";
 
+/** Default Bun fallback version */
 // renovate: datasource=npm depName=bun
 export const DEFAULT_BUN_VERSION = "1.4";
 
+/** Default npm fallback version */
 // renovate: datasource=npm depName=npm
 export const DEFAULT_NPM_VERSION = "12";
 
+/** Default pnpm fallback version */
 // renovate: datasource=npm depName=pnpm
 export const DEFAULT_PNPM_VERSION = "12";
 
+/**
+ * Returns the default fallback version for a given package manager name.
+ */
 export function getDefaultPackageManagerVersion(pmName: string): string {
   switch (pmName.toLowerCase()) {
     case "pnpm":
@@ -113,6 +120,16 @@ function hasBunEngine(): boolean {
   return false;
 }
 
+/**
+ * Detects Node.js version based on project configuration files.
+ *
+ * Precedence:
+ * 1. `.nvmrc`
+ * 2. `.node-version`
+ * 3. `package.json` -> `devEngines.runtime` / `devEngines.node`
+ * 4. Empty string if package manager is bun and no explicit Node configuration exists.
+ * 5. Fallback: DEFAULT_NODE_VERSION ("24").
+ */
 export function detectNodeVersion(pmName?: string): string {
   try {
     if (fs.existsSync(".nvmrc")) {
@@ -149,6 +166,18 @@ export function detectNodeVersion(pmName?: string): string {
   return DEFAULT_NODE_VERSION;
 }
 
+/**
+ * Detects the package manager and its version from package.json, devEngines, or lockfiles.
+ *
+ * Precedence:
+ * 1. `package.json` -> `packageManager` (e.g. `"pnpm@11.21.0"` or `"bun"`)
+ * 2. `package.json` -> `devEngines.packageManager` or `devEngines[pm]`
+ * 3. Lockfiles in priority order:
+ *    a. `pnpm-lock.yaml` -> pnpm
+ *    b. `package-lock.json` -> npm
+ *    c. `bun.lock` / `bun.lockb` -> bun
+ * 4. Fallback: npm@DEFAULT_NPM_VERSION ("12").
+ */
 export function detectPackageManager(): PackageManager {
   try {
     if (fs.existsSync("package.json")) {
@@ -189,6 +218,16 @@ export function detectPackageManager(): PackageManager {
   return { name: "npm", version: DEFAULT_NPM_VERSION };
 }
 
+/**
+ * Detects Bun version based on configuration and package manager.
+ *
+ * Precedence:
+ * 1. `.bun-version`
+ * 2. `pm.version` if package manager is bun and version is not "latest"
+ * 3. `package.json` -> `devEngines.runtime` / `devEngines.bun`
+ * 4. Fallback DEFAULT_BUN_VERSION ("1.4") if Bun lockfile, package manager bun, or Bun devEngine is present
+ * 5. Fallback: empty string ("").
+ */
 export function detectBunVersion(pm: PackageManager): string {
   try {
     if (fs.existsSync(".bun-version")) {
@@ -222,6 +261,9 @@ export function detectBunVersion(pm: PackageManager): string {
   return "";
 }
 
+/**
+ * Parses the explicit `runtime` input option (e.g. "node@24", "bun@1.4", "node@24,bun@1.4", or "both").
+ */
 export function parseRuntimeInput(runtimeInput: string): {
   specifiedRuntime?: "node" | "bun";
   nodeVersion?: string;
@@ -263,6 +305,9 @@ export function parseRuntimeInput(runtimeInput: string): {
   };
 }
 
+/**
+ * Resolves the target runtime ("node" or "bun") given a package manager and bun version.
+ */
 export function detectRuntime(pm: PackageManager, bunVersion: string): "node" | "bun" {
   if (pm.name === "bun" || Boolean(bunVersion)) {
     return "bun";
@@ -270,6 +315,9 @@ export function detectRuntime(pm: PackageManager, bunVersion: string): "node" | 
   return "node";
 }
 
+/**
+ * Writes the detected environment values to GitHub Actions outputs.
+ */
 export function writeOutput(
   nodeVersion: string,
   pm: PackageManager,
@@ -283,6 +331,15 @@ export function writeOutput(
   core.setOutput("runtime", runtime);
 }
 
+/**
+ * Performs full environment detection according to the Environment Contract rules.
+ *
+ * Precedence summary:
+ * 1. Runtime input string parsing (highest override power for versions and runtime choice)
+ * 2. Package manager resolution (`packageManager` field > `devEngines` > lockfiles > npm@12)
+ * 3. Bun version resolution (`.bun-version` > PM version > `devEngines` > lockfile fallback)
+ * 4. Node.js version resolution (`.nvmrc` > `.node-version` > `devEngines` > fallback)
+ */
 export function detectEnv(runtimeInput: string = core.getInput("runtime")): DetectedEnv {
   const parsed = parseRuntimeInput(runtimeInput);
   const pm = detectPackageManager();
