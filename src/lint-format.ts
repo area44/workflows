@@ -6,11 +6,10 @@ interface PackageJson {
   scripts?: Record<string, string>;
 }
 
-function runCommand(pm: string, name: string): boolean {
+function runCommand(pm: string, name: string): void {
   core.info(`Executing: ${pm} run ${name}`);
   try {
     execSync(`${pm} run ${name}`, { stdio: "inherit" });
-    return true;
   } catch {
     core.error(`Script "${name}" failed`);
     process.exit(1);
@@ -18,24 +17,23 @@ function runCommand(pm: string, name: string): boolean {
 }
 
 function executeScripts(scripts: Record<string, string>, pm: string): void {
-  const runner = (name: string) => (scripts[name] ? runCommand(pm, name) : false);
-
-  if (runner("check")) {
+  if (scripts.check) {
+    runCommand(pm, "check");
     core.info("Detected and executed script: check");
   } else if (scripts.format && scripts.lint) {
     core.info("Detected lint/format scripts: format, lint");
-    runner("format");
-    runner("lint");
+    runCommand(pm, "format");
+    runCommand(pm, "lint");
   } else if (scripts.fmt && scripts.lint) {
     core.info("Detected lint/format scripts: fmt, lint");
-    runner("fmt");
-    runner("lint");
+    runCommand(pm, "fmt");
+    runCommand(pm, "lint");
   } else if (scripts.format) {
-    runner("format");
+    runCommand(pm, "format");
   } else if (scripts.fmt) {
-    runner("fmt");
+    runCommand(pm, "fmt");
   } else if (scripts.lint) {
-    runner("lint");
+    runCommand(pm, "lint");
   } else {
     core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
   }
