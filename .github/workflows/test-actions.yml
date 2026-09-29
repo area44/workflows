@@ -206,12 +206,17 @@ jobs:
 
       - name: Setup Workspace
         run: |
+          FIXTURE_DIR="__tests__/fixtures/${{ matrix.action }}/${{ matrix.runtime }}/${{ matrix.pm }}/${{ matrix.type }}"
+          if [ ! -d "$FIXTURE_DIR" ]; then
+            echo "Error: Missing expected fixture directory for matrix combination '${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})': $FIXTURE_DIR"
+            exit 1
+          fi
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          cp -r __tests__/fixtures/${{ matrix.action }}/${{ matrix.runtime }}/${{ matrix.pm }}/${{ matrix.type }}/* .
+          cp -r "$FIXTURE_DIR"/* .
 
       - name: Test Action
         uses: ./${{ matrix.action }}
