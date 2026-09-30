@@ -58,24 +58,144 @@ describe("detect-env", () => {
   });
 
   describe("Environment Resolution Pipeline", () => {
-    describe("Step 1: parseEnvironmentInputs", () => {
-      it("should return empty object when runtime input is empty", () => {
-        expect(parseEnvironmentInputs("")).toEqual({});
-      });
+    describe("Step 1: parseEnvironmentInputs (Phase 3 Runtime Input Validation)", () => {
+      describe("valid runtime inputs", () => {
+        it("should return empty object when runtime input is absent or whitespace-only", () => {
+          expect(parseEnvironmentInputs("")).toEqual({});
+          expect(parseEnvironmentInputs("   ")).toEqual({});
+        });
 
-      it("should parse explicit node version string", () => {
-        expect(parseEnvironmentInputs("node@22")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: "22",
-          bunVersion: undefined,
+        it("should parse explicit node runtime without version", () => {
+          expect(parseEnvironmentInputs("node")).toEqual({
+            specifiedRuntime: "node",
+            nodeVersion: undefined,
+            bunVersion: undefined,
+          });
+        });
+
+        it("should parse explicit bun runtime without version", () => {
+          expect(parseEnvironmentInputs("bun")).toEqual({
+            specifiedRuntime: "bun",
+            nodeVersion: undefined,
+            bunVersion: DEFAULT_BUN_VERSION,
+          });
+        });
+
+        it("should parse explicit node version string", () => {
+          expect(parseEnvironmentInputs("node@22")).toEqual({
+            specifiedRuntime: "node",
+            nodeVersion: "22",
+            bunVersion: undefined,
+          });
+        });
+
+        it("should parse explicit bun version string", () => {
+          expect(parseEnvironmentInputs("bun@1.4")).toEqual({
+            specifiedRuntime: "bun",
+            nodeVersion: undefined,
+            bunVersion: "1.4",
+          });
+        });
+
+        it("should parse multi-runtime specifier with comma or space", () => {
+          expect(parseEnvironmentInputs("node@24,bun@1.4")).toEqual({
+            specifiedRuntime: "node",
+            nodeVersion: "24",
+            bunVersion: "1.4",
+          });
+
+          expect(parseEnvironmentInputs("bun@1.4, node@24")).toEqual({
+            specifiedRuntime: "bun",
+            nodeVersion: "24",
+            bunVersion: "1.4",
+          });
+
+          expect(parseEnvironmentInputs("node, bun")).toEqual({
+            specifiedRuntime: "node",
+            nodeVersion: undefined,
+            bunVersion: DEFAULT_BUN_VERSION,
+          });
+        });
+
+        it("should parse both keyword", () => {
+          expect(parseEnvironmentInputs("both")).toEqual({
+            specifiedRuntime: undefined,
+            nodeVersion: undefined,
+            bunVersion: DEFAULT_BUN_VERSION,
+          });
+        });
+
+        it("should support mixed-case and whitespace-padded inputs", () => {
+          expect(parseEnvironmentInputs("  NODE@24  ")).toEqual({
+            specifiedRuntime: "node",
+            nodeVersion: "24",
+            bunVersion: undefined,
+          });
+
+          expect(parseEnvironmentInputs("Bun@1.4 , Node@22")).toEqual({
+            specifiedRuntime: "bun",
+            nodeVersion: "22",
+            bunVersion: "1.4",
+          });
+
+          expect(parseEnvironmentInputs("BOTH")).toEqual({
+            specifiedRuntime: undefined,
+            nodeVersion: undefined,
+            bunVersion: DEFAULT_BUN_VERSION,
+          });
         });
       });
 
-      it("should parse explicit bun version string", () => {
-        expect(parseEnvironmentInputs("bun@1.4")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: undefined,
-          bunVersion: "1.4",
+      describe("invalid and malformed runtime inputs", () => {
+        it("should reject unknown runtime names", () => {
+          expect(() => parseEnvironmentInputs("deno")).toThrow(
+            'Invalid runtime input "deno": unrecognized or malformed runtime specifier "deno"',
+          );
+          expect(() => parseEnvironmentInputs("python")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("invalid")).toThrow("unrecognized or malformed");
+        });
+
+        it("should reject prefix or partial runtime matches", () => {
+          expect(() => parseEnvironmentInputs("nodedev")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("nodes")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("node-20")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("bunyan")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("buns")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("node18")).toThrow("unrecognized or malformed");
+        });
+
+        it("should reject malformed version syntax", () => {
+          expect(() => parseEnvironmentInputs("node@")).toThrow("malformed version specifier");
+          expect(() => parseEnvironmentInputs("bun@")).toThrow("malformed version specifier");
+          expect(() => parseEnvironmentInputs("@24")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("node@@24")).toThrow("malformed version specifier");
+          expect(() => parseEnvironmentInputs("node@20@22")).toThrow("malformed version specifier");
+        });
+
+        it("should reject malformed comma formatting", () => {
+          expect(() => parseEnvironmentInputs(",node")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node,")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node,,bun")).toThrow("malformed comma placement");
+        });
+
+        it("should reject duplicate or conflicting specifiers for the same runtime", () => {
+          expect(() => parseEnvironmentInputs("node@20, node@22")).toThrow(
+            'duplicate or conflicting specifiers for "node"',
+          );
+          expect(() => parseEnvironmentInputs("node, node")).toThrow(
+            'duplicate or conflicting specifiers for "node"',
+          );
+          expect(() => parseEnvironmentInputs("bun@1.2, bun@1.4")).toThrow(
+            'duplicate or conflicting specifiers for "bun"',
+          );
+          expect(() => parseEnvironmentInputs("both, both")).toThrow(
+            'duplicate or conflicting specifiers for "both"',
+          );
+        });
+
+        it("should reject mixed valid and invalid runtime specifiers", () => {
+          expect(() => parseEnvironmentInputs("node@24, deno")).toThrow("unrecognized or malformed");
+          expect(() => parseEnvironmentInputs("bun@1.4, invalid")).toThrow("unrecognized or malformed");
         });
       });
     });

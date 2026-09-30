@@ -142,31 +142,80 @@ export function parseEnvironmentInputs(
 ): ParsedInputs {
   if (!runtimeInput) return {};
 
-  const trimmed = runtimeInput.trim().toLowerCase();
+  const trimmed = runtimeInput.trim();
+  if (!trimmed) return {};
+
+  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,{2,}/.test(trimmed)) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+    );
+  }
+
   const parts = trimmed.split(/[\s,]+/);
   let specifiedRuntime: "node" | "bun" | undefined;
   let nodeVersion: string | undefined;
   let bunVersion: string | undefined;
 
   let hasBun = false;
+  let nodeCount = 0;
+  let bunCount = 0;
+  let bothCount = 0;
 
-  for (const part of parts) {
+  for (const rawPart of parts) {
+    const part = rawPart.toLowerCase();
+
     if (part === "both") {
       hasBun = true;
-    } else if (part.startsWith("node")) {
+      bothCount++;
+    } else if (part === "node") {
+      nodeCount++;
       if (!specifiedRuntime) specifiedRuntime = "node";
-      const atIdx = part.indexOf("@");
-      if (atIdx !== -1) {
-        nodeVersion = part.slice(atIdx + 1);
+    } else if (part.startsWith("node@")) {
+      const ver = part.slice(5);
+      if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
+        throw new Error(
+          `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+        );
       }
-    } else if (part.startsWith("bun")) {
+      nodeCount++;
+      if (!specifiedRuntime) specifiedRuntime = "node";
+      nodeVersion = ver;
+    } else if (part === "bun") {
       hasBun = true;
+      bunCount++;
       if (!specifiedRuntime) specifiedRuntime = "bun";
-      const atIdx = part.indexOf("@");
-      if (atIdx !== -1) {
-        bunVersion = part.slice(atIdx + 1);
+    } else if (part.startsWith("bun@")) {
+      const ver = part.slice(4);
+      if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
+        throw new Error(
+          `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+        );
       }
+      hasBun = true;
+      bunCount++;
+      if (!specifiedRuntime) specifiedRuntime = "bun";
+      bunVersion = ver;
+    } else {
+      throw new Error(
+        `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+      );
     }
+  }
+
+  if (nodeCount > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
+    );
+  }
+  if (bunCount > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
+    );
+  }
+  if (bothCount > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
+    );
   }
 
   return {
