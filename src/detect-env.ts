@@ -291,7 +291,10 @@ export function resolveRuntime(parsed: ParsedInputs, pm: PackageManager): "node"
 
 /** Legacy helper wrapper for runtime resolution */
 export function detectRuntime(pm: PackageManager, bunVersion?: string): "node" | "bun" {
-  return resolveRuntime({ specifiedRuntime: undefined, bunVersion }, pm);
+  if (pm.name === "bun" || Boolean(bunVersion)) {
+    return "bun";
+  }
+  return "node";
 }
 
 /**
@@ -308,7 +311,7 @@ export function resolveNodeVersion(
     return parsed.nodeVersion;
   }
 
-  if (runtime === "bun") {
+  if (parsed.specifiedRuntime === "bun") {
     return "";
   }
 
@@ -336,7 +339,7 @@ export function resolveNodeVersion(
     }
   }
 
-  if (pm.name === "bun") {
+  if (runtime === "bun" || pm.name === "bun") {
     return "";
   }
 

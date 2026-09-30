@@ -224,13 +224,18 @@ describe("detect-env", () => {
   });
 
   describe("detectRuntime", () => {
-    it("should detect node when pm is npm", () => {
+    it("should detect node when pm is npm and bunVersion is empty", () => {
       const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
       expect(runtime).toBe("node");
     });
 
     it("should detect bun when pm is bun or bunVersion is present", () => {
       const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
+      expect(runtime).toBe("bun");
+    });
+
+    it("should return bun when pm is npm but bunVersion is non-empty", () => {
+      const runtime = detectRuntime({ name: "npm", version: "12" }, "1.4");
       expect(runtime).toBe("bun");
     });
   });
@@ -288,6 +293,29 @@ describe("detect-env", () => {
 
       expect(detectNodeVersion("bun")).toBe("");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using 24");
+    });
+
+    it("should return version from .nvmrc for detectNodeVersion('bun') if .nvmrc exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
+      vi.spyOn(fs, "readFileSync").mockReturnValue("20.11.0\n" as any);
+
+      expect(detectNodeVersion("bun")).toBe("20.11.0");
+    });
+
+    it("should return version from .node-version for detectNodeVersion('bun') if .node-version exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".node-version");
+      vi.spyOn(fs, "readFileSync").mockReturnValue("22.0.0\n" as any);
+
+      expect(detectNodeVersion("bun")).toBe("22.0.0");
+    });
+
+    it("should return version from package.json devEngines for detectNodeVersion('bun') if devEngines node exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: { name: "node", version: "20.0.0" } } }) as any,
+      );
+
+      expect(detectNodeVersion("bun")).toBe("20.0.0");
     });
 
     it("should fall back to 24 if package.json exists but devEngines is missing for non-bun package manager", () => {
