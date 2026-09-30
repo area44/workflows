@@ -109,7 +109,7 @@ describe("Compatibility Contract Validation", () => {
     );
   });
 
-  describe("Phase 2 Runtime & Package Manager Compatibility Contract", () => {
+  describe("Runtime & Package Manager Compatibility Contract", () => {
     describe("Type Guards", () => {
       it("should identify supported runtimes", () => {
         expect(isSupportedRuntime("node")).toBe(true);

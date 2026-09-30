@@ -58,7 +58,7 @@ describe("detect-env", () => {
   });
 
   describe("Environment Resolution Pipeline", () => {
-    describe("parseEnvironmentInputs (Phase 3 Runtime Input Validation)", () => {
+    describe("parseEnvironmentInputs runtime input validation", () => {
       describe("valid runtime inputs", () => {
         it("should return empty object when runtime input is absent or whitespace-only", () => {
           expect(parseEnvironmentInputs("")).toEqual({});
