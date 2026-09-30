@@ -80,7 +80,7 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
       run: |
-        if [ "$PACKAGE_MANAGER" = "bun" ]; then
+        if [ "${{ steps.detect_env.outputs.runtime }}" = "bun" ]; then
           bun "${{ github.action_path }}/../dist/lint-format.mjs"
         else
           node "${{ github.action_path }}/../dist/lint-format.mjs"
