@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { parse as parseYaml } from "yaml";
 
 import {
   CANONICAL_COMPATIBILITY_MODEL,
@@ -13,6 +14,70 @@ import {
   isSupportedRuntime,
   validateRuntimePackageManagerCompatibility,
 } from "../src/resolve-environment";
+
+export interface MatrixEntry {
+  action: string;
+  runtime: string;
+  pm: string;
+  type: string;
+  verify_site?: boolean;
+}
+
+export function extractWorkflowMatrixEntries(workflowYamlContent: string): MatrixEntry[] {
+  const parsed = parseYaml(workflowYamlContent);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Failed to parse workflow YAML: document is invalid or not an object.");
+  }
+  const job = parsed.jobs?.["test-action"];
+  if (!job) {
+    throw new Error("Workflow YAML is missing job 'test-action'.");
+  }
+  const include = job.strategy?.matrix?.include;
+  if (!Array.isArray(include)) {
+    throw new Error(
+      "Workflow YAML is missing 'jobs.test-action.strategy.matrix.include' array.",
+    );
+  }
+  return include as MatrixEntry[];
+}
+
+export function validateWorkflowMatrix(entries: MatrixEntry[]): void {
+  const actions = ["astro", "vite", "vite-plus", "lint-format"];
+  const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+    (c) => c.supported,
+  );
+
+  for (const entry of entries) {
+    if (!actions.includes(entry.action)) {
+      throw new Error(`CI matrix entry contains unsupported action: ${entry.action}`);
+    }
+    if (!isSupportedRuntime(entry.runtime)) {
+      throw new Error(`CI matrix entry contains unsupported runtime: ${entry.runtime}`);
+    }
+    if (!isSupportedPackageManager(entry.pm)) {
+      throw new Error(`CI matrix entry contains unsupported package manager: ${entry.pm}`);
+    }
+    const comp = getCombinationCompatibility(entry.runtime, entry.pm);
+    if (!comp.status.supported) {
+      throw new Error(
+        `CI matrix contains unsupported combination: ${entry.action} (${entry.runtime}, ${entry.pm})`,
+      );
+    }
+  }
+
+  for (const action of actions) {
+    for (const comb of supportedCombinations) {
+      const found = entries.some(
+        (e) => e.action === action && e.runtime === comb.runtime && e.pm === comb.packageManager,
+      );
+      if (!found) {
+        throw new Error(
+          `CI matrix is missing supported combination: ${action} (${comb.runtime}, ${comb.packageManager})`,
+        );
+      }
+    }
+  }
+}
 
 describe("Compatibility Contract Validation", () => {
   const rootDir = path.resolve(process.cwd());
@@ -249,57 +314,263 @@ describe("Compatibility Contract Validation", () => {
   });
 
   describe("Compatibility Matrix Validation in CI Workflow", () => {
-    const testActionsYml = fs.readFileSync(
-      path.join(rootDir, ".github/workflows/test-actions.yml"),
-      "utf8",
-    );
+    const testActionsYmlPath = path.join(rootDir, ".github/workflows/test-actions.yml");
+    const testActionsYml = fs.readFileSync(testActionsYmlPath, "utf8");
     const actions = ["astro", "vite", "vite-plus", "lint-format"];
-    const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
-      (c) => c.supported,
-    );
-    const unsupportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
-      (c) => !c.supported,
-    );
 
-    it("CI matrix should cover all declared supported combinations for every action", () => {
-      for (const action of actions) {
-        for (const comb of supportedCombinations) {
-          const actionBlockRegex = new RegExp(
-            `- action: ${action}\\s+runtime: ${comb.runtime}\\s+pm: ${comb.packageManager}`,
-            "m",
-          );
-          expect(testActionsYml).toMatch(actionBlockRegex);
-        }
+    it("should parse test-actions.yml structurally and extract matrix entries", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(entry).toHaveProperty("action");
+        expect(entry).toHaveProperty("runtime");
+        expect(entry).toHaveProperty("pm");
+        expect(entry).toHaveProperty("type");
       }
     });
 
-    it("CI matrix should not contain any explicitly unsupported combinations", () => {
-      for (const action of actions) {
-        for (const comb of unsupportedCombinations) {
-          const actionBlockRegex = new RegExp(
-            `- action: ${action}\\s+runtime: ${comb.runtime}\\s+pm: ${comb.packageManager}`,
-            "m",
-          );
-          expect(testActionsYml).not.toMatch(actionBlockRegex);
-        }
+    it("should validate that CI matrix covers all canonical combinations and contains no unsupported entries", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      expect(() => validateWorkflowMatrix(entries)).not.toThrow();
+    });
+
+    it("should ensure every CI matrix entry has a corresponding fixture directory", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      for (const entry of entries) {
+        const fixtureDir = path.join(
+          rootDir,
+          "__tests__/fixtures",
+          entry.action,
+          entry.runtime,
+          entry.pm,
+          entry.type,
+        );
+        expect(fs.existsSync(fixtureDir)).toBe(true);
       }
     });
 
-    it("CI matrix entries must be valid according to CANONICAL_COMPATIBILITY_MODEL", () => {
-      const matrixEntryRegex = /- action:\s*(\S+)\s+runtime:\s*(\S+)\s+pm:\s*(\S+)/g;
-      let match: RegExpExecArray | null;
-      let count = 0;
-      while ((match = matrixEntryRegex.exec(testActionsYml)) !== null) {
-        count++;
-        const [, actionName, runtime, pm] = match;
-        expect(actions).toContain(actionName);
-        expect(isSupportedRuntime(runtime)).toBe(true);
-        expect(isSupportedPackageManager(pm)).toBe(true);
+    it("should fail validation if a supported combination is missing from matrix", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      // Remove astro (node, npm) basic entry
+      const filtered = entries.filter(
+        (e) => !(e.action === "astro" && e.runtime === "node" && e.pm === "npm"),
+      );
+      expect(() => validateWorkflowMatrix(filtered)).toThrow(
+        "CI matrix is missing supported combination: astro (node, npm)",
+      );
+    });
 
-        const comp = getCombinationCompatibility(runtime, pm);
-        expect(comp.status.supported).toBe(true);
-      }
-      expect(count).toBeGreaterThan(0);
+    it("should fail validation if an unsupported combination (bun + npm) is present in matrix", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      const withUnsupported: MatrixEntry[] = [
+        ...entries,
+        { action: "vite", runtime: "bun", pm: "npm", type: "basic" },
+      ];
+      expect(() => validateWorkflowMatrix(withUnsupported)).toThrow(
+        "CI matrix contains unsupported combination: vite (bun, npm)",
+      );
+    });
+
+    it("should fail validation if matrix contains an invalid/unknown runtime", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      const withInvalidRuntime: MatrixEntry[] = [
+        ...entries,
+        { action: "astro", runtime: "deno", pm: "npm", type: "basic" },
+      ];
+      expect(() => validateWorkflowMatrix(withInvalidRuntime)).toThrow(
+        "CI matrix entry contains unsupported runtime: deno",
+      );
+    });
+
+    it("should fail validation if matrix contains an invalid/unknown package manager", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      const withInvalidPm: MatrixEntry[] = [
+        ...entries,
+        { action: "astro", runtime: "node", pm: "yarn", type: "basic" },
+      ];
+      expect(() => validateWorkflowMatrix(withInvalidPm)).toThrow(
+        "CI matrix entry contains unsupported package manager: yarn",
+      );
+    });
+
+    it("should fail validation if matrix contains an unsupported action name", () => {
+      const entries = extractWorkflowMatrixEntries(testActionsYml);
+      const withInvalidAction: MatrixEntry[] = [
+        ...entries,
+        { action: "unknown-action", runtime: "node", pm: "npm", type: "basic" },
+      ];
+      expect(() => validateWorkflowMatrix(withInvalidAction)).toThrow(
+        "CI matrix entry contains unsupported action: unknown-action",
+      );
+    });
+
+    it("should fail clearly on malformed YAML or missing matrix structure", () => {
+      expect(() => extractWorkflowMatrixEntries("invalid: [yaml")).toThrow();
+      expect(() => extractWorkflowMatrixEntries("jobs: {}")).toThrow(
+        "Workflow YAML is missing job 'test-action'.",
+      );
+      expect(() => extractWorkflowMatrixEntries("jobs:\n  test-action: {}")).toThrow(
+        "Workflow YAML is missing 'jobs.test-action.strategy.matrix.include' array.",
+      );
+    });
+
+    it("should validate matrix independently of YAML formatting or style (quotes, whitespace, order)", () => {
+      const yamlFormatted = `
+jobs:
+  test-action:
+    strategy:
+      matrix:
+        include:
+          - action: "astro"
+            runtime: 'node'
+            pm: "npm"
+            type: 'basic'
+          - action: astro
+            runtime: node
+            pm: npm
+            type: minimal
+          - action: astro
+            runtime: node
+            pm: pnpm
+            type: basic
+          - action: astro
+            runtime: node
+            pm: pnpm
+            type: minimal
+          - action: astro
+            runtime: node
+            pm: bun
+            type: basic
+          - action: astro
+            runtime: node
+            pm: bun
+            type: minimal
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: basic
+          - action: astro
+            runtime: bun
+            pm: bun
+            type: minimal
+          - action: astro
+            runtime: bun
+            pm: pnpm
+            type: basic
+
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: basic
+          - action: lint-format
+            runtime: node
+            pm: npm
+            type: minimal
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: basic
+          - action: lint-format
+            runtime: node
+            pm: pnpm
+            type: minimal
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: basic
+          - action: lint-format
+            runtime: node
+            pm: bun
+            type: minimal
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: basic
+          - action: lint-format
+            runtime: bun
+            pm: bun
+            type: minimal
+          - action: lint-format
+            runtime: bun
+            pm: pnpm
+            type: basic
+
+          - action: vite
+            runtime: node
+            pm: npm
+            type: basic
+          - action: vite
+            runtime: node
+            pm: npm
+            type: minimal
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: basic
+          - action: vite
+            runtime: node
+            pm: pnpm
+            type: minimal
+          - action: vite
+            runtime: node
+            pm: bun
+            type: basic
+          - action: vite
+            runtime: node
+            pm: bun
+            type: minimal
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: basic
+          - action: vite
+            runtime: bun
+            pm: bun
+            type: minimal
+          - action: vite
+            runtime: bun
+            pm: pnpm
+            type: basic
+
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: basic
+          - action: vite-plus
+            runtime: node
+            pm: npm
+            type: minimal
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: basic
+          - action: vite-plus
+            runtime: node
+            pm: pnpm
+            type: minimal
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: basic
+          - action: vite-plus
+            runtime: node
+            pm: bun
+            type: minimal
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: basic
+          - action: vite-plus
+            runtime: bun
+            pm: bun
+            type: minimal
+          - action: vite-plus
+            runtime: bun
+            pm: pnpm
+            type: basic
+`;
+      const entries = extractWorkflowMatrixEntries(yamlFormatted);
+      expect(() => validateWorkflowMatrix(entries)).not.toThrow();
     });
 
     it("should pass runtime input to all action steps in test-actions.yml", () => {
