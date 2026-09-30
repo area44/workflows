@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
-import { resolvePnpmSetupRuntime } from "./adapters";
+import { setupBun, setupNode, setupPackageManager } from "./adapters";
 import { validateRuntimePackageManagerCompatibility } from "./compatibility";
 
 export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./adapters";
@@ -546,8 +546,15 @@ export function validateEnvironment(env: DetectedEnv): DetectedEnv {
 }
 
 /**
- * Writes the detected environment values to GitHub Actions outputs.
+ * Writes the detected environment values and tool setup parameters to GitHub Actions outputs.
  */
+export function writeOutput(env: DetectedEnv): void;
+export function writeOutput(
+  nodeVersion: string,
+  pm: PackageManager,
+  bunVersion?: string,
+  runtime?: "bun" | "node",
+): void;
 export function writeOutput(
   nodeVersionOrEnv: string | DetectedEnv,
   pm?: PackageManager,
@@ -555,23 +562,35 @@ export function writeOutput(
   runtime: "bun" | "node" = "node",
 ): void {
   let env: DetectedEnv;
-  if (typeof nodeVersionOrEnv === "object") {
+  if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
     env = nodeVersionOrEnv;
   } else {
+    if (!pm) {
+      throw new Error("Missing package manager parameter in writeOutput");
+    }
     env = {
       nodeVersion: nodeVersionOrEnv,
-      pm: pm!,
+      pm,
       bunVersion,
       runtime,
     };
   }
+
+  const nodeSetup = setupNode(env);
+  const bunSetup = setupBun(env);
+  const pmSetup = setupPackageManager(env);
 
   core.setOutput("node-version", env.nodeVersion);
   core.setOutput("bun-version", env.bunVersion);
   core.setOutput("package-manager", env.pm.name);
   core.setOutput("package-manager-version", env.pm.version);
   core.setOutput("runtime", env.runtime);
-  core.setOutput("pnpm-runtime", resolvePnpmSetupRuntime(env));
+  core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
+
+  core.setOutput("setup-node", String(nodeSetup.shouldSetup));
+  core.setOutput("setup-node-cache", nodeSetup.cache);
+  core.setOutput("setup-bun", String(bunSetup.shouldSetup));
+  core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
 }
 
 /**
