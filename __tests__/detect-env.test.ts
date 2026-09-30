@@ -172,10 +172,14 @@ describe("detect-env", () => {
           expect(() => parseEnvironmentInputs("node@20@22")).toThrow("malformed version specifier");
         });
 
-        it("should reject malformed comma formatting", () => {
+        it("should reject malformed comma formatting including whitespace-separated empty segments", () => {
           expect(() => parseEnvironmentInputs(",node")).toThrow("malformed comma placement");
           expect(() => parseEnvironmentInputs("node,")).toThrow("malformed comma placement");
           expect(() => parseEnvironmentInputs("node,,bun")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node,, bun")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node, ,bun")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node , , bun")).toThrow("malformed comma placement");
+          expect(() => parseEnvironmentInputs("node,   ,bun")).toThrow("malformed comma placement");
         });
 
         it("should reject duplicate or conflicting specifiers for the same runtime", () => {

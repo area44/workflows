@@ -134,7 +134,7 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
 }
 
 function validateCommaStructure(trimmed: string, runtimeInput: string): void {
-  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,{2,}/.test(trimmed)) {
+  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
     throw new Error(
       `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
     );
