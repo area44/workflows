@@ -1,7 +1,17 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+import { resolvePnpmSetupRuntime } from "./adapters";
 import { validateRuntimePackageManagerCompatibility } from "./compatibility";
+
+export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./adapters";
+export {
+  getPnpmRuntime,
+  resolvePnpmSetupRuntime,
+  setupBun,
+  setupNode,
+  setupPackageManager,
+} from "./adapters";
 
 export type {
   CompatibilityStatus,
@@ -536,33 +546,32 @@ export function validateEnvironment(env: DetectedEnv): DetectedEnv {
 }
 
 /**
- * Formats the runtime argument for pnpm/setup based on detected Bun or Node.js versions.
- */
-export function getPnpmRuntime(bunVersion: string, nodeVersion: string): string {
-  if (bunVersion) {
-    return `bun@${bunVersion}`;
-  }
-  if (nodeVersion && !nodeVersion.startsWith("lts")) {
-    return `node@${nodeVersion}`;
-  }
-  return "node@lts";
-}
-
-/**
  * Writes the detected environment values to GitHub Actions outputs.
  */
 export function writeOutput(
-  nodeVersion: string,
-  pm: PackageManager,
+  nodeVersionOrEnv: string | DetectedEnv,
+  pm?: PackageManager,
   bunVersion: string = "",
   runtime: "bun" | "node" = "node",
 ): void {
-  core.setOutput("node-version", nodeVersion);
-  core.setOutput("bun-version", bunVersion);
-  core.setOutput("package-manager", pm.name);
-  core.setOutput("package-manager-version", pm.version);
-  core.setOutput("runtime", runtime);
-  core.setOutput("pnpm-runtime", getPnpmRuntime(bunVersion, nodeVersion));
+  let env: DetectedEnv;
+  if (typeof nodeVersionOrEnv === "object") {
+    env = nodeVersionOrEnv;
+  } else {
+    env = {
+      nodeVersion: nodeVersionOrEnv,
+      pm: pm!,
+      bunVersion,
+      runtime,
+    };
+  }
+
+  core.setOutput("node-version", env.nodeVersion);
+  core.setOutput("bun-version", env.bunVersion);
+  core.setOutput("package-manager", env.pm.name);
+  core.setOutput("package-manager-version", env.pm.version);
+  core.setOutput("runtime", env.runtime);
+  core.setOutput("pnpm-runtime", resolvePnpmSetupRuntime(env));
 }
 
 /**
