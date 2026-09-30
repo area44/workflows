@@ -61,7 +61,7 @@ runs:
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ steps.detect_env.outputs.node-version }}
-        cache: ${{ steps.detect_env.outputs.package-manager }}
+        cache: ${{ steps.detect_env.outputs.package-manager == 'npm' && 'npm' || '' }}
         cache-dependency-path: |
           **/package-lock.json
 
