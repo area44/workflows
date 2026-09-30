@@ -35,11 +35,15 @@ runs:
     - name: Detect environment
       shell: bash
       id: detect_env
-      run: node "${{ github.action_path }}/../dist/detect-env.mjs"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: node "$ACTION_PATH/../dist/detect-env.mjs"
 
     - name: Set site variables
       shell: bash
-      run: node "${{ github.action_path }}/../dist/site-variables.mjs"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: node "$ACTION_PATH/../dist/site-variables.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.detect_env.outputs.package-manager == 'pnpm' }}
@@ -95,11 +99,13 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
+        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        if [ "${{ steps.detect_env.outputs.runtime }}" = "bun" ]; then
-          bun "${{ github.action_path }}/../dist/build-command.mjs"
+        if [ "$RUNTIME" = "bun" ]; then
+          bun "$ACTION_PATH/../dist/build-command.mjs"
         else
-          node "${{ github.action_path }}/../dist/build-command.mjs"
+          node "$ACTION_PATH/../dist/build-command.mjs"
         fi
 
     - name: Upload site artifact

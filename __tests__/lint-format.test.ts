@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { run } from "../src/lint-format";
+import { run, sanitizePackageManager } from "../src/lint-format";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");
@@ -87,6 +87,28 @@ describe("lint-format", () => {
             check: "echo check",
             format: "echo format",
             lint: "echo lint",
+          },
+        }) as any,
+      );
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+    });
+
+    it("should sanitize untrusted PACKAGE_MANAGER env values containing shell injection characters", () => {
+      expect(sanitizePackageManager("npm; echo hack")).toBe("npm");
+      expect(sanitizePackageManager("pnpm && calc")).toBe("npm");
+      expect(sanitizePackageManager("bun")).toBe("bun");
+      expect(sanitizePackageManager("pnpm-10")).toBe("pnpm-10");
+
+      process.env.PACKAGE_MANAGER = "npm; rm -rf /";
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({
+          scripts: {
+            check: "echo check",
           },
         }) as any,
       );
