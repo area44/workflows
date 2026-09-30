@@ -39,7 +39,7 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          # 1. Dynamically verify expected artifacts derived from vite.config.ts
+          # Dynamically verify expected artifacts derived from vite.config.ts
           node --input-type=module -e '
             import fs from "node:fs";
             import path from "node:path";
@@ -80,7 +80,7 @@ jobs:
             console.log("Verified all expected generated artifacts exist:", expectedFiles);
           '
 
-          # 2. Enforce working tree cleanliness for dist/
+          # Enforce working tree cleanliness for dist/
           if [ -n "$(git status --porcelain dist/)" ]; then
             echo "Error: Generated artifacts in 'dist/' are stale, modified, or out of sync with source files."
             echo "Please run 'npm run build' locally and commit the updated 'dist/' files."
