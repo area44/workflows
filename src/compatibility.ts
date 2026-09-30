@@ -169,56 +169,68 @@ export function validateRuntimePackageManagerCompatibility(
   return compatibility;
 }
 
-/**
- * Validates a single CI matrix entry structure against schema and compatibility rules.
- */
-export function validateMatrixEntry(entry: unknown): MatrixEntry {
+function ensureMatrixObject(entry: unknown): Record<string, unknown> {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     throw new Error("CI matrix entry must be an object.");
   }
+  return entry as Record<string, unknown>;
+}
 
-  const record = entry as Record<string, unknown>;
-
+function validateAllowedKeys(record: Record<string, unknown>): void {
   const allowedKeys = new Set(["action", "runtime", "pm", "type", "verify_site"]);
   for (const key of Object.keys(record)) {
     if (!allowedKeys.has(key)) {
       throw new Error(`CI matrix entry contains unrecognized field: "${key}"`);
     }
   }
+}
 
-  for (const requiredField of ["action", "runtime", "pm", "type"] as const) {
-    if (
-      record[requiredField] === undefined ||
-      record[requiredField] === null ||
-      record[requiredField] === ""
-    ) {
-      throw new Error(`CI matrix entry is missing required field: "${requiredField}"`);
+function validateRequiredStringFields(record: Record<string, unknown>): void {
+  for (const field of ["action", "runtime", "pm", "type"] as const) {
+    const val = record[field];
+    if (val === undefined || val === null || val === "") {
+      throw new Error(`CI matrix entry is missing required field: "${field}"`);
     }
-    if (typeof record[requiredField] !== "string") {
-      throw new Error(`CI matrix entry field "${requiredField}" must be a string.`);
+    if (typeof val !== "string") {
+      throw new Error(`CI matrix entry field "${field}" must be a string.`);
     }
   }
+}
 
-  const action = record.action as string;
-  const runtime = record.runtime as string;
-  const pm = record.pm as string;
-  const type = record.type as string;
-
+function validateFieldValues(action: string, runtime: string, pm: string, type: string): void {
   if (!isSupportedAction(action)) {
     throw new Error(`CI matrix entry contains unsupported action: ${action}`);
   }
-
   if (!isSupportedRuntime(runtime)) {
     throw new Error(`CI matrix entry contains unsupported runtime: ${runtime}`);
   }
-
   if (!isSupportedPackageManager(pm)) {
     throw new Error(`CI matrix entry contains unsupported package manager: ${pm}`);
   }
-
   if (!isSupportedFixtureType(type)) {
     throw new Error(`CI matrix entry contains unsupported type: ${type}`);
   }
+}
+
+/**
+ * Validates a single CI matrix entry structure against schema and compatibility rules.
+ */
+export function validateMatrixEntry(entry: unknown): MatrixEntry {
+  const record = ensureMatrixObject(entry);
+  validateAllowedKeys(record);
+  validateRequiredStringFields(record);
+
+  const rawAction = record.action as string;
+  const rawRuntime = record.runtime as string;
+  const rawPm = record.pm as string;
+  const rawType = record.type as string;
+
+  validateFieldValues(rawAction, rawRuntime, rawPm, rawType);
+
+  const action = rawAction as SupportedAction;
+  const runtime = rawRuntime as SupportedRuntime;
+  const pm = rawPm as SupportedPackageManager;
+  const type = rawType as SupportedFixtureType;
 
   if (record.verify_site !== undefined && typeof record.verify_site !== "boolean") {
     throw new Error(`CI matrix entry field "verify_site" must be a boolean.`);
@@ -279,6 +291,23 @@ export function validateFixtureForMatrixEntry(
   return fixtureDir;
 }
 
+function scanLeafDirs(currentDir: string, depth: number): string[] {
+  const results: string[] = [];
+  if (!fs.existsSync(currentDir)) return results;
+  const items = fs.readdirSync(currentDir, { withFileTypes: true });
+  for (const item of items) {
+    if (item.isDirectory()) {
+      const fullPath = path.join(currentDir, item.name);
+      if (depth === 4) {
+        results.push(path.normalize(fullPath));
+      } else if (depth < 4) {
+        results.push(...scanLeafDirs(fullPath, depth + 1));
+      }
+    }
+  }
+  return results;
+}
+
 /**
  * Validates that no unused or orphaned fixture leaf directories exist in __tests__/fixtures.
  */
@@ -292,25 +321,8 @@ export function validateNoUnusedFixtures(
   }
 
   const expectedPaths = new Set(entries.map((e) => path.normalize(getFixturePath(e, rootDir))));
-
-  function scanLeafDirs(currentDir: string, depth: number): string[] {
-    const results: string[] = [];
-    if (!fs.existsSync(currentDir)) return results;
-    const items = fs.readdirSync(currentDir, { withFileTypes: true });
-    for (const item of items) {
-      if (item.isDirectory()) {
-        const fullPath = path.join(currentDir, item.name);
-        if (depth === 4) {
-          results.push(path.normalize(fullPath));
-        } else if (depth < 4) {
-          results.push(...scanLeafDirs(fullPath, depth + 1));
-        }
-      }
-    }
-    return results;
-  }
-
   const actualLeafDirs = scanLeafDirs(fixturesBaseDir, 1);
+
   for (const actualDir of actualLeafDirs) {
     if (!expectedPaths.has(actualDir)) {
       const relPath = path.relative(rootDir, actualDir);
