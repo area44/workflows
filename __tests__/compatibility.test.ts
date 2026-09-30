@@ -11,29 +11,29 @@ import {
   isSupportedPackageManager,
   isSupportedRuntime,
   validateRuntimePackageManagerCompatibility,
-} from "../src/detect-env";
+} from "../src/resolve-environment";
 
 describe("Compatibility Contract Validation", () => {
   const rootDir = path.resolve(process.cwd());
   const compatibilityMd = fs.readFileSync(path.join(rootDir, "COMPATIBILITY.md"), "utf8");
 
   describe("Canonical Defaults Synchronization", () => {
-    it("should keep DEFAULT_NODE_VERSION in detect-env synchronized with COMPATIBILITY.md", () => {
+    it("should keep DEFAULT_NODE_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
       expect(compatibilityMd).toContain(`DEFAULT_NODE_VERSION = "${DEFAULT_NODE_VERSION}"`);
       expect(compatibilityMd).toContain(`| Node.js   | \`DEFAULT_NODE_VERSION\`   | \`"${DEFAULT_NODE_VERSION}"\``);
     });
 
-    it("should keep DEFAULT_BUN_VERSION in detect-env synchronized with COMPATIBILITY.md", () => {
+    it("should keep DEFAULT_BUN_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
       expect(compatibilityMd).toContain(`DEFAULT_BUN_VERSION = "${DEFAULT_BUN_VERSION}"`);
       expect(compatibilityMd).toContain(`| Bun       | \`DEFAULT_BUN_VERSION\`    | \`"${DEFAULT_BUN_VERSION}"\``);
     });
 
-    it("should keep DEFAULT_NPM_VERSION in detect-env synchronized with COMPATIBILITY.md", () => {
+    it("should keep DEFAULT_NPM_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
       expect(compatibilityMd).toContain(`DEFAULT_NPM_VERSION = "${DEFAULT_NPM_VERSION}"`);
       expect(compatibilityMd).toContain(`| npm       | \`DEFAULT_NPM_VERSION\`    | \`"${DEFAULT_NPM_VERSION}"\``);
     });
 
-    it("should keep DEFAULT_PNPM_VERSION in detect-env synchronized with COMPATIBILITY.md", () => {
+    it("should keep DEFAULT_PNPM_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
       expect(compatibilityMd).toContain(`DEFAULT_PNPM_VERSION = "${DEFAULT_PNPM_VERSION}"`);
       expect(compatibilityMd).toContain(`| pnpm      | \`DEFAULT_PNPM_VERSION\`   | \`"${DEFAULT_PNPM_VERSION}"\``);
     });
@@ -101,9 +101,9 @@ describe("Compatibility Contract Validation", () => {
           expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
         }
 
-        // Verify that detect_env step passes INPUT_RUNTIME env var from inputs.runtime
+        // Verify that resolve_environment step passes INPUT_RUNTIME env var from inputs.runtime
         expect(actionYml).toMatch(
-          /id:\s*detect_env[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+          /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
         );
       },
     );

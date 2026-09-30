@@ -5,7 +5,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^src/detect-env\\.ts$/"
+        "/^src/resolve-environment\\.ts$/"
       ],
       "matchStrings": [
         "//\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s*\\nexport const \\w+ = \"(?<currentValue>[^\"]+)\";"

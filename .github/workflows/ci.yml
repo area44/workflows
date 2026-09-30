@@ -16,15 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Detect environment
+      - name: Resolve environment
         shell: bash
-        id: detect_env
-        run: node "dist/detect-env.mjs"
+        id: resolve_environment
+        run: node "dist/resolve-environment.mjs"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ steps.detect_env.outputs.node-version }}
+          node-version: ${{ steps.resolve_environment.outputs.node-version }}
           cache: "npm"
           cache-dependency-path: "package-lock.json"
 
@@ -39,4 +39,4 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          test -f dist/detect-env.mjs && test -f dist/lint-format.mjs && test -f dist/build-command.mjs
+          test -f dist/resolve-environment.mjs && test -f dist/lint-format.mjs && test -f dist/build-command.mjs

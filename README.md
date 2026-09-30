@@ -15,11 +15,11 @@ For detailed toolchain guarantees, supported runtime modes, compatibility matrix
 
 ## Environment Contract
 
-Environment detection is executed by `src/detect-env.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).
+Environment resolution is executed by `src/resolve-environment.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).
 
 ### Output Contract
 
-The `detectEnv()` function resolves workspace configuration and writes the following step outputs:
+The `resolveEnvironment()` function resolves workspace configuration and writes the following step outputs:
 
 | Output Name               | Type                           | Description                                                                                                                | Example Values                         |
 | ------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
@@ -67,9 +67,9 @@ Individual detector functions discover settings from project configuration files
 4. **Auto-detection Fallback**: `"1.4"` if Bun is detected via lockfile (`bun.lock` or `bun.lockb`), package manager `bun`, or Bun `devEngines`.
 5. **Fallback Default**: Empty string (`""`) if Bun is neither requested nor detected.
 
-### Final Resolution Precedence (`detectEnv`)
+### Final Resolution Precedence (`resolveEnvironment`)
 
-The `detectEnv()` entrypoint merges explicit `runtime` action inputs with workspace-detected values:
+The `resolveEnvironment()` entrypoint merges explicit `runtime` action inputs with workspace-detected values:
 
 1. **Input Token Parsing**:
    - Parses tokens from the explicit `runtime` action input string (split by whitespace or comma).

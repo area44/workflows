@@ -57,7 +57,7 @@ export default defineConfig({
     globals: true,
     include: ["__tests__/**/*.test.ts"],
   },
-  pack: ["detect-env", "lint-format", "site-variables", "build-command"].map((name) => ({
+  pack: ["resolve-environment", "lint-format", "site-variables", "build-command"].map((name) => ({
     entry: { [name]: `src/${name}.ts` },
     outDir: "dist",
     format: "esm",
