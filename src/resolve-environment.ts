@@ -1,7 +1,11 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
-import { validateRuntimePackageManagerCompatibility } from "./compatibility";
+import {
+  isSupportedPackageManager,
+  isSupportedRuntime,
+  validateRuntimePackageManagerCompatibility,
+} from "./compatibility";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
 
 export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
@@ -14,12 +18,15 @@ export {
 } from "./setup-adapters";
 
 export type {
+  CanonicalCompatibilityModel,
   CompatibilityStatus,
+  MatrixCombinationEntry,
   RuntimePackageManagerCompatibility,
   SupportedPackageManager,
   SupportedRuntime,
 } from "./compatibility";
 export {
+  CANONICAL_COMPATIBILITY_MODEL,
   getCombinationCompatibility,
   isSupportedPackageManager,
   isSupportedRuntime,
@@ -135,6 +142,7 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
   }
 
   for (const pm of ["pnpm", "npm", "bun"]) {
+    if (!isSupportedPackageManager(pm)) continue;
     if (pkg.devEngines[pm]) {
       const val = pkg.devEngines[pm];
       const defaultVer = getDefaultPackageManagerVersion(pm);
@@ -536,7 +544,7 @@ export function detectBunVersion(pm: PackageManager): string {
  */
 export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
   const rt = env.runtime as string;
-  if (rt !== "node" && rt !== "bun") {
+  if (!isSupportedRuntime(rt)) {
     throw new Error(`Invalid resolved runtime: "${rt}"`);
   }
   if (!env.pm || !env.pm.name || !env.pm.version) {
