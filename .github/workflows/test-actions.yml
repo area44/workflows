@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   test-action:
     name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
@@ -205,10 +210,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Workspace
+        env:
+          ACTION: ${{ matrix.action }}
+          RUNTIME: ${{ matrix.runtime }}
+          PM: ${{ matrix.pm }}
+          TYPE: ${{ matrix.type }}
         run: |
-          FIXTURE_DIR="__tests__/fixtures/${{ matrix.action }}/${{ matrix.runtime }}/${{ matrix.pm }}/${{ matrix.type }}"
+          FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           if [ ! -d "$FIXTURE_DIR" ]; then
-            echo "Error: Missing expected fixture directory for matrix combination '${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})': $FIXTURE_DIR"
+            echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
           [ -f package.json ] && mv package.json package.json.bak || true
@@ -239,12 +249,18 @@ jobs:
         id: vite-plus
 
       - name: Verify outputs
+        env:
+          ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
+          LINT_FORMAT_PM: ${{ steps.lint-format.outputs.package-manager }}
+          VITE_PM: ${{ steps.vite.outputs.package-manager }}
+          VITE_PLUS_PM: ${{ steps.vite-plus.outputs.package-manager }}
+          EXPECTED_PM: ${{ matrix.pm }}
+          VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
-          DETECTED_PM="${{ steps.astro.outputs.package-manager }}${{ steps.lint-format.outputs.package-manager }}${{ steps.vite.outputs.package-manager }}${{ steps.vite-plus.outputs.package-manager }}"
-          EXPECTED_PM="${{ matrix.pm }}"
+          DETECTED_PM="${ASTRO_PM}${LINT_FORMAT_PM}${VITE_PM}${VITE_PLUS_PM}"
           [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
 
-          if [[ "${{ matrix.verify_site }}" == "true" ]]; then
+          if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
             EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
             if [[ "$REPO_NAME" == "${GITHUB_REPOSITORY_OWNER}.github.io" ]]; then

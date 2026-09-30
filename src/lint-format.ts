@@ -6,10 +6,19 @@ interface PackageJson {
   scripts?: Record<string, string>;
 }
 
+export function sanitizePackageManager(pm: string): string {
+  const clean = pm.trim().toLowerCase();
+  if (/^[a-z0-9_.-]+$/.test(clean)) {
+    return clean;
+  }
+  return "npm";
+}
+
 function runCommand(pm: string, name: string): void {
-  core.info(`Executing: ${pm} run ${name}`);
+  const safePm = sanitizePackageManager(pm);
+  core.info(`Executing: ${safePm} run ${name}`);
   try {
-    execSync(`${pm} run ${name}`, { stdio: "inherit" });
+    execSync(`${safePm} run ${name}`, { stdio: "inherit" });
   } catch {
     core.error(`Script "${name}" failed`);
     process.exit(1);
