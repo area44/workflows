@@ -58,7 +58,7 @@ describe("detect-env", () => {
   });
 
   describe("Environment Resolution Pipeline", () => {
-    describe("Step 1: parseEnvironmentInputs (Phase 3 Runtime Input Validation)", () => {
+    describe("parseEnvironmentInputs (Phase 3 Runtime Input Validation)", () => {
       describe("valid runtime inputs", () => {
         it("should return empty object when runtime input is absent or whitespace-only", () => {
           expect(parseEnvironmentInputs("")).toEqual({});
@@ -200,7 +200,7 @@ describe("detect-env", () => {
       });
     });
 
-    describe("Step 2: detectProjectEnvironment", () => {
+    describe("detectProjectEnvironment", () => {
       it("should collect workspace project configuration state", () => {
         vi.spyOn(fs, "existsSync").mockImplementation((p) =>
           [".nvmrc", "package.json"].includes(p as string),
@@ -218,7 +218,7 @@ describe("detect-env", () => {
       });
     });
 
-    describe("Step 3: resolvePackageManager", () => {
+    describe("resolvePackageManager", () => {
       it("should resolve package manager from packageManager field, devEngines, lockfiles, and fallback", () => {
         const pmFromField = resolvePackageManager({
           packageJson: { packageManager: "pnpm@9.5.0" },
@@ -237,7 +237,7 @@ describe("detect-env", () => {
       });
     });
 
-    describe("Step 4: resolveRuntime precedence & defaults", () => {
+    describe("resolveRuntime precedence & defaults", () => {
       it("explicit node + bun PM -> node", () => {
         const runtime = resolveRuntime(
           { specifiedRuntime: "node" },
@@ -270,7 +270,7 @@ describe("detect-env", () => {
       });
     });
 
-    describe("Step 5 & 6: resolveVersions & validateEnvironment", () => {
+    describe("resolveVersions & validateEnvironment", () => {
       it("should resolve versions and validate clean env struct", () => {
         const project = {
           hasPnpmLock: true,
