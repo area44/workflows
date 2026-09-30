@@ -4,7 +4,7 @@ This document defines the compatibility contract, runtime and toolchain guarante
 
 ---
 
-## 1. Supported Runtime & Toolchain Versions
+## Supported Runtime & Toolchain Versions
 
 The repository's environment detection (`src/detect-env.ts`) automatically discovers project settings or falls back to specified default versions.
 
@@ -44,7 +44,7 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 
 ---
 
-## 2. Composite Actions Expectations
+## Composite Actions Expectations
 
 Every composite action in this repository shares a common environment detection engine (`dist/detect-env.mjs`) but serves specific deployment or workflow goals.
 
@@ -114,7 +114,7 @@ Every composite action in this repository shares a common environment detection 
 
 ---
 
-## 3. Compatibility Matrix
+## Compatibility Matrix
 
 The matrix below answers: _“If a consumer uses runtime X and package manager Y with action Z, is this combination supported and tested?”_
 
@@ -156,7 +156,7 @@ Runtime resolution follows strict precedence rules:
 
 ---
 
-## 4. Lightweight Release & Toolchain Upgrade Policy
+## Lightweight Release & Toolchain Upgrade Policy
 
 To prevent silent compatibility regressions and manage toolchain upgrades predictably, changes to defaults or supported environments must follow this release policy.
 
