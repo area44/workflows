@@ -354,6 +354,34 @@ describe("detect-env", () => {
       expect(env.nodeVersion).toBe("22");
       expect(env.bunVersion).toBe("1.4");
     });
+
+    it("should resolve runtime=node when explicit runtime=node is supplied even if package manager is bun", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ packageManager: "bun@1.4" }) as any,
+      );
+
+      const env = detectEnv("node");
+
+      expect(env.runtime).toBe("node");
+      expect(env.pm).toEqual({ name: "bun", version: "1.4" });
+      expect(env.nodeVersion).toBe("");
+      expect(env.bunVersion).toBe("1.4");
+    });
+
+    it("should resolve runtime=bun when explicit runtime=bun is supplied even if package manager is pnpm", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ packageManager: "pnpm@11.21.0" }) as any,
+      );
+
+      const env = detectEnv("bun");
+
+      expect(env.runtime).toBe("bun");
+      expect(env.pm).toEqual({ name: "pnpm", version: "11.21.0" });
+      expect(env.nodeVersion).toBe("");
+      expect(env.bunVersion).toBe("1.4");
+    });
   });
 
   describe("Fixture-based tests", () => {

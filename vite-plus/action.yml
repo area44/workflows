@@ -40,6 +40,7 @@ runs:
       id: detect_env
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "$ACTION_PATH/../dist/detect-env.mjs"
 
     - name: Set site variables

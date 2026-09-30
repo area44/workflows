@@ -230,21 +230,29 @@ jobs:
         if: matrix.action == 'astro'
         uses: ./astro
         id: astro
+        with:
+          runtime: ${{ matrix.runtime }}
 
       - name: Test Lint-Format Action
         if: matrix.action == 'lint-format'
         uses: ./lint-format
         id: lint-format
+        with:
+          runtime: ${{ matrix.runtime }}
 
       - name: Test Vite Action
         if: matrix.action == 'vite'
         uses: ./vite
         id: vite
+        with:
+          runtime: ${{ matrix.runtime }}
 
       - name: Test Vite-Plus Action
         if: matrix.action == 'vite-plus'
         uses: ./vite-plus
         id: vite-plus
+        with:
+          runtime: ${{ matrix.runtime }}
 
       - name: Verify outputs
         env:
@@ -253,10 +261,18 @@ jobs:
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
           VITE_PLUS_PM: ${{ steps.vite-plus.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
+          ASTRO_RUNTIME: ${{ steps.astro.outputs.runtime }}
+          LINT_FORMAT_RUNTIME: ${{ steps.lint-format.outputs.runtime }}
+          VITE_RUNTIME: ${{ steps.vite.outputs.runtime }}
+          VITE_PLUS_RUNTIME: ${{ steps.vite-plus.outputs.runtime }}
+          EXPECTED_RUNTIME: ${{ matrix.runtime }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
           DETECTED_PM="${ASTRO_PM}${LINT_FORMAT_PM}${VITE_PM}${VITE_PLUS_PM}"
-          [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected $EXPECTED_PM, got $DETECTED_PM"; false; }
+          [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected PM $EXPECTED_PM, got $DETECTED_PM"; false; }
+
+          DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"
+          [[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]] || { echo "Expected runtime $EXPECTED_RUNTIME, got $DETECTED_RUNTIME"; false; }
 
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"

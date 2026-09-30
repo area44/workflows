@@ -2,6 +2,10 @@
 
 This repository contains reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It helps standardize and streamline CI/CD processes across projects.
 
+## Compatibility & Release Contract
+
+For detailed toolchain guarantees, supported runtime modes, compatibility matrix, and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)**.
+
 ## Composite Actions
 
 - **[Astro](./astro/README.md)**: Build and deploy Astro sites.
