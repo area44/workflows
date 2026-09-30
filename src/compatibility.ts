@@ -13,23 +13,58 @@ export interface RuntimePackageManagerCompatibility {
   status: CompatibilityStatus;
 }
 
-export const SUPPORTED_RUNTIMES: readonly SupportedRuntime[] = ["node", "bun"];
-export const SUPPORTED_PACKAGE_MANAGERS: readonly SupportedPackageManager[] = [
-  "npm",
-  "pnpm",
-  "bun",
-];
-
-export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
-  return (SUPPORTED_RUNTIMES as readonly string[]).includes(runtime);
+export interface MatrixCombinationEntry {
+  runtime: SupportedRuntime;
+  packageManager: SupportedPackageManager;
+  supported: boolean;
+  isDefault?: boolean;
+  reason?: string;
 }
 
-export function isSupportedPackageManager(pmName: string): pmName is SupportedPackageManager {
-  return (SUPPORTED_PACKAGE_MANAGERS as readonly string[]).includes(pmName);
+export interface CanonicalCompatibilityModel {
+  runtimes: readonly SupportedRuntime[];
+  packageManagers: readonly SupportedPackageManager[];
+  combinations: readonly MatrixCombinationEntry[];
 }
 
 /**
- * Evaluates whether a given runtime and package manager combination is supported according to the repository's contract.
+ * Single canonical source of truth for runtime and package manager compatibility.
+ */
+export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
+  runtimes: ["node", "bun"] as const,
+  packageManagers: ["npm", "pnpm", "bun"] as const,
+  combinations: [
+    { runtime: "node", packageManager: "npm", supported: true, isDefault: true },
+    { runtime: "node", packageManager: "pnpm", supported: true, isDefault: false },
+    { runtime: "node", packageManager: "bun", supported: true, isDefault: false },
+    { runtime: "bun", packageManager: "pnpm", supported: true, isDefault: false },
+    { runtime: "bun", packageManager: "bun", supported: true, isDefault: false },
+    {
+      runtime: "bun",
+      packageManager: "npm",
+      supported: false,
+      reason:
+        "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager. Bun runtime requires Bun or pnpm package manager.",
+    },
+  ] as const,
+};
+
+export const SUPPORTED_RUNTIMES: readonly SupportedRuntime[] =
+  CANONICAL_COMPATIBILITY_MODEL.runtimes;
+
+export const SUPPORTED_PACKAGE_MANAGERS: readonly SupportedPackageManager[] =
+  CANONICAL_COMPATIBILITY_MODEL.packageManagers;
+
+export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
+  return (CANONICAL_COMPATIBILITY_MODEL.runtimes as readonly string[]).includes(runtime);
+}
+
+export function isSupportedPackageManager(pmName: string): pmName is SupportedPackageManager {
+  return (CANONICAL_COMPATIBILITY_MODEL.packageManagers as readonly string[]).includes(pmName);
+}
+
+/**
+ * Evaluates whether a given runtime and package manager combination is supported according to the canonical compatibility model.
  */
 export function getCombinationCompatibility(
   runtime: string,
@@ -57,27 +92,40 @@ export function getCombinationCompatibility(
     };
   }
 
-  // Bun runtime with npm package manager is explicitly unsupported
-  if (runtime === "bun" && pmName === "npm") {
+  const combination = CANONICAL_COMPATIBILITY_MODEL.combinations.find(
+    (c) => c.runtime === runtime && c.packageManager === pmName,
+  );
+
+  if (combination) {
+    if (combination.supported) {
+      return {
+        runtime,
+        packageManager: pmName,
+        status: {
+          supported: true,
+          isDefault: Boolean(combination.isDefault),
+        },
+      };
+    }
+
     return {
       runtime,
       packageManager: pmName,
       status: {
         supported: false,
         reason:
-          "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager. Bun runtime requires Bun or pnpm package manager.",
+          combination.reason ||
+          `Unsupported runtime and package manager combination: ${runtime} runtime does not support ${pmName} package manager.`,
       },
     };
   }
-
-  const isDefault = runtime === "node" && pmName === "npm";
 
   return {
     runtime,
     packageManager: pmName,
     status: {
-      supported: true,
-      isDefault,
+      supported: false,
+      reason: `Unsupported runtime and package manager combination: ${runtime} runtime does not support ${pmName} package manager.`,
     },
   };
 }

@@ -129,7 +129,24 @@ The matrix below answers: _“If a consumer uses runtime X and package manager Y
 
 ### Runtime & Package Manager Compatibility Contract
 
-The repository defines an explicit, deterministic compatibility contract between target runtimes and package managers (`src/compatibility.ts`):
+The repository defines an explicit, deterministic canonical compatibility model (`CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`) which serves as the single source of truth for runtime and package manager compatibility across all actions and environment resolution routines.
+
+#### Canonical Compatibility Model Architecture
+
+The canonical compatibility model explicitly defines:
+
+- **Supported Runtimes**: `node`, `bun`
+- **Supported Package Managers**: `npm`, `pnpm`, `bun`
+- **Supported Combinations**:
+  - `node` + `npm` (supported, default fallback combination)
+  - `node` + `pnpm` (supported)
+  - `node` + `bun` (supported)
+  - `bun` + `pnpm` (supported)
+  - `bun` + `bun` (supported)
+- **Explicitly Unsupported Combinations**:
+  - `bun` + `npm` (rejected: Bun runtime does not support npm package manager)
+
+All compatibility type guards (`isSupportedRuntime`, `isSupportedPackageManager`), resolution checks (`getCombinationCompatibility`), and resolution validation routines (`validateRuntimePackageManagerCompatibility`) derive their behavior directly from this single canonical model.
 
 #### Supported Combinations
 

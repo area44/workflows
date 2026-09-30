@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CANONICAL_COMPATIBILITY_MODEL,
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
@@ -36,6 +37,49 @@ describe("Compatibility Contract Validation", () => {
     it("should keep DEFAULT_PNPM_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
       expect(compatibilityMd).toContain(`DEFAULT_PNPM_VERSION = "${DEFAULT_PNPM_VERSION}"`);
       expect(compatibilityMd).toContain(`| pnpm      | \`DEFAULT_PNPM_VERSION\`   | \`"${DEFAULT_PNPM_VERSION}"\``);
+    });
+  });
+
+  describe("Canonical Compatibility Model Directives", () => {
+    it("should export CANONICAL_COMPATIBILITY_MODEL with runtimes, packageManagers, and combinations", () => {
+      expect(CANONICAL_COMPATIBILITY_MODEL).toBeDefined();
+      expect(CANONICAL_COMPATIBILITY_MODEL.runtimes).toEqual(["node", "bun"]);
+      expect(CANONICAL_COMPATIBILITY_MODEL.packageManagers).toEqual(["npm", "pnpm", "bun"]);
+      expect(Array.isArray(CANONICAL_COMPATIBILITY_MODEL.combinations)).toBe(true);
+    });
+
+    it("should ensure helper functions derive directly from CANONICAL_COMPATIBILITY_MODEL", () => {
+      for (const runtime of CANONICAL_COMPATIBILITY_MODEL.runtimes) {
+        expect(isSupportedRuntime(runtime)).toBe(true);
+      }
+      for (const pm of CANONICAL_COMPATIBILITY_MODEL.packageManagers) {
+        expect(isSupportedPackageManager(pm)).toBe(true);
+      }
+      for (const entry of CANONICAL_COMPATIBILITY_MODEL.combinations) {
+        const res = getCombinationCompatibility(entry.runtime, entry.packageManager);
+        expect(res.status.supported).toBe(entry.supported);
+        if (entry.supported) {
+          expect(res.status.isDefault).toBe(Boolean(entry.isDefault));
+        } else {
+          expect(res.status.reason).toBe(entry.reason);
+        }
+      }
+    });
+
+    it("should verify no duplicated compatibility matrices exist outside src/compatibility.ts", () => {
+      const srcFiles = [
+        "build-command.ts",
+        "lint-format.ts",
+        "resolve-environment.ts",
+        "setup-adapters.ts",
+        "site-variables.ts",
+      ];
+      for (const file of srcFiles) {
+        const content = fs.readFileSync(path.join(rootDir, "src", file), "utf8");
+        expect(content).not.toMatch(
+          /runtime\s*===\s*["']bun["']\s*&&\s*(?:pmName|pm|packageManager(?:\.name)?)\s*===\s*["']npm["']/,
+        );
+      }
     });
   });
 
