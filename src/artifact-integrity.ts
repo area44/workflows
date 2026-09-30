@@ -27,7 +27,7 @@ export interface VerificationResult {
  */
 export function parseViteConfigPack(content: string): ArtifactMapping[] {
   const mapMatch = content.match(
-    /pack:\s*\[([\s\S]*?)\]\.map\s*\(\s*\(?([a-zA-Z0-9_]+)\)?\s*=>\s*\(\s*\{([\s\S]*?)\}\s*\)\s*\)/
+    /pack:\s*\[([\s\S]*?)\]\.map\s*\(\s*\(?([a-zA-Z0-9_]+)\)?\s*=>\s*\(\s*\{([\s\S]*?)\}\s*\)\s*\)/,
   );
   if (mapMatch) {
     const namesRaw = mapMatch[1];
@@ -44,7 +44,7 @@ export function parseViteConfigPack(content: string): ArtifactMapping[] {
     const ext = format === "cjs" ? ".cjs" : ".mjs";
 
     const entryTemplateMatch = bodyObj.match(
-      /entry:\s*\{\s*\[?\s*([a-zA-Z0-9_]+)\s*\]?:\s*`([^`]+)`|\s*["\x27]([^"\x27]+)["\x27]\s*\}/
+      /entry:\s*\{\s*\[?\s*([a-zA-Z0-9_]+)\s*\]?:\s*`([^`]+)`|\s*["\x27]([^"\x27]+)["\x27]\s*\}/,
     );
 
     return names.map((name) => {
@@ -65,8 +65,8 @@ export function parseViteConfigPack(content: string): ArtifactMapping[] {
     const itemsRaw = staticPackMatch[1];
     const itemMatches = Array.from(
       itemsRaw.matchAll(
-        /\{\s*entry:\s*\{([^}]+)\}(?:[\s\S]*?outDir:\s*["\x27]([^"\x27]+)["\x27])?(?:[\s\S]*?format:\s*["\x27]([^"\x27]+)["\x27])?/g
-      )
+        /\{\s*entry:\s*\{([^}]+)\}(?:[\s\S]*?outDir:\s*["\x27]([^"\x27]+)["\x27])?(?:[\s\S]*?format:\s*["\x27]([^"\x27]+)["\x27])?/g,
+      ),
     );
     if (itemMatches.length > 0) {
       return itemMatches.flatMap((m) => {
@@ -77,8 +77,8 @@ export function parseViteConfigPack(content: string): ArtifactMapping[] {
 
         const entries = Array.from(
           entryBody.matchAll(
-            /(?:["\x27]?([a-zA-Z0-9_-]+)["\x27]?|\[["\x27]?([a-zA-Z0-9_-]+)["\x27]?\])\s*:\s*["\x27`]([^"\x27`]+)["\x27`]/g
-          )
+            /(?:["\x27]?([a-zA-Z0-9_-]+)["\x27]?|\[["\x27]?([a-zA-Z0-9_-]+)["\x27]?\])\s*:\s*["\x27`]([^"\x27`]+)["\x27`]/g,
+          ),
         );
         return entries.map((e) => ({
           name: e[1] || e[2],
@@ -110,7 +110,7 @@ export function getExpectedArtifacts(rootDir: string = process.cwd()): ArtifactM
  */
 export function verifyArtifactIntegrity(
   rootDir: string = process.cwd(),
-  options: VerificationOptions = {}
+  options: VerificationOptions = {},
 ): VerificationResult {
   const checkBuild = options.executeBuild ?? false;
   if (checkBuild) {
@@ -233,5 +233,7 @@ export function runArtifactVerification(rootDir: string = process.cwd()): void {
   }
 
   const fileList = result.expectedArtifacts.map((a) => a.outputPath).join(", ");
-  console.log(`Verified generated artifact integrity: all expected artifacts (${fileList}) exist and dist/ is synchronized.`);
+  console.log(
+    `Verified generated artifact integrity: all expected artifacts (${fileList}) exist and dist/ is synchronized.`,
+  );
 }
