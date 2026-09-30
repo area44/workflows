@@ -1,17 +1,17 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
-import { setupBun, setupNode, setupPackageManager } from "./adapters";
 import { validateRuntimePackageManagerCompatibility } from "./compatibility";
+import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
 
-export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./adapters";
+export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
 export {
   getPnpmRuntime,
   resolvePnpmSetupRuntime,
   setupBun,
   setupNode,
   setupPackageManager,
-} from "./adapters";
+} from "./setup-adapters";
 
 export type {
   CompatibilityStatus,
@@ -64,12 +64,15 @@ export interface PackageManager {
   version: string;
 }
 
-export interface DetectedEnv {
+export interface ResolvedEnvironment {
   nodeVersion: string;
   bunVersion: string;
   pm: PackageManager;
   runtime: "node" | "bun";
 }
+
+/** Legacy type alias for ResolvedEnvironment */
+export type DetectedEnv = ResolvedEnvironment;
 
 export interface ParsedInputs {
   specifiedRuntime?: "node" | "bun";
@@ -253,10 +256,10 @@ export function parseEnvironmentInputs(
 export const parseRuntimeInput = parseEnvironmentInputs;
 
 /**
- * Project Environment Detection
- * Discovers raw project state from workspace files and configurations.
+ * Project Environment Inspection
+ * Inspects raw project state from workspace files and configurations.
  */
-export function detectProjectEnvironment(): ProjectEnvironment {
+export function inspectProjectEnvironment(): ProjectEnvironment {
   let nvmRcVersion: string | undefined;
   let nvmRcError: string | undefined;
   let nodeFileVersion: string | undefined;
@@ -323,6 +326,9 @@ export function detectProjectEnvironment(): ProjectEnvironment {
     hasBunLock,
   };
 }
+
+/** Legacy wrapper alias for inspectProjectEnvironment */
+export const detectProjectEnvironment = inspectProjectEnvironment;
 
 /**
  * Package Manager Resolution
@@ -502,7 +508,7 @@ export function resolveVersions(
  * Legacy wrapper function for detecting package manager.
  */
 export function detectPackageManager(): PackageManager {
-  const project = detectProjectEnvironment();
+  const project = inspectProjectEnvironment();
   return resolvePackageManager(project);
 }
 
@@ -510,7 +516,7 @@ export function detectPackageManager(): PackageManager {
  * Legacy wrapper function for detecting Node.js version.
  */
 export function detectNodeVersion(pmName?: string): string {
-  const project = detectProjectEnvironment();
+  const project = inspectProjectEnvironment();
   const dummyPm = { name: pmName || "npm", version: "" };
   const runtime = pmName === "bun" ? "bun" : "node";
   return resolveNodeVersion({}, dummyPm, runtime, project);
@@ -520,7 +526,7 @@ export function detectNodeVersion(pmName?: string): string {
  * Legacy wrapper function for detecting Bun version.
  */
 export function detectBunVersion(pm: PackageManager): string {
-  const project = detectProjectEnvironment();
+  const project = inspectProjectEnvironment();
   return resolveBunVersion({}, pm, project);
 }
 
@@ -528,7 +534,7 @@ export function detectBunVersion(pm: PackageManager): string {
  * Validation
  * Basic sanity check on resolved environment before returning.
  */
-export function validateEnvironment(env: DetectedEnv): DetectedEnv {
+export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
   const rt = env.runtime as string;
   if (rt !== "node" && rt !== "bun") {
     throw new Error(`Invalid resolved runtime: "${rt}"`);
@@ -546,9 +552,9 @@ export function validateEnvironment(env: DetectedEnv): DetectedEnv {
 }
 
 /**
- * Writes the detected environment values and tool setup parameters to GitHub Actions outputs.
+ * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
  */
-export function writeOutput(env: DetectedEnv): void;
+export function writeOutput(env: ResolvedEnvironment): void;
 export function writeOutput(
   nodeVersion: string,
   pm: PackageManager,
@@ -556,12 +562,12 @@ export function writeOutput(
   runtime?: "bun" | "node",
 ): void;
 export function writeOutput(
-  nodeVersionOrEnv: string | DetectedEnv,
+  nodeVersionOrEnv: string | ResolvedEnvironment,
   pm?: PackageManager,
   bunVersion: string = "",
   runtime: "bun" | "node" = "node",
 ): void {
-  let env: DetectedEnv;
+  let env: ResolvedEnvironment;
   if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
     env = nodeVersionOrEnv;
   } else {
@@ -595,16 +601,18 @@ export function writeOutput(
 
 /**
  * Executes the full environment resolution pipeline:
- * Input Parsing -> Project Detection -> PM Resolution -> Runtime Resolution -> Version Resolution -> Validation -> Environment
+ * Input Parsing -> Project Inspection -> PM Resolution -> Runtime Resolution -> Version Resolution -> Validation -> Environment
  */
-export function detectEnv(runtimeInput: string = core.getInput("runtime")): DetectedEnv {
+export function resolveEnvironment(
+  runtimeInput: string = core.getInput("runtime"),
+): ResolvedEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
-  const project = detectProjectEnvironment();
+  const project = inspectProjectEnvironment();
   const pm = resolvePackageManager(project);
   const runtime = resolveRuntime(parsedInputs, pm);
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
 
-  const env: DetectedEnv = {
+  const env: ResolvedEnvironment = {
     nodeVersion: versions.nodeVersion,
     bunVersion: versions.bunVersion,
     pm,
@@ -614,9 +622,12 @@ export function detectEnv(runtimeInput: string = core.getInput("runtime")): Dete
   return validateEnvironment(env);
 }
 
+/** Legacy wrapper alias for resolveEnvironment */
+export const detectEnv = resolveEnvironment;
+
 export function run(): void {
   const runtimeInput = core.getInput("runtime");
-  const env = detectEnv(runtimeInput);
+  const env = resolveEnvironment(runtimeInput);
   writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
 }
 

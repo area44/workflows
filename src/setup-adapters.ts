@@ -1,4 +1,4 @@
-import type { DetectedEnv } from "./detect-env";
+import type { ResolvedEnvironment } from "./resolve-environment";
 
 export interface NodeSetupConfig {
   shouldSetup: boolean;
@@ -22,7 +22,7 @@ export interface PackageManagerSetupConfig {
  * Formats the runtime argument for pnpm/setup based on resolved Bun or Node.js versions.
  */
 export function resolvePnpmSetupRuntime(
-  env: DetectedEnv | { bunVersion: string; nodeVersion: string },
+  env: ResolvedEnvironment | { bunVersion: string; nodeVersion: string },
 ): string {
   if (env.bunVersion) {
     return `bun@${env.bunVersion}`;
@@ -37,7 +37,7 @@ export function resolvePnpmSetupRuntime(
  * Legacy wrapper alias for resolvePnpmSetupRuntime.
  */
 export function getPnpmRuntime(
-  bunVersionOrEnv: string | DetectedEnv | { bunVersion: string; nodeVersion: string },
+  bunVersionOrEnv: string | ResolvedEnvironment | { bunVersion: string; nodeVersion: string },
   nodeVersion: string = "",
 ): string {
   if (typeof bunVersionOrEnv === "string") {
@@ -49,7 +49,7 @@ export function getPnpmRuntime(
 /**
  * Derives setup parameters for actions/setup-node from a resolved environment.
  */
-export function setupNode(env: DetectedEnv): NodeSetupConfig {
+export function setupNode(env: ResolvedEnvironment): NodeSetupConfig {
   const shouldSetup = env.pm.name !== "pnpm" && Boolean(env.nodeVersion);
   return {
     shouldSetup,
@@ -61,7 +61,7 @@ export function setupNode(env: DetectedEnv): NodeSetupConfig {
 /**
  * Derives setup parameters for oven-sh/setup-bun from a resolved environment.
  */
-export function setupBun(env: DetectedEnv): BunSetupConfig {
+export function setupBun(env: ResolvedEnvironment): BunSetupConfig {
   const shouldSetup = env.pm.name !== "pnpm" && Boolean(env.bunVersion);
   return {
     shouldSetup,
@@ -72,7 +72,7 @@ export function setupBun(env: DetectedEnv): BunSetupConfig {
 /**
  * Derives setup parameters for package manager setup from a resolved environment.
  */
-export function setupPackageManager(env: DetectedEnv): PackageManagerSetupConfig {
+export function setupPackageManager(env: ResolvedEnvironment): PackageManagerSetupConfig {
   return {
     name: env.pm.name,
     version: env.pm.version,

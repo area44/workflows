@@ -3,22 +3,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { DetectedEnv } from "../src/detect-env";
+import type { ResolvedEnvironment } from "../src/resolve-environment";
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   detectBunVersion,
-  detectEnv,
   detectNodeVersion,
   detectPackageManager,
   detectProjectEnvironment,
   detectRuntime,
   getDefaultPackageManagerVersion,
   getPnpmRuntime,
+  inspectProjectEnvironment,
   parseEnvironmentInputs,
   parseRuntimeInput,
+  resolveEnvironment,
   resolvePackageManager,
   resolvePnpmSetupRuntime,
   resolveRuntime,
@@ -29,11 +30,11 @@ import {
   setupPackageManager,
   validateEnvironment,
   writeOutput,
-} from "../src/detect-env";
+} from "../src/resolve-environment";
 
 vi.mock("@actions/core");
 
-describe("detect-env", () => {
+describe("resolve-environment", () => {
   const originalEnv = { ...process.env };
   const originalCwd = process.cwd();
   const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
@@ -209,7 +210,7 @@ describe("detect-env", () => {
       });
     });
 
-    describe("detectProjectEnvironment", () => {
+    describe("inspectProjectEnvironment", () => {
       it("should collect workspace project configuration state", () => {
         vi.spyOn(fs, "existsSync").mockImplementation((p) =>
           [".nvmrc", "package.json"].includes(p as string),
@@ -221,7 +222,7 @@ describe("detect-env", () => {
           return "" as any;
         });
 
-        const proj = detectProjectEnvironment();
+        const proj = inspectProjectEnvironment();
         expect(proj.nvmRcVersion).toBe("20.11.0");
         expect(proj.packageJson).toEqual({ packageManager: "pnpm@9.0.0" });
       });
@@ -338,8 +339,8 @@ describe("detect-env", () => {
           return "" as any;
         });
 
-        const run1 = detectEnv("node");
-        const run2 = detectEnv("node");
+        const run1 = resolveEnvironment("node");
+        const run2 = resolveEnvironment("node");
 
         expect(run1).toEqual(run2);
         expect(run1).toEqual({
@@ -434,7 +435,7 @@ describe("detect-env", () => {
 
     describe("setupNode adapter", () => {
       it("should return correct setup options for npm package manager", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "",
           pm: { name: "npm", version: "12" },
@@ -448,7 +449,7 @@ describe("detect-env", () => {
       });
 
       it("should return correct setup options for bun package manager with node runtime", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "22",
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
@@ -462,7 +463,7 @@ describe("detect-env", () => {
       });
 
       it("should return shouldSetup=false when package manager is pnpm", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "",
           pm: { name: "pnpm", version: "12" },
@@ -476,7 +477,7 @@ describe("detect-env", () => {
       });
 
       it("should return shouldSetup=false when nodeVersion is empty", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "",
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
@@ -492,7 +493,7 @@ describe("detect-env", () => {
 
     describe("setupBun adapter", () => {
       it("should return shouldSetup=true and bunVersion when package manager is not pnpm and bunVersion is set", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "",
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
@@ -505,7 +506,7 @@ describe("detect-env", () => {
       });
 
       it("should return shouldSetup=false when package manager is pnpm", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "1.4",
           pm: { name: "pnpm", version: "12" },
@@ -518,7 +519,7 @@ describe("detect-env", () => {
       });
 
       it("should return shouldSetup=false when bunVersion is empty", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "",
           pm: { name: "npm", version: "12" },
@@ -533,7 +534,7 @@ describe("detect-env", () => {
 
     describe("setupPackageManager adapter", () => {
       it("should extract package manager options for pnpm", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "",
           pm: { name: "pnpm", version: "9.0.0" },
@@ -548,7 +549,7 @@ describe("detect-env", () => {
       });
 
       it("should extract package manager options for npm", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "",
           pm: { name: "npm", version: "12" },
@@ -563,7 +564,7 @@ describe("detect-env", () => {
       });
 
       it("should extract package manager options for bun", () => {
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "",
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
@@ -583,7 +584,7 @@ describe("detect-env", () => {
         const existsSpy = vi.spyOn(fs, "existsSync");
         const readSpy = vi.spyOn(fs, "readFileSync");
 
-        const env: DetectedEnv = {
+        const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "1.4",
           pm: { name: "pnpm", version: "12" },
@@ -875,10 +876,10 @@ describe("detect-env", () => {
     });
   });
 
-  describe("detectEnv", () => {
+  describe("resolveEnvironment", () => {
     it("should respect explicit runtime input node@22", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = detectEnv("node@22");
+      const env = resolveEnvironment("node@22");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe("22");
@@ -887,7 +888,7 @@ describe("detect-env", () => {
 
     it("should respect explicit runtime input bun@1.4", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
-      const env = detectEnv("bun@1.4");
+      const env = resolveEnvironment("bun@1.4");
 
       expect(env.runtime).toBe("bun");
       expect(env.nodeVersion).toBe("");
@@ -896,14 +897,14 @@ describe("detect-env", () => {
 
     it("should throw validation error when explicit runtime bun@1.4 is used with npm package manager", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      expect(() => detectEnv("bun@1.4")).toThrow(
+      expect(() => resolveEnvironment("bun@1.4")).toThrow(
         "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager",
       );
     });
 
     it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = detectEnv("node@22,bun@1.4");
+      const env = resolveEnvironment("node@22,bun@1.4");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe("22");
@@ -916,7 +917,7 @@ describe("detect-env", () => {
         JSON.stringify({ packageManager: "bun@1.4" }) as any,
       );
 
-      const env = detectEnv("node");
+      const env = resolveEnvironment("node");
 
       expect(env.runtime).toBe("node");
       expect(env.pm).toEqual({ name: "bun", version: "1.4" });
@@ -930,7 +931,7 @@ describe("detect-env", () => {
         JSON.stringify({ packageManager: "pnpm@11.21.0" }) as any,
       );
 
-      const env = detectEnv("bun");
+      const env = resolveEnvironment("bun");
 
       expect(env.runtime).toBe("bun");
       expect(env.pm).toEqual({ name: "pnpm", version: "11.21.0" });
@@ -1054,12 +1055,12 @@ describe("detect-env", () => {
     ];
 
     it.each(cases)(
-      "should detect correct environment for fixture $action/$runtime/$pm/$type",
+      "should resolve correct environment for fixture $action/$runtime/$pm/$type",
       ({ action, runtime: rt, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
         const fixturePath = path.join(fixturesDir, action, rt, pm, type);
         process.chdir(fixturePath);
 
-        const env = detectEnv();
+        const env = resolveEnvironment();
 
         expect(env.nodeVersion).toBe(expectedNode);
         expect(env.bunVersion).toBe(expectedBun);
@@ -1081,7 +1082,7 @@ describe("detect-env", () => {
         return "" as any;
       });
 
-      const env = detectEnv("node@20,bun@1.2");
+      const env = resolveEnvironment("node@20,bun@1.2");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe("20");
@@ -1095,7 +1096,7 @@ describe("detect-env", () => {
         JSON.stringify({ packageManager: "bun@1.4" }) as any,
       );
 
-      const env = detectEnv("node@22");
+      const env = resolveEnvironment("node@22");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe("22");
@@ -1212,7 +1213,7 @@ describe("detect-env", () => {
         }) as any,
       );
 
-      const env = detectEnv("bun");
+      const env = resolveEnvironment("bun");
 
       expect(env.runtime).toBe("bun");
       expect(env.pm).toEqual({ name: "pnpm", version: "11.21.0" });
@@ -1311,7 +1312,7 @@ describe("detect-env", () => {
     it("parses runtime = 'both' to set bunVersion while defaulting runtime to node", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      const env = detectEnv("both");
+      const env = resolveEnvironment("both");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe(DEFAULT_NODE_VERSION);
@@ -1321,12 +1322,12 @@ describe("detect-env", () => {
     it("evaluates runtime input order: node@20,bun@1.2 sets specifiedRuntime to node, bun@1.2,node@20 sets specifiedRuntime to bun", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
-      const env1 = detectEnv("node@20,bun@1.2");
+      const env1 = resolveEnvironment("node@20,bun@1.2");
       expect(env1.runtime).toBe("node");
       expect(env1.nodeVersion).toBe("20");
       expect(env1.bunVersion).toBe("1.2");
 
-      const env2 = detectEnv("bun@1.2,node@20");
+      const env2 = resolveEnvironment("bun@1.2,node@20");
       expect(env2.runtime).toBe("bun");
       expect(env2.nodeVersion).toBe("20");
       expect(env2.bunVersion).toBe("1.2");
@@ -1343,12 +1344,12 @@ describe("detect-env", () => {
       });
 
       // runtime = "node" without @version -> keeps detected .nvmrc version
-      const envNode = detectEnv("node");
+      const envNode = resolveEnvironment("node");
       expect(envNode.runtime).toBe("node");
       expect(envNode.nodeVersion).toBe("20.11.0");
 
       // runtime = "bun" without @version -> parseRuntimeInput resolves bunVersion to DEFAULT_BUN_VERSION ("1.4")
-      const envBun = detectEnv("bun");
+      const envBun = resolveEnvironment("bun");
       expect(envBun.runtime).toBe("bun");
       expect(envBun.bunVersion).toBe(DEFAULT_BUN_VERSION);
       expect(envBun.nodeVersion).toBe("");
@@ -1364,13 +1365,13 @@ describe("detect-env", () => {
         return "" as any;
       });
 
-      const envNodeOverride = detectEnv("node@22");
+      const envNodeOverride = resolveEnvironment("node@22");
       expect(envNodeOverride.nodeVersion).toBe("22");
 
-      const envBunOverride = detectEnv("bun@1.4");
+      const envBunOverride = resolveEnvironment("bun@1.4");
       expect(envBunOverride.bunVersion).toBe("1.4");
 
-      const envBothOverride = detectEnv("node@22,bun@1.4");
+      const envBothOverride = resolveEnvironment("node@22,bun@1.4");
       expect(envBothOverride.nodeVersion).toBe("22");
       expect(envBothOverride.bunVersion).toBe("1.4");
     });
@@ -1378,7 +1379,7 @@ describe("detect-env", () => {
     it("falls back to default versions when no configuration or lockfiles exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      const env = detectEnv("");
+      const env = resolveEnvironment("");
 
       expect(env.runtime).toBe("node");
       expect(env.nodeVersion).toBe(DEFAULT_NODE_VERSION);
@@ -1403,8 +1404,8 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
     });
 
-    it("should output all detected values when passed a DetectedEnv object", () => {
-      const env: DetectedEnv = {
+    it("should output all detected values when passed a ResolvedEnvironment object", () => {
+      const env: ResolvedEnvironment = {
         nodeVersion: "24",
         bunVersion: "",
         pm: { name: "npm", version: "12" },
@@ -1433,7 +1434,7 @@ describe("detect-env", () => {
   });
 
   describe("run", () => {
-    it("should coordinate environment detection, execute adapters, and write action output on fixture project", () => {
+    it("should coordinate environment resolution, execute adapters, and write action output on fixture project", () => {
       const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
       process.chdir(fixturePath);
 
@@ -1453,7 +1454,7 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
     });
 
-    it("should detect bun and set adapter outputs for bun project fixture", () => {
+    it("should resolve bun and set adapter outputs for bun project fixture", () => {
       const fixturePath = path.join(fixturesDir, "astro/bun/bun/basic");
       process.chdir(fixturePath);
 
@@ -1473,7 +1474,7 @@ describe("detect-env", () => {
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
-    it("should detect pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
+    it("should resolve pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
       const fixturePath = path.join(fixturesDir, "astro/bun/pnpm/basic");
       process.chdir(fixturePath);
 

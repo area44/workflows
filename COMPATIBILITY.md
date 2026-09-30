@@ -6,18 +6,18 @@ This document defines the compatibility contract, runtime and toolchain guarante
 
 ## Supported Runtime & Toolchain Versions
 
-The repository's environment detection (`src/detect-env.ts`) automatically discovers project settings or falls back to specified default versions.
+The repository's environment resolution (`src/resolve-environment.ts`) automatically discovers project settings or falls back to specified default versions.
 
 ### Canonical Default Versions
 
 When a project does not specify a toolchain version in repository configuration files or workflow inputs, the action selects these canonical default versions:
 
-| Toolchain | Default Version Constant | Default Value | Source Constant in `src/detect-env.ts`     |
-| --------- | ------------------------ | ------------- | ------------------------------------------ |
-| Node.js   | `DEFAULT_NODE_VERSION`   | `"24"`        | `export const DEFAULT_NODE_VERSION = "24"` |
-| Bun       | `DEFAULT_BUN_VERSION`    | `"1.4"`       | `export const DEFAULT_BUN_VERSION = "1.4"` |
-| npm       | `DEFAULT_NPM_VERSION`    | `"12"`        | `export const DEFAULT_NPM_VERSION = "12"`  |
-| pnpm      | `DEFAULT_PNPM_VERSION`   | `"12"`        | `export const DEFAULT_PNPM_VERSION = "12"` |
+| Toolchain | Default Version Constant | Default Value | Source Constant in `src/resolve-environment.ts` |
+| --------- | ------------------------ | ------------- | ----------------------------------------------- |
+| Node.js   | `DEFAULT_NODE_VERSION`   | `"24"`        | `export const DEFAULT_NODE_VERSION = "24"`      |
+| Bun       | `DEFAULT_BUN_VERSION`    | `"1.4"`       | `export const DEFAULT_BUN_VERSION = "1.4"`      |
+| npm       | `DEFAULT_NPM_VERSION`    | `"12"`        | `export const DEFAULT_NPM_VERSION = "12"`       |
+| pnpm      | `DEFAULT_PNPM_VERSION`   | `"12"`        | `export const DEFAULT_PNPM_VERSION = "12"`      |
 
 ### Toolchain Version Classification
 
@@ -46,7 +46,7 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 
 ## Composite Actions Expectations
 
-Every composite action in this repository shares a common environment detection engine (`dist/detect-env.mjs`) but serves specific deployment or workflow goals.
+Every composite action in this repository shares a common environment resolution engine (`dist/resolve-environment.mjs`) but serves specific deployment or workflow goals.
 
 ### Public Action Interfaces
 
@@ -177,10 +177,10 @@ To prevent silent compatibility regressions and manage toolchain upgrades predic
 When upgrading default versions (e.g. Node.js 24 → 26, Bun 1.4 → 1.5, pnpm 12 → 13, npm 12 → 13):
 
 1. **Verify Minimum Runner Support**: Ensure GitHub Actions `ubuntu-latest` runners and setup actions support the new version natively.
-2. **Update Implementation Constants**: Update default version constants in `src/detect-env.ts`.
-3. **Rebuild Dist Artifacts**: Run `npm run build` to regenerate `dist/detect-env.mjs`.
+2. **Update Implementation Constants**: Update default version constants in `src/resolve-environment.ts`.
+3. **Rebuild Dist Artifacts**: Run `npm run build` to regenerate `dist/resolve-environment.mjs`.
 4. **Update Documentation**: Update canonical version references in `COMPATIBILITY.md` and `README.md`.
-5. **Update CI Matrix & Test Fixtures**: Ensure unit tests in `__tests__/detect-env.test.ts` and compatibility tests pass with updated defaults.
+5. **Update CI Matrix & Test Fixtures**: Ensure unit tests in `__tests__/resolve-environment.test.ts` and compatibility tests pass with updated defaults.
 
 ### Protection Against Silent Breaking Changes
 

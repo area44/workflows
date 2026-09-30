@@ -19,7 +19,7 @@ jobs:
       - name: Resolve environment
         shell: bash
         id: resolve_environment
-        run: node "dist/detect-env.mjs"
+        run: node "dist/resolve-environment.mjs"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -39,4 +39,4 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          test -f dist/detect-env.mjs && test -f dist/lint-format.mjs && test -f dist/build-command.mjs
+          test -f dist/resolve-environment.mjs && test -f dist/lint-format.mjs && test -f dist/build-command.mjs

@@ -31,7 +31,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_RUNTIME: ${{ inputs.runtime }}
-      run: node "$ACTION_PATH/../dist/detect-env.mjs"
+      run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Setup PNPM
       if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}
