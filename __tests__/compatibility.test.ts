@@ -414,163 +414,29 @@ describe("Compatibility Contract Validation", () => {
       );
     });
 
-    it("should validate matrix independently of YAML formatting or style (quotes, whitespace, order)", () => {
+    it("should parse matrix entries independently of YAML formatting or style (quotes, whitespace, comments)", () => {
       const yamlFormatted = `
+# Comment at top level
 jobs:
-  test-action:
+  test-action: # inline comment
     strategy:
       matrix:
         include:
+          # Mixed quotes, extra spacing, inline comments
           - action: "astro"
             runtime: 'node'
-            pm: "npm"
-            type: 'basic'
-          - action: astro
-            runtime: node
             pm: npm
-            type: minimal
-          - action: astro
-            runtime: node
-            pm: pnpm
-            type: basic
-          - action: astro
-            runtime: node
-            pm: pnpm
-            type: minimal
-          - action: astro
-            runtime: node
-            pm: bun
-            type: basic
-          - action: astro
-            runtime: node
-            pm: bun
-            type: minimal
-          - action: astro
+            type: basic # comment
+          - pm: "pnpm" # different key order
+            type: 'minimal'
             runtime: bun
-            pm: bun
-            type: basic
-          - action: astro
-            runtime: bun
-            pm: bun
-            type: minimal
-          - action: astro
-            runtime: bun
-            pm: pnpm
-            type: basic
-
-          - action: lint-format
-            runtime: node
-            pm: npm
-            type: basic
-          - action: lint-format
-            runtime: node
-            pm: npm
-            type: minimal
-          - action: lint-format
-            runtime: node
-            pm: pnpm
-            type: basic
-          - action: lint-format
-            runtime: node
-            pm: pnpm
-            type: minimal
-          - action: lint-format
-            runtime: node
-            pm: bun
-            type: basic
-          - action: lint-format
-            runtime: node
-            pm: bun
-            type: minimal
-          - action: lint-format
-            runtime: bun
-            pm: bun
-            type: basic
-          - action: lint-format
-            runtime: bun
-            pm: bun
-            type: minimal
-          - action: lint-format
-            runtime: bun
-            pm: pnpm
-            type: basic
-
-          - action: vite
-            runtime: node
-            pm: npm
-            type: basic
-          - action: vite
-            runtime: node
-            pm: npm
-            type: minimal
-          - action: vite
-            runtime: node
-            pm: pnpm
-            type: basic
-          - action: vite
-            runtime: node
-            pm: pnpm
-            type: minimal
-          - action: vite
-            runtime: node
-            pm: bun
-            type: basic
-          - action: vite
-            runtime: node
-            pm: bun
-            type: minimal
-          - action: vite
-            runtime: bun
-            pm: bun
-            type: basic
-          - action: vite
-            runtime: bun
-            pm: bun
-            type: minimal
-          - action: vite
-            runtime: bun
-            pm: pnpm
-            type: basic
-
-          - action: vite-plus
-            runtime: node
-            pm: npm
-            type: basic
-          - action: vite-plus
-            runtime: node
-            pm: npm
-            type: minimal
-          - action: vite-plus
-            runtime: node
-            pm: pnpm
-            type: basic
-          - action: vite-plus
-            runtime: node
-            pm: pnpm
-            type: minimal
-          - action: vite-plus
-            runtime: node
-            pm: bun
-            type: basic
-          - action: vite-plus
-            runtime: node
-            pm: bun
-            type: minimal
-          - action: vite-plus
-            runtime: bun
-            pm: bun
-            type: basic
-          - action: vite-plus
-            runtime: bun
-            pm: bun
-            type: minimal
-          - action: vite-plus
-            runtime: bun
-            pm: pnpm
-            type: basic
+            action: vite
 `;
       const entries = extractWorkflowMatrixEntries(yamlFormatted);
-      expect(() => validateWorkflowMatrix(entries)).not.toThrow();
+      expect(entries).toEqual([
+        { action: "astro", runtime: "node", pm: "npm", type: "basic" },
+        { action: "vite", runtime: "bun", pm: "pnpm", type: "minimal" },
+      ]);
     });
 
     it("should pass runtime input to all action steps in test-actions.yml", () => {
