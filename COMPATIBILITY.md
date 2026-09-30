@@ -154,6 +154,18 @@ Runtime resolution follows strict precedence rules:
 
 **Critical Invariant**: Explicit runtime selections are never silently overridden by package-manager detection. Invalid runtime/package-manager combinations fail validation explicitly during environment resolution rather than being silently transformed into another runtime.
 
+#### Explicit Runtime Input Contract & Validation
+
+Action runtime inputs (`runtime`) are validated against an explicit input grammar:
+
+- **Accepted Syntax**:
+  - `node` or `node@<version>` (e.g. `node@24`, `node@20.11.0`)
+  - `bun` or `bun@<version>` (e.g. `bun@1.4`, `bun@1.1.20`)
+  - Multi-runtime combinations: comma or space-separated specifiers (e.g. `node@24,bun@1.4`)
+  - `both` keyword (enables Bun versioning while defaulting runtime mode to Node)
+- **Automatic Runtime Detection**: When no explicit runtime input is supplied (omitted, empty, or whitespace-only), runtime resolution proceeds to automatic project detection.
+- **Fail-Fast Validation**: Malformed syntax (e.g. `node@`, `,node`, `node@@24`), unknown runtime names (e.g. `deno`), partial prefix matches (e.g. `nodedev`, `bunyan`), or duplicate/conflicting specifiers fail fast with an actionable error and are never silently ignored or converted.
+
 ---
 
 ## Lightweight Release & Toolchain Upgrade Policy

@@ -133,8 +133,53 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
   return undefined;
 }
 
+function validateCommaStructure(trimmed: string, runtimeInput: string): void {
+  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+    );
+  }
+}
+
+interface ParsedPart {
+  type: "node" | "bun" | "both";
+  version?: string;
+}
+
+function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPart {
+  const part = rawPart.toLowerCase();
+
+  if (part === "both") {
+    return { type: "both" };
+  }
+  if (part === "node") {
+    return { type: "node" };
+  }
+  if (part === "bun") {
+    return { type: "bun" };
+  }
+
+  const isNodeSpec = part.startsWith("node@");
+  const isBunSpec = part.startsWith("bun@");
+
+  if (isNodeSpec || isBunSpec) {
+    const prefixLen = isNodeSpec ? 5 : 4;
+    const ver = part.slice(prefixLen);
+    if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
+      throw new Error(
+        `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+      );
+    }
+    return { type: isNodeSpec ? "node" : "bun", version: ver };
+  }
+
+  throw new Error(
+    `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+  );
+}
+
 /**
- * Step 1: Input Parsing
+ * Input Parsing
  * Parses raw action runtime inputs into normalized input representations.
  */
 export function parseEnvironmentInputs(
@@ -142,31 +187,49 @@ export function parseEnvironmentInputs(
 ): ParsedInputs {
   if (!runtimeInput) return {};
 
-  const trimmed = runtimeInput.trim().toLowerCase();
+  const trimmed = runtimeInput.trim();
+  if (!trimmed) return {};
+
+  validateCommaStructure(trimmed, runtimeInput);
+
   const parts = trimmed.split(/[\s,]+/);
   let specifiedRuntime: "node" | "bun" | undefined;
   let nodeVersion: string | undefined;
   let bunVersion: string | undefined;
 
   let hasBun = false;
+  const counts = { node: 0, bun: 0, both: 0 };
 
-  for (const part of parts) {
-    if (part === "both") {
+  for (const rawPart of parts) {
+    const parsed = parseSingleRuntimePart(rawPart, runtimeInput);
+    counts[parsed.type]++;
+
+    if (parsed.type === "both") {
       hasBun = true;
-    } else if (part.startsWith("node")) {
+    } else if (parsed.type === "node") {
       if (!specifiedRuntime) specifiedRuntime = "node";
-      const atIdx = part.indexOf("@");
-      if (atIdx !== -1) {
-        nodeVersion = part.slice(atIdx + 1);
-      }
-    } else if (part.startsWith("bun")) {
+      if (parsed.version) nodeVersion = parsed.version;
+    } else if (parsed.type === "bun") {
       hasBun = true;
       if (!specifiedRuntime) specifiedRuntime = "bun";
-      const atIdx = part.indexOf("@");
-      if (atIdx !== -1) {
-        bunVersion = part.slice(atIdx + 1);
-      }
+      if (parsed.version) bunVersion = parsed.version;
     }
+  }
+
+  if (counts.node > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
+    );
+  }
+  if (counts.bun > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
+    );
+  }
+  if (counts.both > 1) {
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
+    );
   }
 
   return {
@@ -180,7 +243,7 @@ export function parseEnvironmentInputs(
 export const parseRuntimeInput = parseEnvironmentInputs;
 
 /**
- * Step 2: Project Environment Detection
+ * Project Environment Detection
  * Discovers raw project state from workspace files and configurations.
  */
 export function detectProjectEnvironment(): ProjectEnvironment {
@@ -252,7 +315,7 @@ export function detectProjectEnvironment(): ProjectEnvironment {
 }
 
 /**
- * Step 3: Package Manager Resolution
+ * Package Manager Resolution
  * Resolves final package manager and version given project environment state.
  */
 export function resolvePackageManager(project: ProjectEnvironment): PackageManager {
@@ -292,7 +355,7 @@ export function resolvePackageManager(project: ProjectEnvironment): PackageManag
 }
 
 /**
- * Step 4: Runtime Resolution
+ * Runtime Resolution
  * Resolves target runtime according to canonical precedence:
  * explicit specifiedRuntime > package manager derived runtime > default node runtime
  */
@@ -315,7 +378,7 @@ export function detectRuntime(pm: PackageManager, bunVersion?: string): "node" |
 }
 
 /**
- * Step 5: Version Resolution
+ * Version Resolution
  * Resolves Node.js version based on parsed inputs, runtime, and project state.
  */
 export function resolveNodeVersion(
@@ -365,7 +428,7 @@ export function resolveNodeVersion(
 }
 
 /**
- * Step 5: Version Resolution
+ * Version Resolution
  * Resolves Bun version based on parsed inputs, package manager, and project state.
  */
 export function resolveBunVersion(
@@ -410,7 +473,7 @@ export function resolveBunVersion(
 }
 
 /**
- * Step 5: Version Resolution
+ * Version Resolution
  * Resolves nodeVersion and bunVersion.
  */
 export function resolveVersions(
@@ -452,7 +515,7 @@ export function detectBunVersion(pm: PackageManager): string {
 }
 
 /**
- * Step 6: Validation
+ * Validation
  * Basic sanity check on resolved environment before returning.
  */
 export function validateEnvironment(env: DetectedEnv): DetectedEnv {
