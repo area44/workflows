@@ -15,26 +15,26 @@ inputs:
 outputs:
   node-version:
     description: "The Node.js version used"
-    value: ${{ steps.detect_env.outputs.node-version }}
+    value: ${{ steps.resolve_environment.outputs.node-version }}
   bun-version:
     description: "The Bun version used"
-    value: ${{ steps.detect_env.outputs.bun-version }}
+    value: ${{ steps.resolve_environment.outputs.bun-version }}
   package-manager:
     description: "The package manager used"
-    value: ${{ steps.detect_env.outputs.package-manager }}
+    value: ${{ steps.resolve_environment.outputs.package-manager }}
   package-manager-version:
     description: "The version of the package manager used"
-    value: ${{ steps.detect_env.outputs.package-manager-version }}
+    value: ${{ steps.resolve_environment.outputs.package-manager-version }}
   runtime:
     description: "The runtime used (node or bun)"
-    value: ${{ steps.detect_env.outputs.runtime }}
+    value: ${{ steps.resolve_environment.outputs.runtime }}
 
 runs:
   using: "composite"
   steps:
-    - name: Detect environment
+    - name: Resolve environment
       shell: bash
-      id: detect_env
+      id: resolve_environment
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_RUNTIME: ${{ inputs.runtime }}
@@ -47,33 +47,33 @@ runs:
       run: node "$ACTION_PATH/../dist/site-variables.mjs"
 
     - name: Setup PNPM
-      if: ${{ steps.detect_env.outputs.setup-pnpm == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3
       with:
-        version: ${{ steps.detect_env.outputs.package-manager-version }}
-        runtime: ${{ steps.detect_env.outputs.pnpm-runtime }}
+        version: ${{ steps.resolve_environment.outputs.package-manager-version }}
+        runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
         install: false
         cache: true
 
     - name: Setup Bun
-      if: ${{ steps.detect_env.outputs.setup-bun == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.setup-bun == 'true' }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
-        bun-version: ${{ steps.detect_env.outputs.bun-version }}
+        bun-version: ${{ steps.resolve_environment.outputs.bun-version }}
 
     - name: Setup Node.js
-      if: ${{ steps.detect_env.outputs.setup-node == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.setup-node == 'true' }}
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        node-version: ${{ steps.detect_env.outputs.node-version }}
-        cache: ${{ steps.detect_env.outputs.setup-node-cache }}
+        node-version: ${{ steps.resolve_environment.outputs.node-version }}
+        cache: ${{ steps.resolve_environment.outputs.setup-node-cache }}
         cache-dependency-path: |
           **/package-lock.json
 
     - name: Install dependencies
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
+        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
         case "$PM" in
@@ -98,9 +98,9 @@ runs:
     - name: Build Vite site
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.detect_env.outputs.package-manager }}
+        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
-        RUNTIME: ${{ steps.detect_env.outputs.runtime }}
+        RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$RUNTIME" = "bun" ]; then
