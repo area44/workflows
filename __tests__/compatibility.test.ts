@@ -96,6 +96,11 @@ describe("Compatibility Contract Validation", () => {
         for (const outputKey of expectedOutputs) {
           expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
         }
+
+        // Verify that detect_env step passes INPUT_RUNTIME env var from inputs.runtime
+        expect(actionYml).toMatch(
+          /id:\s*detect_env[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+        );
       },
     );
   });
