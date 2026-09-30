@@ -86,6 +86,9 @@ The `detectEnv()` entrypoint merges explicit `runtime` action inputs with worksp
    - Uses explicit `nodeVersion` from `runtime` action input if provided.
    - Else if primary resolved `runtime` is `"bun"`, resolves `node-version` output to empty string (`""`).
    - Else uses detected Node.js version from `detectNodeVersion()`.
+6. **Compatibility Validation**:
+   - Validates resolved `runtime` and `package-manager` against the explicit Phase 2 compatibility contract (`validateRuntimePackageManagerCompatibility`).
+   - Rejects unsupported combinations (e.g. Bun runtime with npm package manager or unknown tools) with a clear validation error.
 
 ### Default Fallback Versions
 

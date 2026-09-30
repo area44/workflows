@@ -7,6 +7,10 @@ import {
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
+  getCombinationCompatibility,
+  isSupportedPackageManager,
+  isSupportedRuntime,
+  validateRuntimePackageManagerCompatibility,
 } from "../src/detect-env";
 
 describe("Compatibility Contract Validation", () => {
@@ -103,6 +107,64 @@ describe("Compatibility Contract Validation", () => {
         );
       },
     );
+  });
+
+  describe("Phase 2 Runtime & Package Manager Compatibility Contract", () => {
+    describe("Type Guards", () => {
+      it("should identify supported runtimes", () => {
+        expect(isSupportedRuntime("node")).toBe(true);
+        expect(isSupportedRuntime("bun")).toBe(true);
+        expect(isSupportedRuntime("deno")).toBe(false);
+        expect(isSupportedRuntime("")).toBe(false);
+      });
+
+      it("should identify supported package managers", () => {
+        expect(isSupportedPackageManager("npm")).toBe(true);
+        expect(isSupportedPackageManager("pnpm")).toBe(true);
+        expect(isSupportedPackageManager("bun")).toBe(true);
+        expect(isSupportedPackageManager("yarn")).toBe(false);
+        expect(isSupportedPackageManager("")).toBe(false);
+      });
+    });
+
+    describe("Combination Matrix Evaluation", () => {
+      const validCases = [
+        { runtime: "node", pm: "npm", isDefault: true },
+        { runtime: "node", pm: "pnpm", isDefault: false },
+        { runtime: "node", pm: "bun", isDefault: false },
+        { runtime: "bun", pm: "bun", isDefault: false },
+        { runtime: "bun", pm: "pnpm", isDefault: false },
+      ];
+
+      it.each(validCases)(
+        "should mark runtime=$runtime and pm=$pm as supported (isDefault=$isDefault)",
+        ({ runtime, pm, isDefault }) => {
+          const res = getCombinationCompatibility(runtime, pm);
+          expect(res.status.supported).toBe(true);
+          expect(res.status.isDefault).toBe(isDefault);
+          expect(() => validateRuntimePackageManagerCompatibility(runtime, pm)).not.toThrow();
+        },
+      );
+
+      const invalidCases = [
+        { runtime: "bun", pm: "npm", reasonSubstring: "Bun runtime does not support npm" },
+        { runtime: "deno", pm: "npm", reasonSubstring: "Unsupported runtime" },
+        { runtime: "node", pm: "yarn", reasonSubstring: "Unsupported package manager" },
+        { runtime: "python", pm: "pip", reasonSubstring: "Unsupported runtime" },
+      ];
+
+      it.each(invalidCases)(
+        "should mark runtime=$runtime and pm=$pm as unsupported with clear reason",
+        ({ runtime, pm, reasonSubstring }) => {
+          const res = getCombinationCompatibility(runtime, pm);
+          expect(res.status.supported).toBe(false);
+          expect(res.status.reason).toContain(reasonSubstring);
+          expect(() => validateRuntimePackageManagerCompatibility(runtime, pm)).toThrow(
+            reasonSubstring,
+          );
+        },
+      );
+    });
   });
 
   describe("Compatibility Matrix Representation in CI Workflow", () => {

@@ -538,12 +538,19 @@ describe("detect-env", () => {
     });
 
     it("should respect explicit runtime input bun@1.4", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
       const env = detectEnv("bun@1.4");
 
       expect(env.runtime).toBe("bun");
       expect(env.nodeVersion).toBe("");
       expect(env.bunVersion).toBe("1.4");
+    });
+
+    it("should throw validation error when explicit runtime bun@1.4 is used with npm package manager", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      expect(() => detectEnv("bun@1.4")).toThrow(
+        "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager",
+      );
     });
 
     it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
@@ -964,7 +971,7 @@ describe("detect-env", () => {
     });
 
     it("evaluates runtime input order: node@20,bun@1.2 sets specifiedRuntime to node, bun@1.2,node@20 sets specifiedRuntime to bun", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
       const env1 = detectEnv("node@20,bun@1.2");
       expect(env1.runtime).toBe("node");
@@ -979,7 +986,7 @@ describe("detect-env", () => {
 
     it("preserves project Node version when runtime input is 'node' without version tag, and sets default Bun version when runtime input is 'bun' without version tag", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) =>
-        [".nvmrc", ".bun-version"].includes(p as string),
+        [".nvmrc", ".bun-version", "bun.lock"].includes(p as string),
       );
       vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
         if (p === ".nvmrc") return "20.11.0\n" as any;
@@ -1001,7 +1008,7 @@ describe("detect-env", () => {
 
     it("explicit runtime input with @version consistently overrides detected project versions", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) =>
-        [".nvmrc", ".bun-version"].includes(p as string),
+        [".nvmrc", ".bun-version", "bun.lock"].includes(p as string),
       );
       vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
         if (p === ".nvmrc") return "20.11.0\n" as any;

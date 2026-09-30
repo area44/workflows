@@ -4,7 +4,7 @@ This document defines the compatibility contract, runtime and toolchain guarante
 
 ---
 
-## 1. Supported Runtime & Toolchain Versions
+## Supported Runtime & Toolchain Versions
 
 The repository's environment detection (`src/detect-env.ts`) automatically discovers project settings or falls back to specified default versions.
 
@@ -44,7 +44,7 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 
 ---
 
-## 2. Composite Actions Expectations
+## Composite Actions Expectations
 
 Every composite action in this repository shares a common environment detection engine (`dist/detect-env.mjs`) but serves specific deployment or workflow goals.
 
@@ -114,7 +114,7 @@ Every composite action in this repository shares a common environment detection 
 
 ---
 
-## 3. Compatibility Matrix
+## Compatibility Matrix
 
 The matrix below answers: _“If a consumer uses runtime X and package manager Y with action Z, is this combination supported and tested?”_
 
@@ -127,9 +127,36 @@ The matrix below answers: _“If a consumer uses runtime X and package manager Y
 | `bun`               | `pnpm`                 | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
 | `bun`               | `npm`                  | Unsupported | Unsupported | Unsupported | Unsupported   | Not supported (Bun runtime mode requires Bun or pnpm package manager) |
 
+### Runtime & Package Manager Compatibility Contract
+
+The repository defines an explicit, deterministic compatibility contract between target runtimes and package managers (`src/compatibility.ts`):
+
+#### Supported Combinations
+
+- **Node + npm** (`node` runtime + `npm` package manager): Supported (Default fallback combination).
+- **Node + pnpm** (`node` runtime + `pnpm` package manager): Supported.
+- **Node + Bun** (`node` runtime + `bun` package manager): Supported (Bun used as package manager under Node.js runtime).
+- **Bun + Bun** (`bun` runtime + `bun` package manager): Supported (Default runtime when `bun` package manager is detected).
+- **Bun + pnpm** (`bun` runtime + `pnpm` package manager): Supported (Bun runtime with `pnpm` package manager).
+
+#### Invalid & Unsupported Combinations
+
+- **Bun + npm** (`bun` runtime + `npm` package manager): Unsupported. Bun runtime requires Bun or pnpm package manager.
+- **Unrecognized Runtimes or Package Managers**: Any runtime other than `node` or `bun`, or package manager other than `npm`, `pnpm`, or `bun`, is unsupported.
+
+#### Explicit Runtime Precedence
+
+Runtime resolution follows strict precedence rules:
+
+1. **Explicit Action Input**: An explicit `runtime` input (e.g. `node` or `bun`) takes top priority.
+2. **Package Manager Inference**: If no explicit runtime is provided, detecting `bun` package manager resolves runtime to `bun`.
+3. **Fallback Default**: Defaults to `node` runtime if no explicit runtime input is provided and package manager is `npm` or `pnpm`.
+
+**Critical Invariant**: Explicit runtime selections are never silently overridden by package-manager detection. Invalid runtime/package-manager combinations fail validation explicitly during environment resolution rather than being silently transformed into another runtime.
+
 ---
 
-## 4. Lightweight Release & Toolchain Upgrade Policy
+## Lightweight Release & Toolchain Upgrade Policy
 
 To prevent silent compatibility regressions and manage toolchain upgrades predictably, changes to defaults or supported environments must follow this release policy.
 
