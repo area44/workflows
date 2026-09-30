@@ -10,18 +10,20 @@ import {
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   getCombinationCompatibility,
+  getFixturePath,
+  isSupportedAction,
+  isSupportedFixtureType,
   isSupportedPackageManager,
   isSupportedRuntime,
+  MatrixEntry,
+  SUPPORTED_ACTIONS,
+  SUPPORTED_FIXTURE_TYPES,
+  validateFixtureForMatrixEntry,
+  validateMatrixEntry,
+  validateNoUnusedFixtures,
   validateRuntimePackageManagerCompatibility,
+  validateWorkflowMatrix,
 } from "../src/resolve-environment";
-
-export interface MatrixEntry {
-  action: string;
-  runtime: string;
-  pm: string;
-  type: string;
-  verify_site?: boolean;
-}
 
 export function extractWorkflowMatrixEntries(workflowYamlContent: string): MatrixEntry[] {
   const parsed = parseYaml(workflowYamlContent);
@@ -38,45 +40,7 @@ export function extractWorkflowMatrixEntries(workflowYamlContent: string): Matri
       "Workflow YAML is missing 'jobs.test-action.strategy.matrix.include' array.",
     );
   }
-  return include as MatrixEntry[];
-}
-
-export function validateWorkflowMatrix(entries: MatrixEntry[]): void {
-  const actions = ["astro", "vite", "vite-plus", "lint-format"];
-  const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
-    (c) => c.supported,
-  );
-
-  for (const entry of entries) {
-    if (!actions.includes(entry.action)) {
-      throw new Error(`CI matrix entry contains unsupported action: ${entry.action}`);
-    }
-    if (!isSupportedRuntime(entry.runtime)) {
-      throw new Error(`CI matrix entry contains unsupported runtime: ${entry.runtime}`);
-    }
-    if (!isSupportedPackageManager(entry.pm)) {
-      throw new Error(`CI matrix entry contains unsupported package manager: ${entry.pm}`);
-    }
-    const comp = getCombinationCompatibility(entry.runtime, entry.pm);
-    if (!comp.status.supported) {
-      throw new Error(
-        `CI matrix contains unsupported combination: ${entry.action} (${entry.runtime}, ${entry.pm})`,
-      );
-    }
-  }
-
-  for (const action of actions) {
-    for (const comb of supportedCombinations) {
-      const found = entries.some(
-        (e) => e.action === action && e.runtime === comb.runtime && e.pm === comb.packageManager,
-      );
-      if (!found) {
-        throw new Error(
-          `CI matrix is missing supported combination: ${action} (${comb.runtime}, ${comb.packageManager})`,
-        );
-      }
-    }
-  }
+  return include.map((entry) => validateMatrixEntry(entry));
 }
 
 describe("Compatibility Contract Validation", () => {
@@ -235,6 +199,18 @@ describe("Compatibility Contract Validation", () => {
         expect(isSupportedPackageManager("yarn")).toBe(false);
         expect(isSupportedPackageManager("")).toBe(false);
       });
+
+      it("should identify supported actions and fixture types", () => {
+        for (const action of SUPPORTED_ACTIONS) {
+          expect(isSupportedAction(action)).toBe(true);
+        }
+        expect(isSupportedAction("webpack")).toBe(false);
+
+        for (const type of SUPPORTED_FIXTURE_TYPES) {
+          expect(isSupportedFixtureType(type)).toBe(true);
+        }
+        expect(isSupportedFixtureType("complex")).toBe(false);
+      });
     });
 
     describe("Combination Matrix Evaluation Derived from Canonical Model", () => {
@@ -313,6 +289,144 @@ describe("Compatibility Contract Validation", () => {
     });
   });
 
+  describe("CI Matrix Entry Schema & Validation", () => {
+    it("should validate a valid matrix entry", () => {
+      const validEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+        verify_site: true,
+      };
+      expect(validateMatrixEntry(validEntry)).toEqual(validEntry);
+    });
+
+    it("should reject non-object or null entries", () => {
+      expect(() => validateMatrixEntry(null)).toThrow("CI matrix entry must be an object.");
+      expect(() => validateMatrixEntry("invalid")).toThrow("CI matrix entry must be an object.");
+      expect(() => validateMatrixEntry([])).toThrow("CI matrix entry must be an object.");
+    });
+
+    it("should reject matrix entries missing required fields", () => {
+      expect(() =>
+        validateMatrixEntry({ runtime: "node", pm: "npm", type: "basic" }),
+      ).toThrow('CI matrix entry is missing required field: "action"');
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", pm: "npm", type: "basic" }),
+      ).toThrow('CI matrix entry is missing required field: "runtime"');
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", runtime: "node", type: "basic" }),
+      ).toThrow('CI matrix entry is missing required field: "pm"');
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", runtime: "node", pm: "npm" }),
+      ).toThrow('CI matrix entry is missing required field: "type"');
+    });
+
+    it("should reject matrix entries with unrecognized fields", () => {
+      expect(() =>
+        validateMatrixEntry({
+          action: "astro",
+          runtime: "node",
+          pm: "npm",
+          type: "basic",
+          extra_key: "value",
+        }),
+      ).toThrow('CI matrix entry contains unrecognized field: "extra_key"');
+    });
+
+    it("should reject matrix entries with invalid field types", () => {
+      expect(() =>
+        validateMatrixEntry({
+          action: "astro",
+          runtime: "node",
+          pm: "npm",
+          type: "basic",
+          verify_site: "yes",
+        }),
+      ).toThrow('CI matrix entry field "verify_site" must be a boolean.');
+    });
+
+    it("should reject matrix entries with unsupported action, runtime, pm, or type", () => {
+      expect(() =>
+        validateMatrixEntry({ action: "webpack", runtime: "node", pm: "npm", type: "basic" }),
+      ).toThrow("CI matrix entry contains unsupported action: webpack");
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", runtime: "deno", pm: "npm", type: "basic" }),
+      ).toThrow("CI matrix entry contains unsupported runtime: deno");
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", runtime: "node", pm: "yarn", type: "basic" }),
+      ).toThrow("CI matrix entry contains unsupported package manager: yarn");
+
+      expect(() =>
+        validateMatrixEntry({ action: "astro", runtime: "node", pm: "npm", type: "advanced" }),
+      ).toThrow("CI matrix entry contains unsupported type: advanced");
+    });
+
+    it("should reject matrix entries with incompatible runtime and pm", () => {
+      expect(() =>
+        validateMatrixEntry({ action: "vite", runtime: "bun", pm: "npm", type: "basic" }),
+      ).toThrow("CI matrix contains unsupported combination: vite (bun, npm)");
+    });
+  });
+
+  describe("Fixture Mapping & Structure Validation", () => {
+    it("should compute deterministic fixture paths", () => {
+      const entry: MatrixEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+      };
+      const fixturePath = getFixturePath(entry, rootDir);
+      expect(fixturePath).toBe(
+        path.join(rootDir, "__tests__/fixtures", "astro", "node", "npm", "basic"),
+      );
+    });
+
+    it("should validate existing valid fixture directories", () => {
+      const entry: MatrixEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+      };
+      expect(() => validateFixtureForMatrixEntry(entry, rootDir)).not.toThrow();
+    });
+
+    it("should throw clear error when fixture directory is missing", () => {
+      const entry: MatrixEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "minimal",
+      };
+      // Test with non-existent rootDir
+      const nonExistentDir = path.join(rootDir, "non_existent_directory_12345");
+      expect(() => validateFixtureForMatrixEntry(entry, nonExistentDir)).toThrow(
+        /Missing fixture directory for matrix entry/,
+      );
+    });
+
+    it("should detect unused fixture directories", () => {
+      const validEntries = extractWorkflowMatrixEntries(
+        fs.readFileSync(path.join(rootDir, ".github/workflows/test-actions.yml"), "utf8"),
+      );
+      // All existing fixtures are used
+      expect(() => validateNoUnusedFixtures(validEntries, rootDir)).not.toThrow();
+
+      // If we pass a subset of matrix entries, unused fixture error should be thrown
+      const subset = validEntries.filter((e) => e.action !== "astro");
+      expect(() => validateNoUnusedFixtures(subset, rootDir)).toThrow(
+        /Unused fixture directory detected: __tests__\/fixtures\/astro\//,
+      );
+    });
+  });
+
   describe("Compatibility Matrix Validation in CI Workflow", () => {
     const testActionsYmlPath = path.join(rootDir, ".github/workflows/test-actions.yml");
     const testActionsYml = fs.readFileSync(testActionsYmlPath, "utf8");
@@ -337,14 +451,7 @@ describe("Compatibility Contract Validation", () => {
     it("should ensure every CI matrix entry has a corresponding fixture directory", () => {
       const entries = extractWorkflowMatrixEntries(testActionsYml);
       for (const entry of entries) {
-        const fixtureDir = path.join(
-          rootDir,
-          "__tests__/fixtures",
-          entry.action,
-          entry.runtime,
-          entry.pm,
-          entry.type,
-        );
+        const fixtureDir = getFixturePath(entry, rootDir);
         expect(fs.existsSync(fixtureDir)).toBe(true);
       }
     });
@@ -355,51 +462,75 @@ describe("Compatibility Contract Validation", () => {
       const filtered = entries.filter(
         (e) => !(e.action === "astro" && e.runtime === "node" && e.pm === "npm"),
       );
-      expect(() => validateWorkflowMatrix(filtered)).toThrow(
+      expect(() => validateWorkflowMatrix(filtered, { checkFixtures: false })).toThrow(
         "CI matrix is missing supported combination: astro (node, npm)",
       );
     });
 
     it("should fail validation if an unsupported combination (bun + npm) is present in matrix", () => {
-      const entries = extractWorkflowMatrixEntries(testActionsYml);
-      const withUnsupported: MatrixEntry[] = [
-        ...entries,
-        { action: "vite", runtime: "bun", pm: "npm", type: "basic" },
-      ];
-      expect(() => validateWorkflowMatrix(withUnsupported)).toThrow(
+      const testYaml = `
+jobs:
+  test-action:
+    strategy:
+      matrix:
+        include:
+          - action: vite
+            runtime: bun
+            pm: npm
+            type: basic
+`;
+      expect(() => extractWorkflowMatrixEntries(testYaml)).toThrow(
         "CI matrix contains unsupported combination: vite (bun, npm)",
       );
     });
 
     it("should fail validation if matrix contains an invalid/unknown runtime", () => {
-      const entries = extractWorkflowMatrixEntries(testActionsYml);
-      const withInvalidRuntime: MatrixEntry[] = [
-        ...entries,
-        { action: "astro", runtime: "deno", pm: "npm", type: "basic" },
-      ];
-      expect(() => validateWorkflowMatrix(withInvalidRuntime)).toThrow(
+      const testYaml = `
+jobs:
+  test-action:
+    strategy:
+      matrix:
+        include:
+          - action: astro
+            runtime: deno
+            pm: npm
+            type: basic
+`;
+      expect(() => extractWorkflowMatrixEntries(testYaml)).toThrow(
         "CI matrix entry contains unsupported runtime: deno",
       );
     });
 
     it("should fail validation if matrix contains an invalid/unknown package manager", () => {
-      const entries = extractWorkflowMatrixEntries(testActionsYml);
-      const withInvalidPm: MatrixEntry[] = [
-        ...entries,
-        { action: "astro", runtime: "node", pm: "yarn", type: "basic" },
-      ];
-      expect(() => validateWorkflowMatrix(withInvalidPm)).toThrow(
+      const testYaml = `
+jobs:
+  test-action:
+    strategy:
+      matrix:
+        include:
+          - action: astro
+            runtime: node
+            pm: yarn
+            type: basic
+`;
+      expect(() => extractWorkflowMatrixEntries(testYaml)).toThrow(
         "CI matrix entry contains unsupported package manager: yarn",
       );
     });
 
     it("should fail validation if matrix contains an unsupported action name", () => {
-      const entries = extractWorkflowMatrixEntries(testActionsYml);
-      const withInvalidAction: MatrixEntry[] = [
-        ...entries,
-        { action: "unknown-action", runtime: "node", pm: "npm", type: "basic" },
-      ];
-      expect(() => validateWorkflowMatrix(withInvalidAction)).toThrow(
+      const testYaml = `
+jobs:
+  test-action:
+    strategy:
+      matrix:
+        include:
+          - action: unknown-action
+            runtime: node
+            pm: npm
+            type: basic
+`;
+      expect(() => extractWorkflowMatrixEntries(testYaml)).toThrow(
         "CI matrix entry contains unsupported action: unknown-action",
       );
     });

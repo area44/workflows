@@ -21,18 +21,30 @@ export type {
   CanonicalCompatibilityModel,
   CompatibilityStatus,
   MatrixCombinationEntry,
+  MatrixEntry,
   RuntimePackageManagerCompatibility,
+  SupportedAction,
+  SupportedFixtureType,
   SupportedPackageManager,
   SupportedRuntime,
 } from "./compatibility";
 export {
   CANONICAL_COMPATIBILITY_MODEL,
   getCombinationCompatibility,
+  getFixturePath,
+  isSupportedAction,
+  isSupportedFixtureType,
   isSupportedPackageManager,
   isSupportedRuntime,
+  SUPPORTED_ACTIONS,
+  SUPPORTED_FIXTURE_TYPES,
   SUPPORTED_PACKAGE_MANAGERS,
   SUPPORTED_RUNTIMES,
+  validateFixtureForMatrixEntry,
+  validateMatrixEntry,
+  validateNoUnusedFixtures,
   validateRuntimePackageManagerCompatibility,
+  validateWorkflowMatrix,
 } from "./compatibility";
 
 /** Default Node.js fallback version */
