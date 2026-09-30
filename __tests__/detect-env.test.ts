@@ -12,11 +12,17 @@ import {
   detectEnv,
   detectNodeVersion,
   detectPackageManager,
+  detectProjectEnvironment,
   detectRuntime,
   getDefaultPackageManagerVersion,
   getPnpmRuntime,
+  parseEnvironmentInputs,
   parseRuntimeInput,
+  resolvePackageManager,
+  resolveRuntime,
+  resolveVersions,
   run,
+  validateEnvironment,
   writeOutput,
 } from "../src/detect-env";
 
@@ -48,6 +54,172 @@ describe("detect-env", () => {
       expect(getDefaultPackageManagerVersion("npm")).toBe("12");
       expect(getDefaultPackageManagerVersion("pnpm")).toBe("12");
       expect(getDefaultPackageManagerVersion("bun")).toBe("1.4");
+    });
+  });
+
+  describe("Environment Resolution Pipeline", () => {
+    describe("Step 1: parseEnvironmentInputs", () => {
+      it("should return empty object when runtime input is empty", () => {
+        expect(parseEnvironmentInputs("")).toEqual({});
+      });
+
+      it("should parse explicit node version string", () => {
+        expect(parseEnvironmentInputs("node@22")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: "22",
+          bunVersion: undefined,
+        });
+      });
+
+      it("should parse explicit bun version string", () => {
+        expect(parseEnvironmentInputs("bun@1.4")).toEqual({
+          specifiedRuntime: "bun",
+          nodeVersion: undefined,
+          bunVersion: "1.4",
+        });
+      });
+    });
+
+    describe("Step 2: detectProjectEnvironment", () => {
+      it("should collect workspace project configuration state", () => {
+        vi.spyOn(fs, "existsSync").mockImplementation((p) =>
+          [".nvmrc", "package.json"].includes(p as string),
+        );
+        vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
+          if (p === ".nvmrc") return "20.11.0\n" as any;
+          if (p === "package.json")
+            return JSON.stringify({ packageManager: "pnpm@9.0.0" }) as any;
+          return "" as any;
+        });
+
+        const proj = detectProjectEnvironment();
+        expect(proj.nvmRcVersion).toBe("20.11.0");
+        expect(proj.packageJson).toEqual({ packageManager: "pnpm@9.0.0" });
+      });
+    });
+
+    describe("Step 3: resolvePackageManager", () => {
+      it("should resolve package manager from packageManager field, devEngines, lockfiles, and fallback", () => {
+        const pmFromField = resolvePackageManager({
+          packageJson: { packageManager: "pnpm@9.5.0" },
+          hasPnpmLock: false,
+          hasPackageLock: false,
+          hasBunLock: false,
+        });
+        expect(pmFromField).toEqual({ name: "pnpm", version: "9.5.0" });
+
+        const pmFromLock = resolvePackageManager({
+          hasPnpmLock: true,
+          hasPackageLock: false,
+          hasBunLock: false,
+        });
+        expect(pmFromLock).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      });
+    });
+
+    describe("Step 4: resolveRuntime precedence & defaults", () => {
+      it("explicit node + bun PM -> node", () => {
+        const runtime = resolveRuntime(
+          { specifiedRuntime: "node" },
+          { name: "bun", version: "1.4" },
+        );
+        expect(runtime).toBe("node");
+      });
+
+      it("explicit bun + pnpm PM -> bun", () => {
+        const runtime = resolveRuntime(
+          { specifiedRuntime: "bun" },
+          { name: "pnpm", version: "12" },
+        );
+        expect(runtime).toBe("bun");
+      });
+
+      it("no runtime + bun PM -> bun", () => {
+        const runtime = resolveRuntime({}, { name: "bun", version: "1.4" });
+        expect(runtime).toBe("bun");
+      });
+
+      it("no runtime + npm PM -> node", () => {
+        const runtime = resolveRuntime({}, { name: "npm", version: "12" });
+        expect(runtime).toBe("node");
+      });
+
+      it("no runtime + pnpm PM -> node", () => {
+        const runtime = resolveRuntime({}, { name: "pnpm", version: "12" });
+        expect(runtime).toBe("node");
+      });
+    });
+
+    describe("Step 5 & 6: resolveVersions & validateEnvironment", () => {
+      it("should resolve versions and validate clean env struct", () => {
+        const project = {
+          hasPnpmLock: true,
+          hasPackageLock: false,
+          hasBunLock: false,
+        };
+
+        const versions = resolveVersions(
+          { nodeVersion: "22" },
+          { name: "pnpm", version: "12" },
+          "node",
+          project,
+        );
+
+        expect(versions.nodeVersion).toBe("22");
+
+        const env = validateEnvironment({
+          nodeVersion: versions.nodeVersion,
+          bunVersion: versions.bunVersion,
+          pm: { name: "pnpm", version: "12" },
+          runtime: "node",
+        });
+
+        expect(env.runtime).toBe("node");
+        expect(env.nodeVersion).toBe("22");
+      });
+
+      it("should throw error in validateEnvironment when runtime or package manager is invalid", () => {
+        expect(() =>
+          validateEnvironment({
+            nodeVersion: "24",
+            bunVersion: "",
+            pm: { name: "npm", version: "12" },
+            runtime: "invalid" as any,
+          }),
+        ).toThrow("Invalid resolved runtime");
+
+        expect(() =>
+          validateEnvironment({
+            nodeVersion: "24",
+            bunVersion: "",
+            pm: { name: "", version: "" },
+            runtime: "node",
+          }),
+        ).toThrow("Invalid resolved package manager");
+      });
+    });
+
+    describe("Pipeline Determinism", () => {
+      it("should produce identical resolved environment given identical inputs and project state", () => {
+        vi.spyOn(fs, "existsSync").mockImplementation((p) =>
+          [".nvmrc", "package-lock.json"].includes(p as string),
+        );
+        vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
+          if (p === ".nvmrc") return "22.1.0\n" as any;
+          return "" as any;
+        });
+
+        const run1 = detectEnv("node");
+        const run2 = detectEnv("node");
+
+        expect(run1).toEqual(run2);
+        expect(run1).toEqual({
+          nodeVersion: "22.1.0",
+          bunVersion: "",
+          pm: { name: "npm", version: DEFAULT_NPM_VERSION },
+          runtime: "node",
+        });
+      });
     });
   });
 
