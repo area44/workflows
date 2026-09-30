@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { DetectedEnv } from "../src/detect-env";
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
@@ -19,9 +20,13 @@ import {
   parseEnvironmentInputs,
   parseRuntimeInput,
   resolvePackageManager,
+  resolvePnpmSetupRuntime,
   resolveRuntime,
   resolveVersions,
   run,
+  setupBun,
+  setupNode,
+  setupPackageManager,
   validateEnvironment,
   writeOutput,
 } from "../src/detect-env";
@@ -379,6 +384,225 @@ describe("detect-env", () => {
       expect(getPnpmRuntime("", "lts/*")).toBe("node@lts");
       expect(getPnpmRuntime("", "lts/iron")).toBe("node@lts");
       expect(getPnpmRuntime("", "")).toBe("node@lts");
+    });
+  });
+
+  describe("Tool-Specific Setup Adapters", () => {
+    describe("resolvePnpmSetupRuntime", () => {
+      it("should format bun runtime specifier when bunVersion is present", () => {
+        expect(
+          resolvePnpmSetupRuntime({
+            nodeVersion: "24",
+            bunVersion: "1.4",
+            pm: { name: "pnpm", version: "12" },
+            runtime: "bun",
+          }),
+        ).toBe("bun@1.4");
+      });
+
+      it("should format node runtime specifier when nodeVersion is present and not lts", () => {
+        expect(
+          resolvePnpmSetupRuntime({
+            nodeVersion: "22.1.0",
+            bunVersion: "",
+            pm: { name: "pnpm", version: "12" },
+            runtime: "node",
+          }),
+        ).toBe("node@22.1.0");
+      });
+
+      it("should format node@lts when nodeVersion starts with lts or is empty", () => {
+        expect(
+          resolvePnpmSetupRuntime({
+            nodeVersion: "lts/iron",
+            bunVersion: "",
+            pm: { name: "pnpm", version: "12" },
+            runtime: "node",
+          }),
+        ).toBe("node@lts");
+
+        expect(
+          resolvePnpmSetupRuntime({
+            nodeVersion: "",
+            bunVersion: "",
+            pm: { name: "pnpm", version: "12" },
+            runtime: "node",
+          }),
+        ).toBe("node@lts");
+      });
+    });
+
+    describe("setupNode adapter", () => {
+      it("should return correct setup options for npm package manager", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+        };
+        expect(setupNode(env)).toEqual({
+          shouldSetup: true,
+          nodeVersion: "24",
+          cache: "npm",
+        });
+      });
+
+      it("should return correct setup options for bun package manager with node runtime", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "22",
+          bunVersion: "1.4",
+          pm: { name: "bun", version: "1.4" },
+          runtime: "node",
+        };
+        expect(setupNode(env)).toEqual({
+          shouldSetup: true,
+          nodeVersion: "22",
+          cache: "",
+        });
+      });
+
+      it("should return shouldSetup=false when package manager is pnpm", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "pnpm", version: "12" },
+          runtime: "node",
+        };
+        expect(setupNode(env)).toEqual({
+          shouldSetup: false,
+          nodeVersion: "24",
+          cache: "",
+        });
+      });
+
+      it("should return shouldSetup=false when nodeVersion is empty", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "",
+          bunVersion: "1.4",
+          pm: { name: "bun", version: "1.4" },
+          runtime: "bun",
+        };
+        expect(setupNode(env)).toEqual({
+          shouldSetup: false,
+          nodeVersion: "",
+          cache: "",
+        });
+      });
+    });
+
+    describe("setupBun adapter", () => {
+      it("should return shouldSetup=true and bunVersion when package manager is not pnpm and bunVersion is set", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "",
+          bunVersion: "1.4",
+          pm: { name: "bun", version: "1.4" },
+          runtime: "bun",
+        };
+        expect(setupBun(env)).toEqual({
+          shouldSetup: true,
+          bunVersion: "1.4",
+        });
+      });
+
+      it("should return shouldSetup=false when package manager is pnpm", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "1.4",
+          pm: { name: "pnpm", version: "12" },
+          runtime: "bun",
+        };
+        expect(setupBun(env)).toEqual({
+          shouldSetup: false,
+          bunVersion: "1.4",
+        });
+      });
+
+      it("should return shouldSetup=false when bunVersion is empty", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+        };
+        expect(setupBun(env)).toEqual({
+          shouldSetup: false,
+          bunVersion: "",
+        });
+      });
+    });
+
+    describe("setupPackageManager adapter", () => {
+      it("should extract package manager options for pnpm", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "pnpm", version: "9.0.0" },
+          runtime: "node",
+        };
+        expect(setupPackageManager(env)).toEqual({
+          name: "pnpm",
+          version: "9.0.0",
+          pnpmRuntime: "node@24",
+          shouldSetupPnpm: true,
+        });
+      });
+
+      it("should extract package manager options for npm", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+        };
+        expect(setupPackageManager(env)).toEqual({
+          name: "npm",
+          version: "12",
+          pnpmRuntime: "node@24",
+          shouldSetupPnpm: false,
+        });
+      });
+
+      it("should extract package manager options for bun", () => {
+        const env: DetectedEnv = {
+          nodeVersion: "",
+          bunVersion: "1.4",
+          pm: { name: "bun", version: "1.4" },
+          runtime: "bun",
+        };
+        expect(setupPackageManager(env)).toEqual({
+          name: "bun",
+          version: "1.4",
+          pnpmRuntime: "bun@1.4",
+          shouldSetupPnpm: false,
+        });
+      });
+    });
+
+    describe("Boundary Separation (Resolver vs Adapter)", () => {
+      it("adapters take resolved environment and do not re-trigger workspace detection", () => {
+        const existsSpy = vi.spyOn(fs, "existsSync");
+        const readSpy = vi.spyOn(fs, "readFileSync");
+
+        const env: DetectedEnv = {
+          nodeVersion: "24",
+          bunVersion: "1.4",
+          pm: { name: "pnpm", version: "12" },
+          runtime: "node",
+        };
+
+        const nodeConfig = setupNode(env);
+        const bunConfig = setupBun(env);
+        const pmConfig = setupPackageManager(env);
+        const pnpmRuntime = resolvePnpmSetupRuntime(env);
+
+        expect(nodeConfig).toBeDefined();
+        expect(bunConfig).toBeDefined();
+        expect(pmConfig).toBeDefined();
+        expect(pnpmRuntime).toBe("bun@1.4");
+
+        expect(existsSpy).not.toHaveBeenCalled();
+        expect(readSpy).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -1164,7 +1388,7 @@ describe("detect-env", () => {
   });
 
   describe("writeOutput", () => {
-    it("should output node-version, bun-version, package manager, runtime, and pnpm-runtime details correctly", () => {
+    it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and adapter step outputs correctly for positional arguments", () => {
       writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "", "node");
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
@@ -1173,11 +1397,43 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("pnpm-runtime", "node@20.10.0");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+    });
+
+    it("should output all detected values when passed a DetectedEnv object", () => {
+      const env: DetectedEnv = {
+        nodeVersion: "24",
+        bunVersion: "",
+        pm: { name: "npm", version: "12" },
+        runtime: "node",
+      };
+
+      writeOutput(env);
+
+      expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12");
+      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("pnpm-runtime", "node@24");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+    });
+
+    it("should throw a clear error when string first argument is provided without package manager parameter", () => {
+      expect(() => (writeOutput as any)("24")).toThrow(
+        "Missing package manager parameter in writeOutput",
+      );
     });
   });
 
   describe("run", () => {
-    it("should coordinate environment detection and write action output on fixture project", () => {
+    it("should coordinate environment detection, execute adapters, and write action output on fixture project", () => {
       const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
       process.chdir(fixturePath);
 
@@ -1191,9 +1447,13 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.19.0");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
     });
 
-    it("should detect bun and omit node recommendation for bun project fixture", () => {
+    it("should detect bun and set adapter outputs for bun project fixture", () => {
       const fixturePath = path.join(fixturesDir, "astro/bun/bun/basic");
       process.chdir(fixturePath);
 
@@ -1207,10 +1467,13 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
     });
 
-    it("should detect pnpm package manager and bun engine version for pnpm fixture in bun runtime", () => {
+    it("should detect pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
       const fixturePath = path.join(fixturesDir, "astro/bun/pnpm/basic");
       process.chdir(fixturePath);
 
@@ -1225,6 +1488,9 @@ describe("detect-env", () => {
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
     });
   });
 });
