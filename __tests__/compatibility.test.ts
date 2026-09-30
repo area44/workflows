@@ -154,51 +154,64 @@ describe("Compatibility Contract Validation", () => {
   });
 
   describe("Runtime & Package Manager Compatibility Contract", () => {
-    describe("Type Guards", () => {
+    describe("Type Guards Derived from Canonical Model", () => {
       it("should identify supported runtimes", () => {
-        expect(isSupportedRuntime("node")).toBe(true);
-        expect(isSupportedRuntime("bun")).toBe(true);
+        for (const runtime of CANONICAL_COMPATIBILITY_MODEL.runtimes) {
+          expect(isSupportedRuntime(runtime)).toBe(true);
+        }
         expect(isSupportedRuntime("deno")).toBe(false);
         expect(isSupportedRuntime("")).toBe(false);
       });
 
       it("should identify supported package managers", () => {
-        expect(isSupportedPackageManager("npm")).toBe(true);
-        expect(isSupportedPackageManager("pnpm")).toBe(true);
-        expect(isSupportedPackageManager("bun")).toBe(true);
+        for (const pm of CANONICAL_COMPATIBILITY_MODEL.packageManagers) {
+          expect(isSupportedPackageManager(pm)).toBe(true);
+        }
         expect(isSupportedPackageManager("yarn")).toBe(false);
         expect(isSupportedPackageManager("")).toBe(false);
       });
     });
 
-    describe("Combination Matrix Evaluation", () => {
-      const validCases = [
-        { runtime: "node", pm: "npm", isDefault: true },
-        { runtime: "node", pm: "pnpm", isDefault: false },
-        { runtime: "node", pm: "bun", isDefault: false },
-        { runtime: "bun", pm: "bun", isDefault: false },
-        { runtime: "bun", pm: "pnpm", isDefault: false },
-      ];
+    describe("Combination Matrix Evaluation Derived from Canonical Model", () => {
+      const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+        (c) => c.supported,
+      );
+      const unsupportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+        (c) => !c.supported,
+      );
 
-      it.each(validCases)(
-        "should mark runtime=$runtime and pm=$pm as supported (isDefault=$isDefault)",
-        ({ runtime, pm, isDefault }) => {
-          const res = getCombinationCompatibility(runtime, pm);
+      it.each(supportedCombinations)(
+        "should mark runtime=$runtime and pm=$packageManager as supported (isDefault=$isDefault)",
+        (comb) => {
+          const res = getCombinationCompatibility(comb.runtime, comb.packageManager);
           expect(res.status.supported).toBe(true);
-          expect(res.status.isDefault).toBe(isDefault);
-          expect(() => validateRuntimePackageManagerCompatibility(runtime, pm)).not.toThrow();
+          expect(res.status.isDefault).toBe(Boolean(comb.isDefault));
+          expect(() =>
+            validateRuntimePackageManagerCompatibility(comb.runtime, comb.packageManager),
+          ).not.toThrow();
         },
       );
 
-      const invalidCases = [
-        { runtime: "bun", pm: "npm", reasonSubstring: "Bun runtime does not support npm" },
+      it.each(unsupportedCombinations)(
+        "should mark runtime=$runtime and pm=$packageManager as unsupported with reason",
+        (comb) => {
+          const res = getCombinationCompatibility(comb.runtime, comb.packageManager);
+          expect(res.status.supported).toBe(false);
+          expect(res.status.reason).toBe(comb.reason);
+          expect(() =>
+            validateRuntimePackageManagerCompatibility(comb.runtime, comb.packageManager),
+          ).toThrow(comb.reason);
+        },
+      );
+
+      const unknownCases = [
         { runtime: "deno", pm: "npm", reasonSubstring: "Unsupported runtime" },
         { runtime: "node", pm: "yarn", reasonSubstring: "Unsupported package manager" },
         { runtime: "python", pm: "pip", reasonSubstring: "Unsupported runtime" },
       ];
 
-      it.each(invalidCases)(
-        "should mark runtime=$runtime and pm=$pm as unsupported with clear reason",
+      it.each(unknownCases)(
+        "should mark unknown runtime=$runtime or pm=$pm as unsupported",
         ({ runtime, pm, reasonSubstring }) => {
           const res = getCombinationCompatibility(runtime, pm);
           expect(res.status.supported).toBe(false);
@@ -209,58 +222,87 @@ describe("Compatibility Contract Validation", () => {
         },
       );
     });
+
+    describe("Critical Invariant Contract Assertions", () => {
+      it("Node + npm must be supported and default", () => {
+        const res = getCombinationCompatibility("node", "npm");
+        expect(res.status.supported).toBe(true);
+        expect(res.status.isDefault).toBe(true);
+      });
+
+      it("Node + pnpm and Node + bun must be supported", () => {
+        expect(getCombinationCompatibility("node", "pnpm").status.supported).toBe(true);
+        expect(getCombinationCompatibility("node", "bun").status.supported).toBe(true);
+      });
+
+      it("Bun + bun and Bun + pnpm must be supported", () => {
+        expect(getCombinationCompatibility("bun", "bun").status.supported).toBe(true);
+        expect(getCombinationCompatibility("bun", "pnpm").status.supported).toBe(true);
+      });
+
+      it("Bun + npm must be deterministically unsupported", () => {
+        const res = getCombinationCompatibility("bun", "npm");
+        expect(res.status.supported).toBe(false);
+        expect(res.status.reason).toContain("Bun runtime does not support npm package manager");
+      });
+    });
   });
 
-  describe("Compatibility Matrix Representation in CI Workflow", () => {
+  describe("Compatibility Matrix Validation in CI Workflow", () => {
     const testActionsYml = fs.readFileSync(
       path.join(rootDir, ".github/workflows/test-actions.yml"),
       "utf8",
     );
-
-    const supportedCombinations = [
-      { action: "astro", runtime: "node", pm: "npm" },
-      { action: "astro", runtime: "node", pm: "pnpm" },
-      { action: "astro", runtime: "node", pm: "bun" },
-      { action: "astro", runtime: "bun", pm: "bun" },
-      { action: "astro", runtime: "bun", pm: "pnpm" },
-
-      { action: "vite", runtime: "node", pm: "npm" },
-      { action: "vite", runtime: "node", pm: "pnpm" },
-      { action: "vite", runtime: "node", pm: "bun" },
-      { action: "vite", runtime: "bun", pm: "bun" },
-      { action: "vite", runtime: "bun", pm: "pnpm" },
-
-      { action: "vite-plus", runtime: "node", pm: "npm" },
-      { action: "vite-plus", runtime: "node", pm: "pnpm" },
-      { action: "vite-plus", runtime: "node", pm: "bun" },
-      { action: "vite-plus", runtime: "bun", pm: "bun" },
-      { action: "vite-plus", runtime: "bun", pm: "pnpm" },
-
-      { action: "lint-format", runtime: "node", pm: "npm" },
-      { action: "lint-format", runtime: "node", pm: "pnpm" },
-      { action: "lint-format", runtime: "node", pm: "bun" },
-      { action: "lint-format", runtime: "bun", pm: "bun" },
-      { action: "lint-format", runtime: "bun", pm: "pnpm" },
-    ];
-
-    it.each(supportedCombinations)(
-      "CI matrix should cover combination action=$action, runtime=$runtime, pm=$pm",
-      ({ action, runtime, pm }) => {
-        expect(testActionsYml).toContain(`action: ${action}`);
-        expect(testActionsYml).toContain(`runtime: ${runtime}`);
-        expect(testActionsYml).toContain(`pm: ${pm}`);
-
-        // Ensure there is a specific matrix entry containing all three for this action
-        const actionBlockRegex = new RegExp(
-          `- action: ${action}\\s+runtime: ${runtime}\\s+pm: ${pm}`,
-          "m",
-        );
-        expect(testActionsYml).toMatch(actionBlockRegex);
-      },
+    const actions = ["astro", "vite", "vite-plus", "lint-format"];
+    const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+      (c) => c.supported,
+    );
+    const unsupportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+      (c) => !c.supported,
     );
 
+    it("CI matrix should cover all declared supported combinations for every action", () => {
+      for (const action of actions) {
+        for (const comb of supportedCombinations) {
+          const actionBlockRegex = new RegExp(
+            `- action: ${action}\\s+runtime: ${comb.runtime}\\s+pm: ${comb.packageManager}`,
+            "m",
+          );
+          expect(testActionsYml).toMatch(actionBlockRegex);
+        }
+      }
+    });
+
+    it("CI matrix should not contain any explicitly unsupported combinations", () => {
+      for (const action of actions) {
+        for (const comb of unsupportedCombinations) {
+          const actionBlockRegex = new RegExp(
+            `- action: ${action}\\s+runtime: ${comb.runtime}\\s+pm: ${comb.packageManager}`,
+            "m",
+          );
+          expect(testActionsYml).not.toMatch(actionBlockRegex);
+        }
+      }
+    });
+
+    it("CI matrix entries must be valid according to CANONICAL_COMPATIBILITY_MODEL", () => {
+      const matrixEntryRegex = /- action:\s*(\S+)\s+runtime:\s*(\S+)\s+pm:\s*(\S+)/g;
+      let match: RegExpExecArray | null;
+      let count = 0;
+      while ((match = matrixEntryRegex.exec(testActionsYml)) !== null) {
+        count++;
+        const [, actionName, runtime, pm] = match;
+        expect(actions).toContain(actionName);
+        expect(isSupportedRuntime(runtime)).toBe(true);
+        expect(isSupportedPackageManager(pm)).toBe(true);
+
+        const comp = getCombinationCompatibility(runtime, pm);
+        expect(comp.status.supported).toBe(true);
+      }
+      expect(count).toBeGreaterThan(0);
+    });
+
     it("should pass runtime input to all action steps in test-actions.yml", () => {
-      const actions = ["astro", "lint-format", "vite", "vite-plus"];
       for (const action of actions) {
         const stepRegex = new RegExp(
           `uses:\\s+\\./${action}[\\s\\S]*?with:\\s*\\n\\s*runtime:\\s*\\$\\{\\{\\s*matrix\\.runtime\\s*\\}\\}`,
@@ -275,6 +317,48 @@ describe("Compatibility Contract Validation", () => {
         'DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
       );
       expect(testActionsYml).toContain('[[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]]');
+    });
+  });
+
+  describe("Documentation Machine Validation against Canonical Model", () => {
+    it("COMPATIBILITY.md should document all canonical supported runtimes", () => {
+      for (const runtime of CANONICAL_COMPATIBILITY_MODEL.runtimes) {
+        expect(compatibilityMd.toLowerCase()).toContain(runtime.toLowerCase());
+      }
+    });
+
+    it("COMPATIBILITY.md should document all canonical supported package managers", () => {
+      for (const pm of CANONICAL_COMPATIBILITY_MODEL.packageManagers) {
+        expect(compatibilityMd.toLowerCase()).toContain(pm.toLowerCase());
+      }
+    });
+
+    it("COMPATIBILITY.md should document all canonical supported combinations", () => {
+      const supported = CANONICAL_COMPATIBILITY_MODEL.combinations.filter((c) => c.supported);
+      for (const comb of supported) {
+        const regex = new RegExp(`\`${comb.runtime}\`\\s*\\+\\s*\`${comb.packageManager}\``, "i");
+        expect(compatibilityMd).toMatch(regex);
+      }
+    });
+
+    it("COMPATIBILITY.md should document canonical unsupported combinations", () => {
+      const unsupported = CANONICAL_COMPATIBILITY_MODEL.combinations.filter((c) => !c.supported);
+      for (const comb of unsupported) {
+        const regex = new RegExp(`\`${comb.runtime}\`\\s*\\+\\s*\`${comb.packageManager}\``, "i");
+        expect(compatibilityMd).toMatch(regex);
+      }
+    });
+
+    it("COMPATIBILITY.md should document the canonical default combination", () => {
+      const defaultComb = CANONICAL_COMPATIBILITY_MODEL.combinations.find((c) => c.isDefault);
+      expect(defaultComb).toBeDefined();
+      if (defaultComb) {
+        const regex = new RegExp(
+          `\`${defaultComb.runtime}\`\\s*\\+\\s*\`${defaultComb.packageManager}\`[\\s\\S]*?default`,
+          "i",
+        );
+        expect(compatibilityMd).toMatch(regex);
+      }
     });
   });
 });
