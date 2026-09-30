@@ -1,6 +1,23 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
 
+import { validateRuntimePackageManagerCompatibility } from "./compatibility";
+
+export type {
+  CompatibilityStatus,
+  RuntimePackageManagerCompatibility,
+  SupportedPackageManager,
+  SupportedRuntime,
+} from "./compatibility";
+export {
+  getCombinationCompatibility,
+  isSupportedPackageManager,
+  isSupportedRuntime,
+  SUPPORTED_PACKAGE_MANAGERS,
+  SUPPORTED_RUNTIMES,
+  validateRuntimePackageManagerCompatibility,
+} from "./compatibility";
+
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";
@@ -451,6 +468,7 @@ export function validateEnvironment(env: DetectedEnv): DetectedEnv {
       `Invalid resolved versions: node="${env.nodeVersion}", bun="${env.bunVersion}"`,
     );
   }
+  validateRuntimePackageManagerCompatibility(env.runtime, env.pm.name);
   return env;
 }
 
