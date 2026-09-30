@@ -21,13 +21,14 @@ When a project does not specify a toolchain version in repository configuration 
 
 ### Toolchain Version Classification
 
-To prevent ambiguity, toolchain versions are classified into four distinct levels:
+To prevent ambiguity and avoid overclaiming compatibility across unverified version ranges, toolchain versions are classified into four distinct levels:
 
-1. **Minimum Supported Versions**:
-   - **Node.js**: Node.js 20.0.0+
-   - **Bun**: Bun 1.0.0+
-   - **npm**: npm 10.0.0+
-   - **pnpm**: pnpm 9.0.0+
+1. **Declared Compatibility Targets**:
+   - **Node.js**: Node.js 20.0.0+ (Declared target baseline)
+   - **Bun**: Bun 1.0.0+ (Declared target baseline)
+   - **npm**: npm 10.0.0+ (Declared target baseline)
+   - **pnpm**: pnpm 9.0.0+ (Declared target baseline)
+     _(Note: Declared compatibility targets represent target baselines, not a guarantee that every point release in the range is exhaustively exercised in CI.)_
 2. **Default Fallback Versions**:
    - The canonical versions selected when no version is specified in workspace files or inputs (Node.js 24, Bun 1.4, npm 12, pnpm 12).
 3. **Consumer Override Options**:

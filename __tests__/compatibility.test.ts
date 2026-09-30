@@ -147,5 +147,23 @@ describe("Compatibility Contract Validation", () => {
         expect(testActionsYml).toMatch(actionBlockRegex);
       },
     );
+
+    it("should pass runtime input to all action steps in test-actions.yml", () => {
+      const actions = ["astro", "lint-format", "vite", "vite-plus"];
+      for (const action of actions) {
+        const stepRegex = new RegExp(
+          `uses:\\s+\\./${action}[\\s\\S]*?with:\\s*\\n\\s*runtime:\\s*\\$\\{\\{\\s*matrix\\.runtime\\s*\\}\\}`,
+        );
+        expect(testActionsYml).toMatch(stepRegex);
+      }
+    });
+
+    it("should verify runtime output against matrix.runtime in test-actions.yml", () => {
+      expect(testActionsYml).toContain("EXPECTED_RUNTIME: ${{ matrix.runtime }}");
+      expect(testActionsYml).toContain(
+        'DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
+      );
+      expect(testActionsYml).toContain('[[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]]');
+    });
   });
 });
