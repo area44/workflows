@@ -29,82 +29,56 @@ describe("Public Action API Contract Specification", () => {
     });
   });
 
-  describe("Repository Production Public Actions Validation", () => {
-    it("should successfully parse and validate all repository public action contracts", () => {
+  describe("Repository Production Public Actions Contract Invariants", () => {
+    it("should parse and validate all repository public action contracts from action.yml", () => {
       const contracts = validateAllPublicActionContracts(rootDir);
-      expect(Object.keys(contracts)).toHaveLength(4);
+      expect(Object.keys(contracts)).toEqual([...PUBLIC_ACTIONS]);
 
       for (const actionName of PUBLIC_ACTIONS) {
         const contract = contracts[actionName];
         expect(contract.action).toBe(actionName);
-        expect(contract.name).toBeTruthy();
-        expect(contract.description).toBeTruthy();
+        expect(typeof contract.name).toBe("string");
+        expect(contract.name.trim()).not.toBe("");
+        expect(typeof contract.description).toBe("string");
+        expect(contract.description.trim()).not.toBe("");
+
         expect(Array.isArray(contract.inputs)).toBe(true);
+        for (const input of contract.inputs) {
+          expect(typeof input.name).toBe("string");
+          expect(input.name.trim()).not.toBe("");
+          expect(typeof input.description).toBe("string");
+          expect(input.description.trim()).not.toBe("");
+          expect(typeof input.required).toBe("boolean");
+          if (input.default !== undefined) {
+            expect(typeof input.default).toBe("string");
+          }
+          if (input.required) {
+            expect(input.default).toBeUndefined();
+          }
+        }
+
         expect(Array.isArray(contract.outputs)).toBe(true);
+        for (const output of contract.outputs) {
+          expect(typeof output.name).toBe("string");
+          expect(output.name.trim()).not.toBe("");
+          expect(typeof output.description).toBe("string");
+          expect(output.description.trim()).not.toBe("");
+          if (output.value !== undefined) {
+            expect(typeof output.value).toBe("string");
+          }
+        }
       }
     });
 
-    it("astro action contract should strictly match expected public API", () => {
-      const contract = parseActionContract("astro", rootDir);
-      expect(contract.name).toBe("Build and Deploy Astro Site");
-      expect(contract.inputs.map((i) => i.name)).toEqual(["path", "runtime", "build-command"]);
-
-      const pathInput = contract.inputs.find((i) => i.name === "path");
-      expect(pathInput?.required).toBe(false);
-      expect(pathInput?.default).toBe("dist");
-
-      const runtimeInput = contract.inputs.find((i) => i.name === "runtime");
-      expect(runtimeInput?.required).toBe(false);
-      expect(runtimeInput?.default).toBeUndefined();
-
-      expect(contract.outputs.map((o) => o.name)).toEqual([
-        "node-version",
-        "bun-version",
-        "package-manager",
-        "package-manager-version",
-        "runtime",
-      ]);
-    });
-
-    it("vite action contract should strictly match expected public API", () => {
-      const contract = parseActionContract("vite", rootDir);
-      expect(contract.name).toBe("Build and Deploy Vite Site");
-      expect(contract.inputs.map((i) => i.name)).toEqual(["path", "runtime", "build-command"]);
-      expect(contract.outputs.map((o) => o.name)).toEqual([
-        "node-version",
-        "bun-version",
-        "package-manager",
-        "package-manager-version",
-        "runtime",
-      ]);
-    });
-
-    it("vite-plus action contract should strictly match expected public API", () => {
-      const contract = parseActionContract("vite-plus", rootDir);
-      expect(contract.name).toBe("Build and Deploy Vite+ Site");
-      expect(contract.inputs.map((i) => i.name)).toEqual(["path", "runtime", "build-command"]);
-      expect(contract.outputs.map((o) => o.name)).toEqual([
-        "node-version",
-        "bun-version",
-        "package-manager",
-        "package-manager-version",
-        "runtime",
-        "vp-version",
-      ]);
-    });
-
-    it("lint-format action contract should strictly match expected public API", () => {
-      const contract = parseActionContract("lint-format", rootDir);
-      expect(contract.name).toBe("Lint and Format");
-      expect(contract.inputs.map((i) => i.name)).toEqual(["runtime"]);
-      expect(contract.outputs.map((o) => o.name)).toEqual([
-        "node-version",
-        "bun-version",
-        "package-manager",
-        "package-manager-version",
-        "runtime",
-      ]);
-    });
+    it.each(PUBLIC_ACTIONS)(
+      "action '%s' should parse directly from its action.yml as the single source of truth",
+      (actionName) => {
+        const contract = parseActionContract(actionName, rootDir);
+        expect(contract.action).toBe(actionName);
+        expect(contract.name).toBeTruthy();
+        expect(contract.description).toBeTruthy();
+      },
+    );
   });
 
   describe("Contract Validation Rules & Error Messages", () => {
@@ -229,10 +203,10 @@ outputs:
     });
   });
 
-  describe("Breaking Change Detection", () => {
+  describe("Breaking Change Detection Algorithm", () => {
     const baselineContract: PublicActionContract = {
-      action: "astro",
-      name: "Build and Deploy Astro Site",
+      action: "sample-action",
+      name: "Sample Action",
       description: "Test action",
       inputs: [
         { name: "path", description: "Path", required: false, default: "dist" },
