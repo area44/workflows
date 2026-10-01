@@ -37,13 +37,158 @@ export function isPublicAction(action: string): action is PublicActionName {
   return (PUBLIC_ACTIONS as readonly string[]).includes(action);
 }
 
-/**
- * Validates and parses raw YAML content for a public action contract.
- */
-export function parseActionContractYaml(
+function parseSingleInput(
+  actionName: string,
+  inputKey: string,
+  inputVal: unknown,
+): ActionInputContract {
+  if (!inputVal || typeof inputVal !== "object" || Array.isArray(inputVal)) {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: input declaration must be an object`,
+    );
+  }
+
+  const inputDesc = (inputVal as { description?: unknown }).description;
+  if (!inputDesc || typeof inputDesc !== "string" || inputDesc.trim() === "") {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: missing or invalid description`,
+    );
+  }
+
+  const requiredRaw = (inputVal as { required?: unknown }).required;
+  let required = false;
+  if (requiredRaw !== undefined) {
+    if (typeof requiredRaw !== "boolean") {
+      throw new Error(
+        `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: "required" field must be a boolean`,
+      );
+    }
+    required = requiredRaw;
+  }
+
+  const defaultRaw = (inputVal as { default?: unknown }).default;
+  let defaultValue: string | undefined;
+  if (defaultRaw !== undefined) {
+    if (
+      typeof defaultRaw !== "string" &&
+      typeof defaultRaw !== "number" &&
+      typeof defaultRaw !== "boolean"
+    ) {
+      throw new Error(
+        `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: invalid default value type`,
+      );
+    }
+    defaultValue = String(defaultRaw);
+  }
+
+  if (required && defaultValue !== undefined) {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: required input cannot have a default value`,
+    );
+  }
+
+  return {
+    name: inputKey,
+    description: inputDesc,
+    required,
+    default: defaultValue,
+  };
+}
+
+function parseActionInputs(actionName: string, rawInputs: unknown): ActionInputContract[] {
+  if (rawInputs === undefined) {
+    return [];
+  }
+
+  if (!rawInputs || typeof rawInputs !== "object" || Array.isArray(rawInputs)) {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\nproblem: "inputs" must be an object`,
+    );
+  }
+
+  const inputs: ActionInputContract[] = [];
+  const seenInputs = new Set<string>();
+
+  for (const [inputKey, inputVal] of Object.entries(rawInputs)) {
+    if (seenInputs.has(inputKey)) {
+      throw new Error(
+        `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: duplicate input declaration`,
+      );
+    }
+    seenInputs.add(inputKey);
+    inputs.push(parseSingleInput(actionName, inputKey, inputVal));
+  }
+
+  return inputs;
+}
+
+function parseSingleOutput(
+  actionName: string,
+  outputKey: string,
+  outputVal: unknown,
+): ActionOutputContract {
+  if (!outputVal || typeof outputVal !== "object" || Array.isArray(outputVal)) {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: output declaration must be an object`,
+    );
+  }
+
+  const outputDesc = (outputVal as { description?: unknown }).description;
+  if (!outputDesc || typeof outputDesc !== "string" || outputDesc.trim() === "") {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: missing or invalid description`,
+    );
+  }
+
+  const valueRaw = (outputVal as { value?: unknown }).value;
+  let value: string | undefined;
+  if (valueRaw !== undefined) {
+    if (typeof valueRaw !== "string") {
+      throw new Error(
+        `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: invalid output value declaration`,
+      );
+    }
+    value = valueRaw;
+  }
+
+  return {
+    name: outputKey,
+    description: outputDesc,
+    value,
+  };
+}
+
+function parseActionOutputs(actionName: string, rawOutputs: unknown): ActionOutputContract[] {
+  if (rawOutputs === undefined) {
+    return [];
+  }
+
+  if (!rawOutputs || typeof rawOutputs !== "object" || Array.isArray(rawOutputs)) {
+    throw new Error(
+      `Invalid public action contract:\naction: ${actionName}\nproblem: "outputs" must be an object`,
+    );
+  }
+
+  const outputs: ActionOutputContract[] = [];
+  const seenOutputs = new Set<string>();
+
+  for (const [outputKey, outputVal] of Object.entries(rawOutputs)) {
+    if (seenOutputs.has(outputKey)) {
+      throw new Error(
+        `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: duplicate output declaration`,
+      );
+    }
+    seenOutputs.add(outputKey);
+    outputs.push(parseSingleOutput(actionName, outputKey, outputVal));
+  }
+
+  return outputs;
+}
+
+function parseActionMetadataObject(
   actionName: string,
   yamlContent: string,
-): PublicActionContract {
+): Record<string, unknown> {
   const doc = parseDocument(yamlContent);
 
   if (doc.errors.length > 0) {
@@ -62,6 +207,18 @@ export function parseActionContractYaml(
     );
   }
 
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Validates and parses raw YAML content for a public action contract.
+ */
+export function parseActionContractYaml(
+  actionName: string,
+  yamlContent: string,
+): PublicActionContract {
+  const parsed = parseActionMetadataObject(actionName, yamlContent);
+
   const name = parsed.name;
   if (!name || typeof name !== "string" || name.trim() === "") {
     throw new Error(
@@ -76,125 +233,8 @@ export function parseActionContractYaml(
     );
   }
 
-  const inputs: ActionInputContract[] = [];
-  if (parsed.inputs !== undefined) {
-    if (!parsed.inputs || typeof parsed.inputs !== "object" || Array.isArray(parsed.inputs)) {
-      throw new Error(
-        `Invalid public action contract:\naction: ${actionName}\nproblem: "inputs" must be an object`,
-      );
-    }
-
-    const seenInputs = new Set<string>();
-    for (const [inputKey, inputVal] of Object.entries(parsed.inputs)) {
-      if (seenInputs.has(inputKey)) {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: duplicate input declaration`,
-        );
-      }
-      seenInputs.add(inputKey);
-
-      if (!inputVal || typeof inputVal !== "object" || Array.isArray(inputVal)) {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: input declaration must be an object`,
-        );
-      }
-
-      const inputDesc = (inputVal as { description?: unknown }).description;
-      if (!inputDesc || typeof inputDesc !== "string" || inputDesc.trim() === "") {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: missing or invalid description`,
-        );
-      }
-
-      const requiredRaw = (inputVal as { required?: unknown }).required;
-      let required = false;
-      if (requiredRaw !== undefined) {
-        if (typeof requiredRaw !== "boolean") {
-          throw new Error(
-            `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: "required" field must be a boolean`,
-          );
-        }
-        required = requiredRaw;
-      }
-
-      const defaultRaw = (inputVal as { default?: unknown }).default;
-      let defaultValue: string | undefined;
-      if (defaultRaw !== undefined) {
-        if (
-          typeof defaultRaw !== "string" &&
-          typeof defaultRaw !== "number" &&
-          typeof defaultRaw !== "boolean"
-        ) {
-          throw new Error(
-            `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: invalid default value type`,
-          );
-        }
-        defaultValue = String(defaultRaw);
-      }
-
-      if (required && defaultValue !== undefined) {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\ninput: ${inputKey}\nproblem: required input cannot have a default value`,
-        );
-      }
-
-      inputs.push({
-        name: inputKey,
-        description: inputDesc,
-        required,
-        default: defaultValue,
-      });
-    }
-  }
-
-  const outputs: ActionOutputContract[] = [];
-  if (parsed.outputs !== undefined) {
-    if (!parsed.outputs || typeof parsed.outputs !== "object" || Array.isArray(parsed.outputs)) {
-      throw new Error(
-        `Invalid public action contract:\naction: ${actionName}\nproblem: "outputs" must be an object`,
-      );
-    }
-
-    const seenOutputs = new Set<string>();
-    for (const [outputKey, outputVal] of Object.entries(parsed.outputs)) {
-      if (seenOutputs.has(outputKey)) {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: duplicate output declaration`,
-        );
-      }
-      seenOutputs.add(outputKey);
-
-      if (!outputVal || typeof outputVal !== "object" || Array.isArray(outputVal)) {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: output declaration must be an object`,
-        );
-      }
-
-      const outputDesc = (outputVal as { description?: unknown }).description;
-      if (!outputDesc || typeof outputDesc !== "string" || outputDesc.trim() === "") {
-        throw new Error(
-          `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: missing or invalid description`,
-        );
-      }
-
-      const valueRaw = (outputVal as { value?: unknown }).value;
-      let value: string | undefined;
-      if (valueRaw !== undefined) {
-        if (typeof valueRaw !== "string") {
-          throw new Error(
-            `Invalid public action contract:\naction: ${actionName}\noutput: ${outputKey}\nproblem: invalid output value declaration`,
-          );
-        }
-        value = valueRaw;
-      }
-
-      outputs.push({
-        name: outputKey,
-        description: outputDesc,
-        value,
-      });
-    }
-  }
+  const inputs = parseActionInputs(actionName, parsed.inputs);
+  const outputs = parseActionOutputs(actionName, parsed.outputs);
 
   return {
     action: actionName,
