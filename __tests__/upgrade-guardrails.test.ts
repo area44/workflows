@@ -362,21 +362,32 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       );
     });
 
-    it("throws WorkflowError when no valid candidates exist, never silently falling back to HEAD~1", () => {
+    it("respects environment variable priority sequence: explicit > UPGRADE_BASE_REF > BASE_REF > GITHUB_BASE_REF > GITHUB_EVENT_BEFORE", () => {
       const origUpgrade = process.env.UPGRADE_BASE_REF;
       const origBase = process.env.BASE_REF;
       const origGhBase = process.env.GITHUB_BASE_REF;
       const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
 
       try {
-        process.env.UPGRADE_BASE_REF = "non-existent-ref-111";
-        delete process.env.BASE_REF;
-        delete process.env.GITHUB_BASE_REF;
-        delete process.env.GITHUB_EVENT_BEFORE;
+        process.env.UPGRADE_BASE_REF = "main";
+        process.env.BASE_REF = "invalid-base-ref";
+        process.env.GITHUB_BASE_REF = "invalid-gh-base-ref";
+        process.env.GITHUB_EVENT_BEFORE = "invalid-gh-before";
 
-        expect(() => resolveBaseRef()).toThrow(
-          /could not be resolved in repository history.*Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited/,
-        );
+        expect(resolveBaseRef("main")).toMatch(/main/);
+        expect(resolveBaseRef()).toMatch(/main/);
+
+        delete process.env.UPGRADE_BASE_REF;
+        process.env.BASE_REF = "main";
+        expect(resolveBaseRef()).toMatch(/main/);
+
+        delete process.env.BASE_REF;
+        process.env.GITHUB_BASE_REF = "main";
+        expect(resolveBaseRef()).toMatch(/main/);
+
+        delete process.env.GITHUB_BASE_REF;
+        process.env.GITHUB_EVENT_BEFORE = "main";
+        expect(resolveBaseRef()).toMatch(/main/);
       } finally {
         if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
         else delete process.env.UPGRADE_BASE_REF;
@@ -389,6 +400,50 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
 
         if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
         else delete process.env.GITHUB_EVENT_BEFORE;
+      }
+    });
+
+    it("throws WorkflowError in a repository where origin/main and main do NOT exist, never returning HEAD~1 even if HEAD~1 exists", () => {
+      const execSync = require("node:child_process").execSync;
+      const fs = require("node:fs");
+      const os = require("node:os");
+      const path = require("node:path");
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-guardrail-test-"));
+
+      try {
+        execSync("git init -b custom-branch", { cwd: tempDir, stdio: "ignore" });
+        execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
+        execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+
+        fs.writeFileSync(path.join(tempDir, "file1.txt"), "commit 1");
+        execSync("git add file1.txt && git commit -m 'commit 1'", { cwd: tempDir, stdio: "ignore" });
+
+        fs.writeFileSync(path.join(tempDir, "file2.txt"), "commit 2");
+        execSync("git add file2.txt && git commit -m 'commit 2'", { cwd: tempDir, stdio: "ignore" });
+
+        const origUpgrade = process.env.UPGRADE_BASE_REF;
+        const origBase = process.env.BASE_REF;
+        const origGhBase = process.env.GITHUB_BASE_REF;
+        const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
+
+        delete process.env.UPGRADE_BASE_REF;
+        delete process.env.BASE_REF;
+        delete process.env.GITHUB_BASE_REF;
+        delete process.env.GITHUB_EVENT_BEFORE;
+
+        try {
+          expect(() => resolveBaseRef(undefined, tempDir)).toThrow(
+            /Unable to resolve a valid Git base revision for upgrade guardrails. Evaluated default candidates: origin\/main, main/,
+          );
+        } finally {
+          if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
+          if (origBase !== undefined) process.env.BASE_REF = origBase;
+          if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
+          if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
+        }
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
   });
