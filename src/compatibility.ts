@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { WorkflowError } from "./errors.js";
+
 export type SupportedRuntime = "node" | "bun";
 export type SupportedPackageManager = "npm" | "pnpm" | "bun";
 
@@ -162,16 +164,39 @@ export function validateRuntimePackageManagerCompatibility(
   runtime: string,
   pmName: string,
 ): RuntimePackageManagerCompatibility {
+  if (!isSupportedRuntime(runtime)) {
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `Unsupported runtime "${runtime}". Supported runtimes are: ${SUPPORTED_RUNTIMES.join(", ")}.`,
+      { resource: "runtime", value: runtime },
+    );
+  }
+
+  if (!isSupportedPackageManager(pmName)) {
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `Unsupported package manager "${pmName}". Supported package managers are: ${SUPPORTED_PACKAGE_MANAGERS.join(", ")}.`,
+      { resource: "packageManager", value: pmName },
+    );
+  }
+
   const compatibility = getCombinationCompatibility(runtime, pmName);
   if (!compatibility.status.supported) {
-    throw new Error(compatibility.status.reason);
+    throw new WorkflowError(
+      "UNSUPPORTED_COMBINATION",
+      compatibility.status.reason ||
+        `Unsupported runtime and package manager combination: ${runtime} runtime does not support ${pmName} package manager.`,
+      { resource: "compatibility", runtime, packageManager: pmName },
+    );
   }
   return compatibility;
 }
 
 function ensureMatrixObject(entry: unknown): Record<string, unknown> {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-    throw new Error("CI matrix entry must be an object.");
+    throw new WorkflowError("INVALID_INPUT", "CI matrix entry must be an object.", {
+      stage: "matrix-validation",
+    });
   }
   return entry as Record<string, unknown>;
 }
@@ -180,7 +205,11 @@ function validateAllowedKeys(record: Record<string, unknown>): void {
   const allowedKeys = new Set(["action", "runtime", "pm", "type", "verify_site"]);
   for (const key of Object.keys(record)) {
     if (!allowedKeys.has(key)) {
-      throw new Error(`CI matrix entry contains unrecognized field: "${key}"`);
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `CI matrix entry contains unrecognized field: "${key}"`,
+        { stage: "matrix-validation", field: key },
+      );
     }
   }
 }
@@ -189,26 +218,52 @@ function validateRequiredStringFields(record: Record<string, unknown>): void {
   for (const field of ["action", "runtime", "pm", "type"] as const) {
     const val = record[field];
     if (val === undefined || val === null || val === "") {
-      throw new Error(`CI matrix entry is missing required field: "${field}"`);
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `CI matrix entry is missing required field: "${field}"`,
+        { stage: "matrix-validation", field },
+      );
     }
     if (typeof val !== "string") {
-      throw new Error(`CI matrix entry field "${field}" must be a string.`);
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `CI matrix entry field "${field}" must be a string.`,
+        { stage: "matrix-validation", field },
+      );
     }
   }
 }
 
 function validateFieldValues(action: string, runtime: string, pm: string, type: string): void {
   if (!isSupportedAction(action)) {
-    throw new Error(`CI matrix entry contains unsupported action: ${action}`);
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `CI matrix entry contains unsupported action: ${action}`,
+      {
+        stage: "matrix-validation",
+        action,
+      },
+    );
   }
   if (!isSupportedRuntime(runtime)) {
-    throw new Error(`CI matrix entry contains unsupported runtime: ${runtime}`);
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `CI matrix entry contains unsupported runtime: ${runtime}`,
+      { stage: "matrix-validation", runtime },
+    );
   }
   if (!isSupportedPackageManager(pm)) {
-    throw new Error(`CI matrix entry contains unsupported package manager: ${pm}`);
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `CI matrix entry contains unsupported package manager: ${pm}`,
+      { stage: "matrix-validation", packageManager: pm },
+    );
   }
   if (!isSupportedFixtureType(type)) {
-    throw new Error(`CI matrix entry contains unsupported type: ${type}`);
+    throw new WorkflowError("INVALID_INPUT", `CI matrix entry contains unsupported type: ${type}`, {
+      stage: "matrix-validation",
+      type,
+    });
   }
 }
 
@@ -233,12 +288,20 @@ export function validateMatrixEntry(entry: unknown): MatrixEntry {
   const type = rawType as SupportedFixtureType;
 
   if (record.verify_site !== undefined && typeof record.verify_site !== "boolean") {
-    throw new Error(`CI matrix entry field "verify_site" must be a boolean.`);
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `CI matrix entry field "verify_site" must be a boolean.`,
+      { stage: "matrix-validation", field: "verify_site" },
+    );
   }
 
   const comp = getCombinationCompatibility(runtime, pm);
   if (!comp.status.supported) {
-    throw new Error(`CI matrix contains unsupported combination: ${action} (${runtime}, ${pm})`);
+    throw new WorkflowError(
+      "UNSUPPORTED_COMBINATION",
+      `CI matrix contains unsupported combination: ${action} (${runtime}, ${pm})`,
+      { stage: "matrix-validation", action, runtime, packageManager: pm },
+    );
   }
 
   return {
@@ -276,17 +339,27 @@ export function validateFixtureForMatrixEntry(
 ): string {
   const fixtureDir = getFixturePath(entry, rootDir);
   if (!fs.existsSync(fixtureDir)) {
-    throw new Error(
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
       `Missing fixture directory for matrix entry '${entry.action} (${entry.runtime}, ${entry.pm}, ${entry.type})': ${fixtureDir}`,
+      { stage: "fixture-validation", path: fixtureDir },
     );
   }
   const stat = fs.statSync(fixtureDir);
   if (!stat.isDirectory()) {
-    throw new Error(`Fixture path exists but is not a directory: ${fixtureDir}`);
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Fixture path exists but is not a directory: ${fixtureDir}`,
+      { stage: "fixture-validation", path: fixtureDir },
+    );
   }
   const pkgJsonPath = path.join(fixtureDir, "package.json");
   if (!fs.existsSync(pkgJsonPath)) {
-    throw new Error(`Fixture directory is missing package.json: ${fixtureDir}`);
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Fixture directory is missing package.json: ${fixtureDir}`,
+      { stage: "fixture-validation", path: pkgJsonPath },
+    );
   }
   return fixtureDir;
 }
@@ -326,7 +399,14 @@ export function validateNoUnusedFixtures(
   for (const actualDir of actualLeafDirs) {
     if (!expectedPaths.has(actualDir)) {
       const relPath = path.relative(rootDir, actualDir);
-      throw new Error(`Unused fixture directory detected: ${relPath}`);
+      throw new WorkflowError(
+        "MISSING_CONFIGURATION",
+        `Unused fixture directory detected: ${relPath}`,
+        {
+          stage: "fixture-validation",
+          path: relPath,
+        },
+      );
     }
   }
 }
@@ -339,7 +419,9 @@ export function validateWorkflowMatrix(
   options: { rootDir?: string; checkFixtures?: boolean } = {},
 ): MatrixEntry[] {
   if (!Array.isArray(entries)) {
-    throw new Error("Workflow matrix entries must be an array.");
+    throw new WorkflowError("INVALID_INPUT", "Workflow matrix entries must be an array.", {
+      stage: "workflow-matrix-validation",
+    });
   }
 
   const validatedEntries = entries.map((entry) => validateMatrixEntry(entry));
@@ -354,8 +436,15 @@ export function validateWorkflowMatrix(
         (e) => e.action === action && e.runtime === comb.runtime && e.pm === comb.packageManager,
       );
       if (!found) {
-        throw new Error(
+        throw new WorkflowError(
+          "UNSUPPORTED_COMBINATION",
           `CI matrix is missing supported combination: ${action} (${comb.runtime}, ${comb.packageManager})`,
+          {
+            stage: "workflow-matrix-validation",
+            action,
+            runtime: comb.runtime,
+            packageManager: comb.packageManager,
+          },
         );
       }
     }

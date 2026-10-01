@@ -1,6 +1,8 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 
+import { WorkflowError } from "./errors.js";
+
 export interface ParsedCommand {
   command: string;
   args: string[];
@@ -118,7 +120,9 @@ function tokenizeCommand(trimmed: string): string[] {
   }
 
   if (state.inDoubleQuote || state.inSingleQuote) {
-    throw new Error("Unterminated quote in build command string.");
+    throw new WorkflowError("INVALID_INPUT", "Unterminated quote in build command string.", {
+      stage: "build-command-parsing",
+    });
   }
 
   if (state.currentToken.length > 0 || state.wasQuoted) {
@@ -135,13 +139,19 @@ function tokenizeCommand(trimmed: string): string[] {
 export function parseCommand(cmdStr: string): ParsedCommand {
   const trimmed = cmdStr.trim();
   if (!trimmed) {
-    throw new Error("Build command string is empty.");
+    throw new WorkflowError("INVALID_INPUT", "Build command string is empty.", {
+      stage: "build-command-parsing",
+    });
   }
 
   const tokens = tokenizeCommand(trimmed);
 
   if (tokens.length === 0 || !tokens[0]) {
-    throw new Error("Failed to parse build command: no valid executable found.");
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      "Failed to parse build command: no valid executable found.",
+      { stage: "build-command-parsing" },
+    );
   }
 
   return {
@@ -168,10 +178,17 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   try {
     parsed = parseCommand(commandToParse);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(
-      `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
-    );
+    if (err instanceof WorkflowError) {
+      core.setFailed(err);
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      const parseErr = new WorkflowError(
+        "INVALID_INPUT",
+        `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+        { stage: "build-command-parsing", command: commandToParse, cause: err },
+      );
+      core.setFailed(parseErr);
+    }
     if (exitOnFailure) {
       process.exit(1);
     }
@@ -189,9 +206,12 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     });
 
     if (exitCode !== 0) {
-      core.setFailed(
+      const err = new WorkflowError(
+        "COMMAND_EXECUTION_FAILURE",
         `Build command failed with exit code ${exitCode}: ${sanitizeCommandString(commandToParse)}`,
+        { stage: "build-command-execution", exitCode, command: commandToParse },
       );
+      core.setFailed(err);
       if (exitOnFailure) {
         process.exit(exitCode);
       }
@@ -199,9 +219,12 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     return exitCode;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(
+    const execErr = new WorkflowError(
+      "COMMAND_EXECUTION_FAILURE",
       `Failed to execute build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+      { stage: "build-command-execution", command: commandToParse, cause: err },
     );
+    core.setFailed(execErr);
     if (exitOnFailure) {
       process.exit(1);
     }

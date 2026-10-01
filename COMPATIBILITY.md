@@ -249,6 +249,29 @@ To ensure all composite actions run reliable, verified, and tamper-proof runtime
 
 ---
 
+## Error Contract & Failure Semantics
+
+To ensure predictable behavior across composite actions, environment resolution, and execution pipelines, `@area44/workflows` formalizes a consistent, deterministic error contract.
+
+### Fail Fast & Structured Error Categories
+
+All workflow errors derive from `WorkflowError` (`src/errors.ts`) and contain a specific `code` (`WorkflowErrorCode`), a human-readable `message`, and optional structured `context` (`action`, `stage`, `resource`, `path`, `cause`).
+
+| Error Code                  | Failure Category                   | Description & Representative Cause                                                                                                                                                           |
+| --------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `INVALID_INPUT`             | User Action Input                  | Fail fast when user inputs are malformed, duplicate, or invalid. Examples: `runtime: "node@"`, `runtime: "node,,bun"`, `runtime: "node, node@24"`, or unterminated quotes in build commands. |
+| `UNSUPPORTED_RUNTIME_OR_PM` | Runtime / Toolchain Name           | Fail fast when an unrecognized runtime or package manager name is provided or detected (e.g. `deno`, `yarn`).                                                                                |
+| `UNSUPPORTED_COMBINATION`   | Compatibility Matrix               | Derived directly from `CANONICAL_COMPATIBILITY_MODEL`. Fail fast when runtime and package manager combination is unsupported (e.g. Bun runtime with `npm` package manager).                  |
+| `MISSING_CONFIGURATION`     | Workspace / Fixture Configuration  | Missing required workspace files or fixture metadata (e.g. missing `package.json`, missing fixture directory, missing entry source files).                                                   |
+| `SETUP_FAILURE`             | Toolchain / Environment Resolution | Failures during toolchain/environment resolution or setup adapter output generation.                                                                                                         |
+| `COMMAND_EXECUTION_FAILURE` | Command Execution                  | Failures during shell command or script execution (e.g. failed `npm run build`, failed `check`/`lint`/`format` scripts). Errors are never swallowed or converted to success.                 |
+
+### Single Source of Compatibility Truth
+
+The error contract does **not** maintain a secondary or duplicated compatibility matrix. All compatibility decisions remain strictly bound to `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`.
+
+---
+
 ## Lightweight Release & Toolchain Upgrade Policy
 
 To prevent silent compatibility regressions and manage toolchain upgrades predictably, changes to defaults or supported environments must follow this release policy.
