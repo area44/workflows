@@ -178,10 +178,17 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   try {
     parsed = parseCommand(commandToParse);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(
-      `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
-    );
+    if (err instanceof WorkflowError) {
+      core.setFailed(err);
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      const parseErr = new WorkflowError(
+        "INVALID_INPUT",
+        `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+        { stage: "build-command-parsing", command: commandToParse, cause: err },
+      );
+      core.setFailed(parseErr);
+    }
     if (exitOnFailure) {
       process.exit(1);
     }

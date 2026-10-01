@@ -257,14 +257,17 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle command parse error and report actionable error message", async () => {
+    it("should handle command parse error and report actionable error message preserving WorkflowError INVALID_INPUT", async () => {
       process.env.BUILD_COMMAND = "npm run 'unclosed quote";
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Failed to parse build command "npm run \'unclosed quote": Unterminated quote in build command string.',
+        expect.objectContaining({
+          code: "INVALID_INPUT",
+          message: "Unterminated quote in build command string.",
+        }),
       );
     });
   });
