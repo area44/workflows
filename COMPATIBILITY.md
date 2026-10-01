@@ -547,6 +547,6 @@ BASE_REF=main npm run verify:upgrade
 
 ### Limitations & Base Revision Resolution
 
-- **Git Base Revision Requirement**: Base revision contracts are loaded via Git (`git show <baseRef>:<file>`).
+- **Git Base Revision Requirement**: Upgrade Guardrails require a deterministic, existing Git base revision. Baseline contract guessing via relative commits like `HEAD~1` is prohibited.
 - **Shallow Clone Limitation**: In environments with shallow clones or unavailable base Git refs, verification fails fast with an explicit error requesting a full Git checkout or base ref specification.
 - **No Automatic Version Bumping**: Upgrade guardrails validate version sufficiency but do not automatically modify `package.json` or create release tags.

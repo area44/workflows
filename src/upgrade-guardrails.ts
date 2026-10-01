@@ -407,44 +407,61 @@ export function loadBaselineContractsFromGit(
 /**
  * Resolves the default base ref if not explicitly provided.
  */
-export function resolveBaseRef(explicitBaseRef?: string, rootDir: string = process.cwd()): string {
-  const candidates: (string | undefined)[] = [
-    explicitBaseRef,
-    process.env.UPGRADE_BASE_REF,
-    process.env.BASE_REF,
-    process.env.GITHUB_BASE_REF,
-    process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)
-      ? process.env.GITHUB_EVENT_BEFORE
-      : undefined,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-
-    try {
-      execSync(`git rev-parse --verify "${candidate}"`, { cwd: rootDir, stdio: "ignore" });
-      return candidate;
-    } catch {
+function verifyGitRef(candidate: string, rootDir: string): string | undefined {
+  try {
+    execSync(`git rev-parse --verify "${candidate}"`, { cwd: rootDir, stdio: "ignore" });
+    return candidate;
+  } catch {
+    if (!candidate.startsWith("origin/")) {
       try {
         execSync(`git rev-parse --verify "origin/${candidate}"`, { cwd: rootDir, stdio: "ignore" });
         return `origin/${candidate}`;
       } catch {
-        // Continue checking candidates
+        return undefined;
       }
+    }
+    return undefined;
+  }
+}
+
+/**
+ * Resolves the default base ref if not explicitly provided.
+ */
+export function resolveBaseRef(explicitBaseRef?: string, rootDir: string = process.cwd()): string {
+  const specifiedCandidate =
+    explicitBaseRef ||
+    process.env.UPGRADE_BASE_REF ||
+    process.env.BASE_REF ||
+    process.env.GITHUB_BASE_REF ||
+    (process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)
+      ? process.env.GITHUB_EVENT_BEFORE
+      : undefined);
+
+  if (specifiedCandidate) {
+    const resolved = verifyGitRef(specifiedCandidate, rootDir);
+    if (resolved) {
+      return resolved;
+    }
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Explicitly specified or configured Git base revision "${specifiedCandidate}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth. Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited.`,
+      { stage: "upgrade-guardrail", candidate: specifiedCandidate },
+    );
+  }
+
+  const defaultCandidates = ["origin/main", "main"];
+  for (const candidate of defaultCandidates) {
+    const resolved = verifyGitRef(candidate, rootDir);
+    if (resolved) {
+      return resolved;
     }
   }
 
-  try {
-    execSync("git rev-parse --verify origin/main", { cwd: rootDir, stdio: "ignore" });
-    return "origin/main";
-  } catch {
-    try {
-      execSync("git rev-parse --verify main", { cwd: rootDir, stdio: "ignore" });
-      return "main";
-    } catch {
-      return "HEAD~1";
-    }
-  }
+  throw new WorkflowError(
+    "MISSING_CONFIGURATION",
+    `Unable to resolve a valid Git base revision for upgrade guardrails. Evaluated default candidates: origin/main, main. Ensure a valid base revision is supplied (e.g. via baseRef or BASE_REF environment variable) or that Git repository history contains origin/main or main. Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited.`,
+    { stage: "upgrade-guardrail" },
+  );
 }
 
 /**

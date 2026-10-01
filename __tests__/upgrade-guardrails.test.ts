@@ -12,6 +12,7 @@ import {
   loadBaselineContractsFromGit,
   loadTargetContracts,
   parseCompatibilityModelFromSource,
+  resolveBaseRef,
   verifyUpgradeGuardrails,
 } from "../src/upgrade-guardrails";
 
@@ -297,7 +298,7 @@ describe("Upgrade Guardrails Specification", () => {
     });
   });
 
-  describe("Base Revision Loading & Error Handling", () => {
+  describe("Base Revision Resolution & Strict Non-Fallback Invariants", () => {
     it("parses compatibility model from source content", () => {
       const source = `
 export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
@@ -333,6 +334,62 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       expect(res.baselineVersion).toBe(currentTarget.version);
       expect(res.targetVersion).toBe(currentTarget.version);
       expect(res.valid).toBe(true);
+    });
+
+    it("uses explicitly provided valid baseRef", () => {
+      const resolved = resolveBaseRef("main");
+      expect(resolved).toMatch(/main/);
+    });
+
+    it("respects UPGRADE_BASE_REF environment variable when baseRef is omitted", () => {
+      const origEnv = process.env.UPGRADE_BASE_REF;
+      try {
+        process.env.UPGRADE_BASE_REF = "main";
+        const resolved = resolveBaseRef();
+        expect(resolved).toMatch(/main/);
+      } finally {
+        if (origEnv !== undefined) {
+          process.env.UPGRADE_BASE_REF = origEnv;
+        } else {
+          delete process.env.UPGRADE_BASE_REF;
+        }
+      }
+    });
+
+    it("throws WorkflowError when invalid or non-existent baseRef is explicitly provided and cannot resolve", () => {
+      expect(() => resolveBaseRef("non-existent-ref-xyz-999")).toThrow(
+        /could not be resolved in repository history.*Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited/,
+      );
+    });
+
+    it("throws WorkflowError when no valid candidates exist, never silently falling back to HEAD~1", () => {
+      const origUpgrade = process.env.UPGRADE_BASE_REF;
+      const origBase = process.env.BASE_REF;
+      const origGhBase = process.env.GITHUB_BASE_REF;
+      const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
+
+      try {
+        process.env.UPGRADE_BASE_REF = "non-existent-ref-111";
+        delete process.env.BASE_REF;
+        delete process.env.GITHUB_BASE_REF;
+        delete process.env.GITHUB_EVENT_BEFORE;
+
+        expect(() => resolveBaseRef()).toThrow(
+          /could not be resolved in repository history.*Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited/,
+        );
+      } finally {
+        if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
+        else delete process.env.UPGRADE_BASE_REF;
+
+        if (origBase !== undefined) process.env.BASE_REF = origBase;
+        else delete process.env.BASE_REF;
+
+        if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
+        else delete process.env.GITHUB_BASE_REF;
+
+        if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
+        else delete process.env.GITHUB_EVENT_BEFORE;
+      }
     });
   });
 });
