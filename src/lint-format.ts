@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 interface PackageJson {
   scripts?: Record<string, string>;
@@ -66,6 +67,15 @@ export function run(): void {
   }
 }
 
-if (process.env.NODE_ENV !== "test") {
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
   run();
 }

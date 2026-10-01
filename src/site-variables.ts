@@ -1,4 +1,6 @@
 import * as core from "@actions/core";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export function setSiteVariables(): void {
   const actionPath = process.env.GITHUB_ACTION_PATH || "";
@@ -24,6 +26,15 @@ export function setSiteVariables(): void {
   }
 }
 
-if (process.env.NODE_ENV !== "test") {
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
   setSiteVariables();
 }
