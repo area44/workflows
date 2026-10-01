@@ -250,23 +250,38 @@ To ensure all composite actions run reliable, verified, and tamper-proof runtime
   Release / Publish
   ```
 
-### Official Build Pipeline & Verification Order
+### Official Build Pipeline & Release Integrity Sequence
 
 - **Build Command**: `npm run build` (invokes `vp pack`).
 - **Entry Configuration**: Defined in `vite.config.ts`, mapping `src/${name}.ts` source entrypoints to `dist/${name}.mjs` output files.
 - **Deterministic Output**: Bundled artifacts are deterministic. Rebuilding from unchanged source files yields identical output without working tree drift.
-- **Release Verification Boundary**: Verification is powered by `src/artifact-integrity.ts` (`verifyArtifactIntegrity` and `runArtifactVerification`). No release or publication path can bypass artifact verification.
-- **Fail-Fast Conditions**:
+- **Verification Engine**: Verification is powered by `src/artifact-integrity.ts` (`verifyArtifactIntegrity` and `runArtifactVerification`).
+- **Required Release Sequence**:
+  The repository release integrity contract defines the required release sequence:
+  ```
+  checkout
+    ↓
+  install dependencies
+    ↓
+  build (npm run build)
+    ↓
+  verify generated artifacts (npm run verify:artifacts)
+    ↓
+  run tests / validation (npm test)
+    ↓
+  publish / release
+  ```
+- **Fail-Fast Verification Rules**:
   - Missing `dist/` directory or expected `.mjs` artifacts.
   - Empty (0-byte) generated artifact files.
   - Unexpected or untracked extra files in `dist/`.
-  - Stale artifacts where committed `dist/` is out of sync with current `src/` source (detected via `git status --porcelain -- dist/`).
+  - Stale artifacts where committed `dist/` is out of sync with current `src/` source (detected by rebuilding and checking `git status --porcelain -- dist/`).
   - Build command failure.
 
-### Release Metadata & Provenance Model
+### Release Metadata & Artifact Synchronization
 
 - **Release Version**: Release versioning is tied to `package.json` (`version`).
-- **Revision Provenance**: Artifacts in `dist/` are generated from the exact source revision (`GITHUB_SHA`). `git status --porcelain -- dist/` guarantees that committed artifacts correspond strictly to current source files without uncommitted drift.
+- **Source-to-Artifact Integrity**: Build execution regenerates `dist/` directly from current checked-out source files. Running `git status --porcelain -- dist/` verifies that the committed `dist/` directory remains in exact synchronization with source code without generated artifact drift.
 
 ### Automated Integrity Verification & CI Enforcement
 
