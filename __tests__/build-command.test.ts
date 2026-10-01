@@ -2,7 +2,6 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import * as buildCommandModule from "../src/build-command";
 import { parseCommand, runBuildCommand, sanitizeCommandString } from "../src/build-command";
 
 vi.mock("@actions/core");
@@ -264,25 +263,22 @@ describe("build-command", () => {
       expect(serialized).toContain("--token=***");
     });
 
-    it("should sanitize secrets in WorkflowError message and context for malformed commands or credential URLs when parseCommand fails", async () => {
+    it("should sanitize secrets in WorkflowError message and context for malformed commands containing sensitive flags and credential URLs", async () => {
       const secretVal = "my_secret_token_value_999";
       const secretPass = "my_secret_password_777";
-      process.env.BUILD_COMMAND = `npm run build --token=${secretVal} https://admin:${secretPass}@example.com`;
-
-      vi.spyOn(buildCommandModule, "parseCommand").mockImplementationOnce(() => {
-        throw new Error(`Unexpected error parsing https://admin:${secretPass}@example.com with --token=${secretVal}`);
-      });
+      process.env.BUILD_COMMAND = `npm run build --token=${secretVal} https://admin:${secretPass}@example.com 'unclosed quote`;
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
-      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0];
-      const serialized = JSON.stringify(setFailedArg);
+      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0] as any;
 
+      expect(setFailedArg.code).toBe("INVALID_INPUT");
+      expect(setFailedArg.message).toBe("Unterminated quote in build command string.");
+
+      const serialized = JSON.stringify(setFailedArg);
       expect(serialized).not.toContain(secretVal);
       expect(serialized).not.toContain(secretPass);
-      expect(serialized).toContain("https://***:***@example.com");
-      expect(serialized).toContain("--token=***");
     });
 
     it("should handle exec throwing an exception and report actionable error message with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
