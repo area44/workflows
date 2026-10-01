@@ -105,29 +105,11 @@ export function getExpectedArtifacts(rootDir: string = process.cwd()): ArtifactM
   return parseViteConfigPack(content);
 }
 
-/**
- * Single, unified verifier for generated artifact integrity.
- */
-export function verifyArtifactIntegrity(
-  rootDir: string = process.cwd(),
-  options: VerificationOptions = {},
-): VerificationResult {
-  const checkBuild = options.executeBuild ?? false;
-  if (checkBuild) {
-    try {
-      execSync("npm run build", {
-        cwd: rootDir,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
-    } catch {
-      // Build failure will be reflected in output verification below
-    }
-  }
-
-  const expectedArtifacts = getExpectedArtifacts(rootDir);
+function checkMissingAndEmptyArtifacts(
+  expectedArtifacts: ArtifactMapping[],
+  rootDir: string,
+): { missingArtifacts: string[]; errors: string[] } {
   const missingArtifacts: string[] = [];
-  const unexpectedArtifacts: string[] = [];
-  const staleArtifacts: string[] = [];
   const errors: string[] = [];
 
   for (const artifact of expectedArtifacts) {
@@ -148,45 +130,91 @@ export function verifyArtifactIntegrity(
     }
   }
 
-  const distDir = path.join(rootDir, "dist");
-  if (fs.existsSync(distDir)) {
-    const actualFiles = fs.readdirSync(distDir);
-    const expectedFileNames = new Set(expectedArtifacts.map((a) => path.basename(a.outputPath)));
+  return { missingArtifacts, errors };
+}
 
-    for (const file of actualFiles) {
-      if (!expectedFileNames.has(file)) {
-        unexpectedArtifacts.push(path.normalize(path.join("dist", file)));
+function checkUnexpectedDistFiles(
+  expectedArtifacts: ArtifactMapping[],
+  rootDir: string,
+): { unexpectedArtifacts: string[]; distError?: string } {
+  const distDir = path.join(rootDir, "dist");
+  const unexpectedArtifacts: string[] = [];
+
+  if (!fs.existsSync(distDir)) {
+    return { unexpectedArtifacts: [], distError: "dist/ directory does not exist" };
+  }
+
+  const actualFiles = fs.readdirSync(distDir);
+  const expectedFileNames = new Set(expectedArtifacts.map((a) => path.basename(a.outputPath)));
+
+  for (const file of actualFiles) {
+    if (!expectedFileNames.has(file)) {
+      unexpectedArtifacts.push(path.normalize(path.join("dist", file)));
+    }
+  }
+
+  return { unexpectedArtifacts };
+}
+
+function checkGitStatusDrift(rootDir: string): string[] {
+  const distDir = path.join(rootDir, "dist");
+  const gitDir = path.join(rootDir, ".git");
+  const staleArtifacts: string[] = [];
+
+  if (!fs.existsSync(gitDir) && !fs.existsSync(distDir)) {
+    return staleArtifacts;
+  }
+
+  try {
+    const statusOutput = execSync("git status --porcelain -- dist/", {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    if (statusOutput) {
+      const lines = statusOutput.split("\n");
+      for (const line of lines) {
+        const file = line.trim().split(/\s+/).slice(1).join(" ");
+        if (file) {
+          staleArtifacts.push(path.normalize(file));
+        }
       }
     }
-  } else {
-    errors.push("dist/ directory does not exist");
+  } catch {
+    // Ignore git command failure if not in git repo
+  }
+
+  return staleArtifacts;
+}
+
+/**
+ * Single, unified verifier for generated artifact integrity.
+ */
+export function verifyArtifactIntegrity(
+  rootDir: string = process.cwd(),
+  options: VerificationOptions = {},
+): VerificationResult {
+  if (options.executeBuild) {
+    try {
+      execSync("npm run build", {
+        cwd: rootDir,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } catch {
+      // Build failure will be reflected in output verification below
+    }
+  }
+
+  const expectedArtifacts = getExpectedArtifacts(rootDir);
+  const { missingArtifacts, errors } = checkMissingAndEmptyArtifacts(expectedArtifacts, rootDir);
+  const { unexpectedArtifacts, distError } = checkUnexpectedDistFiles(expectedArtifacts, rootDir);
+  if (distError) {
+    errors.push(distError);
   }
 
   const checkGit = options.checkGitStatus ?? true;
-  if (checkGit) {
-    try {
-      const gitDir = path.join(rootDir, ".git");
-      if (fs.existsSync(gitDir) || fs.existsSync(distDir)) {
-        const statusOutput = execSync("git status --porcelain -- dist/", {
-          cwd: rootDir,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        }).trim();
-
-        if (statusOutput) {
-          const lines = statusOutput.split("\n");
-          for (const line of lines) {
-            const file = line.trim().split(/\s+/).slice(1).join(" ");
-            if (file) {
-              staleArtifacts.push(path.normalize(file));
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore git command failure if not in git repo
-    }
-  }
+  const staleArtifacts = checkGit ? checkGitStatusDrift(rootDir) : [];
 
   const valid =
     missingArtifacts.length === 0 &&
