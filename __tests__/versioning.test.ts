@@ -119,6 +119,40 @@ describe("Versioning Model", () => {
       expect(res.packageLockVersion).toBe(lock.version);
     });
 
+    it("passes validation when package.json '1.0.0' matches package-lock.json '1.0.0'", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "package-lock.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "COMPATIBILITY.md"),
+        "# Compatibility\nRelease versioning is tied to package.json (authoritative source).",
+      );
+
+      const res = validateRepositoryVersion(tempDir);
+      expect(res.version).toBe("1.0.0");
+      expect(res.packageLockVersion).toBe("1.0.0");
+    });
+
+    it("passes validation when package-lock.json is absent", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "COMPATIBILITY.md"),
+        "# Compatibility\nRelease versioning is tied to package.json (authoritative source).",
+      );
+
+      const res = validateRepositoryVersion(tempDir);
+      expect(res.version).toBe("1.0.0");
+      expect(res.packageLockVersion).toBeUndefined();
+    });
+
     it("throws INVALID_INPUT when package-lock.json version conflicts with package.json", () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -139,6 +173,75 @@ describe("Versioning Model", () => {
       } catch (err) {
         expect((err as WorkflowError).code).toBe("INVALID_INPUT");
         expect((err as WorkflowError).message).toContain("Conflicting version declarations");
+      }
+    });
+
+    it("throws INVALID_INPUT when package-lock.json is missing required version field", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "package-lock.json"),
+        JSON.stringify({ name: "test" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "COMPATIBILITY.md"),
+        "# Compatibility\nRelease versioning is tied to package.json (authoritative source).",
+      );
+
+      expect(() => validateRepositoryVersion(tempDir)).toThrow(WorkflowError);
+      try {
+        validateRepositoryVersion(tempDir);
+      } catch (err) {
+        expect((err as WorkflowError).code).toBe("INVALID_INPUT");
+        expect((err as WorkflowError).message).toContain("package-lock.json is missing required 'version' field");
+      }
+    });
+
+    it("throws INVALID_INPUT when package-lock.json version field is not a string", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "package-lock.json"),
+        JSON.stringify({ name: "test", version: 123 }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "COMPATIBILITY.md"),
+        "# Compatibility\nRelease versioning is tied to package.json (authoritative source).",
+      );
+
+      expect(() => validateRepositoryVersion(tempDir)).toThrow(WorkflowError);
+      try {
+        validateRepositoryVersion(tempDir);
+      } catch (err) {
+        expect((err as WorkflowError).code).toBe("INVALID_INPUT");
+        expect((err as WorkflowError).message).toContain("package-lock.json 'version' field must be a string");
+      }
+    });
+
+    it("throws INVALID_INPUT when package-lock.json contains malformed JSON", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "test", version: "1.0.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "package-lock.json"),
+        "{ invalid json",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "COMPATIBILITY.md"),
+        "# Compatibility\nRelease versioning is tied to package.json (authoritative source).",
+      );
+
+      expect(() => validateRepositoryVersion(tempDir)).toThrow(WorkflowError);
+      try {
+        validateRepositoryVersion(tempDir);
+      } catch (err) {
+        expect((err as WorkflowError).code).toBe("INVALID_INPUT");
+        expect((err as WorkflowError).message).toContain("Malformed JSON in package-lock.json");
       }
     });
 
@@ -189,12 +292,40 @@ describe("Versioning Model", () => {
     });
 
     it("classifies removed matrix combinations as major", () => {
-      const impact = classifyChangeImpact({ removedMatrixCombinations: 1 });
-      expect(impact).toBe("major");
+      expect(classifyChangeImpact({ removedMatrixCombinations: 1 })).toBe("major");
     });
 
-    it("classifies added matrix combinations or new inputs as minor", () => {
+    it("classifies required public input addition as major", () => {
+      expect(classifyChangeImpact({ hasRequiredInputAddition: true })).toBe("major");
+    });
+
+    it("classifies optional-to-required input change as major", () => {
+      expect(classifyChangeImpact({ hasOptionalToRequiredChange: true })).toBe("major");
+    });
+
+    it("classifies default value change as major", () => {
+      expect(classifyChangeImpact({ hasDefaultValueChange: true })).toBe("major");
+    });
+
+    it("classifies removed public input or output as major", () => {
+      expect(classifyChangeImpact({ hasRemovedPublicInput: true })).toBe("major");
+      expect(classifyChangeImpact({ hasRemovedPublicOutput: true })).toBe("major");
+    });
+
+    it("classifies incompatible behavior change as major", () => {
+      expect(classifyChangeImpact({ hasIncompatibleBehaviorChange: true })).toBe("major");
+    });
+
+    it("classifies added optional inputs or public outputs as minor", () => {
+      expect(classifyChangeImpact({ addedOptionalInputs: 1 })).toBe("minor");
+      expect(classifyChangeImpact({ addedPublicOutputs: 1 })).toBe("minor");
+    });
+
+    it("classifies added matrix combinations as minor", () => {
       expect(classifyChangeImpact({ addedMatrixCombinations: 1 })).toBe("minor");
+    });
+
+    it("classifies new inputs or outputs count or backward-compatible features as minor", () => {
       expect(classifyChangeImpact({ newInputsOrOutputs: 1 })).toBe("minor");
       expect(classifyChangeImpact({ backwardCompatibleFeatures: true })).toBe("minor");
     });

@@ -31,12 +31,30 @@ export interface ChangeDescriptor {
   breakingContractChanges?: BreakingChange[];
   /** Count of removed supported runtime/package-manager matrix combinations. */
   removedMatrixCombinations?: number;
+  /** Indicates a required public input was added. */
+  hasRequiredInputAddition?: boolean;
+  /** Indicates an optional public input was changed to required. */
+  hasOptionalToRequiredChange?: boolean;
+  /** Indicates default value of a public action input was changed. */
+  hasDefaultValueChange?: boolean;
+  /** Indicates a public action input was removed. */
+  hasRemovedPublicInput?: boolean;
+  /** Indicates a public action output was removed. */
+  hasRemovedPublicOutput?: boolean;
+  /** Indicates an incompatible behavioral or contract change occurred. */
+  hasIncompatibleBehaviorChange?: boolean;
+
+  /** Count of newly added optional public action inputs. */
+  addedOptionalInputs?: number;
+  /** Count of newly added public action outputs. */
+  addedPublicOutputs?: number;
   /** Count of newly added supported runtime/package-manager matrix combinations. */
   addedMatrixCombinations?: number;
   /** Count of newly added optional public inputs or public outputs. */
   newInputsOrOutputs?: number;
   /** Indicates backward-compatible new feature additions. */
   backwardCompatibleFeatures?: boolean;
+
   /** Indicates bug fixes, implementation adjustments, or non-functional changes. */
   isBugFixOrDocOnly?: boolean;
 }
@@ -160,12 +178,10 @@ export function validateRepositoryVersion(rootDir: string = process.cwd()): {
   let lockVersion: string | undefined;
 
   if (fs.existsSync(lockPath)) {
+    let lockData: Record<string, unknown>;
     try {
       const lockContent = fs.readFileSync(lockPath, "utf8");
-      const lockData = JSON.parse(lockContent) as Record<string, unknown>;
-      if (typeof lockData.version === "string") {
-        lockVersion = lockData.version.trim();
-      }
+      lockData = JSON.parse(lockContent) as Record<string, unknown>;
     } catch (err) {
       throw new WorkflowError(
         "INVALID_INPUT",
@@ -178,7 +194,34 @@ export function validateRepositoryVersion(rootDir: string = process.cwd()): {
       );
     }
 
-    if (lockVersion && lockVersion !== pkgVersion) {
+    if (lockData.version === undefined || lockData.version === null) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        "package-lock.json is missing required 'version' field.",
+        { stage: "version-validation", path: lockPath },
+      );
+    }
+
+    if (typeof lockData.version !== "string") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        "package-lock.json 'version' field must be a string.",
+        { stage: "version-validation", path: lockPath, value: lockData.version },
+      );
+    }
+
+    const trimmedLockVersion = lockData.version.trim();
+    if (!isValidSemVer(trimmedLockVersion)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `package-lock.json 'version' field "${trimmedLockVersion}" is not a valid Semantic Version.`,
+        { stage: "version-validation", path: lockPath, version: trimmedLockVersion },
+      );
+    }
+
+    lockVersion = trimmedLockVersion;
+
+    if (lockVersion !== pkgVersion) {
       throw new WorkflowError(
         "INVALID_INPUT",
         `Conflicting version declarations: package.json has "${pkgVersion}" but package-lock.json has "${lockVersion}".`,
@@ -219,13 +262,21 @@ export function validateRepositoryVersion(rootDir: string = process.cwd()): {
 export function classifyChangeImpact(change: ChangeDescriptor): VersionImpact {
   if (
     (change.breakingContractChanges && change.breakingContractChanges.length > 0) ||
-    (change.removedMatrixCombinations && change.removedMatrixCombinations > 0)
+    (change.removedMatrixCombinations && change.removedMatrixCombinations > 0) ||
+    change.hasRequiredInputAddition ||
+    change.hasOptionalToRequiredChange ||
+    change.hasDefaultValueChange ||
+    change.hasRemovedPublicInput ||
+    change.hasRemovedPublicOutput ||
+    change.hasIncompatibleBehaviorChange
   ) {
     return "major";
   }
 
   if (
     (change.addedMatrixCombinations && change.addedMatrixCombinations > 0) ||
+    (change.addedOptionalInputs && change.addedOptionalInputs > 0) ||
+    (change.addedPublicOutputs && change.addedPublicOutputs > 0) ||
     (change.newInputsOrOutputs && change.newInputsOrOutputs > 0) ||
     change.backwardCompatibleFeatures
   ) {
