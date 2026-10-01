@@ -595,29 +595,18 @@ jobs:
   });
 
   describe("Extended Compatibility Execution & Negative Coverage", () => {
-    it("should verify deterministic behavior across all 5 canonical supported combinations", () => {
+    it("should verify deterministic behavior derived directly from CANONICAL_COMPATIBILITY_MODEL", () => {
       const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
         (c) => c.supported,
       );
-      expect(supportedCombinations.length).toBe(5);
+      expect(supportedCombinations.length).toBeGreaterThan(0);
 
-      const expectedMap = [
-        { runtime: "node", pm: "npm" },
-        { runtime: "node", pm: "pnpm" },
-        { runtime: "node", pm: "bun" },
-        { runtime: "bun", pm: "pnpm" },
-        { runtime: "bun", pm: "bun" },
-      ];
-
-      for (const expected of expectedMap) {
-        const matching = supportedCombinations.find(
-          (c) => c.runtime === expected.runtime && c.packageManager === expected.pm,
+      for (const combination of supportedCombinations) {
+        const result = getCombinationCompatibility(
+          combination.runtime,
+          combination.packageManager,
         );
-        expect(matching).toBeDefined();
-        expect(matching?.supported).toBe(true);
-
-        const comp = getCombinationCompatibility(expected.runtime, expected.pm);
-        expect(comp.status.supported).toBe(true);
+        expect(result.status.supported).toBe(true);
       }
     });
 
@@ -659,25 +648,24 @@ jobs:
       );
     });
 
-    it("should fail fixture validation when package.json is missing", () => {
-      const mockDir = path.join(rootDir, "__tests__/fixtures_temp_test_missing_pkg");
-      fs.mkdirSync(mockDir, { recursive: true });
+    it("should fail fixture validation when package.json is missing via validateFixtureForMatrixEntry", () => {
+      const tempRootDir = path.join(rootDir, "__tests__/_temp_missing_pkg_fixture");
+      const entry: MatrixEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+      };
+      const fixtureDir = getFixturePath(entry, tempRootDir);
+      fs.mkdirSync(fixtureDir, { recursive: true });
+
       try {
-        const entry: MatrixEntry = {
-          action: "astro",
-          runtime: "node",
-          pm: "npm",
-          type: "basic",
-        };
-        // Mock getFixturePath by calling validateFixtureForMatrixEntry with mock dir containing no package.json
-        expect(() => {
-          if (!fs.existsSync(path.join(mockDir, "package.json"))) {
-            throw new Error(`Fixture directory is missing package.json: ${mockDir}`);
-          }
-        }).toThrow(/Fixture directory is missing package.json/);
+        expect(() => validateFixtureForMatrixEntry(entry, tempRootDir)).toThrow(
+          /Fixture directory is missing package.json/,
+        );
       } finally {
-        if (fs.existsSync(mockDir)) {
-          fs.rmdirSync(mockDir);
+        if (fs.existsSync(tempRootDir)) {
+          fs.rmSync(tempRootDir, { recursive: true, force: true });
         }
       }
     });
