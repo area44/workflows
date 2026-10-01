@@ -60,7 +60,7 @@ describe("Artifact Integrity Verification", () => {
       expect(() => getExpectedArtifacts(tempDir)).toThrow(/Configuration file not found/);
     });
 
-    it("respects custom rootDir independently without relying on process.cwd() config", () => {
+    it("Case G — custom rootDir operates independently without relying on process.cwd()", () => {
       const customConfig = `
         export default defineConfig({
           pack: ["isolated-tool"].map((name) => ({
@@ -84,9 +84,10 @@ describe("Artifact Integrity Verification", () => {
   });
 
   describe("verifyArtifactIntegrity", () => {
-    it("1. passes verification when all expected artifacts exist and dist/ is synchronized", () => {
+    it("Case A — valid: passes verification when source and dist/ are synchronized", () => {
       const result = verifyArtifactIntegrity();
       expect(result.valid).toBe(true);
+      expect(result.buildFailed).toBe(false);
       expect(result.missingArtifacts).toEqual([]);
       expect(result.unexpectedArtifacts).toEqual([]);
       expect(result.staleArtifacts).toEqual([]);
@@ -94,7 +95,7 @@ describe("Artifact Integrity Verification", () => {
       expect(result.expectedArtifacts.length).toBeGreaterThanOrEqual(4);
     });
 
-    it("2. detects missing artifacts", () => {
+    it("Case B — missing artifact: fails when expected dist file does not exist", () => {
       const customConfig = `
         export default defineConfig({
           pack: ["tool1", "tool2"].map((name) => ({
@@ -117,7 +118,7 @@ describe("Artifact Integrity Verification", () => {
       expect(result.missingArtifacts).toEqual([path.normalize("dist/tool2.mjs")]);
     });
 
-    it("3. detects empty artifact files", () => {
+    it("Case C — empty artifact: fails when dist file is 0 bytes", () => {
       const customConfig = `
         export default defineConfig({
           pack: ["empty-tool"].map((name) => ({
@@ -139,7 +140,7 @@ describe("Artifact Integrity Verification", () => {
       expect(result.errors.some((e) => e.includes("Generated artifact is empty"))).toBe(true);
     });
 
-    it("4. detects unexpected files in dist/", () => {
+    it("Case D — unexpected artifact: fails when untracked extra file exists in dist/", () => {
       const customConfig = `
         export default defineConfig({
           pack: ["tool1"].map((name) => ({
@@ -162,7 +163,80 @@ describe("Artifact Integrity Verification", () => {
       expect(result.unexpectedArtifacts).toEqual([path.normalize("dist/unexpected-file.js")]);
     });
 
-    it("5. detects modified/stale artifacts via working tree status", () => {
+    it("Case E — stale artifact: fails when source is updated to v2 but dist/ remains v1", () => {
+      const customConfig = `
+        export default defineConfig({
+          pack: ["tool1"].map((name) => ({
+            entry: { [name]: \`src/\${name}.ts\` },
+            outDir: "dist",
+            format: "esm",
+          })),
+        });
+      `;
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
+      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
+
+      // Initial state: source v1, dist v1
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 1;");
+      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v1 bundle output");
+
+      // Source changed to v2 without developer modifying dist/
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 2; // updated source");
+
+      // Build simulation function that regenerates dist based on updated source
+      const mockBuildFn = () => {
+        const srcContent = fs.readFileSync(path.join(tempDir, "src/tool1.ts"), "utf8");
+        const newDistContent = srcContent.includes("v = 2") ? "// v2 bundle output" : "// v1 bundle output";
+        fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), newDistContent);
+      };
+
+      const result = verifyArtifactIntegrity(tempDir, {
+        executeBuild: true,
+        buildFn: mockBuildFn,
+        checkGitStatus: false,
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.staleArtifacts).toEqual([path.normalize("dist/tool1.mjs")]);
+      expect(result.errors.some((e) => e.includes("stale/out-of-sync"))).toBe(true);
+    });
+
+    it("Case F — build failure: fails verification when build step fails", () => {
+      const customConfig = `
+        export default defineConfig({
+          pack: ["tool1"].map((name) => ({
+            entry: { [name]: \`src/\${name}.ts\` },
+            outDir: "dist",
+            format: "esm",
+          })),
+        });
+      `;
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
+      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
+
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 1;");
+      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// old dist file");
+
+      const mockFailingBuildFn = () => {
+        throw new Error("Build command exited with non-zero status 1");
+      };
+
+      const result = verifyArtifactIntegrity(tempDir, {
+        executeBuild: true,
+        buildFn: mockFailingBuildFn,
+        checkGitStatus: false,
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.buildFailed).toBe(true);
+      expect(result.errors.some((e) => e.includes("Build command failed during artifact verification"))).toBe(
+        true,
+      );
+    });
+
+    it("detects modified/stale artifacts via git status", () => {
       execSync("git init", { cwd: tempDir, stdio: "ignore" });
       execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
       execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
@@ -186,67 +260,6 @@ describe("Artifact Integrity Verification", () => {
       execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
 
       fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v2 manually edited artifact");
-
-      const result = verifyArtifactIntegrity(tempDir, { checkGitStatus: true, executeBuild: false });
-      expect(result.valid).toBe(false);
-      expect(result.staleArtifacts).toEqual([path.normalize("dist/tool1.mjs")]);
-    });
-
-    it("6. works on custom rootDir with isolated config, src, and dist directories", () => {
-      const customConfig = `
-        export default defineConfig({
-          pack: ["isolated-action"].map((name) => ({
-            entry: { [name]: \`src/\${name}.ts\` },
-            outDir: "dist",
-            format: "esm",
-          })),
-        });
-      `;
-      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
-      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
-
-      fs.writeFileSync(path.join(tempDir, "src/isolated-action.ts"), "export const x = 1;");
-      fs.writeFileSync(path.join(tempDir, "dist/isolated-action.mjs"), "// built content");
-
-      const result = verifyArtifactIntegrity(tempDir, { checkGitStatus: false, executeBuild: false });
-      expect(result.valid).toBe(true);
-      expect(result.expectedArtifacts).toEqual([
-        {
-          name: "isolated-action",
-          sourcePath: path.normalize("src/isolated-action.ts"),
-          outputPath: path.normalize("dist/isolated-action.mjs"),
-        },
-      ]);
-    });
-
-    it("7. fails verification when source code is updated without rebuilding dist/", () => {
-      execSync("git init", { cwd: tempDir, stdio: "ignore" });
-      execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
-      execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
-
-      const customConfig = `
-        export default defineConfig({
-          pack: ["tool1"].map((name) => ({
-            entry: { [name]: \`src/\${name}.ts\` },
-            outDir: "dist",
-            format: "esm",
-          })),
-        });
-      `;
-      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
-      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
-
-      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const a = 1;");
-      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v1 output");
-
-      execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
-
-      // Update source file in tempDir without regenerating dist/tool1.mjs
-      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const a = 2; // updated source");
-      // Simulate build regenerating dist/
-      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v2 output regenerated");
 
       const result = verifyArtifactIntegrity(tempDir, { checkGitStatus: true, executeBuild: false });
       expect(result.valid).toBe(false);

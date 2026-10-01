@@ -11,10 +11,12 @@ export interface ArtifactMapping {
 export interface VerificationOptions {
   checkGitStatus?: boolean;
   executeBuild?: boolean;
+  buildFn?: () => void;
 }
 
 export interface VerificationResult {
   valid: boolean;
+  buildFailed: boolean;
   expectedArtifacts: ArtifactMapping[];
   missingArtifacts: string[];
   unexpectedArtifacts: string[];
@@ -182,7 +184,7 @@ function checkGitStatusDrift(rootDir: string): string[] {
       }
     }
   } catch {
-    // Ignore git command failure if not in git repo
+    // Ignore git command failure
   }
 
   return staleArtifacts;
@@ -195,28 +197,73 @@ export function verifyArtifactIntegrity(
   rootDir: string = process.cwd(),
   options: VerificationOptions = {},
 ): VerificationResult {
-  if (options.executeBuild) {
-    try {
-      execSync("npm run build", {
-        cwd: rootDir,
-        stdio: ["ignore", "ignore", "ignore"],
-      });
-    } catch {
-      // Build failure will be reflected in output verification below
+  const expectedArtifacts = getExpectedArtifacts(rootDir);
+  const preBuildContents = new Map<string, string>();
+
+  for (const artifact of expectedArtifacts) {
+    const fullOutputPath = path.join(rootDir, artifact.outputPath);
+    if (fs.existsSync(fullOutputPath)) {
+      preBuildContents.set(artifact.outputPath, fs.readFileSync(fullOutputPath, "utf8"));
     }
   }
 
-  const expectedArtifacts = getExpectedArtifacts(rootDir);
-  const { missingArtifacts, errors } = checkMissingAndEmptyArtifacts(expectedArtifacts, rootDir);
+  let buildFailed = false;
+  const errors: string[] = [];
+
+  if (options.executeBuild) {
+    try {
+      if (options.buildFn) {
+        options.buildFn();
+      } else {
+        execSync("npm run build", {
+          cwd: rootDir,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      }
+    } catch (err: unknown) {
+      buildFailed = true;
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Build command failed during artifact verification: ${msg}`);
+    }
+  }
+
+  const { missingArtifacts, errors: existenceErrors } = checkMissingAndEmptyArtifacts(
+    expectedArtifacts,
+    rootDir,
+  );
+  errors.push(...existenceErrors);
+
   const { unexpectedArtifacts, distError } = checkUnexpectedDistFiles(expectedArtifacts, rootDir);
   if (distError) {
     errors.push(distError);
   }
 
+  const staleArtifacts: string[] = [];
+
+  if (options.executeBuild && !buildFailed) {
+    for (const artifact of expectedArtifacts) {
+      const fullOutputPath = path.join(rootDir, artifact.outputPath);
+      if (fs.existsSync(fullOutputPath)) {
+        const postBuildContent = fs.readFileSync(fullOutputPath, "utf8");
+        const preBuildContent = preBuildContents.get(artifact.outputPath);
+        if (preBuildContent !== undefined && preBuildContent !== postBuildContent) {
+          staleArtifacts.push(artifact.outputPath);
+          errors.push(
+            `Generated artifact '${artifact.outputPath}' was stale/out-of-sync with source.`,
+          );
+        }
+      }
+    }
+  }
+
   const checkGit = options.checkGitStatus ?? true;
-  const staleArtifacts = checkGit ? checkGitStatusDrift(rootDir) : [];
+  if (checkGit && staleArtifacts.length === 0) {
+    const gitStale = checkGitStatusDrift(rootDir);
+    staleArtifacts.push(...gitStale);
+  }
 
   const valid =
+    !buildFailed &&
     missingArtifacts.length === 0 &&
     unexpectedArtifacts.length === 0 &&
     staleArtifacts.length === 0 &&
@@ -224,6 +271,7 @@ export function verifyArtifactIntegrity(
 
   return {
     valid,
+    buildFailed,
     expectedArtifacts,
     missingArtifacts,
     unexpectedArtifacts,
@@ -240,6 +288,9 @@ export function runArtifactVerification(rootDir: string = process.cwd()): void {
 
   if (!result.valid) {
     console.error("Artifact Integrity Verification Failed:");
+    if (result.buildFailed) {
+      console.error("  Build Failure Detected during verification.");
+    }
     if (result.missingArtifacts.length > 0) {
       console.error("  Missing Artifacts:");
       result.missingArtifacts.forEach((item) => console.error(`    - ${item}`));
