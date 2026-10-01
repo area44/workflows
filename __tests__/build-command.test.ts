@@ -223,8 +223,8 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code and set workflow failure with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
-      process.env.BUILD_COMMAND = "node -e \"process.exit(2)\"";
+    it("should handle failing build command with non-zero exit code and sanitize command in WorkflowError message and context", async () => {
+      process.env.BUILD_COMMAND = "npm run build --token=ghp_secret1234567890123456789012345";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
 
@@ -234,7 +234,10 @@ describe("build-command", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
           code: "COMMAND_EXECUTION_FAILURE",
-          message: 'Build command failed with exit code 2: node -e "process.exit(2)"',
+          message: 'Build command failed with exit code 2: npm run build --token=***',
+          context: expect.objectContaining({
+            command: 'npm run build --token=***',
+          }),
         }),
       );
     });

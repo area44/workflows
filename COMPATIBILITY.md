@@ -272,6 +272,61 @@ The error contract does **not** maintain a secondary or duplicated compatibility
 
 ---
 
+## Security Boundaries & Invariants
+
+This section formalizes the security architecture, input trust boundaries, execution constraints, credential sanitization rules, and operational invariants enforced across `@area44/workflows`.
+
+### 1. Trust Boundaries & Control Planes
+
+The repository delineates distinct boundaries between user-supplied input, environment detection, and execution context:
+
+- **User-Controlled Inputs**:
+  - Composite action inputs (`runtime`, `build-command`, `path` in `action.yml`) are untrusted inputs supplied by workflow authors.
+  - Workspace configuration files (`package.json`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) are read from the checkout root.
+  - Environment inputs are parsed and strictly validated by `parseEnvironmentInputs()` in `src/resolve-environment.ts`. Any malformed input (e.g., unterminated quotes, duplicate specifiers, unrecognized tool names) fails fast with `INVALID_INPUT` or `UNSUPPORTED_RUNTIME_OR_PM` before tool setup or build execution occurs.
+- **Environment & Runtime Selection**:
+  - Toolchain selection (Node.js version, Bun version, package manager) is computed deterministically by environment resolution pipeline functions.
+  - Resolution precedence is strictly enforced: explicit action input > package manager inference > fallback defaults.
+  - Selected runtime/package manager combinations are strictly cross-checked against `CANONICAL_COMPATIBILITY_MODEL`. Unsupported combinations (e.g., Bun runtime with npm package manager) trigger fail-fast error `UNSUPPORTED_COMBINATION`.
+- **Command & Script Execution Boundary**:
+  - `src/build-command.ts` parses and tokenizes `build-command` strings using a custom tokenizer without passing commands to a shell subshell (e.g. `sh -c` or `bash -c`). Arguments are passed directly as array arguments to `@actions/exec` (`exec.exec(command, args)`).
+  - Shell expansion metacharacters (`;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values, preventing shell injection through custom build command strings.
+  - `src/lint-format.ts` sanitizes package manager names via `sanitizePackageManager()` (enforcing alphanumeric/hyphen characters) before running script hooks (`check`, `lint`, `format`, `fmt`).
+- **Filesystem Access Boundary**:
+  - Read-only inspection is limited to workspace setup files (`package.json`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles, `vite.config.ts`).
+  - Write access is restricted to generated output directories (e.g. `dist/` or user-specified site path) and temporary fixture setup during CI matrix execution.
+- **Source vs Generated Artifact Trust Boundary**:
+  - TypeScript files in `src/` are the single source of truth for execution logic.
+  - Generated files in `dist/` are build targets and are never treated as hand-editable source code.
+  - Source-to-artifact synchronization is enforced in CI via `npm run verify:artifacts` (`src/artifact-integrity.ts`). Direct edits to `dist/` trigger build failure.
+
+### 2. Credential & Token Sanitization Invariants
+
+To prevent accidental leakages of credentials, access tokens, or sensitive URLs in logs, outputs, and exception context:
+
+- `sanitizeCommandString()` in `src/build-command.ts` masks sensitive patterns before logging or attaching to error context:
+  - URLs containing authentication credentials (e.g., `https://user:pass@host` -> `https://***:***@host`).
+  - Sensitive CLI flags (e.g., `--token=secret`, `--key secret`, `--api-key secret`, `--pat secret` -> `--token=***`).
+  - Common access token patterns (GitHub PATs `ghp_...`, `github_pat_...`, npm tokens `npm_...`, Slack tokens `xox...`).
+- Error messages and `WorkflowError` context objects attached to setFailed or throw statements must never contain unmasked tokens or sensitive URLs.
+
+### 3. Error Handling & Execution Invariants
+
+- **No Silent Failure Suppression**:
+  - Non-zero exit codes from build commands or script failures are never swallowed or converted to success.
+  - Failures trigger `core.setFailed()` with structured `WorkflowError` instances (`COMMAND_EXECUTION_FAILURE`) and terminate execution with non-zero exit codes.
+- **Preservation of Error Contracts**:
+  - Error categories (`INVALID_INPUT`, `UNSUPPORTED_RUNTIME_OR_PM`, `UNSUPPORTED_COMBINATION`, `MISSING_CONFIGURATION`, `SETUP_FAILURE`, `COMMAND_EXECUTION_FAILURE`) are consistently preserved throughout the pipeline.
+- **Compatibility Single Source of Truth**:
+  - Compatibility decisions derive exclusively from `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`. No secondary matrices exist.
+
+### 4. CI & Test Fixture Security Assumptions
+
+- Automated CI workflows (`.github/workflows/ci.yml`, `test-actions.yml`, `autofix.yml`) run on standard GitHub-hosted `ubuntu-latest` runners in isolated containers/VMs.
+- Test matrix entries map deterministically to fixture directories in `__tests__/fixtures/`. Fixture directories are treated as isolated project workspaces and cannot escape their workspace root.
+
+---
+
 ## Lightweight Release & Toolchain Upgrade Policy
 
 To prevent silent compatibility regressions and manage toolchain upgrades predictably, changes to defaults or supported environments must follow this release policy.
