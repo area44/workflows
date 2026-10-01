@@ -15,7 +15,7 @@
     "build": "vp pack",
     "test": "vp test",
     "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
-    "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./src/artifact-integrity.ts\"; runArtifactVerification();'"
+    "verify:artifacts": "vp test __tests__/artifact-integrity.test.ts"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",

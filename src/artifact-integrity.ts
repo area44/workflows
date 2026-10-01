@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { WorkflowError } from "./errors";
+
 export interface ArtifactMapping {
   name: string;
   sourcePath: string;
@@ -91,7 +93,11 @@ export function parseViteConfigPack(content: string): ArtifactMapping[] {
     }
   }
 
-  throw new Error("Unable to parse pack configuration from vite.config.ts");
+  throw new WorkflowError(
+    "MISSING_CONFIGURATION",
+    "Unable to parse pack configuration from vite.config.ts",
+    { stage: "artifact-integrity", path: "vite.config.ts" },
+  );
 }
 
 /**
@@ -100,7 +106,11 @@ export function parseViteConfigPack(content: string): ArtifactMapping[] {
 export function getExpectedArtifacts(rootDir: string = process.cwd()): ArtifactMapping[] {
   const viteConfigPath = path.join(rootDir, "vite.config.ts");
   if (!fs.existsSync(viteConfigPath)) {
-    throw new Error(`Configuration file not found: ${viteConfigPath}`);
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Configuration file not found: ${viteConfigPath}`,
+      { stage: "artifact-integrity", path: viteConfigPath },
+    );
   }
 
   const content = fs.readFileSync(viteConfigPath, "utf8");

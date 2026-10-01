@@ -1,6 +1,8 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 
+import { WorkflowError } from "./errors";
+
 export interface ParsedCommand {
   command: string;
   args: string[];
@@ -118,7 +120,9 @@ function tokenizeCommand(trimmed: string): string[] {
   }
 
   if (state.inDoubleQuote || state.inSingleQuote) {
-    throw new Error("Unterminated quote in build command string.");
+    throw new WorkflowError("INVALID_INPUT", "Unterminated quote in build command string.", {
+      stage: "build-command-parsing",
+    });
   }
 
   if (state.currentToken.length > 0 || state.wasQuoted) {
@@ -135,13 +139,19 @@ function tokenizeCommand(trimmed: string): string[] {
 export function parseCommand(cmdStr: string): ParsedCommand {
   const trimmed = cmdStr.trim();
   if (!trimmed) {
-    throw new Error("Build command string is empty.");
+    throw new WorkflowError("INVALID_INPUT", "Build command string is empty.", {
+      stage: "build-command-parsing",
+    });
   }
 
   const tokens = tokenizeCommand(trimmed);
 
   if (tokens.length === 0 || !tokens[0]) {
-    throw new Error("Failed to parse build command: no valid executable found.");
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      "Failed to parse build command: no valid executable found.",
+      { stage: "build-command-parsing" },
+    );
   }
 
   return {

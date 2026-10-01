@@ -6,7 +6,11 @@ import {
   isSupportedRuntime,
   validateRuntimePackageManagerCompatibility,
 } from "./compatibility";
+import { WorkflowError } from "./errors";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
+
+export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors";
+export { isWorkflowError, WorkflowError } from "./errors";
 
 export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
 export {
@@ -184,8 +188,10 @@ function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
 
 function validateCommaStructure(trimmed: string, runtimeInput: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
-    throw new Error(
+    throw new WorkflowError(
+      "INVALID_INPUT",
       `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+      { input: runtimeInput, reason: "malformed_comma_placement" },
     );
   }
 }
@@ -215,15 +221,19 @@ function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPa
     const prefixLen = isNodeSpec ? 5 : 4;
     const ver = part.slice(prefixLen);
     if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
-      throw new Error(
+      throw new WorkflowError(
+        "INVALID_INPUT",
         `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+        { input: runtimeInput, rawPart, reason: "malformed_version_specifier" },
       );
     }
     return { type: isNodeSpec ? "node" : "bun", version: ver };
   }
 
-  throw new Error(
+  throw new WorkflowError(
+    "INVALID_INPUT",
     `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+    { input: runtimeInput, rawPart, reason: "unrecognized_runtime_specifier" },
   );
 }
 
@@ -266,18 +276,24 @@ export function parseEnvironmentInputs(
   }
 
   if (counts.node > 1) {
-    throw new Error(
+    throw new WorkflowError(
+      "INVALID_INPUT",
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
+      { input: runtimeInput, specifier: "node", reason: "duplicate_specifier" },
     );
   }
   if (counts.bun > 1) {
-    throw new Error(
+    throw new WorkflowError(
+      "INVALID_INPUT",
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
+      { input: runtimeInput, specifier: "bun", reason: "duplicate_specifier" },
     );
   }
   if (counts.both > 1) {
-    throw new Error(
+    throw new WorkflowError(
+      "INVALID_INPUT",
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
+      { input: runtimeInput, specifier: "both", reason: "duplicate_specifier" },
     );
   }
 
@@ -573,14 +589,23 @@ export function detectBunVersion(pm: PackageManager): string {
 export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
   const rt = env.runtime as string;
   if (!isSupportedRuntime(rt)) {
-    throw new Error(`Invalid resolved runtime: "${rt}"`);
+    throw new WorkflowError("SETUP_FAILURE", `Invalid resolved runtime: "${rt}"`, {
+      stage: "environment-validation",
+      runtime: rt,
+    });
   }
   if (!env.pm || !env.pm.name || !env.pm.version) {
-    throw new Error(`Invalid resolved package manager: ${JSON.stringify(env.pm)}`);
+    throw new WorkflowError(
+      "SETUP_FAILURE",
+      `Invalid resolved package manager: ${JSON.stringify(env.pm)}`,
+      { stage: "environment-validation", pm: env.pm },
+    );
   }
   if (typeof env.nodeVersion !== "string" || typeof env.bunVersion !== "string") {
-    throw new Error(
+    throw new WorkflowError(
+      "SETUP_FAILURE",
       `Invalid resolved versions: node="${env.nodeVersion}", bun="${env.bunVersion}"`,
+      { stage: "environment-validation", nodeVersion: env.nodeVersion, bunVersion: env.bunVersion },
     );
   }
   validateRuntimePackageManagerCompatibility(env.runtime, env.pm.name);
@@ -608,7 +633,9 @@ export function writeOutput(
     env = nodeVersionOrEnv;
   } else {
     if (!pm) {
-      throw new Error("Missing package manager parameter in writeOutput");
+      throw new WorkflowError("SETUP_FAILURE", "Missing package manager parameter in writeOutput", {
+        stage: "write-output",
+      });
     }
     env = {
       nodeVersion: nodeVersionOrEnv,
