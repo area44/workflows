@@ -256,6 +256,10 @@ jobs:
 
       - name: Verify outputs
         env:
+          ACTION: ${{ matrix.action }}
+          RUNTIME: ${{ matrix.runtime }}
+          PM: ${{ matrix.pm }}
+          TYPE: ${{ matrix.type }}
           ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
           LINT_FORMAT_PM: ${{ steps.lint-format.outputs.package-manager }}
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
@@ -268,11 +272,22 @@ jobs:
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
+          FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           DETECTED_PM="${ASTRO_PM}${LINT_FORMAT_PM}${VITE_PM}${VITE_PLUS_PM}"
-          [[ "$DETECTED_PM" == "$EXPECTED_PM" ]] || { echo "Expected PM $EXPECTED_PM, got $DETECTED_PM"; false; }
+          if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
+            echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
+            echo "  Expected package manager: ${EXPECTED_PM}"
+            echo "  Detected package manager: ${DETECTED_PM}"
+            exit 1
+          fi
 
           DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"
-          [[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]] || { echo "Expected runtime $EXPECTED_RUNTIME, got $DETECTED_RUNTIME"; false; }
+          if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
+            echo "Error: [${ACTION}] Runtime mismatch stage failed for fixture '${FIXTURE_PATH}'."
+            echo "  Expected runtime: ${EXPECTED_RUNTIME}"
+            echo "  Detected runtime: ${DETECTED_RUNTIME}"
+            exit 1
+          fi
 
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
@@ -282,8 +297,24 @@ jobs:
             else
               EXPECTED_BASE="/${REPO_NAME}/"
             fi
-            [[ "$SITE" == "$EXPECTED_SITE" ]] || { echo "SITE mismatches: $SITE"; false; }
-            [[ "$BASE" == "$EXPECTED_BASE" ]] || { echo "BASE mismatches: $BASE"; false; }
+            if [[ "$SITE" != "$EXPECTED_SITE" ]]; then
+              echo "Error: [${ACTION}] Site URL mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected SITE: ${EXPECTED_SITE}"
+              echo "  Actual SITE:   ${SITE}"
+              exit 1
+            fi
+            if [[ "$BASE" != "$EXPECTED_BASE" ]]; then
+              echo "Error: [${ACTION}] Base URL mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected BASE: ${EXPECTED_BASE}"
+              echo "  Actual BASE:   ${BASE}"
+              exit 1
+            fi
+
+            if [[ ! -f "dist/index.html" ]]; then
+              echo "Error: [${ACTION}] Artifact verification stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
+              exit 1
+            fi
           fi
 
       - name: Restore Workspace Root

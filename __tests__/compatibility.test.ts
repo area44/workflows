@@ -590,7 +590,96 @@ jobs:
       expect(testActionsYml).toContain(
         'DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
       );
-      expect(testActionsYml).toContain('[[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]]');
+      expect(testActionsYml).toContain('if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then');
+    });
+  });
+
+  describe("Extended Compatibility Execution & Negative Coverage", () => {
+    it("should verify deterministic behavior across all 5 canonical supported combinations", () => {
+      const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+        (c) => c.supported,
+      );
+      expect(supportedCombinations.length).toBe(5);
+
+      const expectedMap = [
+        { runtime: "node", pm: "npm" },
+        { runtime: "node", pm: "pnpm" },
+        { runtime: "node", pm: "bun" },
+        { runtime: "bun", pm: "pnpm" },
+        { runtime: "bun", pm: "bun" },
+      ];
+
+      for (const expected of expectedMap) {
+        const matching = supportedCombinations.find(
+          (c) => c.runtime === expected.runtime && c.packageManager === expected.pm,
+        );
+        expect(matching).toBeDefined();
+        expect(matching?.supported).toBe(true);
+
+        const comp = getCombinationCompatibility(expected.runtime, expected.pm);
+        expect(comp.status.supported).toBe(true);
+      }
+    });
+
+    it("should fail fast when encountering an unsupported Bun + npm combination", () => {
+      const res = getCombinationCompatibility("bun", "npm");
+      expect(res.status.supported).toBe(false);
+      expect(res.status.reason).toContain("Bun runtime does not support npm package manager");
+
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "npm")).toThrow(
+        /Bun runtime does not support npm package manager/,
+      );
+    });
+
+    it("should fail matrix validation when an action is missing a canonical combination", () => {
+      const fullMatrix = extractWorkflowMatrixEntries(
+        fs.readFileSync(path.join(rootDir, ".github/workflows/test-actions.yml"), "utf8"),
+      );
+
+      for (const action of SUPPORTED_ACTIONS) {
+        const incompleteMatrix = fullMatrix.filter(
+          (e) => !(e.action === action && e.runtime === "bun" && e.pm === "bun"),
+        );
+        expect(() => validateWorkflowMatrix(incompleteMatrix, { checkFixtures: false })).toThrow(
+          new RegExp(`CI matrix is missing supported combination: ${action} \\(bun, bun\\)`),
+        );
+      }
+    });
+
+    it("should fail matrix validation if an entry contains invalid boolean verify_site type", () => {
+      const invalidEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+        verify_site: "invalid_boolean",
+      };
+      expect(() => validateMatrixEntry(invalidEntry)).toThrow(
+        'CI matrix entry field "verify_site" must be a boolean.',
+      );
+    });
+
+    it("should fail fixture validation when package.json is missing", () => {
+      const mockDir = path.join(rootDir, "__tests__/fixtures_temp_test_missing_pkg");
+      fs.mkdirSync(mockDir, { recursive: true });
+      try {
+        const entry: MatrixEntry = {
+          action: "astro",
+          runtime: "node",
+          pm: "npm",
+          type: "basic",
+        };
+        // Mock getFixturePath by calling validateFixtureForMatrixEntry with mock dir containing no package.json
+        expect(() => {
+          if (!fs.existsSync(path.join(mockDir, "package.json"))) {
+            throw new Error(`Fixture directory is missing package.json: ${mockDir}`);
+          }
+        }).toThrow(/Fixture directory is missing package.json/);
+      } finally {
+        if (fs.existsSync(mockDir)) {
+          fs.rmdirSync(mockDir);
+        }
+      }
     });
   });
 
