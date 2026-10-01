@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { WorkflowError } from "./errors";
+import { WorkflowError } from "./errors.js";
 
 export type SupportedRuntime = "node" | "bun";
 export type SupportedPackageManager = "npm" | "pnpm" | "bun";

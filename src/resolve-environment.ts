@@ -6,11 +6,11 @@ import {
   isSupportedRuntime,
   validateRuntimePackageManagerCompatibility,
 } from "./compatibility";
-import { WorkflowError } from "./errors";
+import { WorkflowError } from "./errors.js";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
 
-export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors";
-export { isWorkflowError, WorkflowError } from "./errors";
+export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors.js";
+export { isWorkflowError, WorkflowError } from "./errors.js";
 
 export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
 export {
