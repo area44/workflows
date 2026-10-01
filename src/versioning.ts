@@ -234,3 +234,25 @@ export function classifyChangeImpact(change: ChangeDescriptor): VersionImpact {
 
   return "patch";
 }
+
+/**
+ * Command-line entrypoint for verifying repository versioning contract.
+ * Exits with code 1 if validation fails.
+ */
+export function runVersionVerification(rootDir: string = process.cwd()): void {
+  try {
+    const result = validateRepositoryVersion(rootDir);
+    console.log(
+      `Verified repository versioning contract: package.json version "${result.version}" is valid SemVer and synchronized${result.packageLockVersion ? ` with package-lock.json (${result.packageLockVersion})` : ""}.`,
+    );
+  } catch (error) {
+    console.error("Repository Version Verification Failed:");
+    if (error instanceof WorkflowError) {
+      console.error(`  [${error.code}] ${error.message}`);
+    } else {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`  ${msg}`);
+    }
+    process.exit(1);
+  }
+}

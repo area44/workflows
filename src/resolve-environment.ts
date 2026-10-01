@@ -86,6 +86,7 @@ export {
   getRepositoryVersion,
   isValidSemVer,
   parseSemVer,
+  runVersionVerification,
   SEMVER_REGEX,
   validateRepositoryVersion,
 } from "./versioning";

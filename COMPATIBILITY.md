@@ -267,6 +267,8 @@ To ensure all composite actions run reliable, verified, and tamper-proof runtime
     ↓
   verify generated artifacts (npm run verify:artifacts)
     ↓
+  verify repository version (npm run verify:version)
+    ↓
   run tests / validation (npm test)
     ↓
   publish / release
@@ -415,7 +417,7 @@ The versioning model formalizes how repository versions are determined and what 
 - **Single Source of Truth**: The `version` property in `package.json` is the single authoritative source of truth for the repository version.
 - **Lockfile Synchronization**: `package-lock.json` (`version` property) must remain in exact synchronization with `package.json`.
 - **No Duplicate Declarations**: No manually maintained parallel version files, independent source constants, or hard-coded action versions exist.
-- **Programmatic Validation**: Machine-verifiable version retrieval and validation are implemented in `src/versioning.ts` (`getRepositoryVersion`, `validateRepositoryVersion`).
+- **Programmatic Validation**: Machine-verifiable version retrieval and validation are implemented in `src/versioning.ts` (`getRepositoryVersion`, `validateRepositoryVersion`, `runVersionVerification`) and enforced in CI via `npm run verify:version`.
 
 ### SemVer Interpretation
 
