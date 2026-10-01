@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 
-import { WorkflowError } from "./errors.js";
+import { WorkflowError } from "./errors.ts";
 
 export interface ParsedCommand {
   command: string;
