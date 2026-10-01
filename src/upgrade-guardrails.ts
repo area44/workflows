@@ -407,21 +407,39 @@ export function loadBaselineContractsFromGit(
 /**
  * Resolves the default base ref if not explicitly provided.
  */
-export function resolveBaseRef(explicitBaseRef?: string): string {
-  if (explicitBaseRef) return explicitBaseRef;
-  if (process.env.UPGRADE_BASE_REF) return process.env.UPGRADE_BASE_REF;
-  if (process.env.BASE_REF) return process.env.BASE_REF;
-  if (process.env.GITHUB_BASE_REF) return process.env.GITHUB_BASE_REF;
-  if (process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)) {
-    return process.env.GITHUB_EVENT_BEFORE;
+export function resolveBaseRef(explicitBaseRef?: string, rootDir: string = process.cwd()): string {
+  const candidates: (string | undefined)[] = [
+    explicitBaseRef,
+    process.env.UPGRADE_BASE_REF,
+    process.env.BASE_REF,
+    process.env.GITHUB_BASE_REF,
+    process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)
+      ? process.env.GITHUB_EVENT_BEFORE
+      : undefined,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    try {
+      execSync(`git rev-parse --verify "${candidate}"`, { cwd: rootDir, stdio: "ignore" });
+      return candidate;
+    } catch {
+      try {
+        execSync(`git rev-parse --verify "origin/${candidate}"`, { cwd: rootDir, stdio: "ignore" });
+        return `origin/${candidate}`;
+      } catch {
+        // Continue checking candidates
+      }
+    }
   }
 
   try {
-    execSync("git rev-parse --verify origin/main", { stdio: "ignore" });
+    execSync("git rev-parse --verify origin/main", { cwd: rootDir, stdio: "ignore" });
     return "origin/main";
   } catch {
     try {
-      execSync("git rev-parse --verify main", { stdio: "ignore" });
+      execSync("git rev-parse --verify main", { cwd: rootDir, stdio: "ignore" });
       return "main";
     } catch {
       return "HEAD~1";
@@ -459,7 +477,7 @@ export function verifyUpgradeGuardrails(
   if (options.baselineContracts) {
     baseline = options.baselineContracts;
   } else {
-    baseRefUsed = resolveBaseRef(options.baseRef);
+    baseRefUsed = resolveBaseRef(options.baseRef, rootDir);
     baseline = loadBaselineContractsFromGit(baseRefUsed, rootDir);
   }
 
