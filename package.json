@@ -15,7 +15,8 @@
     "build": "vp pack",
     "test": "vp test",
     "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
-    "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./dist/resolve-environment.mjs\"; runArtifactVerification();'"
+    "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./dist/resolve-environment.mjs\"; runArtifactVerification();'",
+    "verify:version": "node --input-type=module -e 'import { runVersionVerification } from \"./dist/resolve-environment.mjs\"; runVersionVerification();'"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",

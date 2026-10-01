@@ -37,5 +37,8 @@ jobs:
       - name: Verify build artifacts
         run: npm run verify:artifacts
 
+      - name: Verify repository version
+        run: npm run verify:version
+
       - name: Run tests
         run: npm test

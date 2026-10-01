@@ -4,7 +4,7 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 
 ## Compatibility & Release Contract
 
-For detailed toolchain guarantees, supported runtime modes, compatibility matrix, artifact integrity rules, and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)**.
+For detailed toolchain guarantees, supported runtime modes, compatibility matrix, artifact integrity rules, versioning model (SemVer rules & authoritative package.json source), and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)** and the **[Versioning Model in COMPATIBILITY.md](./COMPATIBILITY.md#versioning-model)**.
 
 ## Composite Actions
 
@@ -89,7 +89,7 @@ The `resolveEnvironment()` entrypoint merges explicit `runtime` action inputs wi
    - Else if primary resolved `runtime` is `"bun"`, resolves `node-version` output to empty string (`""`).
    - Else uses detected Node.js version from `detectNodeVersion()`.
 6. **Compatibility Validation**:
-   - Validates resolved `runtime` and `package-manager` against the explicit Phase 2 compatibility contract (`validateRuntimePackageManagerCompatibility`).
+   - Validates resolved `runtime` and `package-manager` against the explicit compatibility contract (`validateRuntimePackageManagerCompatibility`).
    - Rejects unsupported combinations (e.g. Bun runtime with npm package manager or unknown tools) with a clear validation error.
 
 ### Default Fallback Versions

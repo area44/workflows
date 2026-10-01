@@ -267,6 +267,8 @@ To ensure all composite actions run reliable, verified, and tamper-proof runtime
     ↓
   verify generated artifacts (npm run verify:artifacts)
     ↓
+  verify repository version (npm run verify:version)
+    ↓
   run tests / validation (npm test)
     ↓
   publish / release
@@ -403,3 +405,69 @@ When upgrading default versions (e.g. Node.js 24 → 26, Bun 1.4 → 1.5, pnpm 1
 - Public action inputs and outputs must not be removed or renamed without a major version bump.
 - Default fallback version changes must be clearly documented in pull requests and release notes.
 - Consumer explicit overrides (via `.nvmrc`, `packageManager`, or `runtime` input) always take precedence over default version changes, ensuring existing projects with locked versions remain unaffected.
+
+---
+
+## Versioning Model
+
+The versioning model formalizes how repository versions are determined and what constitutes a version-impacting change across package versions, public action behaviors, generated `dist/` artifacts, and compatibility models.
+
+### Authoritative Version Source
+
+- **Single Source of Truth**: The `version` property in `package.json` is the single authoritative source of truth for the repository version.
+- **Lockfile Synchronization**: `package-lock.json` (`version` property) must remain in exact synchronization with `package.json`.
+- **No Duplicate Declarations**: No manually maintained parallel version files, independent source constants, or hard-coded action versions exist.
+- **Programmatic Validation**: Machine-verifiable version retrieval and validation are implemented in `src/versioning.ts` (`getRepositoryVersion`, `validateRepositoryVersion`, `runVersionVerification`) and enforced in CI via `npm run verify:version`.
+
+### SemVer Interpretation
+
+Repository versioning strictly adheres to Semantic Versioning 2.0.0 (`MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]`), validated programmatically via `parseSemVer()` and `isValidSemVer()`.
+
+### Change Classification Rules
+
+Changes are deterministically classified into SemVer impact categories using `classifyChangeImpact()` in `src/versioning.ts`:
+
+#### Patch-Level Changes
+
+Patch releases represent non-breaking fixes and non-functional changes:
+
+- Internal implementation bug fixes or error handling refinements.
+- Documentation updates that do not alter execution behavior or action contracts.
+- Internal refactoring preserving public action interfaces (`action.yml`) and compatibility models.
+
+#### Minor-Level Changes
+
+Minor releases introduce backward-compatible capabilities:
+
+- Addition of new optional public action inputs (`required: false`) in `action.yml`.
+- Addition of new public action outputs in `action.yml`.
+- Newly supported runtime or package manager matrix combinations added to `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`.
+- Backward-compatible internal features or tooling enhancements.
+
+#### Major-Level Changes
+
+Major releases contain breaking API or compatibility changes:
+
+- Removal of public action inputs or outputs from `action.yml`.
+- Modifying a public action input from optional (`required: false`) to required (`required: true`).
+- Changing default values of public action inputs.
+- Removal or deprecation of supported runtime or package manager combinations in `CANONICAL_COMPATIBILITY_MODEL`.
+- Any backward-incompatible behavioral change violating an existing public API or error contract.
+
+### Integration with Existing Contracts
+
+The versioning model references existing sources of truth without duplication:
+
+- **Public Action API**: Derived directly from `action.yml` files, parsed by `src/action-contract.ts`. Breaking API changes are flagged by `detectBreakingChanges()`.
+- **Compatibility Model**: Bound strictly to `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`.
+- **Artifact Integrity**: Governed by `src/artifact-integrity.ts`. Releases require rebuilding `dist/` (`npm run build`) and confirming artifact synchronization (`npm run verify:artifacts`).
+
+### Scope Boundaries & Non-Automated Behavior
+
+The versioning model formalizes version determination and classification rules. It explicitly does not automate:
+
+- Automatic dependency upgrade guardrails.
+- Automated release publishing or GitHub Release creation.
+- Release tag creation or git workflow tagging automation.
+- Automated changelog generation.
+- Provenance tracking infrastructure or `GITHUB_SHA` release metadata.

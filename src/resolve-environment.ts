@@ -75,6 +75,22 @@ export {
   verifyArtifactIntegrity,
 } from "./artifact-integrity";
 
+export type {
+  ChangeDescriptor,
+  ParsedSemVer,
+  RepositoryVersion,
+  VersionImpact,
+} from "./versioning";
+export {
+  classifyChangeImpact,
+  getRepositoryVersion,
+  isValidSemVer,
+  parseSemVer,
+  runVersionVerification,
+  SEMVER_REGEX,
+  validateRepositoryVersion,
+} from "./versioning";
+
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";
