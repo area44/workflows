@@ -110,6 +110,18 @@ Build commands across composite actions (`astro`, `vite`, `vite-plus`) are execu
   - `vite-plus` defaults to `vpr build`.
 - **Error Propagation**: Non-zero exit codes and command errors propagate directly with actionable messages via `core.setFailed`.
 
+## Security Boundaries & Invariants
+
+The security model of `@area44/workflows` establishes strict invariants across user inputs, environment resolution, shell command execution, filesystem access, artifact generation, and error handling:
+
+- **Input Validation**: Custom `runtime` inputs and `build-command` strings are strictly validated and tokenized, failing fast with `INVALID_INPUT` on malformed inputs or unterminated quotes.
+- **Shell Execution Safety**: Custom build commands are executed without passing through a shell subshell (e.g. `sh -c`), treating shell metacharacters as literal values to prevent shell injection. Package manager execution in script runners sanitizes package manager names.
+- **Credential Sanitization**: URLs with embedded credentials, sensitive CLI flags (`--token`, `--key`, `--api-key`), and access tokens (`ghp_...`, `npm_...`) are automatically masked in logs and error context objects via `sanitizeCommandString()`.
+- **Artifact Source Integrity**: TypeScript files in `src/` are the sole source of truth; generated `dist/` artifacts are build outputs enforced via automated verification (`npm run verify:artifacts`). Direct edits to `dist/` are prohibited.
+- **Error Invariants**: Execution errors are never silently converted to success; structured `WorkflowError` instances retain failure exit codes and classification codes.
+
+For complete security boundary specifications, see **[Security Boundaries & Invariants in COMPATIBILITY.md](./COMPATIBILITY.md#security-boundaries--invariants)**.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

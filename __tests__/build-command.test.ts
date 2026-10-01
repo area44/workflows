@@ -223,8 +223,8 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code and set workflow failure with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
-      process.env.BUILD_COMMAND = "node -e \"process.exit(2)\"";
+    it("should handle failing build command with non-zero exit code and sanitize command in WorkflowError message and context", async () => {
+      process.env.BUILD_COMMAND = "npm run build --token=ghp_secret1234567890123456789012345";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
 
@@ -234,9 +234,51 @@ describe("build-command", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
           code: "COMMAND_EXECUTION_FAILURE",
-          message: 'Build command failed with exit code 2: node -e "process.exit(2)"',
+          message: 'Build command failed with exit code 2: npm run build --token=***',
+          context: expect.objectContaining({
+            command: 'npm run build --token=***',
+          }),
         }),
       );
+    });
+
+    it("should sanitize secrets in WorkflowError message and context when exec throws an error containing sensitive tokens or URLs", async () => {
+      const secretToken = "ghp_123456789012345678901234567890123456";
+      const secretPass = "super_secret_pass";
+      process.env.BUILD_COMMAND = `npm run build --token=${secretToken} https://user:${secretPass}@github.com/repo.git`;
+
+      vi.mocked(exec.exec).mockRejectedValue(
+        new Error(`Failed to fetch from https://user:${secretPass}@github.com/repo.git using token ${secretToken}`),
+      );
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0];
+      const serialized = JSON.stringify(setFailedArg);
+
+      expect(serialized).not.toContain(secretToken);
+      expect(serialized).not.toContain(secretPass);
+      expect(serialized).toContain("https://***:***@github.com/repo.git");
+      expect(serialized).toContain("--token=***");
+    });
+
+    it("should sanitize secrets in WorkflowError message and context for malformed commands containing sensitive flags and credential URLs", async () => {
+      const secretVal = "my_secret_token_value_999";
+      const secretPass = "my_secret_password_777";
+      process.env.BUILD_COMMAND = `npm run build --token=${secretVal} https://admin:${secretPass}@example.com 'unclosed quote`;
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0] as any;
+
+      expect(setFailedArg.code).toBe("INVALID_INPUT");
+      expect(setFailedArg.message).toBe("Unterminated quote in build command string.");
+
+      const serialized = JSON.stringify(setFailedArg);
+      expect(serialized).not.toContain(secretVal);
+      expect(serialized).not.toContain(secretPass);
     });
 
     it("should handle exec throwing an exception and report actionable error message with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {

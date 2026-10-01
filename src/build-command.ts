@@ -184,8 +184,8 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
       const msg = err instanceof Error ? err.message : String(err);
       const parseErr = new WorkflowError(
         "INVALID_INPUT",
-        `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
-        { stage: "build-command-parsing", command: commandToParse, cause: err },
+        `Failed to parse build command "${sanitizeCommandString(commandToParse)}": ${sanitizeCommandString(msg)}`,
+        { stage: "build-command-parsing", command: sanitizeCommandString(commandToParse) },
       );
       core.setFailed(parseErr);
     }
@@ -209,7 +209,11 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
       const err = new WorkflowError(
         "COMMAND_EXECUTION_FAILURE",
         `Build command failed with exit code ${exitCode}: ${sanitizeCommandString(commandToParse)}`,
-        { stage: "build-command-execution", exitCode, command: commandToParse },
+        {
+          stage: "build-command-execution",
+          exitCode,
+          command: sanitizeCommandString(commandToParse),
+        },
       );
       core.setFailed(err);
       if (exitOnFailure) {
@@ -221,8 +225,11 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     const msg = err instanceof Error ? err.message : String(err);
     const execErr = new WorkflowError(
       "COMMAND_EXECUTION_FAILURE",
-      `Failed to execute build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
-      { stage: "build-command-execution", command: commandToParse, cause: err },
+      `Failed to execute build command "${sanitizeCommandString(commandToParse)}": ${sanitizeCommandString(msg)}`,
+      {
+        stage: "build-command-execution",
+        command: sanitizeCommandString(commandToParse),
+      },
     );
     core.setFailed(execErr);
     if (exitOnFailure) {
