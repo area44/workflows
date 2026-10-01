@@ -16,7 +16,8 @@
     "test": "vp test",
     "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
     "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./dist/resolve-environment.mjs\"; runArtifactVerification();'",
-    "verify:version": "node --input-type=module -e 'import { runVersionVerification } from \"./dist/resolve-environment.mjs\"; runVersionVerification();'"
+    "verify:version": "node --input-type=module -e 'import { runVersionVerification } from \"./dist/resolve-environment.mjs\"; runVersionVerification();'",
+    "verify:upgrade": "node --input-type=module -e 'import { runUpgradeVerification } from \"./dist/resolve-environment.mjs\"; runUpgradeVerification();'"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",

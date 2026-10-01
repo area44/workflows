@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Resolve environment
         shell: bash
@@ -39,6 +41,11 @@ jobs:
 
       - name: Verify repository version
         run: npm run verify:version
+
+      - name: Verify upgrade guardrails
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.before }}
+        run: npm run verify:upgrade
 
       - name: Run tests
         run: npm test

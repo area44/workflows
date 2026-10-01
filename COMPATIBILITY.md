@@ -471,3 +471,82 @@ The versioning model formalizes version determination and classification rules. 
 - Release tag creation or git workflow tagging automation.
 - Automated changelog generation.
 - Provenance tracking infrastructure or `GITHUB_SHA` release metadata.
+
+---
+
+## Upgrade Guardrails
+
+To prevent accidental breaking changes and compatibility regressions when modifying repository contracts or upgrading dependencies, machine-verifiable upgrade guardrails are enforced in local development and CI pipelines via `src/upgrade-guardrails.ts` and `npm run verify:upgrade`.
+
+### Scope & Checked Contracts
+
+Upgrade guardrails inspect contract changes across the baseline revision and target branch:
+
+- **Public Action API Contracts**: Verified against each composite action's `action.yml`.
+- **Compatibility Matrix Contracts**: Verified against `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`.
+- **Repository Version Alignment**: Verified against `package.json` (`version`) and Phase 14 SemVer impact classification.
+
+### Public Action API Integration
+
+- **Source of Truth**: Action interfaces defined in `action.yml` for all public actions (`astro`, `vite`, `vite-plus`, `lint-format`).
+- **Detected Breaking Changes**: Removing a public input/output, changing an input from optional to required, or changing an input default value.
+- **Detected Backward-Compatible Additions**: Adding optional inputs or new outputs.
+
+### Compatibility Model Integration
+
+- **Source of Truth**: `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`.
+- **Detected Compatibility Regressions**: Removal or unsupported status change of previously supported runtime/package-manager combinations.
+- **Detected Compatibility Additions**: Newly added supported runtime/package-manager combinations.
+
+### SemVer Impact Classification & Version Validation
+
+Upgrade guardrails derive the required SemVer impact level (`patch`, `minor`, `major`) via `classifyChangeImpact()`:
+
+- **Major Impact Required**: Any breaking Public Action API change or removed supported compatibility combination. Target version must bump major (`MAJOR.x.x`).
+- **Minor Impact Required**: Addition of optional inputs, new outputs, or newly supported compatibility combinations. Target version must bump minor or major (`x.MINOR.x`).
+- **Patch Impact Required**: Internal implementation fixes, refactoring, or doc updates. Target version must be greater than or equal to baseline (`x.x.PATCH`).
+- **Enforcement**: Verification fails with a non-zero exit code if declared `package.json` version does not satisfy the required impact level.
+
+### CI Workflow Integration
+
+In `.github/workflows/ci.yml`, upgrade guardrails run automatically during workflow execution:
+
+```
+resolve environment
+  ↓
+setup runtime
+  ↓
+install dependencies
+  ↓
+build (npm run build)
+  ↓
+verify build artifacts (npm run verify:artifacts)
+  ↓
+verify repository version (npm run verify:version)
+  ↓
+verify upgrade guardrails (npm run verify:upgrade)
+  ↓
+run tests (npm test)
+```
+
+The CI job fetches full Git history (`fetch-depth: 0`) and supplies `BASE_REF` (e.g. `${{ github.base_ref || github.event.before }}`) to compare target HEAD against the PR base branch or preceding commit.
+
+### Local Verification
+
+Developers can execute upgrade verification locally prior to committing:
+
+```bash
+npm run verify:upgrade
+```
+
+Custom base refs can be specified via environment variables or options:
+
+```bash
+BASE_REF=main npm run verify:upgrade
+```
+
+### Limitations & Base Revision Resolution
+
+- **Git Base Revision Requirement**: Base revision contracts are loaded via Git (`git show <baseRef>:<file>`).
+- **Shallow Clone Limitation**: In environments with shallow clones or unavailable base Git refs, verification fails fast with an explicit error requesting a full Git checkout or base ref specification.
+- **No Automatic Version Bumping**: Upgrade guardrails validate version sufficiency but do not automatically modify `package.json` or create release tags.

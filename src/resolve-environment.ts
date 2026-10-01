@@ -91,6 +91,25 @@ export {
   validateRepositoryVersion,
 } from "./versioning";
 
+export type {
+  BaselineContracts,
+  TargetContracts,
+  UpgradeGuardrailOptions,
+  UpgradeGuardrailResult,
+} from "./upgrade-guardrails.js";
+export {
+  compareCompatibilityModels,
+  comparePublicActionContracts,
+  evaluateUpgradeGuardrails,
+  isVersionSatisfyingImpact,
+  loadBaselineContractsFromGit,
+  loadTargetContracts,
+  parseCompatibilityModelFromSource,
+  resolveBaseRef,
+  runUpgradeVerification,
+  verifyUpgradeGuardrails,
+} from "./upgrade-guardrails.js";
+
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";
