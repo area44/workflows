@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { WorkflowError } from "./errors.ts";
+import { WorkflowError } from "./errors.js";
 
 export interface ArtifactMapping {
   name: string;

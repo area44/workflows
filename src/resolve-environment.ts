@@ -6,11 +6,11 @@ import {
   isSupportedRuntime,
   validateRuntimePackageManagerCompatibility,
 } from "./compatibility";
-import { WorkflowError } from "./errors.ts";
+import { WorkflowError } from "./errors.js";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
 
-export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors.ts";
-export { isWorkflowError, WorkflowError } from "./errors.ts";
+export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors.js";
+export { isWorkflowError, WorkflowError } from "./errors.js";
 
 export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
 export {
@@ -66,6 +66,13 @@ export {
   validateRuntimePackageManagerCompatibility,
   validateWorkflowMatrix,
 } from "./compatibility";
+
+export {
+  getExpectedArtifacts,
+  parseViteConfigPack,
+  runArtifactVerification,
+  verifyArtifactIntegrity,
+} from "./artifact-integrity";
 
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
