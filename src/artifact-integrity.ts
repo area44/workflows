@@ -107,20 +107,6 @@ export function getExpectedArtifacts(rootDir: string = process.cwd()): ArtifactM
   return parseViteConfigPack(content);
 }
 
-function recordPreBuildContents(
-  expectedArtifacts: ArtifactMapping[],
-  rootDir: string,
-): Map<string, string> {
-  const contents = new Map<string, string>();
-  for (const artifact of expectedArtifacts) {
-    const fullOutputPath = path.join(rootDir, artifact.outputPath);
-    if (fs.existsSync(fullOutputPath)) {
-      contents.set(artifact.outputPath, fs.readFileSync(fullOutputPath, "utf8"));
-    }
-  }
-  return contents;
-}
-
 function executeVerificationBuild(
   options: VerificationOptions,
   rootDir: string,
@@ -199,31 +185,6 @@ function checkUnexpectedDistFiles(
   return { unexpectedArtifacts };
 }
 
-function checkPostBuildContentDrift(
-  expectedArtifacts: ArtifactMapping[],
-  preBuildContents: Map<string, string>,
-  rootDir: string,
-): { staleArtifacts: string[]; errors: string[] } {
-  const staleArtifacts: string[] = [];
-  const errors: string[] = [];
-
-  for (const artifact of expectedArtifacts) {
-    const fullOutputPath = path.join(rootDir, artifact.outputPath);
-    if (fs.existsSync(fullOutputPath)) {
-      const postBuildContent = fs.readFileSync(fullOutputPath, "utf8");
-      const preBuildContent = preBuildContents.get(artifact.outputPath);
-      if (preBuildContent !== undefined && preBuildContent !== postBuildContent) {
-        staleArtifacts.push(artifact.outputPath);
-        errors.push(
-          `Generated artifact '${artifact.outputPath}' was stale/out-of-sync with source.`,
-        );
-      }
-    }
-  }
-
-  return { staleArtifacts, errors };
-}
-
 function checkGitStatusDrift(rootDir: string): string[] {
   const distDir = path.join(rootDir, "dist");
   const gitDir = path.join(rootDir, ".git");
@@ -263,11 +224,10 @@ export function verifyArtifactIntegrity(
   rootDir: string = process.cwd(),
   options: VerificationOptions = {},
 ): VerificationResult {
-  const expectedArtifacts = getExpectedArtifacts(rootDir);
-  const preBuildContents = recordPreBuildContents(expectedArtifacts, rootDir);
-
   const { buildFailed, buildError } = executeVerificationBuild(options, rootDir);
   const errors: string[] = buildError ? [buildError] : [];
+
+  const expectedArtifacts = getExpectedArtifacts(rootDir);
 
   const { missingArtifacts, errors: existenceErrors } = checkMissingAndEmptyArtifacts(
     expectedArtifacts,
@@ -280,16 +240,12 @@ export function verifyArtifactIntegrity(
     errors.push(distError);
   }
 
-  const { staleArtifacts: contentStale, errors: driftErrors } =
-    options.executeBuild && !buildFailed
-      ? checkPostBuildContentDrift(expectedArtifacts, preBuildContents, rootDir)
-      : { staleArtifacts: [], errors: [] };
-  errors.push(...driftErrors);
-
   const checkGit = options.checkGitStatus ?? true;
-  const staleArtifacts = [...contentStale];
-  if (checkGit && staleArtifacts.length === 0) {
-    staleArtifacts.push(...checkGitStatusDrift(rootDir));
+  const staleArtifacts = checkGit ? checkGitStatusDrift(rootDir) : [];
+  if (staleArtifacts.length > 0) {
+    for (const staleFile of staleArtifacts) {
+      errors.push(`Generated artifact '${staleFile}' is stale / out of sync with source code.`);
+    }
   }
 
   const valid =

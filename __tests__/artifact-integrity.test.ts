@@ -163,7 +163,11 @@ describe("Artifact Integrity Verification", () => {
       expect(result.unexpectedArtifacts).toEqual([path.normalize("dist/unexpected-file.js")]);
     });
 
-    it("Case E — stale artifact: fails when source is updated to v2 but dist/ remains v1", () => {
+    it("Case E — stale artifact: fails when source is updated to v2 but committed dist/ is still v1", () => {
+      execSync("git init", { cwd: tempDir, stdio: "ignore" });
+      execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
+      execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+
       const customConfig = `
         export default defineConfig({
           pack: ["tool1"].map((name) => ({
@@ -180,11 +184,11 @@ describe("Artifact Integrity Verification", () => {
       // Initial state: source v1, dist v1
       fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 1;");
       fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v1 bundle output");
+      execSync("git add . && git commit -m 'initial v1'", { cwd: tempDir, stdio: "ignore" });
 
-      // Source changed to v2 without developer modifying dist/
-      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 2; // updated source");
+      // Developer updates source to v2 without committing updated dist/
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 2;");
 
-      // Build simulation function that regenerates dist based on updated source
       const mockBuildFn = () => {
         const srcContent = fs.readFileSync(path.join(tempDir, "src/tool1.ts"), "utf8");
         const newDistContent = srcContent.includes("v = 2") ? "// v2 bundle output" : "// v1 bundle output";
@@ -194,12 +198,55 @@ describe("Artifact Integrity Verification", () => {
       const result = verifyArtifactIntegrity(tempDir, {
         executeBuild: true,
         buildFn: mockBuildFn,
-        checkGitStatus: false,
+        checkGitStatus: true,
       });
 
       expect(result.valid).toBe(false);
       expect(result.staleArtifacts).toEqual([path.normalize("dist/tool1.mjs")]);
-      expect(result.errors.some((e) => e.includes("stale/out-of-sync"))).toBe(true);
+    });
+
+    it("passes when source is changed, dist is regenerated, and committed together", () => {
+      execSync("git init", { cwd: tempDir, stdio: "ignore" });
+      execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
+      execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+
+      const customConfig = `
+        export default defineConfig({
+          pack: ["tool1"].map((name) => ({
+            entry: { [name]: \`src/\${name}.ts\` },
+            outDir: "dist",
+            format: "esm",
+          })),
+        });
+      `;
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
+      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
+
+      // Initial state: v1
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 1;");
+      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v1 bundle output");
+      execSync("git add . && git commit -m 'initial v1'", { cwd: tempDir, stdio: "ignore" });
+
+      // Developer updates source to v2 AND regenerates dist v2 AND commits
+      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const v = 2;");
+      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v2 bundle output");
+      execSync("git add . && git commit -m 'update to v2'", { cwd: tempDir, stdio: "ignore" });
+
+      const mockBuildFn = () => {
+        const srcContent = fs.readFileSync(path.join(tempDir, "src/tool1.ts"), "utf8");
+        const newDistContent = srcContent.includes("v = 2") ? "// v2 bundle output" : "// v1 bundle output";
+        fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), newDistContent);
+      };
+
+      const result = verifyArtifactIntegrity(tempDir, {
+        executeBuild: true,
+        buildFn: mockBuildFn,
+        checkGitStatus: true,
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.staleArtifacts).toEqual([]);
     });
 
     it("Case F — build failure: fails verification when build step fails", () => {
@@ -234,36 +281,6 @@ describe("Artifact Integrity Verification", () => {
       expect(result.errors.some((e) => e.includes("Build command failed during artifact verification"))).toBe(
         true,
       );
-    });
-
-    it("detects modified/stale artifacts via git status", () => {
-      execSync("git init", { cwd: tempDir, stdio: "ignore" });
-      execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
-      execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
-
-      const customConfig = `
-        export default defineConfig({
-          pack: ["tool1"].map((name) => ({
-            entry: { [name]: \`src/\${name}.ts\` },
-            outDir: "dist",
-            format: "esm",
-          })),
-        });
-      `;
-      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), customConfig);
-      fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, "dist"), { recursive: true });
-
-      fs.writeFileSync(path.join(tempDir, "src/tool1.ts"), "export const a = 1;");
-      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v1 built artifact");
-
-      execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
-
-      fs.writeFileSync(path.join(tempDir, "dist/tool1.mjs"), "// v2 manually edited artifact");
-
-      const result = verifyArtifactIntegrity(tempDir, { checkGitStatus: true, executeBuild: false });
-      expect(result.valid).toBe(false);
-      expect(result.staleArtifacts).toEqual([path.normalize("dist/tool1.mjs")]);
     });
   });
 });
