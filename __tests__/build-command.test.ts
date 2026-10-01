@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as buildCommandModule from "../src/build-command";
 import { parseCommand, runBuildCommand, sanitizeCommandString } from "../src/build-command";
 
 vi.mock("@actions/core");
@@ -240,6 +241,48 @@ describe("build-command", () => {
           }),
         }),
       );
+    });
+
+    it("should sanitize secrets in WorkflowError message and context when exec throws an error containing sensitive tokens or URLs", async () => {
+      const secretToken = "ghp_123456789012345678901234567890123456";
+      const secretPass = "super_secret_pass";
+      process.env.BUILD_COMMAND = `npm run build --token=${secretToken} https://user:${secretPass}@github.com/repo.git`;
+
+      vi.mocked(exec.exec).mockRejectedValue(
+        new Error(`Failed to fetch from https://user:${secretPass}@github.com/repo.git using token ${secretToken}`),
+      );
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0];
+      const serialized = JSON.stringify(setFailedArg);
+
+      expect(serialized).not.toContain(secretToken);
+      expect(serialized).not.toContain(secretPass);
+      expect(serialized).toContain("https://***:***@github.com/repo.git");
+      expect(serialized).toContain("--token=***");
+    });
+
+    it("should sanitize secrets in WorkflowError message and context for malformed commands or credential URLs when parseCommand fails", async () => {
+      const secretVal = "my_secret_token_value_999";
+      const secretPass = "my_secret_password_777";
+      process.env.BUILD_COMMAND = `npm run build --token=${secretVal} https://admin:${secretPass}@example.com`;
+
+      vi.spyOn(buildCommandModule, "parseCommand").mockImplementationOnce(() => {
+        throw new Error(`Unexpected error parsing https://admin:${secretPass}@example.com with --token=${secretVal}`);
+      });
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0];
+      const serialized = JSON.stringify(setFailedArg);
+
+      expect(serialized).not.toContain(secretVal);
+      expect(serialized).not.toContain(secretPass);
+      expect(serialized).toContain("https://***:***@example.com");
+      expect(serialized).toContain("--token=***");
     });
 
     it("should handle exec throwing an exception and report actionable error message with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
