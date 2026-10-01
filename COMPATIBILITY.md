@@ -44,6 +44,32 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 
 ---
 
+## Public Action API Contract & Source of Truth
+
+The public API contract of all composite actions (`astro`, `vite`, `vite-plus`, `lint-format`) is explicitly defined in and derived from each action's `action.yml` file, which serves as the single source of truth:
+
+```
+action.yml
+   ↓
+contract parser / validator (src/action-contract.ts)
+   ↓
+automated tests (__tests__/action-contract.test.ts)
+   ↓
+documentation
+```
+
+### Public API Action Contract Governance
+
+- **Public Actions**: `astro`, `vite`, `vite-plus`, `lint-format`.
+- **Source of Truth**: `action.yml` in each action's directory. No external or redundant source of truth is created.
+- **Contract Verification**: Validated programmatically by `parseActionContract` and `validateAllPublicActionContracts` in `src/action-contract.ts`, and enforced in CI via `npm run test:actions`.
+- **Breaking API Changes**:
+  The following contract changes are strictly classified as breaking API changes and will be flagged by `detectBreakingChanges()`:
+  1. Removal of a public input parameter.
+  2. Changing an input from optional (`required: false`) to required (`required: true`).
+  3. Modifying the default value of an input parameter.
+  4. Removal of a public output variable.
+
 ## Composite Actions Expectations
 
 Every composite action in this repository shares a common environment resolution engine (`dist/resolve-environment.mjs`) but serves specific deployment or workflow goals.
