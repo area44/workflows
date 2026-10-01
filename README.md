@@ -13,6 +13,8 @@ For detailed toolchain guarantees, supported runtime modes, compatibility matrix
 - **[Vite+](./vite-plus/README.md)**: Build and deploy Vite+ sites.
 - **[Lint/Format](./lint-format/README.md)**: Run lint/format scripts.
 
+Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status), validated automatically via `npm run test:actions`.
+
 ## Environment Contract
 
 Environment resolution is executed by `src/resolve-environment.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).

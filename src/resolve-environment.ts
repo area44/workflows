@@ -18,6 +18,22 @@ export {
 } from "./setup-adapters";
 
 export type {
+  ActionInputContract,
+  ActionOutputContract,
+  BreakingChange,
+  PublicActionContract,
+  PublicActionName,
+} from "./action-contract";
+export {
+  detectBreakingChanges,
+  isPublicAction,
+  parseActionContract,
+  parseActionContractYaml,
+  PUBLIC_ACTIONS,
+  validateAllPublicActionContracts,
+} from "./action-contract";
+
+export type {
   CanonicalCompatibilityModel,
   CompatibilityStatus,
   MatrixCombinationEntry,
