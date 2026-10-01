@@ -209,6 +209,18 @@ Action runtime inputs (`runtime`) are validated against an explicit input gramma
 - **Automatic Runtime Detection**: When no explicit runtime input is supplied (omitted, empty, or whitespace-only), runtime resolution proceeds to automatic project detection.
 - **Fail-Fast Validation**: Malformed syntax (e.g. `node@`, `,node`, `node@@24`), unknown runtime names (e.g. `deno`), partial prefix matches (e.g. `nodedev`, `bunyan`), or duplicate/conflicting specifiers fail fast with an actionable error and are never silently ignored or converted.
 
+#### Extended Compatibility CI Execution & Verification
+
+Automated CI testing in `.github/workflows/test-actions.yml` executes real fixture-based workflows for every supported combination defined in `CANONICAL_COMPATIBILITY_MODEL`:
+
+1. **Matrix Mapping**: Every supported runtime and package manager combination maps deterministically to fixture directories under `__tests__/fixtures/${action}/${runtime}/${pm}/${type}`.
+2. **Environment & Toolchain Setup**: CI sets up the exact target runtime (`Node.js` or `Bun`) and package manager (`npm`, `pnpm`, or `bun`) based on environment resolution.
+3. **Execution Verification**:
+   - Package manager dependency installation is executed (`npm ci`, `pnpm install`, or `bun install`).
+   - Action build scripts (`astro`, `vite`, `vite-plus`) or verification scripts (`lint-format`) are executed.
+   - Outputs (`package-manager`, `runtime`, `SITE`, `BASE`) and generated build artifacts (`dist/index.html`) are verified against contract assertions.
+4. **Diagnostic Failures**: Any mismatch between expected and detected runtime/package-manager, missing canonical matrix combinations, or missing build output artifacts triggers explicit CI failures with detailed failure stage and fixture path context.
+
 ---
 
 ## Generated Artifact Integrity Contract & Build Policy

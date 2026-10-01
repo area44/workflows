@@ -590,7 +590,84 @@ jobs:
       expect(testActionsYml).toContain(
         'DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
       );
-      expect(testActionsYml).toContain('[[ "$DETECTED_RUNTIME" == "$EXPECTED_RUNTIME" ]]');
+      expect(testActionsYml).toContain('if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then');
+    });
+  });
+
+  describe("Extended Compatibility Execution & Negative Coverage", () => {
+    it("should verify deterministic behavior derived directly from CANONICAL_COMPATIBILITY_MODEL", () => {
+      const supportedCombinations = CANONICAL_COMPATIBILITY_MODEL.combinations.filter(
+        (c) => c.supported,
+      );
+      expect(supportedCombinations.length).toBeGreaterThan(0);
+
+      for (const combination of supportedCombinations) {
+        const result = getCombinationCompatibility(
+          combination.runtime,
+          combination.packageManager,
+        );
+        expect(result.status.supported).toBe(true);
+      }
+    });
+
+    it("should fail fast when encountering an unsupported Bun + npm combination", () => {
+      const res = getCombinationCompatibility("bun", "npm");
+      expect(res.status.supported).toBe(false);
+      expect(res.status.reason).toContain("Bun runtime does not support npm package manager");
+
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "npm")).toThrow(
+        /Bun runtime does not support npm package manager/,
+      );
+    });
+
+    it("should fail matrix validation when an action is missing a canonical combination", () => {
+      const fullMatrix = extractWorkflowMatrixEntries(
+        fs.readFileSync(path.join(rootDir, ".github/workflows/test-actions.yml"), "utf8"),
+      );
+
+      for (const action of SUPPORTED_ACTIONS) {
+        const incompleteMatrix = fullMatrix.filter(
+          (e) => !(e.action === action && e.runtime === "bun" && e.pm === "bun"),
+        );
+        expect(() => validateWorkflowMatrix(incompleteMatrix, { checkFixtures: false })).toThrow(
+          new RegExp(`CI matrix is missing supported combination: ${action} \\(bun, bun\\)`),
+        );
+      }
+    });
+
+    it("should fail matrix validation if an entry contains invalid boolean verify_site type", () => {
+      const invalidEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+        verify_site: "invalid_boolean",
+      };
+      expect(() => validateMatrixEntry(invalidEntry)).toThrow(
+        'CI matrix entry field "verify_site" must be a boolean.',
+      );
+    });
+
+    it("should fail fixture validation when package.json is missing via validateFixtureForMatrixEntry", () => {
+      const tempRootDir = path.join(rootDir, "__tests__/_temp_missing_pkg_fixture");
+      const entry: MatrixEntry = {
+        action: "astro",
+        runtime: "node",
+        pm: "npm",
+        type: "basic",
+      };
+      const fixtureDir = getFixturePath(entry, tempRootDir);
+      fs.mkdirSync(fixtureDir, { recursive: true });
+
+      try {
+        expect(() => validateFixtureForMatrixEntry(entry, tempRootDir)).toThrow(
+          /Fixture directory is missing package.json/,
+        );
+      } finally {
+        if (fs.existsSync(tempRootDir)) {
+          fs.rmSync(tempRootDir, { recursive: true, force: true });
+        }
+      }
     });
   });
 
