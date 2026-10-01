@@ -689,9 +689,22 @@ export function resolveEnvironment(
 export const detectEnv = resolveEnvironment;
 
 export function run(): void {
-  const runtimeInput = core.getInput("runtime");
-  const env = resolveEnvironment(runtimeInput);
-  writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
+  try {
+    const runtimeInput = core.getInput("runtime");
+    const env = resolveEnvironment(runtimeInput);
+    writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
+  } catch (error) {
+    if (error instanceof WorkflowError) {
+      core.setFailed(error);
+    } else {
+      const msg = error instanceof Error ? error.message : String(error);
+      const setupErr = new WorkflowError("SETUP_FAILURE", `Environment setup failed: ${msg}`, {
+        stage: "environment-resolution",
+        cause: error,
+      });
+      core.setFailed(setupErr);
+    }
+  }
 }
 
 if (process.env.NODE_ENV !== "test") {

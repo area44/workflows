@@ -5,10 +5,11 @@ import {
   getCombinationCompatibility,
   validateFixtureForMatrixEntry,
   validateMatrixEntry,
+  validateRuntimePackageManagerCompatibility,
   validateWorkflowMatrix,
 } from "../src/compatibility";
 import { isWorkflowError, WorkflowError } from "../src/errors";
-import { parseEnvironmentInputs, resolveEnvironment } from "../src/resolve-environment";
+import { parseEnvironmentInputs } from "../src/resolve-environment";
 import { parseCommand } from "../src/build-command";
 
 describe("Error Contract Tests", () => {
@@ -137,19 +138,20 @@ describe("Error Contract Tests", () => {
   });
 
   describe("Category C: Unsupported combination (Bun + npm)", () => {
-    it("should reject Bun + npm explicitly with UNSUPPORTED_COMBINATION when resolving environment", () => {
+    it("should throw UNSUPPORTED_COMBINATION when calling validateRuntimePackageManagerCompatibility('bun', 'npm')", () => {
       try {
-        // Simulating bun runtime with npm package manager
-        resolveEnvironment("bun, npm");
+        validateRuntimePackageManagerCompatibility("bun", "npm");
+        expect.unreachable("Should have thrown error");
       } catch (err) {
         expect(isWorkflowError(err)).toBe(true);
         if (isWorkflowError(err)) {
-          expect(err.code).toBe("INVALID_INPUT"); // duplicate/conflicting runtime if bun, npm is parsed as inputs
+          expect(err.code).toBe("UNSUPPORTED_COMBINATION");
+          expect(err.message).toContain("Bun runtime does not support npm package manager");
         }
       }
     });
 
-    it("should report unsupported combination status for bun + npm without throwing", () => {
+    it("should report unsupported combination status for bun + npm without throwing in getCombinationCompatibility", () => {
       const comp = getCombinationCompatibility("bun", "npm");
       expect(combIsUnsupported(comp)).toBe(true);
       expect(comp.status.reason).toContain("Bun runtime does not support npm package manager");

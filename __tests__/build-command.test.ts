@@ -223,7 +223,7 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code and set workflow failure", async () => {
+    it("should handle failing build command with non-zero exit code and set workflow failure with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
       process.env.BUILD_COMMAND = "node -e \"process.exit(2)\"";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
@@ -232,11 +232,14 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(2);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Build command failed with exit code 2: node -e "process.exit(2)"',
+        expect.objectContaining({
+          code: "COMMAND_EXECUTION_FAILURE",
+          message: 'Build command failed with exit code 2: node -e "process.exit(2)"',
+        }),
       );
     });
 
-    it("should handle exec throwing an exception and report actionable error message", async () => {
+    it("should handle exec throwing an exception and report actionable error message with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
       process.env.BUILD_COMMAND = "nonexistent-cmd arg";
 
       vi.mocked(exec.exec).mockRejectedValue(
@@ -247,7 +250,10 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Failed to execute build command "nonexistent-cmd arg": Unable to locate executable file: nonexistent-cmd',
+        expect.objectContaining({
+          code: "COMMAND_EXECUTION_FAILURE",
+          message: 'Failed to execute build command "nonexistent-cmd arg": Unable to locate executable file: nonexistent-cmd',
+        }),
       );
     });
 

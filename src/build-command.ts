@@ -199,9 +199,12 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     });
 
     if (exitCode !== 0) {
-      core.setFailed(
+      const err = new WorkflowError(
+        "COMMAND_EXECUTION_FAILURE",
         `Build command failed with exit code ${exitCode}: ${sanitizeCommandString(commandToParse)}`,
+        { stage: "build-command-execution", exitCode, command: commandToParse },
       );
+      core.setFailed(err);
       if (exitOnFailure) {
         process.exit(exitCode);
       }
@@ -209,9 +212,12 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     return exitCode;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(
+    const execErr = new WorkflowError(
+      "COMMAND_EXECUTION_FAILURE",
       `Failed to execute build command "${sanitizeCommandString(commandToParse)}": ${msg}`,
+      { stage: "build-command-execution", command: commandToParse, cause: err },
     );
+    core.setFailed(execErr);
     if (exitOnFailure) {
       process.exit(1);
     }
