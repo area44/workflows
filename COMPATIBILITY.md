@@ -276,7 +276,7 @@ The error contract does **not** maintain a secondary or duplicated compatibility
 
 This section formalizes the security architecture, input trust boundaries, execution constraints, credential sanitization rules, and operational invariants enforced across `@area44/workflows`.
 
-### 1. Trust Boundaries & Control Planes
+### Trust Boundaries & Control Planes
 
 The repository delineates distinct boundaries between user-supplied input, environment detection, and execution context:
 
@@ -300,7 +300,7 @@ The repository delineates distinct boundaries between user-supplied input, envir
   - Generated files in `dist/` are build targets and are never treated as hand-editable source code.
   - Source-to-artifact synchronization is enforced in CI via `npm run verify:artifacts` (`src/artifact-integrity.ts`). Direct edits to `dist/` trigger build failure.
 
-### 2. Credential & Token Sanitization Invariants
+### Credential & Token Sanitization Invariants
 
 To prevent accidental leakages of credentials, access tokens, or sensitive URLs in logs, outputs, and exception context:
 
@@ -310,7 +310,7 @@ To prevent accidental leakages of credentials, access tokens, or sensitive URLs 
   - Common access token patterns (GitHub PATs `ghp_...`, `github_pat_...`, npm tokens `npm_...`, Slack tokens `xox...`).
 - Error messages and `WorkflowError` context objects attached to setFailed or throw statements must never contain unmasked tokens or sensitive URLs.
 
-### 3. Error Handling & Execution Invariants
+### Error Handling & Execution Invariants
 
 - **No Silent Failure Suppression**:
   - Non-zero exit codes from build commands or script failures are never swallowed or converted to success.
@@ -320,7 +320,7 @@ To prevent accidental leakages of credentials, access tokens, or sensitive URLs 
 - **Compatibility Single Source of Truth**:
   - Compatibility decisions derive exclusively from `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`. No secondary matrices exist.
 
-### 4. CI & Test Fixture Security Assumptions
+### CI & Test Fixture Security Assumptions
 
 - Automated CI workflows (`.github/workflows/ci.yml`, `test-actions.yml`, `autofix.yml`) run on standard GitHub-hosted `ubuntu-latest` runners in isolated containers/VMs.
 - Test matrix entries map deterministically to fixture directories in `__tests__/fixtures/`. Fixture directories are treated as isolated project workspaces and cannot escape their workspace root.
