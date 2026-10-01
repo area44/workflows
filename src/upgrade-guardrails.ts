@@ -415,7 +415,18 @@ export function resolveBaseRef(explicitBaseRef?: string): string {
   if (process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)) {
     return process.env.GITHUB_EVENT_BEFORE;
   }
-  return "HEAD~1";
+
+  try {
+    execSync("git rev-parse --verify origin/main", { stdio: "ignore" });
+    return "origin/main";
+  } catch {
+    try {
+      execSync("git rev-parse --verify main", { stdio: "ignore" });
+      return "main";
+    } catch {
+      return "HEAD~1";
+    }
+  }
 }
 
 /**
