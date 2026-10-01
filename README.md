@@ -89,7 +89,7 @@ The `resolveEnvironment()` entrypoint merges explicit `runtime` action inputs wi
    - Else if primary resolved `runtime` is `"bun"`, resolves `node-version` output to empty string (`""`).
    - Else uses detected Node.js version from `detectNodeVersion()`.
 6. **Compatibility Validation**:
-   - Validates resolved `runtime` and `package-manager` against the explicit Phase 2 compatibility contract (`validateRuntimePackageManagerCompatibility`).
+   - Validates resolved `runtime` and `package-manager` against the explicit compatibility contract (`validateRuntimePackageManagerCompatibility`).
    - Rejects unsupported combinations (e.g. Bun runtime with npm package manager or unknown tools) with a clear validation error.
 
 ### Default Fallback Versions

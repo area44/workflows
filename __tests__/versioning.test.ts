@@ -68,10 +68,11 @@ describe("Versioning Model", () => {
 
   describe("getRepositoryVersion", () => {
     it("returns valid version and source for the current workspace", () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
       const res = getRepositoryVersion(process.cwd());
       expect(res.source).toBe("package.json");
       expect(isValidSemVer(res.version)).toBe(true);
-      expect(res.version).toBe("1.0.0");
+      expect(res.version).toBe(pkg.version);
     });
 
     it("throws MISSING_CONFIGURATION when package.json does not exist", () => {
@@ -111,9 +112,11 @@ describe("Versioning Model", () => {
 
   describe("validateRepositoryVersion", () => {
     it("validates current workspace version successfully", () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+      const lock = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package-lock.json"), "utf8"));
       const res = validateRepositoryVersion(process.cwd());
-      expect(res.version).toBe("1.0.0");
-      expect(res.packageLockVersion).toBe("1.0.0");
+      expect(res.version).toBe(pkg.version);
+      expect(res.packageLockVersion).toBe(lock.version);
     });
 
     it("throws INVALID_INPUT when package-lock.json version conflicts with package.json", () => {

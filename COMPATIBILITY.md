@@ -462,9 +462,9 @@ The versioning model references existing sources of truth without duplication:
 
 ### Scope Boundaries & Non-Automated Behavior
 
-Phase 14 formalizes version determination and classification rules. It explicitly does not automate:
+The versioning model formalizes version determination and classification rules. It explicitly does not automate:
 
-- Automatic dependency upgrade guardrails (Phase 15).
+- Automatic dependency upgrade guardrails.
 - Automated release publishing or GitHub Release creation.
 - Release tag creation or git workflow tagging automation.
 - Automated changelog generation.
