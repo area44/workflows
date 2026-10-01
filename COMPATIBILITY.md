@@ -229,19 +229,61 @@ To ensure all composite actions run reliable, verified, and tamper-proof runtime
 
 ### Single Source of Truth
 
-- **Source Files (`src/`)**: All implementation logic resides exclusively in TypeScript files under `src/` (e.g. `src/resolve-environment.ts`, `src/lint-format.ts`, `src/site-variables.ts`, `src/build-command.ts`, `src/compatibility.ts`, `src/setup-adapters.ts`).
-- **Generated Output (`dist/`)**: The `dist/` directory is a generated-only build target containing bundled ES modules (`.mjs`). No production logic may exist solely in `dist/` without corresponding source in `src/`.
+- **Source Files (`src/`)**: All implementation logic resides exclusively in TypeScript files under `src/` (e.g. `src/resolve-environment.ts`, `src/lint-format.ts`, `src/site-variables.ts`, `src/build-command.ts`, `src/compatibility.ts`, `src/setup-adapters.ts`, `src/artifact-integrity.ts`).
+- **Generated Output (`dist/`)**: The `dist/` directory is a mandatory, git-tracked generated build target containing bundled ES modules (`.mjs`). No production logic may exist solely in `dist/` without corresponding source in `src/`.
 - **Manual Edit Prohibition**: Direct manual edits to `dist/` files are strictly prohibited. Any change to `dist/` must strictly be the deterministic result of running the official build command from source.
 
-### Official Build Pipeline
+### Release Artifact Contract & Consumer Entry Points
+
+- **Release Artifact Set**: The required release artifacts (`dist/resolve-environment.mjs`, `dist/lint-format.mjs`, `dist/site-variables.mjs`, `dist/build-command.mjs`) are derived programmatically from `vite.config.ts`.
+- **Consumer Action Entry Points**: Public composite actions (`astro`, `vite`, `vite-plus`, `lint-format`) reference generated artifacts via `$ACTION_PATH/../dist/<entrypoint>.mjs`.
+- **Source to Release Relationship**:
+  ```
+  Source (src/)
+    ↓
+  Build (npm run build)
+    ↓
+  Generated dist/
+    ↓
+  Artifact Verification (npm run verify:artifacts)
+    ↓
+  Release / Publish
+  ```
+
+### Official Build Pipeline & Verification Order
 
 - **Build Command**: `npm run build` (invokes `vp pack`).
 - **Entry Configuration**: Defined in `vite.config.ts`, mapping `src/${name}.ts` source entrypoints to `dist/${name}.mjs` output files.
 - **Deterministic Output**: Bundled artifacts are deterministic. Rebuilding from unchanged source files yields identical output without working tree drift.
+- **Release Verification Boundary**: Verification is powered by `src/artifact-integrity.ts` (`verifyArtifactIntegrity` and `runArtifactVerification`). No release or publication path can bypass artifact verification.
+- **Fail-Fast Conditions**:
+  - Missing `dist/` directory or expected `.mjs` artifacts.
+  - Empty (0-byte) generated artifact files.
+  - Unexpected or untracked extra files in `dist/`.
+  - Stale artifacts where committed `dist/` is out of sync with current `src/` source (detected via `git status --porcelain -- dist/`).
+  - Build command failure.
+
+### Release Metadata & Provenance Model
+
+- **Release Version**: Release versioning is tied to `package.json` (`version`).
+- **Revision Provenance**: Artifacts in `dist/` are generated from the exact source revision (`GITHUB_SHA`). `git status --porcelain -- dist/` guarantees that committed artifacts correspond strictly to current source files without uncommitted drift.
 
 ### Automated Integrity Verification & CI Enforcement
 
-- **Automated Verification Sequence**: Clean checkout → Install dependencies → Execute build → Verify working tree cleanliness (`git diff --exit-code dist/` and `git status --porcelain dist/`).
+- **Automated Verification Sequence**:
+  ```
+  checkout
+    ↓
+  install dependencies
+    ↓
+  build (npm run build)
+    ↓
+  verify generated artifacts (npm run verify:artifacts)
+    ↓
+  run tests / validation (npm test)
+    ↓
+  publish / release
+  ```
 - **CI Enforcement**: Automated CI workflows (`.github/workflows/ci.yml`) and unit tests (`__tests__/artifact-integrity.test.ts`) validate that:
   1. All expected entrypoint artifacts exist in `dist/`.
   2. Artifacts in `dist/` match fresh build output from `src/`.

@@ -1,5 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { WorkflowError } from "./errors.js";
 
@@ -239,7 +241,16 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   }
 }
 
-if (process.env.NODE_ENV !== "test") {
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
   runBuildCommand().catch((err) => {
     core.setFailed(`Unhandled error during build command execution: ${err}`);
     process.exit(1);
