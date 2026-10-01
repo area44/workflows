@@ -38,5 +38,4 @@ jobs:
         run: npm run build
 
       - name: Verify build artifacts
-        run: |
-          test -f dist/resolve-environment.mjs && test -f dist/lint-format.mjs && test -f dist/build-command.mjs
+        run: npm run verify:artifacts

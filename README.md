@@ -4,7 +4,7 @@ This repository contains reusable **GitHub Actions workflows and composite actio
 
 ## Compatibility & Release Contract
 
-For detailed toolchain guarantees, supported runtime modes, compatibility matrix, and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)**.
+For detailed toolchain guarantees, supported runtime modes, compatibility matrix, artifact integrity rules, and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)**.
 
 ## Composite Actions
 

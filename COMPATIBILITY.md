@@ -185,6 +185,32 @@ Action runtime inputs (`runtime`) are validated against an explicit input gramma
 
 ---
 
+## Generated Artifact Integrity Contract & Build Policy
+
+To ensure all composite actions run reliable, verified, and tamper-proof runtime code, generated artifacts in `dist/` are strictly governed by this artifact integrity contract:
+
+### Single Source of Truth
+
+- **Source Files (`src/`)**: All implementation logic resides exclusively in TypeScript files under `src/` (e.g. `src/resolve-environment.ts`, `src/lint-format.ts`, `src/site-variables.ts`, `src/build-command.ts`, `src/compatibility.ts`, `src/setup-adapters.ts`).
+- **Generated Output (`dist/`)**: The `dist/` directory is a generated-only build target containing bundled ES modules (`.mjs`). No production logic may exist solely in `dist/` without corresponding source in `src/`.
+- **Manual Edit Prohibition**: Direct manual edits to `dist/` files are strictly prohibited. Any change to `dist/` must strictly be the deterministic result of running the official build command from source.
+
+### Official Build Pipeline
+
+- **Build Command**: `npm run build` (invokes `vp pack`).
+- **Entry Configuration**: Defined in `vite.config.ts`, mapping `src/${name}.ts` source entrypoints to `dist/${name}.mjs` output files.
+- **Deterministic Output**: Bundled artifacts are deterministic. Rebuilding from unchanged source files yields identical output without working tree drift.
+
+### Automated Integrity Verification & CI Enforcement
+
+- **Automated Verification Sequence**: Clean checkout → Install dependencies → Execute build → Verify working tree cleanliness (`git diff --exit-code dist/` and `git status --porcelain dist/`).
+- **CI Enforcement**: Automated CI workflows (`.github/workflows/ci.yml`) and unit tests (`__tests__/artifact-integrity.test.ts`) validate that:
+  1. All expected entrypoint artifacts exist in `dist/`.
+  2. Artifacts in `dist/` match fresh build output from `src/`.
+  3. Stale, missing, or manually modified artifacts trigger explicit build/test failures with actionable resolution instructions.
+
+---
+
 ## Lightweight Release & Toolchain Upgrade Policy
 
 To prevent silent compatibility regressions and manage toolchain upgrades predictably, changes to defaults or supported environments must follow this release policy.
