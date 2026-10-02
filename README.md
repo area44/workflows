@@ -1,127 +1,102 @@
 # area44/workflows
 
-This repository contains reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It helps standardize and streamline CI/CD processes across projects.
-
-## Compatibility & Release Contract
-
-For detailed toolchain guarantees, supported runtime modes, compatibility matrix, artifact integrity rules, versioning model (SemVer rules & authoritative package.json source), and upgrade policies, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)** and the **[Versioning Model in COMPATIBILITY.md](./COMPATIBILITY.md#versioning-model)**.
+This repository provides reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It helps standardize and streamline CI/CD processes across projects.
 
 ## Composite Actions
 
-- **[Astro](./astro/README.md)**: Build and deploy Astro sites.
-- **[Vite](./vite/README.md)**: Build and deploy Vite sites.
-- **[Vite+](./vite-plus/README.md)**: Build and deploy Vite+ sites.
-- **[Lint/Format](./lint-format/README.md)**: Run lint/format scripts.
+- **[Astro](./astro/README.md)** (`area44/workflows/astro@main`): Build and deploy Astro sites to GitHub Pages.
+- **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite sites to GitHub Pages.
+- **[Vite+](./vite-plus/README.md)** (`area44/workflows/vite-plus@main`): Build and deploy Vite+ sites to GitHub Pages.
+- **[Lint/Format](./lint-format/README.md)** (`area44/workflows/lint-format@main`): Run linting and formatting scripts.
+
+## Quick Usage
+
+```yaml
+name: GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Astro site
+        uses: area44/workflows/astro@main
+        with:
+          # Optional: runtime: 'node@24'
+          # Optional: path: 'dist'
+```
+
+## Public Action API Summary
 
 Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status), validated automatically via `npm run test:actions`.
 
-## Environment Contract
+### `astro` (Astro Site Build and Deploy)
 
-Environment resolution is executed by `src/resolve-environment.ts` and shared across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`).
+- **Inputs**:
+  - `path` (optional, default: `"dist"`): Directory where the built site is located.
+  - `runtime` (optional): Runtime override string (e.g., `"node@24"`, `"bun@1.4"`).
+  - `build-command` (optional): Custom build command string.
+- **Outputs**:
+  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
 
-### Output Contract
+### `vite` (Vite Site Build and Deploy)
 
-The `resolveEnvironment()` function resolves workspace configuration and writes the following step outputs:
+- **Inputs**:
+  - `path` (optional, default: `"dist"`): Directory where the built site is located.
+  - `runtime` (optional): Runtime override string.
+  - `build-command` (optional): Custom build command string.
+- **Outputs**:
+  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
 
-| Output Name               | Type                           | Description                                                                                                                | Example Values                         |
-| ------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `runtime`                 | `"node"` \| `"bun"`            | The resolved runtime environment.                                                                                          | `"node"`, `"bun"`                      |
-| `node-version`            | `string`                       | The resolved Node.js version (empty string if Bun runtime without explicit Node.js version).                               | `"24"`, `"22.0.0"`, `""`               |
-| `bun-version`             | `string`                       | The resolved Bun version (empty string if Bun is neither requested nor detected).                                          | `"1.4"`, `"1.1.20"`, `""`              |
-| `package-manager`         | `"npm"` \| `"pnpm"` \| `"bun"` | The resolved package manager name.                                                                                         | `"npm"`, `"pnpm"`, `"bun"`             |
-| `package-manager-version` | `string`                       | The resolved package manager version string.                                                                               | `"12"`, `"11.21.0"`, `"1.4"`           |
-| `pnpm-runtime`            | `string`                       | Specialized adapter output for `pnpm/setup` (`bun@<ver>`, `node@<ver>`, or `node@lts`), not a generic runtime abstraction. | `"node@24"`, `"bun@1.4"`, `"node@lts"` |
+### `vite-plus` (Vite+ Site Build and Deploy)
 
-### Workspace Detection Precedence
+- **Inputs**:
+  - `path` (optional, default: `"dist"`): Directory where the built site is located.
+  - `runtime` (optional): Runtime override string.
+  - `build-command` (optional): Custom build command string.
+- **Outputs**:
+  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`, `vp-version`.
 
-Individual detector functions discover settings from project configuration files in the workspace:
+### `lint-format` (Lint and Format Verification)
 
-#### Package Manager Detector (`detectPackageManager`)
+- **Inputs**:
+  - `runtime` (optional): Runtime override string.
+- **Outputs**:
+  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
 
-1. `package.json` -> `packageManager` field (e.g., `"pnpm@11.21.0"`, `"bun"`, or `"npm"`). If the version tag is omitted, uses the fallback default for that package manager.
-2. `package.json` -> `devEngines`:
-   - `devEngines.packageManager`: Supports string (`"pnpm@11.21.0"`), object (`{ "name": "pnpm", "version": "11.21.0" }`), or array (evaluates the first element).
-   - `devEngines[pm]`: Evaluates `devEngines.pnpm`, `devEngines.npm`, and `devEngines.bun` in that exact order (string or object `{ "version": "..." }`).
-3. **Lockfiles** (evaluated in exact order if `package.json` provides no package manager configuration):
-   1. `pnpm-lock.yaml` -> `pnpm@12`
-   2. `package-lock.json` -> `npm@12`
-   3. `bun.lock` or `bun.lockb` -> `bun@1.4`
-4. **Fallback Default**: `npm@12`.
+## Compatibility Overview
 
-#### Node.js Version Detector (`detectNodeVersion`)
+Environment resolution (`src/resolve-environment.ts`) automatically discovers workspace configuration or falls back to canonical default versions:
 
-1. `.nvmrc` file content (trimmed).
-2. `.node-version` file content (trimmed).
-3. `package.json` -> `devEngines`:
-   - `devEngines.runtime`: String, object, or array element with `name: "node"` or starting with `"node"` (e.g. `"node@20"`).
-   - `devEngines.node`: String or object `{ "version": "..." }`.
-4. **Fallback Default**:
-   - Empty string (`""`) if package manager context is `bun` and no Node.js configuration (`.nvmrc`, `.node-version`, or `devEngines` for Node.js) exists.
-   - `"24"` otherwise.
+- **Supported Runtimes**: `node`, `bun`
+- **Supported Package Managers**: `npm`, `pnpm`, `bun`
+- **Canonical Default Versions**: Node.js 24, Bun 1.4, npm 12, pnpm 12
+- **Supported Combinations**: Node+npm (default), Node+pnpm, Node+bun, Bun+bun, Bun+pnpm. (Bun+npm is explicitly unsupported).
 
-#### Bun Version Detector (`detectBunVersion`)
+For complete toolchain guarantees and combination matrices, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)** and **[Detailed Toolchain Matrix](./docs/compatibility.md)**.
 
-1. `.bun-version` file content (trimmed).
-2. Package Manager Version: Uses `pm.version` if the detected package manager is `bun` and version is not `"latest"`.
-3. `package.json` -> `devEngines`:
-   - `devEngines.runtime`: String, object, or array element with `name: "bun"` or starting with `"bun"` (e.g. `"bun@1.4"`).
-   - `devEngines.bun`: String or object `{ "version": "..." }`.
-4. **Auto-detection Fallback**: `"1.4"` if Bun is detected via lockfile (`bun.lock` or `bun.lockb`), package manager `bun`, or Bun `devEngines`.
-5. **Fallback Default**: Empty string (`""`) if Bun is neither requested nor detected.
+## Documentation Architecture
 
-### Final Resolution Precedence (`resolveEnvironment`)
+Specialized documentation guides explain specific contracts and operational guarantees:
 
-The `resolveEnvironment()` entrypoint merges explicit `runtime` action inputs with workspace-detected values:
-
-1. **Input Token Parsing**:
-   - Parses tokens from the explicit `runtime` action input string (split by whitespace or comma).
-   - `both`: Requests Bun setup alongside Node.js, defaulting Bun version to `"1.4"` if no explicit Bun version is attached.
-   - First token starting with `"node"` or `"bun"` sets the primary resolved `runtime` (`"node"` or `"bun"`).
-   - Extracts explicit version tags if present (e.g. `node@22` sets explicit Node.js version `"22"`, `bun@1.4` sets explicit Bun version `"1.4"`).
-2. **Package Manager Resolution**: Calls `detectPackageManager()`.
-3. **Bun Version Resolution**: Uses explicit `bunVersion` from `runtime` input if provided (or `"1.4"` if `both` or `bun` without version tag was passed in input); otherwise uses detected Bun version from `detectBunVersion()`.
-4. **Runtime Choice Resolution**:
-   - Uses explicit `specifiedRuntime` from `runtime` action input if provided.
-   - Else uses `"bun"` if detected package manager is `bun`.
-   - Else defaults to `"node"`.
-5. **Node.js Version Resolution**:
-   - Uses explicit `nodeVersion` from `runtime` action input if provided.
-   - Else if primary resolved `runtime` is `"bun"`, resolves `node-version` output to empty string (`""`).
-   - Else uses detected Node.js version from `detectNodeVersion()`.
-6. **Compatibility Validation**:
-   - Validates resolved `runtime` and `package-manager` against the explicit compatibility contract (`validateRuntimePackageManagerCompatibility`).
-   - Rejects unsupported combinations (e.g. Bun runtime with npm package manager or unknown tools) with a clear validation error.
-
-### Default Fallback Versions
-
-- **Node.js**: `"24"` (`DEFAULT_NODE_VERSION`)
-- **Bun**: `"1.4"` (`DEFAULT_BUN_VERSION`)
-- **npm**: `"12"` (`DEFAULT_NPM_VERSION`)
-- **pnpm**: `"12"` (`DEFAULT_PNPM_VERSION`)
-
-## Build Command Execution Contract
-
-Build commands across composite actions (`astro`, `vite`, `vite-plus`) are executed via `src/build-command.ts`. Custom `build-command` inputs and project defaults are parsed into executable binaries and argument arrays without shell expansion or interpolation.
-
-- **Safe Argument Parsing**: Supports single quotes, double quotes, and backslash escapes so path names and options with spaces or special characters are preserved.
-- **Shell Injection Prevention**: Metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values rather than shell operators.
-- **Deterministic Defaults**: When no custom `build-command` is provided:
-  - `astro` and `vite` default to `<package-manager> run build`.
-  - `vite-plus` defaults to `vpr build`.
-- **Error Propagation**: Non-zero exit codes and command errors propagate directly with actionable messages via `core.setFailed`.
-
-## Security Boundaries & Invariants
-
-The security model of `@area44/workflows` establishes strict invariants across user inputs, environment resolution, shell command execution, filesystem access, artifact generation, and error handling:
-
-- **Input Validation**: Custom `runtime` inputs and `build-command` strings are strictly validated and tokenized, failing fast with `INVALID_INPUT` on malformed inputs or unterminated quotes.
-- **Shell Execution Safety**: Custom build commands are executed without passing through a shell subshell (e.g. `sh -c`), treating shell metacharacters as literal values to prevent shell injection. Package manager execution in script runners sanitizes package manager names.
-- **Credential Sanitization**: URLs with embedded credentials, sensitive CLI flags (`--token`, `--key`, `--api-key`), and access tokens (`ghp_...`, `npm_...`) are automatically masked in logs and error context objects via `sanitizeCommandString()`.
-- **Artifact Source Integrity**: TypeScript files in `src/` are the sole source of truth; generated `dist/` artifacts are mandatory git-tracked build outputs enforced via automated verification (`npm run verify:artifacts`). Direct edits to `dist/` are prohibited.
-- **Release Verification Boundary**: The release integrity contract expects the sequence: `Source (src/) → Build (npm run build) → Generated dist/ → Artifact Verification (npm run verify:artifacts) → Validation / Tests → Release`. Any missing, empty, extra, or stale artifact fails verification.
-- **Error Invariants**: Execution errors are never silently converted to success; structured `WorkflowError` instances retain failure exit codes and classification codes.
-
-For complete security boundary specifications, see **[Security Boundaries & Invariants in COMPATIBILITY.md](./COMPATIBILITY.md#security-boundaries--invariants)**.
+- **[Compatibility Contract](./COMPATIBILITY.md)** & **[Detailed Toolchain Matrix](./docs/compatibility.md)**: Toolchain baselines, compatibility matrix, and setup adapters.
+- **[Versioning Model](./docs/versioning.md)**: Authoritative `package.json` version source, SemVer 2.0.0 rules, and change impact classification (`classifyChangeImpact`).
+- **[Upgrade Guardrails](./docs/upgrade-guardrails.md)**: Baseline ref resolution chain, contract diffing, and SemVer impact enforcement.
+- **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
+- **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
+- **[Artifact Integrity](./docs/artifacts.md)**: Source to `dist/` build policy, entrypoint artifact verification, and synchronization enforcement.
 
 ## License
 
