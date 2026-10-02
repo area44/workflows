@@ -53,6 +53,7 @@ export {
   CANONICAL_COMPATIBILITY_MODEL,
   getCombinationCompatibility,
   getFixturePath,
+  getOrphanFixturePaths,
   isSupportedAction,
   isSupportedFixtureType,
   isSupportedPackageManager,
@@ -109,6 +110,9 @@ export {
   runUpgradeVerification,
   verifyUpgradeGuardrails,
 } from "./upgrade-guardrails.js";
+
+export type { HealthVerificationResult } from "./repository-health.js";
+export { runHealthVerification, verifyRepositoryHealth } from "./repository-health.js";
 
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node

@@ -382,32 +382,48 @@ function scanLeafDirs(currentDir: string, depth: number): string[] {
 }
 
 /**
+ * Computes orphan or unused fixture leaf directory relative paths in __tests__/fixtures.
+ */
+export function getOrphanFixturePaths(
+  entries: MatrixEntry[],
+  rootDir: string = process.cwd(),
+): string[] {
+  const fixturesBaseDir = path.join(rootDir, "__tests__/fixtures");
+  if (!fs.existsSync(fixturesBaseDir)) {
+    return [];
+  }
+
+  const expectedPaths = new Set(entries.map((e) => path.normalize(getFixturePath(e, rootDir))));
+  const actualLeafDirs = scanLeafDirs(fixturesBaseDir, 1);
+  const orphanPaths: string[] = [];
+
+  for (const actualDir of actualLeafDirs) {
+    if (!expectedPaths.has(actualDir)) {
+      const relPath = path.relative(rootDir, actualDir);
+      orphanPaths.push(path.normalize(relPath));
+    }
+  }
+
+  return orphanPaths;
+}
+
+/**
  * Validates that no unused or orphaned fixture leaf directories exist in __tests__/fixtures.
  */
 export function validateNoUnusedFixtures(
   entries: MatrixEntry[],
   rootDir: string = process.cwd(),
 ): void {
-  const fixturesBaseDir = path.join(rootDir, "__tests__/fixtures");
-  if (!fs.existsSync(fixturesBaseDir)) {
-    return;
-  }
-
-  const expectedPaths = new Set(entries.map((e) => path.normalize(getFixturePath(e, rootDir))));
-  const actualLeafDirs = scanLeafDirs(fixturesBaseDir, 1);
-
-  for (const actualDir of actualLeafDirs) {
-    if (!expectedPaths.has(actualDir)) {
-      const relPath = path.relative(rootDir, actualDir);
-      throw new WorkflowError(
-        "MISSING_CONFIGURATION",
-        `Unused fixture directory detected: ${relPath}`,
-        {
-          stage: "fixture-validation",
-          path: relPath,
-        },
-      );
-    }
+  const orphanPaths = getOrphanFixturePaths(entries, rootDir);
+  for (const relPath of orphanPaths) {
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Unused fixture directory detected: ${relPath}`,
+      {
+        stage: "fixture-validation",
+        path: relPath,
+      },
+    );
   }
 }
 

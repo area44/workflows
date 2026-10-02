@@ -142,6 +142,7 @@ Specialized documentation guides explain specific contracts and operational guar
 - **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
 - **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
 - **[Artifact Integrity](./docs/artifacts.md)**: Source to `dist/` build policy, entrypoint artifact verification, and synchronization enforcement.
+- **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, verification commands, and pre-merge checklist.
 
 ## License
 

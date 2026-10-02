@@ -18,7 +18,8 @@
     "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./dist/resolve-environment.mjs\"; runArtifactVerification();'",
     "verify:version": "node --input-type=module -e 'import { runVersionVerification } from \"./dist/resolve-environment.mjs\"; runVersionVerification();'",
     "verify:upgrade": "node --input-type=module -e 'import { runUpgradeVerification } from \"./dist/resolve-environment.mjs\"; runUpgradeVerification();'",
-    "verify:docs": "vp test __tests__/docs-consistency.test.ts"
+    "verify:docs": "vp test __tests__/docs-consistency.test.ts",
+    "verify:health": "node --input-type=module -e 'import { runHealthVerification } from \"./dist/resolve-environment.mjs\"; runHealthVerification();'"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",

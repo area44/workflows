@@ -50,5 +50,8 @@ jobs:
       - name: Verify documentation consistency
         run: npm run verify:docs
 
+      - name: Verify repository health
+        run: npm run verify:health
+
       - name: Run tests
         run: npm test
