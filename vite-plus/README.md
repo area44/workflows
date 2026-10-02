@@ -39,11 +39,11 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 
 ## Inputs
 
-| Name            | Description                                                        | Default         |
-| --------------- | ------------------------------------------------------------------ | --------------- |
-| `path`          | Directory where the built site is located                          | `dist`          |
-| `runtime`       | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) | (auto-detected) |
-| `build-command` | Custom build command string                                        | `vpr build`     |
+| Name            | Description                                                        | Default     | Required |
+| --------------- | ------------------------------------------------------------------ | ----------- | -------- |
+| `path`          | Directory where the built site is located                          | `dist`      | Optional |
+| `runtime`       | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |             | Optional |
+| `build-command` | Custom build command string                                        | `vpr build` | Optional |
 
 ## Outputs
 

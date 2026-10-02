@@ -32,9 +32,9 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 
 ## Inputs
 
-| Name      | Description                                                        | Default         |
-| --------- | ------------------------------------------------------------------ | --------------- |
-| `runtime` | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) | (auto-detected) |
+| Name      | Description                                                        | Default | Required |
+| --------- | ------------------------------------------------------------------ | ------- | -------- |
+| `runtime` | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |         | Optional |
 
 ## Outputs
 

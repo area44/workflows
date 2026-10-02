@@ -146,14 +146,14 @@ Every composite action in this repository shares a common environment resolution
 
 The matrix below answers: _“If a consumer uses runtime X and package manager Y with action Z, is this combination supported and tested?”_
 
-| Runtime (`runtime`) | Package Manager (`pm`) | `astro`     | `vite`      | `vite-plus` | `lint-format` | CI Coverage Status                                                    |
-| ------------------- | ---------------------- | ----------- | ----------- | ----------- | ------------- | --------------------------------------------------------------------- |
-| `node`              | `npm`                  | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
-| `node`              | `pnpm`                 | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
-| `node`              | `bun`                  | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
-| `bun`               | `bun`                  | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
-| `bun`               | `pnpm`                 | Supported   | Supported   | Supported   | Supported     | Tested in CI (`test-actions.yml`)                                     |
-| `bun`               | `npm`                  | Unsupported | Unsupported | Unsupported | Unsupported   | Not supported (Bun runtime mode requires Bun or pnpm package manager) |
+| Runtime | Package Manager | Status      | Default | Reason / Notes                                        |
+| ------- | --------------- | ----------- | ------- | ----------------------------------------------------- |
+| `node`  | `npm`           | Supported   | Yes     | Default fallback combination                          |
+| `node`  | `pnpm`          | Supported   | No      |                                                       |
+| `node`  | `bun`           | Supported   | No      |                                                       |
+| `bun`   | `bun`           | Supported   | No      |                                                       |
+| `bun`   | `pnpm`          | Supported   | No      |                                                       |
+| `bun`   | `npm`           | Unsupported | No      | Bun runtime mode requires Bun or pnpm package manager |
 
 ### Runtime & Package Manager Compatibility Contract
 

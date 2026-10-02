@@ -44,37 +44,82 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 ### `astro` (Astro Site Build and Deploy)
 
-- **Inputs**:
-  - `path` (optional, default: `"dist"`): Directory where the built site is located.
-  - `runtime` (optional): Runtime override string (e.g., `"node@24"`, `"bun@1.4"`).
-  - `build-command` (optional): Custom build command string.
-- **Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
+#### Inputs
+
+| Name            | Description                                                        | Default                       | Required |
+| --------------- | ------------------------------------------------------------------ | ----------------------------- | -------- |
+| `path`          | Directory where the built site is located                          | `dist`                        | Optional |
+| `runtime`       | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |                               | Optional |
+| `build-command` | Custom build command string                                        | `<package-manager> run build` | Optional |
+
+#### Outputs
+
+| Name                      | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `node-version`            | The Node.js version used                       |
+| `bun-version`             | The Bun version used                           |
+| `package-manager`         | The package manager used                       |
+| `package-manager-version` | The version string of the package manager used |
+| `runtime`                 | The resolved runtime mode (`node` or `bun`)    |
 
 ### `vite` (Vite Site Build and Deploy)
 
-- **Inputs**:
-  - `path` (optional, default: `"dist"`): Directory where the built site is located.
-  - `runtime` (optional): Runtime override string.
-  - `build-command` (optional): Custom build command string.
-- **Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
+#### Inputs
+
+| Name            | Description                                                        | Default                       | Required |
+| --------------- | ------------------------------------------------------------------ | ----------------------------- | -------- |
+| `path`          | Directory where the built site is located                          | `dist`                        | Optional |
+| `runtime`       | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |                               | Optional |
+| `build-command` | Custom build command string                                        | `<package-manager> run build` | Optional |
+
+#### Outputs
+
+| Name                      | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `node-version`            | The Node.js version used                       |
+| `bun-version`             | The Bun version used                           |
+| `package-manager`         | The package manager used                       |
+| `package-manager-version` | The version string of the package manager used |
+| `runtime`                 | The resolved runtime mode (`node` or `bun`)    |
 
 ### `vite-plus` (Vite+ Site Build and Deploy)
 
-- **Inputs**:
-  - `path` (optional, default: `"dist"`): Directory where the built site is located.
-  - `runtime` (optional): Runtime override string.
-  - `build-command` (optional): Custom build command string.
-- **Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`, `vp-version`.
+#### Inputs
+
+| Name            | Description                                                        | Default     | Required |
+| --------------- | ------------------------------------------------------------------ | ----------- | -------- |
+| `path`          | Directory where the built site is located                          | `dist`      | Optional |
+| `runtime`       | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |             | Optional |
+| `build-command` | Custom build command string                                        | `vpr build` | Optional |
+
+#### Outputs
+
+| Name                      | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `node-version`            | The Node.js version used                       |
+| `bun-version`             | The Bun version used                           |
+| `package-manager`         | The package manager used                       |
+| `package-manager-version` | The version string of the package manager used |
+| `runtime`                 | The resolved runtime mode (`node` or `bun`)    |
+| `vp-version`              | The version of Vite+ installed                 |
 
 ### `lint-format` (Lint and Format Verification)
 
-- **Inputs**:
-  - `runtime` (optional): Runtime override string.
-- **Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
+#### Inputs
+
+| Name      | Description                                                        | Default | Required |
+| --------- | ------------------------------------------------------------------ | ------- | -------- |
+| `runtime` | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |         | Optional |
+
+#### Outputs
+
+| Name                      | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `node-version`            | The Node.js version used                       |
+| `bun-version`             | The Bun version used                           |
+| `package-manager`         | The package manager used                       |
+| `package-manager-version` | The version string of the package manager used |
+| `runtime`                 | The resolved runtime mode (`node` or `bun`)    |
 
 ## Compatibility Overview
 

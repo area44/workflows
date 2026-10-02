@@ -11,6 +11,17 @@ When project configuration files and workflow inputs do not specify toolchain ve
 - **npm**: `"12"` (`DEFAULT_NPM_VERSION`)
 - **pnpm**: `"12"` (`DEFAULT_PNPM_VERSION`)
 
+## Compatibility Matrix
+
+| Runtime | Package Manager | Status      | Default | Reason / Notes                                        |
+| ------- | --------------- | ----------- | ------- | ----------------------------------------------------- |
+| `node`  | `npm`           | Supported   | Yes     | Default fallback combination                          |
+| `node`  | `pnpm`          | Supported   | No      |                                                       |
+| `node`  | `bun`           | Supported   | No      |                                                       |
+| `bun`   | `bun`           | Supported   | No      |                                                       |
+| `bun`   | `pnpm`          | Supported   | No      |                                                       |
+| `bun`   | `npm`           | Unsupported | No      | Bun runtime mode requires Bun or pnpm package manager |
+
 ## Canonical Compatibility Model
 
 The repository's compatibility contract is governed by `CANONICAL_COMPATIBILITY_MODEL` in `src/compatibility.ts`:
@@ -28,15 +39,15 @@ The repository's compatibility contract is governed by `CANONICAL_COMPATIBILITY_
 
 ### Supported Matrix Combinations
 
-- `node` + `npm` (Supported, default combination)
-- `node` + `pnpm` (Supported)
-- `node` + `bun` (Supported)
-- `bun` + `bun` (Supported)
-- `bun` + `pnpm` (Supported)
+- `node` + `npm` (supported, default combination)
+- `node` + `pnpm` (supported)
+- `node` + `bun` (supported)
+- `bun` + `bun` (supported)
+- `bun` + `pnpm` (supported)
 
 ### Explicitly Unsupported Combinations
 
-- `bun` + `npm` (Unsupported: Bun runtime mode does not support npm package manager)
+- `bun` + `npm` (unsupported: Bun runtime mode does not support npm package manager)
 
 ## Runtime Resolution Precedence
 
