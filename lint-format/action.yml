@@ -30,7 +30,6 @@ runs:
       id: resolve_environment
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Setup PNPM
@@ -81,7 +80,6 @@ runs:
     - name: Run lint and format
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
