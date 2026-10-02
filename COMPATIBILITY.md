@@ -242,3 +242,9 @@ The versioning model formalizes how repository versions are determined and what 
 ## Upgrade Guardrails
 
 To prevent accidental breaking changes and compatibility regressions when modifying repository contracts or upgrading dependencies, machine-verifiable upgrade guardrails are enforced via `src/upgrade-guardrails.ts` and `npm run verify:upgrade`. See **[Upgrade Guardrails Guide](./docs/upgrade-guardrails.md)**.
+
+---
+
+## Maintenance & Repository Health
+
+For repository health checks, sources of truth, verification commands, and pre-merge procedures, see **[Maintenance & Repository Health Guide](./docs/maintenance.md)**.

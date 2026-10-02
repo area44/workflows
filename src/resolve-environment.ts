@@ -110,6 +110,9 @@ export {
   verifyUpgradeGuardrails,
 } from "./upgrade-guardrails.js";
 
+export type { HealthVerificationResult } from "./repository-health.js";
+export { runHealthVerification, verifyRepositoryHealth } from "./repository-health.js";
+
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";

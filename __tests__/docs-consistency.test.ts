@@ -494,6 +494,7 @@ describe("Documentation Consistency Verification", () => {
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
       expect(readmeContent).toContain("./docs/artifacts.md");
+      expect(readmeContent).toContain("./docs/maintenance.md");
     });
 
     it("all documentation files in docs/ should exist", () => {
@@ -504,6 +505,7 @@ describe("Documentation Consistency Verification", () => {
         "errors.md",
         "security.md",
         "artifacts.md",
+        "maintenance.md",
       ];
       for (const file of expectedFiles) {
         expect(fs.existsSync(path.join(docsDir, file))).toBe(true);
