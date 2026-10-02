@@ -271,30 +271,67 @@ function parseOutputTableRow(cells: string[]): DocumentedOutput | null {
   };
 }
 
+function checkHasMultipleActionHeaders(lines: string[]): boolean {
+  return lines.some((l) => {
+    const norm = l.toLowerCase().replace(/`/g, "");
+    return KNOWN_ACTIONS_SORTED.some(
+      (a) => norm.includes(`### ${a}`) || norm.includes(`## ${a}`) || norm.includes(`area44/${a}`),
+    );
+  });
+}
+
+function detectApiSectionType(
+  line: string,
+  targetKey: string,
+  currentSection: "none" | "inputs" | "outputs",
+): "none" | "inputs" | "outputs" {
+  if (/^#{2,4}\s+Inputs/i.test(line)) {
+    return "inputs";
+  }
+  if (/^#{2,4}\s+Outputs/i.test(line)) {
+    return "outputs";
+  }
+  if (/^#{1,3}\s+/i.test(line) && !/Inputs|Outputs/i.test(line) && !line.toLowerCase().includes(targetKey)) {
+    return "none";
+  }
+  return currentSection;
+}
+
+function parseApiTableRowLine(
+  line: string,
+  currentSection: "inputs" | "outputs",
+  inputs: DocumentedInput[],
+  outputs: DocumentedOutput[],
+): void {
+  if (!line.startsWith("|") || !line.endsWith("|")) {
+    return;
+  }
+  const cells = line.split("|").map((c) => c.trim()).slice(1, -1);
+  if (cells.every((c) => /^:?-+:?$/.test(c))) {
+    return;
+  }
+
+  if (currentSection === "inputs") {
+    const entry = parseInputTableRow(cells);
+    if (entry) inputs.push(entry);
+  } else if (currentSection === "outputs") {
+    const entry = parseOutputTableRow(cells);
+    if (entry) outputs.push(entry);
+  }
+}
+
 export function parseDocumentedActionApi(markdownContent: string, actionKey: string): DocumentedActionApi {
   const inputs: DocumentedInput[] = [];
   const outputs: DocumentedOutput[] = [];
 
   const lines = markdownContent.split("\n");
-  let currentSection: "none" | "inputs" | "outputs" = "none";
-  let activeActionMatch = false;
-
   const normalizedTargetKey = actionKey.toLowerCase().trim();
 
-  const hasMultipleActionHeaders = lines.some((l) => {
-    const norm = l.toLowerCase().replace(/`/g, "");
-    return KNOWN_ACTIONS_SORTED.some((a) =>
-      norm.includes(`### ${a}`) || norm.includes(`## ${a}`) || norm.includes(`area44/${a}`)
-    );
-  });
-
-  if (!hasMultipleActionHeaders) {
-    activeActionMatch = true;
-  }
+  let activeActionMatch = !checkHasMultipleActionHeaders(lines);
+  let currentSection: "none" | "inputs" | "outputs" = "none";
 
   for (const line of lines) {
     const trimmed = line.trim();
-    const normalizedLine = trimmed.toLowerCase().replace(/`/g, "");
 
     const matchedAction = detectActionHeaderMatch(trimmed);
     if (matchedAction) {
@@ -308,33 +345,14 @@ export function parseDocumentedActionApi(markdownContent: string, actionKey: str
       continue;
     }
 
-    if (/^#{2,4}\s+Inputs/i.test(trimmed)) {
-      currentSection = "inputs";
+    const nextSection = detectApiSectionType(trimmed, normalizedTargetKey, currentSection);
+    if (nextSection !== currentSection) {
+      currentSection = nextSection;
       continue;
-    } else if (/^#{2,4}\s+Outputs/i.test(trimmed)) {
-      currentSection = "outputs";
-      continue;
-    } else if (/^#{1,3}\s+/i.test(trimmed) && !/Inputs|Outputs/i.test(trimmed) && !normalizedLine.includes(normalizedTargetKey)) {
-      currentSection = "none";
     }
 
-    if ((currentSection === "inputs" || currentSection === "outputs") && trimmed.startsWith("|") && trimmed.endsWith("|")) {
-      const cells = trimmed.split("|").map((c) => c.trim()).slice(1, -1);
-      if (cells.every((c) => /^:?-+:?$/.test(c))) {
-        continue;
-      }
-
-      if (currentSection === "inputs") {
-        const inputEntry = parseInputTableRow(cells);
-        if (inputEntry) {
-          inputs.push(inputEntry);
-        }
-      } else if (currentSection === "outputs") {
-        const outputEntry = parseOutputTableRow(cells);
-        if (outputEntry) {
-          outputs.push(outputEntry);
-        }
-      }
+    if (currentSection === "inputs" || currentSection === "outputs") {
+      parseApiTableRowLine(trimmed, currentSection, inputs, outputs);
     }
   }
 
