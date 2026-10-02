@@ -1,6 +1,6 @@
 # area44/lint-format
 
-Run linting/formatting scripts.
+Run linting and formatting scripts.
 
 ## Usage
 
@@ -32,9 +32,9 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 
 ## Inputs
 
-| Name      | Description                           | Default         |
-| --------- | ------------------------------------- | --------------- |
-| `runtime` | Optional runtime and version override | (auto-detected) |
+| Name      | Description                                                   | Default | Required |
+| --------- | ------------------------------------------------------------- | ------- | -------- |
+| `runtime` | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
 
 ## Outputs
 
@@ -44,4 +44,4 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 | `bun-version`             | The Bun version used                    |
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
-| `runtime`                 | The runtime used                        |
+| `runtime`                 | The runtime used (node or bun)          |

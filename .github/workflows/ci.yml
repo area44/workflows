@@ -47,5 +47,8 @@ jobs:
           BASE_REF: ${{ github.base_ref || github.event.before }}
         run: npm run verify:upgrade
 
+      - name: Verify documentation consistency
+        run: npm run verify:docs
+
       - name: Run tests
         run: npm test
