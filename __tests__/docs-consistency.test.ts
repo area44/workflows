@@ -188,9 +188,11 @@ export function validateDocumentedCompatibility(
       );
     }
 
-    if (canonical.isDefault && !matched.isDefault) {
+    const expectedDefault = Boolean(canonical.isDefault);
+    const documentedDefault = Boolean(matched.isDefault);
+    if (documentedDefault !== expectedDefault) {
       throw new Error(
-        `Documented default mismatch for combination (${canonical.runtime}, ${canonical.packageManager}): expected default=true, but documentation states default=${Boolean(matched.isDefault)}.`,
+        `Documented default mismatch for combination (${canonical.runtime}, ${canonical.packageManager}): expected default=${expectedDefault}, but documentation states default=${documentedDefault}.`,
       );
     }
 
@@ -359,6 +361,11 @@ export function parseDocumentedActionApi(markdownContent: string, actionKey: str
   return { inputs, outputs };
 }
 
+function normalizeDescription(desc?: string): string {
+  if (!desc) return "";
+  return desc.trim().replace(/^["']|["']$/g, "").trim();
+}
+
 function validateDocumentedInputs(
   documentedInputs: DocumentedInput[],
   contract: ActionContract,
@@ -387,6 +394,16 @@ function validateDocumentedInputs(
         );
       }
     }
+
+    if (expectedInput.description) {
+      const expectedDesc = normalizeDescription(expectedInput.description);
+      const documentedDesc = normalizeDescription(matched.description);
+      if (documentedDesc !== expectedDesc) {
+        throw new Error(
+          `Description mismatch for input '${expectedInput.name}' in action '${targetKey}': action.yml specifies description='${expectedDesc}', but documentation specifies description='${documentedDesc}'.`,
+        );
+      }
+    }
   }
 
   for (const input of documentedInputs) {
@@ -410,6 +427,16 @@ function validateDocumentedOutputs(
       throw new Error(
         `Public output '${expectedOutput.name}' from action.yml is missing in documentation for action '${targetKey}'.`,
       );
+    }
+
+    if (expectedOutput.description) {
+      const expectedDesc = normalizeDescription(expectedOutput.description);
+      const documentedDesc = normalizeDescription(matched.description);
+      if (documentedDesc !== expectedDesc) {
+        throw new Error(
+          `Description mismatch for output '${expectedOutput.name}' in action '${targetKey}': action.yml specifies description='${expectedDesc}', but documentation specifies description='${documentedDesc}'.`,
+        );
+      }
     }
   }
 
@@ -662,6 +689,21 @@ describe("Documentation Consistency Verification", () => {
         );
       });
 
+      it("should fail when a non-default combination (node + pnpm) is documented as default", () => {
+        const badDoc = `
+| Runtime | Package Manager | Status | Default |
+| \`node\` | \`npm\` | Supported | Yes |
+| \`node\` | \`pnpm\` | Supported | Yes |
+| \`node\` | \`bun\` | Supported | No |
+| \`bun\` | \`bun\` | Supported | No |
+| \`bun\` | \`pnpm\` | Supported | No |
+| \`bun\` | \`npm\` | Unsupported | No |
+`;
+        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
+          /expected default=false, but documentation states default=true/,
+        );
+      });
+
       it("should fail when documentation contains unknown/extra matrix combination", () => {
         const badDoc = `
 | Runtime | Package Manager | Status | Default |
@@ -708,10 +750,10 @@ describe("Documentation Consistency Verification", () => {
       const mockContract: ActionContract = {
         name: "astro",
         inputs: [
-          { name: "path", required: false, default: "dist" },
-          { name: "runtime", required: false },
+          { name: "path", required: false, default: "dist", description: "Directory where the built site is located" },
+          { name: "runtime", required: false, description: "Optional runtime and version override (e.g. node@24, bun@1.4)" },
         ],
-        outputs: [{ name: "runtime" }],
+        outputs: [{ name: "runtime", description: "The runtime used (node or bun)" }],
       };
 
       it("should fail when an optional input is documented as required", () => {
@@ -721,13 +763,13 @@ describe("Documentation Consistency Verification", () => {
 #### Inputs
 
 | Name | Description | Default | Required |
-| \`path\` | Site path | \`dist\` | Required |
-| \`runtime\` | Runtime override | | Optional |
+| \`path\` | Directory where the built site is located | \`dist\` | Required |
+| \`runtime\` | Optional runtime and version override (e.g. node@24, bun@1.4) | | Optional |
 
 #### Outputs
 
 | Name | Description |
-| \`runtime\` | Resolved runtime |
+| \`runtime\` | The runtime used (node or bun) |
 `;
         expect(() => validateDocumentedActionApi(badDoc, mockContract, "astro")).toThrow(
           /action.yml specifies required=false, but documentation specifies required=true/,
@@ -737,7 +779,7 @@ describe("Documentation Consistency Verification", () => {
       it("should fail when a required input is documented as optional", () => {
         const mockRequiredContract: ActionContract = {
           name: "astro",
-          inputs: [{ name: "token", required: true }],
+          inputs: [{ name: "token", required: true, description: "Secret token" }],
           outputs: [],
         };
         const badDoc = `
@@ -762,16 +804,56 @@ describe("Documentation Consistency Verification", () => {
 #### Inputs
 
 | Name | Description | Default | Required |
-| \`path\` | Site path | \`build\` | Optional |
-| \`runtime\` | Runtime override | | Optional |
+| \`path\` | Directory where the built site is located | \`build\` | Optional |
+| \`runtime\` | Optional runtime and version override (e.g. node@24, bun@1.4) | | Optional |
 
 #### Outputs
 
 | Name | Description |
-| \`runtime\` | Resolved runtime |
+| \`runtime\` | The runtime used (node or bun) |
 `;
         expect(() => validateDocumentedActionApi(badDoc, mockContract, "astro")).toThrow(
           /action.yml specifies default='dist', but documentation specifies default='build'/,
+        );
+      });
+
+      it("should fail when an input description differs from action.yml", () => {
+        const badDoc = `
+### \`astro\`
+
+#### Inputs
+
+| Name | Description | Default | Required |
+| \`path\` | Incorrect or modified description | \`dist\` | Optional |
+| \`runtime\` | Optional runtime and version override (e.g. node@24, bun@1.4) | | Optional |
+
+#### Outputs
+
+| Name | Description |
+| \`runtime\` | The runtime used (node or bun) |
+`;
+        expect(() => validateDocumentedActionApi(badDoc, mockContract, "astro")).toThrow(
+          /action.yml specifies description='Directory where the built site is located', but documentation specifies description='Incorrect or modified description'/,
+        );
+      });
+
+      it("should fail when an output description differs from action.yml", () => {
+        const badDoc = `
+### \`astro\`
+
+#### Inputs
+
+| Name | Description | Default | Required |
+| \`path\` | Directory where the built site is located | \`dist\` | Optional |
+| \`runtime\` | Optional runtime and version override (e.g. node@24, bun@1.4) | | Optional |
+
+#### Outputs
+
+| Name | Description |
+| \`runtime\` | Incorrect output description |
+`;
+        expect(() => validateDocumentedActionApi(badDoc, mockContract, "astro")).toThrow(
+          /action.yml specifies description='The runtime used \(node or bun\)', but documentation specifies description='Incorrect output description'/,
         );
       });
 
@@ -782,12 +864,12 @@ describe("Documentation Consistency Verification", () => {
 #### Inputs
 
 | Name | Description | Default | Required |
-| \`path\` | Site path | \`dist\` | Optional |
+| \`path\` | Directory where the built site is located | \`dist\` | Optional |
 
 #### Outputs
 
 | Name | Description |
-| \`runtime\` | Resolved runtime |
+| \`runtime\` | The runtime used (node or bun) |
 `;
         expect(() => validateDocumentedActionApi(missingInputDoc, mockContract, "astro")).toThrow(
           /Public input 'runtime' from action.yml is missing in documentation/,
@@ -801,14 +883,14 @@ describe("Documentation Consistency Verification", () => {
 #### Inputs
 
 | Name | Description | Default | Required |
-| \`path\` | Site path | \`dist\` | Optional |
-| \`runtime\` | Runtime override | | Optional |
+| \`path\` | Directory where the built site is located | \`dist\` | Optional |
+| \`runtime\` | Optional runtime and version override (e.g. node@24, bun@1.4) | | Optional |
 | \`phantom\` | Phantom option | | Optional |
 
 #### Outputs
 
 | Name | Description |
-| \`runtime\` | Resolved runtime |
+| \`runtime\` | The runtime used (node or bun) |
 `;
         expect(() => validateDocumentedActionApi(extraInputDoc, mockContract, "astro")).toThrow(
           /Documentation for action 'astro' contains unknown input 'phantom' not present in action.yml/,

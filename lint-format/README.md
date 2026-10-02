@@ -32,16 +32,16 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 
 ## Inputs
 
-| Name      | Description                                                        | Default | Required |
-| --------- | ------------------------------------------------------------------ | ------- | -------- |
-| `runtime` | Optional runtime and version override (e.g., `node@24`, `bun@1.4`) |         | Optional |
+| Name      | Description                                                   | Default | Required |
+| --------- | ------------------------------------------------------------- | ------- | -------- |
+| `runtime` | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
 
 ## Outputs
 
-| Name                      | Description                                    |
-| ------------------------- | ---------------------------------------------- |
-| `node-version`            | The Node.js version used                       |
-| `bun-version`             | The Bun version used                           |
-| `package-manager`         | The package manager used                       |
-| `package-manager-version` | The version string of the package manager used |
-| `runtime`                 | The resolved runtime mode (`node` or `bun`)    |
+| Name                      | Description                             |
+| ------------------------- | --------------------------------------- |
+| `node-version`            | The Node.js version used                |
+| `bun-version`             | The Bun version used                    |
+| `package-manager`         | The package manager used                |
+| `package-manager-version` | The version of the package manager used |
+| `runtime`                 | The runtime used (node or bun)          |
