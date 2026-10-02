@@ -41,79 +41,122 @@ export interface DocumentedActionApi {
   outputs: DocumentedOutput[];
 }
 
+interface MatrixHeaderIndices {
+  runtimeIdx: number;
+  pmIdx: number;
+  statusIdx: number;
+  defaultIdx: number;
+  reasonIdx: number;
+}
+
+function parseMatrixHeaderIndices(headers: string[]): MatrixHeaderIndices {
+  return {
+    runtimeIdx: headers.findIndex((h) => h.includes("runtime")),
+    pmIdx: headers.findIndex((h) => h.includes("package manager") || h === "pm"),
+    statusIdx: headers.findIndex((h) => h.includes("status") || h.includes("astro") || h.includes("vite")),
+    defaultIdx: headers.findIndex((h) => h.includes("default")),
+    reasonIdx: headers.findIndex((h) => h.includes("reason") || h.includes("notes") || h.includes("coverage")),
+  };
+}
+
+function parseMatrixTableRow(
+  cells: string[],
+  indices: MatrixHeaderIndices,
+): DocumentedMatrixEntry | null {
+  const { runtimeIdx, pmIdx, statusIdx, defaultIdx, reasonIdx } = indices;
+  if (runtimeIdx === -1 || pmIdx === -1) {
+    return null;
+  }
+
+  const runtime = cells[runtimeIdx]?.replace(/`/g, "").trim().toLowerCase();
+  const packageManager = cells[pmIdx]?.replace(/`/g, "").trim().toLowerCase();
+  if (!runtime || !packageManager) {
+    return null;
+  }
+
+  const rawStatus = statusIdx !== -1 ? cells[statusIdx] : "";
+  const supported = !/unsupported|not supported/i.test(rawStatus) && /supported/i.test(rawStatus);
+
+  const rawDefault = defaultIdx !== -1 ? cells[defaultIdx] : "";
+  const isDefault = /yes|true|default/i.test(rawDefault);
+
+  const reason = reasonIdx !== -1 ? cells[reasonIdx] : undefined;
+
+  return {
+    runtime,
+    packageManager,
+    supported,
+    isDefault,
+    reason: reason || undefined,
+  };
+}
+
+function parseMatrixBulletLine(line: string): DocumentedMatrixEntry | null {
+  const bulletMatch = line.match(/^[-*]\s*`([^`]+)`\s*\+\s*`([^`]+)`\s*\(([^)]+)\)/);
+  if (!bulletMatch) {
+    return null;
+  }
+
+  const runtime = bulletMatch[1].trim().toLowerCase();
+  const packageManager = bulletMatch[2].trim().toLowerCase();
+  const details = bulletMatch[3].trim().toLowerCase();
+
+  const supported = details.includes("supported") && !details.includes("unsupported");
+  const isDefault = details.includes("default");
+  const reasonColon = bulletMatch[3].indexOf(":");
+  const reason = reasonColon !== -1 ? bulletMatch[3].slice(reasonColon + 1).trim() : undefined;
+
+  return {
+    runtime,
+    packageManager,
+    supported,
+    isDefault,
+    reason,
+  };
+}
+
 export function parseDocumentedCompatibilityMatrix(markdownContent: string): DocumentedMatrixEntry[] {
   const entries: DocumentedMatrixEntry[] = [];
   const lines = markdownContent.split("\n");
 
   let inMatrixTable = false;
-  let headers: string[] = [];
+  let indices: MatrixHeaderIndices = {
+    runtimeIdx: -1,
+    pmIdx: -1,
+    statusIdx: -1,
+    defaultIdx: -1,
+    reasonIdx: -1,
+  };
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
       const cells = trimmed.split("|").map((c) => c.trim()).slice(1, -1);
       if (!inMatrixTable) {
-        const hasRuntimeHeader = cells.some((c) => /^runtime(?:\s*\(`runtime`\))?$/i.test(c.replace(/`/g, "").trim()));
-        const hasPmHeader = cells.some((c) => /^package manager(?:\s*\(`pm`\))?$/i.test(c.replace(/`/g, "").trim()) || /^pm$/i.test(c.replace(/`/g, "").trim()));
+        const cleaned = cells.map((c) => c.replace(/`/g, "").trim().toLowerCase());
+        const hasRuntimeHeader = cleaned.some((c) => /^runtime(?:\s*\(runtime\))?$/i.test(c));
+        const hasPmHeader = cleaned.some((c) => /^package manager(?:\s*\(pm\))?$/i.test(c) || /^pm$/i.test(c));
         if (hasRuntimeHeader && hasPmHeader) {
           inMatrixTable = true;
-          headers = cells.map((c) => c.replace(/`/g, "").trim().toLowerCase());
+          indices = parseMatrixHeaderIndices(cleaned);
           continue;
         }
       } else {
         if (cells.every((c) => /^:?-+:?$/.test(c))) {
           continue;
         }
-        const runtimeIdx = headers.findIndex((h) => h.includes("runtime"));
-        const pmIdx = headers.findIndex((h) => h.includes("package manager") || h === "pm");
-        const statusIdx = headers.findIndex((h) => h.includes("status") || h.includes("astro") || h.includes("vite"));
-        const defaultIdx = headers.findIndex((h) => h.includes("default"));
-        const reasonIdx = headers.findIndex((h) => h.includes("reason") || h.includes("notes") || h.includes("coverage"));
-
-        if (runtimeIdx !== -1 && pmIdx !== -1) {
-          const runtime = cells[runtimeIdx].replace(/`/g, "").trim().toLowerCase();
-          const packageManager = cells[pmIdx].replace(/`/g, "").trim().toLowerCase();
-          const rawStatus = statusIdx !== -1 ? cells[statusIdx] : "";
-          const supported = !/unsupported|not supported/i.test(rawStatus) && /supported/i.test(rawStatus);
-
-          const rawDefault = defaultIdx !== -1 ? cells[defaultIdx] : "";
-          const isDefault = /yes|true|default/i.test(rawDefault);
-
-          const reason = reasonIdx !== -1 ? cells[reasonIdx] : undefined;
-
-          if (runtime && packageManager) {
-            entries.push({
-              runtime,
-              packageManager,
-              supported,
-              isDefault,
-              reason: reason || undefined,
-            });
-          }
+        const entry = parseMatrixTableRow(cells, indices);
+        if (entry) {
+          entries.push(entry);
         }
       }
     } else {
       inMatrixTable = false;
     }
 
-    const bulletMatch = trimmed.match(/^[-*]\s*`([^`]+)`\s*\+\s*`([^`]+)`\s*\(([^)]+)\)/);
-    if (bulletMatch) {
-      const runtime = bulletMatch[1].trim().toLowerCase();
-      const packageManager = bulletMatch[2].trim().toLowerCase();
-      const details = bulletMatch[3].trim().toLowerCase();
-
-      const supported = details.includes("supported") && !details.includes("unsupported");
-      const isDefault = details.includes("default");
-      const reasonColon = bulletMatch[3].indexOf(":");
-      const reason = reasonColon !== -1 ? bulletMatch[3].slice(reasonColon + 1).trim() : undefined;
-
-      entries.push({
-        runtime,
-        packageManager,
-        supported,
-        isDefault,
-        reason,
-      });
+    const bulletEntry = parseMatrixBulletLine(trimmed);
+    if (bulletEntry) {
+      entries.push(bulletEntry);
     }
   }
 
@@ -153,7 +196,11 @@ export function validateDocumentedCompatibility(
 
     if (!canonical.supported && canonical.reason && matched.reason) {
       const normalizedReason = matched.reason.toLowerCase();
-      if (!normalizedReason.includes("not supported") && !normalizedReason.includes("unsupported") && !normalizedReason.includes("requires bun or pnpm")) {
+      if (
+        !normalizedReason.includes("not supported") &&
+        !normalizedReason.includes("unsupported") &&
+        !normalizedReason.includes("requires bun or pnpm")
+      ) {
         throw new Error(
           `Documented reason mismatch for unsupported combination (${canonical.runtime}, ${canonical.packageManager}): expected reason to describe unsupported status, but documentation states "${matched.reason}".`,
         );
@@ -172,6 +219,58 @@ export function validateDocumentedCompatibility(
   }
 }
 
+const KNOWN_ACTIONS_SORTED = ["lint-format", "vite-plus", "astro", "vite"];
+
+function detectActionHeaderMatch(line: string): string | null {
+  if (!line.startsWith("#")) {
+    return null;
+  }
+  const normalizedLine = line.toLowerCase().replace(/`/g, "");
+  const matched = KNOWN_ACTIONS_SORTED.find((a) => {
+    const headerPattern = new RegExp(`(?:^#{1,4}\\s+|area44/)${a}(?:\\b|\\s|\\()`, "i");
+    return headerPattern.test(normalizedLine);
+  });
+  return matched || null;
+}
+
+function parseInputTableRow(cells: string[]): DocumentedInput | null {
+  if (cells.length < 1) {
+    return null;
+  }
+  const name = cells[0].replace(/`/g, "").trim();
+  if (!name || name.toLowerCase() === "name") {
+    return null;
+  }
+
+  const description = cells.length >= 2 ? cells[1] : undefined;
+  const defaultValue = cells.length >= 3 ? cells[2].replace(/`/g, "").trim() : undefined;
+  const requiredText = cells.length >= 4 ? cells[3].trim().toLowerCase() : "optional";
+  const required = requiredText === "required" || requiredText === "yes" || requiredText === "true";
+
+  return {
+    name,
+    description,
+    required,
+    default: defaultValue || undefined,
+  };
+}
+
+function parseOutputTableRow(cells: string[]): DocumentedOutput | null {
+  if (cells.length < 1) {
+    return null;
+  }
+  const name = cells[0].replace(/`/g, "").trim();
+  if (!name || name.toLowerCase() === "name") {
+    return null;
+  }
+
+  const description = cells.length >= 2 ? cells[1] : undefined;
+  return {
+    name,
+    description,
+  };
+}
+
 export function parseDocumentedActionApi(markdownContent: string, actionKey: string): DocumentedActionApi {
   const inputs: DocumentedInput[] = [];
   const outputs: DocumentedOutput[] = [];
@@ -181,36 +280,27 @@ export function parseDocumentedActionApi(markdownContent: string, actionKey: str
   let activeActionMatch = false;
 
   const normalizedTargetKey = actionKey.toLowerCase().trim();
-  const knownActionsSorted = ["lint-format", "vite-plus", "astro", "vite"];
 
   const hasMultipleActionHeaders = lines.some((l) => {
     const norm = l.toLowerCase().replace(/`/g, "");
-    return knownActionsSorted.filter((a) =>
-      norm.includes(`### \`${a}\``) || norm.includes(`### ${a}`) || norm.includes(`area44/${a}`)
-    ).length > 0;
+    return KNOWN_ACTIONS_SORTED.some((a) =>
+      norm.includes(`### ${a}`) || norm.includes(`## ${a}`) || norm.includes(`area44/${a}`)
+    );
   });
 
   if (!hasMultipleActionHeaders) {
     activeActionMatch = true;
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    const normalizedLine = line.toLowerCase().replace(/`/g, "");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const normalizedLine = trimmed.toLowerCase().replace(/`/g, "");
 
-    if (line.startsWith("#")) {
-      const matchedAction = knownActionsSorted.find((a) => {
-        const headerPattern = new RegExp(`(?:^#{1,4}\\s+|area44/)${a}(?:\\b|\\s|\\()`, "i");
-        return headerPattern.test(normalizedLine);
-      });
-
-      if (matchedAction) {
-        if (matchedAction === normalizedTargetKey) {
-          activeActionMatch = true;
-        } else {
-          activeActionMatch = false;
-          currentSection = "none";
-        }
+    const matchedAction = detectActionHeaderMatch(trimmed);
+    if (matchedAction) {
+      activeActionMatch = matchedAction === normalizedTargetKey;
+      if (!activeActionMatch) {
+        currentSection = "none";
       }
     }
 
@@ -218,47 +308,31 @@ export function parseDocumentedActionApi(markdownContent: string, actionKey: str
       continue;
     }
 
-    if (/^#{2,4}\s+Inputs/i.test(line)) {
+    if (/^#{2,4}\s+Inputs/i.test(trimmed)) {
       currentSection = "inputs";
       continue;
-    } else if (/^#{2,4}\s+Outputs/i.test(line)) {
+    } else if (/^#{2,4}\s+Outputs/i.test(trimmed)) {
       currentSection = "outputs";
       continue;
-    } else if (/^#{1,3}\s+/i.test(line) && !/Inputs|Outputs/i.test(line) && !normalizedLine.includes(normalizedTargetKey)) {
+    } else if (/^#{1,3}\s+/i.test(trimmed) && !/Inputs|Outputs/i.test(trimmed) && !normalizedLine.includes(normalizedTargetKey)) {
       currentSection = "none";
     }
 
-    if ((currentSection === "inputs" || currentSection === "outputs") && line.startsWith("|") && line.endsWith("|")) {
-      const cells = line.split("|").map((c) => c.trim()).slice(1, -1);
+    if ((currentSection === "inputs" || currentSection === "outputs") && trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      const cells = trimmed.split("|").map((c) => c.trim()).slice(1, -1);
       if (cells.every((c) => /^:?-+:?$/.test(c))) {
         continue;
       }
-      if (cells.some((c) => /^Name$/i.test(c))) {
-        continue;
-      }
 
-      if (cells.length >= 1) {
-        const name = cells[0].replace(/`/g, "").trim();
-        if (!name) continue;
-
-        if (currentSection === "inputs") {
-          const description = cells.length >= 2 ? cells[1] : undefined;
-          const defaultValue = cells.length >= 3 ? cells[2].replace(/`/g, "").trim() : undefined;
-          const requiredText = cells.length >= 4 ? cells[3].trim().toLowerCase() : "optional";
-          const required = requiredText === "required" || requiredText === "yes" || requiredText === "true";
-
-          inputs.push({
-            name,
-            description,
-            required,
-            default: defaultValue || undefined,
-          });
-        } else if (currentSection === "outputs") {
-          const description = cells.length >= 2 ? cells[1] : undefined;
-          outputs.push({
-            name,
-            description,
-          });
+      if (currentSection === "inputs") {
+        const inputEntry = parseInputTableRow(cells);
+        if (inputEntry) {
+          inputs.push(inputEntry);
+        }
+      } else if (currentSection === "outputs") {
+        const outputEntry = parseOutputTableRow(cells);
+        if (outputEntry) {
+          outputs.push(outputEntry);
         }
       }
     }
@@ -267,20 +341,13 @@ export function parseDocumentedActionApi(markdownContent: string, actionKey: str
   return { inputs, outputs };
 }
 
-export function validateDocumentedActionApi(markdownContent: string, contract: ActionContract, actionKey?: string): void {
-  const targetKey = actionKey || contract.name.toLowerCase();
-  const documented = parseDocumentedActionApi(markdownContent, targetKey);
-
-  if (documented.inputs.length === 0 && contract.inputs.length > 0) {
-    throw new Error(`Documentation for action '${targetKey}' is missing inputs section or inputs table.`);
-  }
-
-  if (documented.outputs.length === 0 && contract.outputs.length > 0) {
-    throw new Error(`Documentation for action '${targetKey}' is missing outputs section or outputs table.`);
-  }
-
+function validateDocumentedInputs(
+  documentedInputs: DocumentedInput[],
+  contract: ActionContract,
+  targetKey: string,
+): void {
   for (const expectedInput of contract.inputs) {
-    const matched = documented.inputs.find((i) => i.name === expectedInput.name);
+    const matched = documentedInputs.find((i) => i.name === expectedInput.name);
     if (!matched) {
       throw new Error(
         `Public input '${expectedInput.name}' from action.yml is missing in documentation for action '${targetKey}'.`,
@@ -304,7 +371,7 @@ export function validateDocumentedActionApi(markdownContent: string, contract: A
     }
   }
 
-  for (const input of documented.inputs) {
+  for (const input of documentedInputs) {
     const exists = contract.inputs.some((i) => i.name === input.name);
     if (!exists) {
       throw new Error(
@@ -312,9 +379,15 @@ export function validateDocumentedActionApi(markdownContent: string, contract: A
       );
     }
   }
+}
 
+function validateDocumentedOutputs(
+  documentedOutputs: DocumentedOutput[],
+  contract: ActionContract,
+  targetKey: string,
+): void {
   for (const expectedOutput of contract.outputs) {
-    const matched = documented.outputs.find((o) => o.name === expectedOutput.name);
+    const matched = documentedOutputs.find((o) => o.name === expectedOutput.name);
     if (!matched) {
       throw new Error(
         `Public output '${expectedOutput.name}' from action.yml is missing in documentation for action '${targetKey}'.`,
@@ -322,7 +395,7 @@ export function validateDocumentedActionApi(markdownContent: string, contract: A
     }
   }
 
-  for (const output of documented.outputs) {
+  for (const output of documentedOutputs) {
     const exists = contract.outputs.some((o) => o.name === output.name);
     if (!exists) {
       throw new Error(
@@ -330,6 +403,26 @@ export function validateDocumentedActionApi(markdownContent: string, contract: A
       );
     }
   }
+}
+
+export function validateDocumentedActionApi(
+  markdownContent: string,
+  contract: ActionContract,
+  actionKey?: string,
+): void {
+  const targetKey = actionKey || contract.name.toLowerCase();
+  const documented = parseDocumentedActionApi(markdownContent, targetKey);
+
+  if (documented.inputs.length === 0 && contract.inputs.length > 0) {
+    throw new Error(`Documentation for action '${targetKey}' is missing inputs section or inputs table.`);
+  }
+
+  if (documented.outputs.length === 0 && contract.outputs.length > 0) {
+    throw new Error(`Documentation for action '${targetKey}' is missing outputs section or outputs table.`);
+  }
+
+  validateDocumentedInputs(documented.inputs, contract, targetKey);
+  validateDocumentedOutputs(documented.outputs, contract, targetKey);
 }
 
 describe("Documentation Consistency Verification", () => {
