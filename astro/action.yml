@@ -98,8 +98,6 @@ runs:
     - name: Build Astro site
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
-        BUILD_COMMAND: ${{ inputs.build-command }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
