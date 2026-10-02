@@ -53,6 +53,7 @@ export {
   CANONICAL_COMPATIBILITY_MODEL,
   getCombinationCompatibility,
   getFixturePath,
+  getOrphanFixturePaths,
   isSupportedAction,
   isSupportedFixtureType,
   isSupportedPackageManager,

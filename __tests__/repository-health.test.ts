@@ -43,28 +43,38 @@ describe("Repository Health Verification", () => {
       fs.rmSync(path.join(tmpDir, "package.json"));
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Missing required root repository file: package.json"))).toBe(true);
+      expect(
+        result.errors.some((e) => e.includes("Missing required root repository file: package.json")),
+      ).toBe(true);
     });
 
     it("should fail when a required root file (.github/workflows/ci.yml) is missing", () => {
       fs.rmSync(path.join(tmpDir, ".github/workflows/ci.yml"));
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Missing required root repository file: .github/workflows/ci.yml"))).toBe(true);
+      expect(
+        result.errors.some((e) =>
+          e.includes("Missing required root repository file: .github/workflows/ci.yml"),
+        ),
+      ).toBe(true);
     });
 
     it("should fail when a public action is missing required action.yml file", () => {
       fs.rmSync(path.join(tmpDir, "astro/action.yml"));
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Public action 'astro' is missing action.yml"))).toBe(true);
+      expect(
+        result.errors.some((e) => e.includes("Public action 'astro' is missing action.yml")),
+      ).toBe(true);
     });
 
     it("should fail when a public action is missing required README.md file", () => {
       fs.rmSync(path.join(tmpDir, "vite/README.md"));
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Public action 'vite' is missing README.md"))).toBe(true);
+      expect(
+        result.errors.some((e) => e.includes("Public action 'vite' is missing README.md")),
+      ).toBe(true);
     });
 
     it("should fail when an unexpected public action directory is present in root", () => {
@@ -77,7 +87,13 @@ describe("Repository Health Verification", () => {
 
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Unexpected public action directory found in repository root: 'unknown-custom-action'"))).toBe(true);
+      expect(
+        result.errors.some((e) =>
+          e.includes(
+            "Unexpected public action directory found in repository root: 'unknown-custom-action'",
+          ),
+        ),
+      ).toBe(true);
     });
 
     it("should fail when an action.yml references a non-existent artifact file", () => {
@@ -90,7 +106,11 @@ describe("Repository Health Verification", () => {
 
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("references non-existent artifact file: dist/non-existent-module.mjs"))).toBe(true);
+      expect(
+        result.errors.some((e) =>
+          e.includes("references non-existent artifact file: dist/non-existent-module.mjs"),
+        ),
+      ).toBe(true);
     });
 
     it("should fail when an unlinked orphan documentation file exists in docs/", () => {
@@ -99,7 +119,11 @@ describe("Repository Health Verification", () => {
 
       const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("Orphan documentation file detected in docs/: 'orphan-unlinked-guide.md'"))).toBe(true);
+      expect(
+        result.errors.some((e) =>
+          e.includes("Orphan documentation file detected in docs/: 'orphan-unlinked-guide.md'"),
+        ),
+      ).toBe(true);
     });
 
     it("should fail when package.json version and package-lock.json version are out of sync", () => {
@@ -113,15 +137,85 @@ describe("Repository Health Verification", () => {
       expect(result.errors.some((e) => e.includes("Version synchronization failure"))).toBe(true);
     });
 
-    it("should fail when .github/workflows/ci.yml is missing a required verification command", () => {
-      const ciPath = path.join(tmpDir, ".github/workflows/ci.yml");
-      let ciContent = fs.readFileSync(ciPath, "utf8");
-      ciContent = ciContent.replace("npm run verify:upgrade", "# removed verify:upgrade");
-      fs.writeFileSync(ciPath, ciContent);
+    describe("CI Invariant Validation Regressions", () => {
+      it("should pass when required command actually exists in step.run", () => {
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.valid).toBe(true);
+      });
 
-      const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("missing required verification command: 'npm run verify:upgrade'"))).toBe(true);
+      it("should fail when required command only appears in a comment inside step.run", () => {
+        const ciPath = path.join(tmpDir, ".github/workflows/ci.yml");
+        let ciContent = fs.readFileSync(ciPath, "utf8");
+        ciContent = ciContent.replace("run: npm run verify:health", "run: |\n          # npm run verify:health");
+        fs.writeFileSync(ciPath, ciContent);
+
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.valid).toBe(false);
+        expect(
+          result.errors.some((e) =>
+            e.includes(
+              "CI workflow .github/workflows/ci.yml is missing required execution step running: 'npm run verify:health'",
+            ),
+          ),
+        ).toBe(true);
+      });
+
+      it("should fail when required command appears in step name or text field but not in step.run", () => {
+        const ciPath = path.join(tmpDir, ".github/workflows/ci.yml");
+        let ciContent = fs.readFileSync(ciPath, "utf8");
+        ciContent = ciContent.replace(
+          "name: Verify repository health\n        run: npm run verify:health",
+          "name: Verify repository health (npm run verify:health)\n        run: echo 'running health'",
+        );
+        fs.writeFileSync(ciPath, ciContent);
+
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.valid).toBe(false);
+        expect(
+          result.errors.some((e) =>
+            e.includes(
+              "CI workflow .github/workflows/ci.yml is missing required execution step running: 'npm run verify:health'",
+            ),
+          ),
+        ).toBe(true);
+      });
+    });
+
+    describe("Orphan Fixtures Reporting Regressions", () => {
+      it("should report orphanFixtures as empty array [] for valid repository", () => {
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.valid).toBe(true);
+        expect(result.orphanFixtures).toEqual([]);
+      });
+
+      it("should accurately detect orphanFixtures and record errors when an unused fixture leaf directory exists", () => {
+        const orphanFixtureDir = path.join(
+          tmpDir,
+          "__tests__/fixtures/astro/node/npm/unreferenced-extra",
+        );
+        fs.mkdirSync(orphanFixtureDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(orphanFixtureDir, "package.json"),
+          '{"name": "orphan-test"}',
+        );
+
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.valid).toBe(false);
+        const expectedRelPath = path.normalize(
+          "__tests__/fixtures/astro/node/npm/unreferenced-extra",
+        );
+        expect(result.orphanFixtures).toContain(expectedRelPath);
+        expect(
+          result.errors.some((e) => e.includes(`Unused fixture directory detected: ${expectedRelPath}`)),
+        ).toBe(true);
+      });
+
+      it("should not report referenced matrix fixtures as orphanFixtures", () => {
+        const result = verifyRepositoryHealth(tmpDir, { checkGitStatus: false });
+        expect(result.orphanFixtures).toEqual([]);
+        const knownFixture = path.normalize("__tests__/fixtures/astro/node/npm/basic");
+        expect(result.orphanFixtures).not.toContain(knownFixture);
+      });
     });
   });
 });

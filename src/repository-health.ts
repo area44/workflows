@@ -4,7 +4,11 @@ import { parseDocument } from "yaml";
 
 import { parseActionContract, PUBLIC_ACTIONS, PublicActionName } from "./action-contract.js";
 import { getExpectedArtifacts, verifyArtifactIntegrity } from "./artifact-integrity.js";
-import { validateWorkflowMatrix } from "./compatibility.js";
+import {
+  getOrphanFixturePaths,
+  validateFixtureForMatrixEntry,
+  validateWorkflowMatrix,
+} from "./compatibility.js";
 import { validateRepositoryVersion } from "./versioning.js";
 
 export interface HealthVerificationOptions {
@@ -210,41 +214,112 @@ function verifyOrphanDocs(rootDir: string, errors: string[]): string[] {
 }
 
 function verifyOrphanFixturesAndMatrix(rootDir: string, errors: string[]): string[] {
-  const orphanFixtures: string[] = [];
   const testActionsWorkflow = path.join(rootDir, ".github/workflows/test-actions.yml");
 
   if (!fs.existsSync(testActionsWorkflow)) {
-    return orphanFixtures;
+    return [];
   }
 
   try {
     const yamlText = fs.readFileSync(testActionsWorkflow, "utf8");
     const doc = parseDocument(yamlText);
-    const data = doc.toJS() as any;
+    if (doc.errors.length > 0) {
+      errors.push(`CI test matrix workflow is malformed YAML: ${doc.errors[0].message}`);
+      return [];
+    }
 
+    const data = doc.toJS() as any;
     const includeEntries = data?.jobs?.["test-action"]?.strategy?.matrix?.include || [];
 
-    validateWorkflowMatrix(includeEntries, { rootDir, checkFixtures: true });
+    const validatedEntries = validateWorkflowMatrix(includeEntries, {
+      rootDir,
+      checkFixtures: false,
+    });
+
+    for (const entry of validatedEntries) {
+      validateFixtureForMatrixEntry(entry, rootDir);
+    }
+
+    const orphanFixtures = getOrphanFixturePaths(validatedEntries, rootDir);
+    for (const orphan of orphanFixtures) {
+      errors.push(`Unused fixture directory detected: ${orphan}`);
+    }
+
+    return orphanFixtures;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     errors.push(`CI test matrix / fixture verification failed: ${msg}`);
+    return [];
+  }
+}
+
+function extractStepRunCommands(jobsObj: Record<string, unknown>): string[] {
+  const stepRunCommands: string[] = [];
+
+  for (const jobKey of Object.keys(jobsObj)) {
+    const job = jobsObj[jobKey] as { steps?: unknown[] };
+    if (job && typeof job === "object" && Array.isArray(job.steps)) {
+      for (const step of job.steps) {
+        if (
+          step &&
+          typeof step === "object" &&
+          typeof (step as { run?: unknown }).run === "string"
+        ) {
+          stepRunCommands.push((step as { run: string }).run);
+        }
+      }
+    }
   }
 
-  return orphanFixtures;
+  return stepRunCommands;
 }
 
 function verifyCiWorkflowInvariants(rootDir: string, errors: string[]): void {
   const ciPath = path.join(rootDir, ".github/workflows/ci.yml");
   if (!fs.existsSync(ciPath)) {
+    errors.push("Missing required root repository file: .github/workflows/ci.yml");
     return;
   }
 
-  const ciContent = fs.readFileSync(ciPath, "utf8");
+  let data: Record<string, unknown>;
+  try {
+    const yamlText = fs.readFileSync(ciPath, "utf8");
+    const doc = parseDocument(yamlText);
+    if (doc.errors.length > 0) {
+      errors.push(
+        `CI workflow .github/workflows/ci.yml is malformed YAML: ${doc.errors[0].message}`,
+      );
+      return;
+    }
+    data = doc.toJS() as Record<string, unknown>;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`Failed to parse CI workflow .github/workflows/ci.yml: ${msg}`);
+    return;
+  }
+
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !data.jobs ||
+    typeof data.jobs !== "object" ||
+    Array.isArray(data.jobs)
+  ) {
+    errors.push("CI workflow .github/workflows/ci.yml is missing 'jobs' declaration.");
+    return;
+  }
+
+  const stepRunCommands = extractStepRunCommands(data.jobs as Record<string, unknown>);
 
   for (const cmd of REQUIRED_CI_COMMANDS) {
-    if (!ciContent.includes(cmd)) {
+    const executedInStepRun = stepRunCommands.some((runStr) => {
+      const lines = runStr.split("\n").map((l) => l.trim());
+      return lines.some((line) => !line.startsWith("#") && line.includes(cmd));
+    });
+
+    if (!executedInStepRun) {
       errors.push(
-        `CI workflow .github/workflows/ci.yml is missing required verification command: '${cmd}'`,
+        `CI workflow .github/workflows/ci.yml is missing required execution step running: '${cmd}'`,
       );
     }
   }
