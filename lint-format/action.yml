@@ -25,14 +25,14 @@ outputs:
     description: "Whether JavaScript/TypeScript was detected"
     value: ${{ steps.resolve_environment.outputs.has-js }}
   has-python:
-    description: "Whether Python/Ruff was detected"
+    description: "Whether Python was detected"
     value: ${{ steps.resolve_environment.outputs.has-python }}
+  has-uv:
+    description: "Whether uv was detected for Python dependency management"
+    value: ${{ steps.resolve_environment.outputs.has-uv }}
   python-version:
     description: "The Python version used"
     value: ${{ steps.resolve_environment.outputs.python-version }}
-  ruff-version:
-    description: "The Ruff version used"
-    value: ${{ steps.resolve_environment.outputs.ruff-version }}
 
 runs:
   using: "composite"
@@ -97,14 +97,11 @@ runs:
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
 
-    - name: Install Ruff
-      if: ${{ steps.resolve_environment.outputs.has-python == 'true' }}
-      shell: bash
-      env:
-        RUFF_VERSION: ${{ steps.resolve_environment.outputs.ruff-version }}
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install "ruff==${RUFF_VERSION}"
+    - name: Setup uv
+      if: ${{ steps.resolve_environment.outputs.has-python == 'true' && steps.resolve_environment.outputs.has-uv == 'true' }}
+      uses: astral-sh/setup-uv@f94380b06b00080f55cf5544d67e106ef3e31375 # v5
+      with:
+        enable-cache: true
 
     - name: Run lint and format
       shell: bash
@@ -113,6 +110,7 @@ runs:
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         HAS_JS: ${{ steps.resolve_environment.outputs.has-js }}
         HAS_PYTHON: ${{ steps.resolve_environment.outputs.has-python }}
+        HAS_UV: ${{ steps.resolve_environment.outputs.has-uv }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$RUNTIME" = "bun" ]; then

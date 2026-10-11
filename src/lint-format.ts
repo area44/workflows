@@ -28,16 +28,6 @@ function runCommand(pm: string, name: string): void {
   }
 }
 
-function runRuffCommand(cmd: string): void {
-  core.info(`Executing: ${cmd}`);
-  try {
-    execSync(cmd, { stdio: "inherit" });
-  } catch {
-    core.error(`Command "${cmd}" failed`);
-    process.exit(1);
-  }
-}
-
 function executeScripts(scripts: Record<string, string>, pm: string): void {
   if (scripts.check) {
     runCommand(pm, "check");
@@ -61,18 +51,83 @@ function executeScripts(scripts: Record<string, string>, pm: string): void {
   }
 }
 
+function isRuffInstalledOnPath(): boolean {
+  try {
+    execSync("ruff --version", { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function executePythonRuff(
+  isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci",
+  hasUv: boolean = process.env.HAS_UV === "true",
+): void {
+  const ruffPrefix = hasUv ? "uv run --locked ruff" : "ruff";
+
+  if (!hasUv && !isRuffInstalledOnPath()) {
+    core.error(
+      "Ruff executable is not available in the project environment. Please ensure Ruff is declared in your project development dependencies.",
+    );
+    process.exit(1);
+  }
+
+  const checkCmd = isAutofix ? `${ruffPrefix} check --fix .` : `${ruffPrefix} check .`;
+  const formatCmd = isAutofix ? `${ruffPrefix} format .` : `${ruffPrefix} format --check .`;
+
+  if (hasUv) {
+    core.info(`Running project-managed Ruff via uv (${isAutofix ? "autofix" : "check-only"} mode)`);
+  } else {
+    core.info(`Running project-managed Ruff (${isAutofix ? "autofix" : "check-only"} mode)`);
+  }
+
+  try {
+    core.info(`Executing: ${checkCmd}`);
+    execSync(checkCmd, { stdio: "inherit" });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (
+      hasUv &&
+      (errMsg.includes("No such file") ||
+        errMsg.includes("not found") ||
+        errMsg.includes("executable file not found"))
+    ) {
+      core.error(
+        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
+      );
+    } else {
+      core.error(`Command "${checkCmd}" failed`);
+    }
+    process.exit(1);
+  }
+
+  try {
+    core.info(`Executing: ${formatCmd}`);
+    execSync(formatCmd, { stdio: "inherit" });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (
+      hasUv &&
+      (errMsg.includes("No such file") ||
+        errMsg.includes("not found") ||
+        errMsg.includes("executable file not found"))
+    ) {
+      core.error(
+        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
+      );
+    } else {
+      core.error(`Command "${formatCmd}" failed`);
+    }
+    process.exit(1);
+  }
+}
+
 export function executeRuff(
   isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci",
+  hasUv: boolean = process.env.HAS_UV === "true",
 ): void {
-  if (isAutofix) {
-    core.info("Running Ruff in autofix mode");
-    runRuffCommand("ruff check --fix .");
-    runRuffCommand("ruff format .");
-  } else {
-    core.info("Running Ruff in check-only mode");
-    runRuffCommand("ruff check .");
-    runRuffCommand("ruff format --check .");
-  }
+  executePythonRuff(isAutofix, hasUv);
 }
 
 export function run(): void {
@@ -80,10 +135,13 @@ export function run(): void {
     const rootDir = process.cwd();
     const hasJs =
       process.env.HAS_JS !== undefined ? process.env.HAS_JS === "true" : detectJsLanguage(rootDir);
+    const pythonDetection = detectPythonLanguage(rootDir);
     const hasPython =
       process.env.HAS_PYTHON !== undefined
         ? process.env.HAS_PYTHON === "true"
-        : detectPythonLanguage(rootDir).hasPython;
+        : pythonDetection.hasPython;
+    const hasUv =
+      process.env.HAS_UV !== undefined ? process.env.HAS_UV === "true" : pythonDetection.hasUv;
 
     if (!fs.existsSync("package.json")) {
       core.info("No package.json found. Skipping scripts.");
@@ -103,7 +161,7 @@ export function run(): void {
 
     if (hasPython) {
       const isAutofix = process.env.GITHUB_WORKFLOW === "autofix.ci";
-      executeRuff(isAutofix);
+      executePythonRuff(isAutofix, hasUv);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

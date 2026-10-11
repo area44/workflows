@@ -10,12 +10,11 @@ import {
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   DEFAULT_PYTHON_VERSION,
-  DEFAULT_RUFF_VERSION,
   detectBunVersion,
   detectJsLanguage,
   detectPythonLanguage,
+  detectUv,
   resolvePythonVersion,
-  resolveRuffVersion,
   detectNodeVersion,
   detectPackageManager,
   detectProjectEnvironment,
@@ -356,8 +355,8 @@ describe("resolve-environment", () => {
           runtime: "node",
           hasJs: false,
           hasPython: false,
+          hasUv: false,
           pythonVersion: DEFAULT_PYTHON_VERSION,
-          ruffVersion: DEFAULT_RUFF_VERSION,
         });
       });
     });
@@ -1567,20 +1566,19 @@ describe("resolve-environment", () => {
       expect(resolvePythonVersion("/app")).toBe(DEFAULT_PYTHON_VERSION);
     });
 
-    it("resolveRuffVersion resolves from pyproject.toml, requirements.txt, or fallback", () => {
+    it("detectUv returns true if uv.lock or [tool.uv] exists", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("uv.lock"));
+      expect(detectUv("/app")).toBe(true);
+
       vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("pyproject.toml"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue('[tool.poetry.dependencies]\nruff = "==0.9.5"\n' as any);
-      expect(resolveRuffVersion("/app")).toBe("0.9.5");
+      vi.spyOn(fs, "readFileSync").mockReturnValue("[tool.uv]\ndev-dependencies = ['ruff']\n" as any);
+      expect(detectUv("/app")).toBe(true);
 
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("requirements.txt"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue("ruff==0.8.0\n" as any);
-      expect(resolveRuffVersion("/app")).toBe("0.8.0");
-
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      expect(resolveRuffVersion("/app")).toBe(DEFAULT_RUFF_VERSION);
+      vi.spyOn(fs, "readFileSync").mockReturnValue("[tool.poetry]\nname = 'app'\n" as any);
+      expect(detectUv("/app")).toBe(false);
     });
 
-    it("writeOutput sets setup-node, setup-bun, setup-pnpm to false when hasJs is false", () => {
+    it("writeOutput sets has-uv and sets setup-node, setup-bun, setup-pnpm to false when hasJs is false", () => {
       const env: ResolvedEnvironment = {
         nodeVersion: "24",
         bunVersion: "",
@@ -1588,19 +1586,19 @@ describe("resolve-environment", () => {
         runtime: "node",
         hasJs: false,
         hasPython: true,
+        hasUv: true,
         pythonVersion: "3.12",
-        ruffVersion: "0.9.10",
       };
 
       writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("has-js", "false");
       expect(core.setOutput).toHaveBeenCalledWith("has-python", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("has-uv", "true");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
       expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
-      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.9.10");
     });
   });
 });

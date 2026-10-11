@@ -351,66 +351,81 @@ describe("lint-format", () => {
   });
 
   describe("Python and Ruff execution", () => {
-    it("should execute Ruff in check-only mode when GITHUB_WORKFLOW is not autofix.ci", () => {
+    it("should execute uv run --locked ruff in check-only mode when HAS_UV=true", () => {
       delete process.env.GITHUB_WORKFLOW;
-      executeRuff(false);
+      executeRuff(false, true);
 
-      expect(core.info).toHaveBeenCalledWith("Running Ruff in check-only mode");
-      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledTimes(2);
+      expect(core.info).toHaveBeenCalledWith("Running project-managed Ruff via uv (check-only mode)");
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff format --check .", { stdio: "inherit" });
     });
 
-    it("should execute Ruff in autofix mode when GITHUB_WORKFLOW is autofix.ci", () => {
+    it("should execute uv run --locked ruff in autofix mode when HAS_UV=true and GITHUB_WORKFLOW is autofix.ci", () => {
       process.env.GITHUB_WORKFLOW = "autofix.ci";
-      executeRuff(true);
+      executeRuff(true, true);
 
-      expect(core.info).toHaveBeenCalledWith("Running Ruff in autofix mode");
-      expect(execSync).toHaveBeenCalledWith("ruff check --fix .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("ruff format .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledTimes(2);
+      expect(core.info).toHaveBeenCalledWith("Running project-managed Ruff via uv (autofix mode)");
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff check --fix .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff format .", { stdio: "inherit" });
     });
 
-    it("should log error and exit with code 1 if Ruff check fails", () => {
+    it("should fail clearly when uv run --locked ruff fails due to missing Ruff declaration", () => {
       vi.mocked(execSync).mockImplementationOnce(() => {
-        throw new Error("Ruff check failed");
+        throw new Error("No such executable file not found: ruff");
       });
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
-      executeRuff(false);
+      executeRuff(false, true);
 
-      expect(core.error).toHaveBeenCalledWith('Command "ruff check ." failed');
+      expect(core.error).toHaveBeenCalledWith(
+        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it("should log error and exit with code 1 if Ruff format fails", () => {
-      vi.mocked(execSync)
-        .mockImplementationOnce(() => "" as any) // check succeeds
-        .mockImplementationOnce(() => {
-          throw new Error("Ruff format failed");
-        });
+    it("should execute ruff directly in non-uv projects when ruff is available on PATH", () => {
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "ruff --version") return "ruff 0.9.10" as any;
+        return "" as any;
+      });
+
+      executeRuff(false, false);
+
+      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+    });
+
+    it("should fail clearly in non-uv projects when ruff is missing from PATH", () => {
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "ruff --version") throw new Error("not found");
+        return "" as any;
+      });
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
-      executeRuff(false);
+      executeRuff(false, false);
 
-      expect(core.error).toHaveBeenCalledWith('Command "ruff format --check ." failed');
+      expect(core.error).toHaveBeenCalledWith(
+        "Ruff executable is not available in the project environment. Please ensure Ruff is declared in your project development dependencies.",
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it("should run Ruff and skip JS scripts when HAS_JS=false and HAS_PYTHON=true", () => {
+    it("should run uv ruff and skip JS scripts when HAS_JS=false, HAS_PYTHON=true, HAS_UV=true", () => {
       process.env.HAS_JS = "false";
       process.env.HAS_PYTHON = "true";
+      process.env.HAS_UV = "true";
       delete process.env.GITHUB_WORKFLOW;
 
       run();
 
-      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff format --check .", { stdio: "inherit" });
     });
 
-    it("should run both JS scripts and Ruff when HAS_JS=true and HAS_PYTHON=true", () => {
+    it("should run both JS scripts and uv ruff when HAS_JS=true, HAS_PYTHON=true, HAS_UV=true", () => {
       process.env.HAS_JS = "true";
       process.env.HAS_PYTHON = "true";
+      process.env.HAS_UV = "true";
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ scripts: { check: "npm run check" } }) as any,
@@ -419,8 +434,8 @@ describe("lint-format", () => {
       run();
 
       expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run --locked ruff format --check .", { stdio: "inherit" });
     });
 
     it("should log info and skip execution when HAS_JS=false and HAS_PYTHON=false", () => {

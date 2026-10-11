@@ -135,10 +135,6 @@ export const DEFAULT_PNPM_VERSION = "12";
 // renovate: datasource=python-version depName=python
 export const DEFAULT_PYTHON_VERSION = "3.12";
 
-/** Default Ruff fallback version */
-// renovate: datasource=pypi depName=ruff
-export const DEFAULT_RUFF_VERSION = "0.9.10";
-
 const EXCLUDED_DIRS_SET = new Set([
   ".git",
   "node_modules",
@@ -177,6 +173,25 @@ export interface PythonDetectionResult {
   hasPython: boolean;
   hasPythonSource: boolean;
   hasRuffConfig: boolean;
+  hasUv: boolean;
+}
+
+export function detectUv(rootDir: string = process.cwd()): boolean {
+  try {
+    if (fs.existsSync(path.join(rootDir, "uv.lock"))) {
+      return true;
+    }
+    const pyprojectPath = path.join(rootDir, "pyproject.toml");
+    if (fs.existsSync(pyprojectPath)) {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      if (/^\s*\[\s*tool\.uv(?:\.|\s*\])/m.test(content)) {
+        return true;
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return false;
 }
 
 function scanForPythonSourceFiles(dirPath: string): boolean {
@@ -231,12 +246,14 @@ function checkRuffConfig(rootDir: string): boolean {
 export function detectPythonLanguage(rootDir: string = process.cwd()): PythonDetectionResult {
   const hasPythonSource = scanForPythonSourceFiles(rootDir);
   const hasRuffConfig = checkRuffConfig(rootDir);
-  const hasPython = hasPythonSource || hasRuffConfig;
+  const hasUv = detectUv(rootDir);
+  const hasPython = hasPythonSource || hasRuffConfig || hasUv;
 
   return {
     hasPython,
     hasPythonSource,
     hasRuffConfig,
+    hasUv,
   };
 }
 
@@ -271,34 +288,6 @@ export function resolvePythonVersion(rootDir: string = process.cwd()): string {
   return DEFAULT_PYTHON_VERSION;
 }
 
-export function resolveRuffVersion(rootDir: string = process.cwd()): string {
-  try {
-    const pyprojectPath = path.join(rootDir, "pyproject.toml");
-    if (fs.existsSync(pyprojectPath)) {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      const match =
-        content.match(/ruff\s*=\s*"?(?:==)?([0-9]+\.[0-9]+\.[0-9]+)"?/i) ||
-        content.match(/ruff\s*==\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/i);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
-
-    const reqPath = path.join(rootDir, "requirements.txt");
-    if (fs.existsSync(reqPath)) {
-      const content = fs.readFileSync(reqPath, "utf8");
-      const match = content.match(/ruff\s*==\s*([0-9]+\.[0-9]+\.[0-9]+)/i);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
-  } catch {
-    // Ignore read errors
-  }
-
-  return DEFAULT_RUFF_VERSION;
-}
-
 /**
  * Returns the default fallback version for a given package manager name.
  */
@@ -326,8 +315,8 @@ export interface ResolvedEnvironment {
   runtime: "node" | "bun";
   hasJs?: boolean;
   hasPython?: boolean;
+  hasUv?: boolean;
   pythonVersion?: string;
-  ruffVersion?: string;
 }
 
 /** Legacy type alias for ResolvedEnvironment */
@@ -843,8 +832,8 @@ export function writeOutput(
   runtime?: "bun" | "node",
   hasJs?: boolean,
   hasPython?: boolean,
+  hasUv?: boolean,
   pythonVersion?: string,
-  ruffVersion?: string,
 ): void;
 export function writeOutput(
   nodeVersionOrEnv: string | ResolvedEnvironment,
@@ -853,8 +842,8 @@ export function writeOutput(
   runtime: "bun" | "node" = "node",
   hasJsArg?: boolean,
   hasPythonArg?: boolean,
+  hasUvArg?: boolean,
   pythonVersionArg?: string,
-  ruffVersionArg?: string,
 ): void {
   let env: ResolvedEnvironment;
   if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
@@ -872,16 +861,17 @@ export function writeOutput(
       runtime,
       hasJs: hasJsArg,
       hasPython: hasPythonArg,
+      hasUv: hasUvArg,
       pythonVersion: pythonVersionArg,
-      ruffVersion: ruffVersionArg,
     };
   }
 
   const rootDir = process.cwd();
   const hasJs = env.hasJs ?? detectJsLanguage(rootDir);
-  const hasPython = env.hasPython ?? detectPythonLanguage(rootDir).hasPython;
+  const pythonDetection = detectPythonLanguage(rootDir);
+  const hasPython = env.hasPython ?? pythonDetection.hasPython;
+  const hasUv = env.hasUv ?? (hasPython ? pythonDetection.hasUv : false);
   const pythonVersion = env.pythonVersion ?? (hasPython ? resolvePythonVersion(rootDir) : "");
-  const ruffVersion = env.ruffVersion ?? (hasPython ? resolveRuffVersion(rootDir) : "");
 
   const nodeSetup = setupNode(env);
   const bunSetup = setupBun(env);
@@ -896,8 +886,8 @@ export function writeOutput(
 
   core.setOutput("has-js", String(hasJs));
   core.setOutput("has-python", String(hasPython));
+  core.setOutput("has-uv", String(hasUv));
   core.setOutput("python-version", pythonVersion);
-  core.setOutput("ruff-version", ruffVersion);
 
   core.setOutput("setup-node", String(hasJs && nodeSetup.shouldSetup));
   core.setOutput("setup-node-cache", nodeSetup.cache);
@@ -922,7 +912,6 @@ export function resolveEnvironment(
   const hasJs = detectJsLanguage(rootDir);
   const pythonDetection = detectPythonLanguage(rootDir);
   const pythonVersion = resolvePythonVersion(rootDir);
-  const ruffVersion = resolveRuffVersion(rootDir);
 
   const env: ResolvedEnvironment = {
     nodeVersion: versions.nodeVersion,
@@ -931,8 +920,8 @@ export function resolveEnvironment(
     runtime,
     hasJs,
     hasPython: pythonDetection.hasPython,
+    hasUv: pythonDetection.hasUv,
     pythonVersion,
-    ruffVersion,
   };
 
   return validateEnvironment(env);

@@ -19,7 +19,6 @@ When a project does not specify a toolchain version in repository configuration 
 | npm       | `DEFAULT_NPM_VERSION`    | `"12"`        | `export const DEFAULT_NPM_VERSION = "12"`       |
 | pnpm      | `DEFAULT_PNPM_VERSION`   | `"12"`        | `export const DEFAULT_PNPM_VERSION = "12"`      |
 | Python    | `DEFAULT_PYTHON_VERSION` | `"3.12"`      | `export const DEFAULT_PYTHON_VERSION = "3.12"`  |
-| Ruff      | `DEFAULT_RUFF_VERSION`   | `"0.9.10"`    | `export const DEFAULT_RUFF_VERSION = "0.9.10"`  |
 
 ### Toolchain Version Classification
 
@@ -32,17 +31,17 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
    - **pnpm**: pnpm 9.0.0+ (Declared target baseline)
      _(Note: Declared compatibility targets represent target baselines, not a guarantee that every point release in the range is exhaustively exercised in CI.)_
 2. **Default Fallback Versions**:
-   - The canonical versions selected when no version is specified in workspace files or inputs (Node.js 24, Bun 1.4, npm 12, pnpm 12, Python 3.12, Ruff 0.9.10).
+   - The canonical versions selected when no version is specified in workspace files or inputs (Node.js 24, Bun 1.4, npm 12, pnpm 12, Python 3.12).
 3. **Consumer Override Options**:
    - Explicit version strings supplied via workspace files (`.nvmrc`, `.node-version`, `.bun-version`, `.python-version`, `package.json`, `pyproject.toml`) or action inputs (e.g. `runtime: 'node@22'`, `runtime: 'bun@1.4'`).
 4. **CI Tested Versions**:
-   - Versions explicitly exercised in automated CI integration testing (`.github/workflows/test-actions.yml` and test fixtures): Node.js 24 / 24.19.0, Bun 1.4, npm 12 / 11.19.0, pnpm 12 / 11.21.0, Python 3.12, Ruff 0.9.10.
+   - Versions explicitly exercised in automated CI integration testing (`.github/workflows/test-actions.yml` and test fixtures): Node.js 24 / 24.19.0, Bun 1.4, npm 12 / 11.19.0, pnpm 12 / 11.21.0, Python 3.12.
 
 ### GitHub Actions Runner Assumptions
 
 - **Runner OS**: `ubuntu-latest` (Linux x64).
 - **Shell**: Bash (`shell: bash`).
-- **Dependencies**: Uses official setup actions (`actions/setup-node@v7`, `pnpm/setup@v3`, `oven-sh/setup-bun@v2`, `actions/setup-python@v5`, `voidzero-dev/setup-vp@v1`, `actions/upload-pages-artifact@v5`, `autofix-ci/action@v1`).
+- **Dependencies**: Uses official setup actions (`actions/setup-node@v7`, `pnpm/setup@v3`, `oven-sh/setup-bun@v2`, `actions/setup-python@v5`, `astral-sh/setup-uv@v5`, `voidzero-dev/setup-vp@v1`, `actions/upload-pages-artifact@v5`, `autofix-ci/action@v1`).
 
 ---
 
@@ -136,11 +135,12 @@ Every composite action in this repository shares a common environment resolution
 - **Public Inputs**:
   - `runtime` (optional): Runtime override string.
 - **Public Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`, `has-js`, `has-python`, `python-version`, `ruff-version`.
+  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`, `has-js`, `has-python`, `has-uv`, `python-version`.
 - **Behavior & Constraints**:
-  - Automatically detects JavaScript/TypeScript (`package.json`) and Python (`*.py`/`*.pyi` files).
+  - Automatically detects JavaScript/TypeScript (`package.json`) and Python (`*.py`/`*.pyi` files or `uv` projects).
   - Installs JS dependencies when JS is present (`pnpm install --no-frozen-lockfile`, `bun install`, or `npm install`).
-  - Sets up Python and installs Ruff when Python is present.
+  - Sets up Python and `uv` when Python with `uv` is present, running project-managed Ruff via `uv run --locked ruff`.
+  - Preserves existing pre-installed `ruff` executables for non-uv Python projects without running standalone `pip install ruff`.
   - Executes JS linting/formatting and Python Ruff checks via `dist/lint-format.mjs`.
   - Triggers `autofix-ci/action` when running in a workflow named `autofix.ci`.
 
