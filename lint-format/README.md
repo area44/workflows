@@ -112,17 +112,17 @@ See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.
 
 ## Outputs
 
-| Name                      | Description                             |
-| ------------------------- | --------------------------------------- |
-| `node-version`            | The Node.js version used                |
-| `bun-version`             | The Bun version used                    |
-| `package-manager`         | The package manager used                |
-| `package-manager-version` | The version of the package manager used |
-| `runtime`                 | The runtime used (node or bun)          |
+| Name                      | Description                                |
+| ------------------------- | ------------------------------------------ |
+| `node-version`            | The Node.js version used                   |
+| `bun-version`             | The Bun version used                       |
+| `package-manager`         | The package manager used                   |
+| `package-manager-version` | The version of the package manager used    |
+| `runtime`                 | The runtime used (node or bun)             |
 | `has-js`                  | Whether JavaScript/TypeScript was detected |
-| `has-python`              | Whether Python/Ruff was detected        |
-| `python-version`          | The Python version used                 |
-| `ruff-version`            | The Ruff version used                   |
+| `has-python`              | Whether Python/Ruff was detected           |
+| `python-version`          | The Python version used                    |
+| `ruff-version`            | The Ruff version used                      |
 
 ## Detection Limitations & Monorepo Behavior
 

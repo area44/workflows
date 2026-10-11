@@ -61,7 +61,9 @@ function executeScripts(scripts: Record<string, string>, pm: string): void {
   }
 }
 
-export function executeRuff(isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci"): void {
+export function executeRuff(
+  isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci",
+): void {
   if (isAutofix) {
     core.info("Running Ruff in autofix mode");
     runRuffCommand("ruff check --fix .");
@@ -77,9 +79,7 @@ export function run(): void {
   try {
     const rootDir = process.cwd();
     const hasJs =
-      process.env.HAS_JS !== undefined
-        ? process.env.HAS_JS === "true"
-        : detectJsLanguage(rootDir);
+      process.env.HAS_JS !== undefined ? process.env.HAS_JS === "true" : detectJsLanguage(rootDir);
     const hasPython =
       process.env.HAS_PYTHON !== undefined
         ? process.env.HAS_PYTHON === "true"
@@ -95,7 +95,9 @@ export function run(): void {
     }
 
     if (!hasJs && !hasPython) {
-      core.info("Neither JavaScript/TypeScript nor Python detected. Skipping lint and format steps.");
+      core.info(
+        "Neither JavaScript/TypeScript nor Python detected. Skipping lint and format steps.",
+      );
       return;
     }
 
