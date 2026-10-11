@@ -1,0 +1,14 @@
+[project]
+name = "lint-format-npm-basic"
+version = "0.1.0"
+description = "Basic lint-format fixture with Python and JS"
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.9.0",
+]
+
+[tool.ruff]
+line-length = 88

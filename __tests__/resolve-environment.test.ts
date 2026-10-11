@@ -1587,7 +1587,7 @@ describe("resolve-environment", () => {
         hasJs: false,
         hasPython: true,
         hasUv: true,
-        pythonVersion: "3.12",
+        pythonVersion: "3.14",
       };
 
       writeOutput(env);
@@ -1598,7 +1598,7 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.14");
     });
   });
 });

@@ -133,7 +133,7 @@ export const DEFAULT_PNPM_VERSION = "12";
 
 /** Default Python fallback version */
 // renovate: datasource=python-version depName=python
-export const DEFAULT_PYTHON_VERSION = "3.12";
+export const DEFAULT_PYTHON_VERSION = "3.14";
 
 const EXCLUDED_DIRS_SET = new Set([
   ".git",

@@ -18,7 +18,7 @@ When a project does not specify a toolchain version in repository configuration 
 | Bun       | `DEFAULT_BUN_VERSION`    | `"1.4"`       | `export const DEFAULT_BUN_VERSION = "1.4"`      |
 | npm       | `DEFAULT_NPM_VERSION`    | `"12"`        | `export const DEFAULT_NPM_VERSION = "12"`       |
 | pnpm      | `DEFAULT_PNPM_VERSION`   | `"12"`        | `export const DEFAULT_PNPM_VERSION = "12"`      |
-| Python    | `DEFAULT_PYTHON_VERSION` | `"3.12"`      | `export const DEFAULT_PYTHON_VERSION = "3.12"`  |
+| Python    | `DEFAULT_PYTHON_VERSION` | `"3.14"`      | `export const DEFAULT_PYTHON_VERSION = "3.14"`  |
 
 ### Toolchain Version Classification
 
@@ -31,11 +31,11 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
    - **pnpm**: pnpm 9.0.0+ (Declared target baseline)
      _(Note: Declared compatibility targets represent target baselines, not a guarantee that every point release in the range is exhaustively exercised in CI.)_
 2. **Default Fallback Versions**:
-   - The canonical versions selected when no version is specified in workspace files or inputs (Node.js 24, Bun 1.4, npm 12, pnpm 12, Python 3.12).
+   - The canonical versions selected when no version is specified in workspace files or inputs (Node.js 24, Bun 1.4, npm 12, pnpm 12, Python 3.14).
 3. **Consumer Override Options**:
    - Explicit version strings supplied via workspace files (`.nvmrc`, `.node-version`, `.bun-version`, `.python-version`, `package.json`, `pyproject.toml`) or action inputs (e.g. `runtime: 'node@22'`, `runtime: 'bun@1.4'`).
 4. **CI Tested Versions**:
-   - Versions explicitly exercised in automated CI integration testing (`.github/workflows/test-actions.yml` and test fixtures): Node.js 24 / 24.19.0, Bun 1.4, npm 12 / 11.19.0, pnpm 12 / 11.21.0, Python 3.12.
+   - Versions explicitly exercised in automated CI integration testing (`.github/workflows/test-actions.yml` and test fixtures): Node.js 24 / 24.19.0, Bun 1.4, npm 12 / 11.19.0, pnpm 12 / 11.21.0, Python 3.14.
 
 ### GitHub Actions Runner Assumptions
 

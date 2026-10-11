@@ -10,7 +10,7 @@ When project configuration files and workflow inputs do not specify toolchain ve
 - **Bun**: `"1.4"` (`DEFAULT_BUN_VERSION`)
 - **npm**: `"12"` (`DEFAULT_NPM_VERSION`)
 - **pnpm**: `"12"` (`DEFAULT_PNPM_VERSION`)
-- **Python**: `"3.12"` (`DEFAULT_PYTHON_VERSION`)
+- **Python**: `"3.14"` (`DEFAULT_PYTHON_VERSION`)
 
 ## Compatibility Matrix
 
