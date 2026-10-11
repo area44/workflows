@@ -54,9 +54,7 @@ runs:
       uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3
       with:
         version: ${{ steps.resolve_environment.outputs.package-manager-version }}
-        runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
         install: false
-        cache: true
 
     - name: Setup Bun
       if: ${{ steps.resolve_environment.outputs.setup-bun == 'true' }}

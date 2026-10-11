@@ -186,6 +186,52 @@ describe("Compatibility Contract Validation", () => {
       const contracts = validateAllPublicActionContracts(rootDir);
       expect(Object.keys(contracts)).toEqual(["astro", "vite", "vite-plus", "lint-format"]);
     });
+
+    describe("Vite+ Action Toolchain Setup Invariants", () => {
+      it("should configure vite-plus/action.yml without redundant runtime or cache setup in pnpm/setup", () => {
+        const vpYml = fs.readFileSync(path.join(rootDir, "vite-plus", "action.yml"), "utf8");
+        const parsed = parseYaml(vpYml);
+        const steps = parsed.runs.steps;
+
+        const pnpmStep = steps.find((s: any) => s.name === "Setup PNPM");
+        expect(pnpmStep).toBeDefined();
+        expect(pnpmStep.with?.version).toBe("${{ steps.resolve_environment.outputs.package-manager-version }}");
+        expect(pnpmStep.with?.install).toBe(false);
+        // Ensure pnpm/setup does not redundantly specify runtime or cache
+        expect(pnpmStep.with?.runtime).toBeUndefined();
+        expect(pnpmStep.with?.cache).toBeUndefined();
+
+        const vpStep = steps.find((s: any) => s.name === "Setup Vite+");
+        expect(vpStep).toBeDefined();
+        expect(vpStep.uses).toContain("voidzero-dev/setup-vp@");
+        expect(vpStep.with?.["node-version"]).toBe("${{ steps.resolve_environment.outputs.node-version }}");
+        expect(vpStep.with?.cache).toBe(true);
+        expect(vpStep.with?.["run-install"]).toBe(true);
+
+        const bunStep = steps.find((s: any) => s.name === "Setup Bun");
+        expect(bunStep).toBeDefined();
+        expect(bunStep.uses).toContain("oven-sh/setup-bun@");
+
+        // Verify vite-plus does not contain a separate redundant install step
+        const installStep = steps.find((s: any) => s.name === "Install dependencies");
+        expect(installStep).toBeUndefined();
+      });
+
+      it("should pin third-party actions in composite actions to immutable commit SHAs", () => {
+        const actionPaths = ["astro/action.yml", "vite/action.yml", "vite-plus/action.yml", "lint-format/action.yml"];
+        const shaRegex = /^[^\s@]+@[a-f0-9]{40}\b/;
+
+        for (const actionPath of actionPaths) {
+          const content = fs.readFileSync(path.join(rootDir, actionPath), "utf8");
+          const parsed = parseYaml(content);
+          for (const step of parsed.runs.steps) {
+            if (step.uses) {
+              expect(step.uses).toMatch(shaRegex);
+            }
+          }
+        }
+      });
+    });
   });
 
   describe("Runtime & Package Manager Compatibility Contract", () => {

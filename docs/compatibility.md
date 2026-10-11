@@ -66,3 +66,8 @@ Resolved environment state is converted to GitHub Actions setup toolchain config
 - `setupNode`: Computes Node.js setup requirements and caching choices.
 - `setupBun`: Computes Bun setup requirements and target version strings.
 - `setupPackageManager` & `resolvePnpmSetupRuntime`: Derive specialized setup directives (such as `pnpm/setup` runtime inputs) without re-executing detection logic.
+
+### Composite Action Setup Responsibilities
+
+- **`vite-plus`**: Uses `voidzero-dev/setup-vp` as the central mechanism for Node.js runtime setup, store caching, and single dependency installation (`run-install: true`). When pnpm is used, `pnpm/setup` installs the `pnpm` binary without duplicate runtime or store cache setup. When Bun is used, `oven-sh/setup-bun` installs the `bun` binary.
+- **`astro` / `vite` / `lint-format`**: Use `actions/setup-node`, `pnpm/setup`, or `oven-sh/setup-bun` depending on the resolved package manager, followed by a dedicated dependency installation step.

@@ -123,7 +123,9 @@ Every composite action in this repository shares a common environment resolution
   - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
   - `vp-version`: The version of Vite+ installed by `voidzero-dev/setup-vp`.
 - **Behavior & Constraints**:
-  - Uses `voidzero-dev/setup-vp` for Vite+ toolchain setup and package installation.
+  - Uses `voidzero-dev/setup-vp` as the central mechanism for Node.js setup, caching, and single dependency installation (`run-install: true`).
+  - Uses `pnpm/setup` solely for pnpm CLI binary setup without redundant runtime or cache setup.
+  - Uses `oven-sh/setup-bun` when Bun CLI binary is required.
   - Defaults build command to `vpr build`.
   - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
 
