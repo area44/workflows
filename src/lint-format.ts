@@ -3,6 +3,8 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { detectJsLanguage, detectPythonLanguage } from "./resolve-environment.js";
+
 interface PackageJson {
   scripts?: Record<string, string>;
 }
@@ -22,6 +24,16 @@ function runCommand(pm: string, name: string): void {
     execSync(`${safePm} run ${name}`, { stdio: "inherit" });
   } catch {
     core.error(`Script "${name}" failed`);
+    process.exit(1);
+  }
+}
+
+function runRuffCommand(cmd: string): void {
+  core.info(`Executing: ${cmd}`);
+  try {
+    execSync(cmd, { stdio: "inherit" });
+  } catch {
+    core.error(`Command "${cmd}" failed`);
     process.exit(1);
   }
 }
@@ -49,18 +61,48 @@ function executeScripts(scripts: Record<string, string>, pm: string): void {
   }
 }
 
+export function executeRuff(isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci"): void {
+  if (isAutofix) {
+    core.info("Running Ruff in autofix mode");
+    runRuffCommand("ruff check --fix .");
+    runRuffCommand("ruff format .");
+  } else {
+    core.info("Running Ruff in check-only mode");
+    runRuffCommand("ruff check .");
+    runRuffCommand("ruff format --check .");
+  }
+}
+
 export function run(): void {
   try {
+    const rootDir = process.cwd();
+    const hasJs =
+      process.env.HAS_JS !== undefined
+        ? process.env.HAS_JS === "true"
+        : detectJsLanguage(rootDir);
+    const hasPython =
+      process.env.HAS_PYTHON !== undefined
+        ? process.env.HAS_PYTHON === "true"
+        : detectPythonLanguage(rootDir).hasPython;
+
     if (!fs.existsSync("package.json")) {
       core.info("No package.json found. Skipping scripts.");
+    } else if (hasJs) {
+      const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      const scripts = pkg.scripts || {};
+      const pm = process.env.PACKAGE_MANAGER || "npm";
+      executeScripts(scripts, pm);
+    }
+
+    if (!hasJs && !hasPython) {
+      core.info("Neither JavaScript/TypeScript nor Python detected. Skipping lint and format steps.");
       return;
     }
 
-    const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-    const scripts = pkg.scripts || {};
-    const pm = process.env.PACKAGE_MANAGER || "npm";
-
-    executeScripts(scripts, pm);
+    if (hasPython) {
+      const isAutofix = process.env.GITHUB_WORKFLOW === "autofix.ci";
+      executeRuff(isAutofix);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.setFailed(`Failed to run scripts: ${message}`);

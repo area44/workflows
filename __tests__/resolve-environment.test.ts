@@ -9,7 +9,13 @@ import {
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
+  DEFAULT_PYTHON_VERSION,
+  DEFAULT_RUFF_VERSION,
   detectBunVersion,
+  detectJsLanguage,
+  detectPythonLanguage,
+  resolvePythonVersion,
+  resolveRuffVersion,
   detectNodeVersion,
   detectPackageManager,
   detectProjectEnvironment,
@@ -348,6 +354,10 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "npm", version: DEFAULT_NPM_VERSION },
           runtime: "node",
+          hasJs: false,
+          hasPython: false,
+          pythonVersion: DEFAULT_PYTHON_VERSION,
+          ruffVersion: DEFAULT_RUFF_VERSION,
         });
       });
     });
@@ -1492,6 +1502,105 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+    });
+  });
+
+  describe("Language Detection and Python/Ruff Version Resolution", () => {
+    it("detectJsLanguage returns true if package.json exists and false otherwise", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("package.json"));
+      expect(detectJsLanguage("/test")).toBe(true);
+
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      expect(detectJsLanguage("/test")).toBe(false);
+    });
+
+    it("detectPythonLanguage detects Python source files in nested directories while skipping excluded dirs", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readdirSync").mockImplementation((dir) => {
+        if (String(dir) === "/app") {
+          return [
+            { name: "node_modules", isDirectory: () => true, isFile: () => false },
+            { name: ".venv", isDirectory: () => true, isFile: () => false },
+            { name: "src", isDirectory: () => true, isFile: () => false },
+          ] as any;
+        }
+        if (String(dir).endsWith("src")) {
+          return [
+            { name: "main.py", isDirectory: () => false, isFile: () => true },
+          ] as any;
+        }
+        return [];
+      });
+
+      const res = detectPythonLanguage("/app");
+      expect(res.hasPythonSource).toBe(true);
+      expect(res.hasPython).toBe(true);
+    });
+
+    it("detectPythonLanguage returns hasPython=true when explicit ruff.toml, .ruff.toml, or pyproject.toml with [tool.ruff] exists", () => {
+      vi.spyOn(fs, "readdirSync").mockReturnValue([]);
+
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("ruff.toml"));
+      expect(detectPythonLanguage("/app").hasPython).toBe(true);
+
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith(".ruff.toml"));
+      expect(detectPythonLanguage("/app").hasPython).toBe(true);
+
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("pyproject.toml"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue("[tool.ruff]\nline-length = 88\n" as any);
+      expect(detectPythonLanguage("/app").hasPython).toBe(true);
+
+      vi.spyOn(fs, "readFileSync").mockReturnValue("[tool.poetry]\nname = 'my-app'\n" as any);
+      expect(detectPythonLanguage("/app").hasPython).toBe(false);
+    });
+
+    it("resolvePythonVersion resolves from .python-version, pyproject.toml, or fallback", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith(".python-version"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue("3.11.4\n" as any);
+      expect(resolvePythonVersion("/app")).toBe("3.11.4");
+
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("pyproject.toml"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue('[project]\nrequires-python = ">=3.10"\n' as any);
+      expect(resolvePythonVersion("/app")).toBe("3.10");
+
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      expect(resolvePythonVersion("/app")).toBe(DEFAULT_PYTHON_VERSION);
+    });
+
+    it("resolveRuffVersion resolves from pyproject.toml, requirements.txt, or fallback", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("pyproject.toml"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue('[tool.poetry.dependencies]\nruff = "==0.9.5"\n' as any);
+      expect(resolveRuffVersion("/app")).toBe("0.9.5");
+
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => String(p).endsWith("requirements.txt"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue("ruff==0.8.0\n" as any);
+      expect(resolveRuffVersion("/app")).toBe("0.8.0");
+
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+      expect(resolveRuffVersion("/app")).toBe(DEFAULT_RUFF_VERSION);
+    });
+
+    it("writeOutput sets setup-node, setup-bun, setup-pnpm to false when hasJs is false", () => {
+      const env: ResolvedEnvironment = {
+        nodeVersion: "24",
+        bunVersion: "",
+        pm: { name: "npm", version: "12" },
+        runtime: "node",
+        hasJs: false,
+        hasPython: true,
+        pythonVersion: "3.12",
+        ruffVersion: "0.9.10",
+      };
+
+      writeOutput(env);
+
+      expect(core.setOutput).toHaveBeenCalledWith("has-js", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("has-python", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.9.10");
     });
   });
 });

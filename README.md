@@ -120,6 +120,10 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
+| `has-js`                  | Whether JavaScript/TypeScript was detected |
+| `has-python`              | Whether Python/Ruff was detected        |
+| `python-version`          | The Python version used                 |
+| `ruff-version`            | The Ruff version used                   |
 
 ## Compatibility Overview
 
@@ -127,7 +131,7 @@ Environment resolution (`src/resolve-environment.ts`) automatically discovers wo
 
 - **Supported Runtimes**: `node`, `bun`
 - **Supported Package Managers**: `npm`, `pnpm`, `bun`
-- **Canonical Default Versions**: Node.js 24, Bun 1.4, npm 12, pnpm 12
+- **Canonical Default Versions**: Node.js 24, Bun 1.4, npm 12, pnpm 12, Python 3.12, Ruff 0.9.10
 - **Supported Combinations**: Node+npm (default), Node+pnpm, Node+bun, Bun+bun, Bun+pnpm. (Bun+npm is explicitly unsupported).
 
 For complete toolchain guarantees and combination matrices, see the **[Compatibility Contract & Release Policy](./COMPATIBILITY.md)** and **[Detailed Toolchain Matrix](./docs/compatibility.md)**.

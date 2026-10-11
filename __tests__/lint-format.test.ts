@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { run, sanitizePackageManager } from "../src/lint-format";
+import { executeRuff, run, sanitizePackageManager } from "../src/lint-format";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");
@@ -17,6 +17,8 @@ describe("lint-format", () => {
     vi.clearAllMocks();
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
+    process.env.HAS_JS = "true";
+    process.env.HAS_PYTHON = "false";
   });
 
   afterEach(() => {
@@ -345,6 +347,92 @@ describe("lint-format", () => {
       run();
 
       expect(core.setFailed).toHaveBeenCalledWith("Failed to run scripts: Raw unexpected error");
+    });
+  });
+
+  describe("Python and Ruff execution", () => {
+    it("should execute Ruff in check-only mode when GITHUB_WORKFLOW is not autofix.ci", () => {
+      delete process.env.GITHUB_WORKFLOW;
+      executeRuff(false);
+
+      expect(core.info).toHaveBeenCalledWith("Running Ruff in check-only mode");
+      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("should execute Ruff in autofix mode when GITHUB_WORKFLOW is autofix.ci", () => {
+      process.env.GITHUB_WORKFLOW = "autofix.ci";
+      executeRuff(true);
+
+      expect(core.info).toHaveBeenCalledWith("Running Ruff in autofix mode");
+      expect(execSync).toHaveBeenCalledWith("ruff check --fix .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff format .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("should log error and exit with code 1 if Ruff check fails", () => {
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("Ruff check failed");
+      });
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+      executeRuff(false);
+
+      expect(core.error).toHaveBeenCalledWith('Command "ruff check ." failed');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("should log error and exit with code 1 if Ruff format fails", () => {
+      vi.mocked(execSync)
+        .mockImplementationOnce(() => "" as any) // check succeeds
+        .mockImplementationOnce(() => {
+          throw new Error("Ruff format failed");
+        });
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+      executeRuff(false);
+
+      expect(core.error).toHaveBeenCalledWith('Command "ruff format --check ." failed');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("should run Ruff and skip JS scripts when HAS_JS=false and HAS_PYTHON=true", () => {
+      process.env.HAS_JS = "false";
+      process.env.HAS_PYTHON = "true";
+      delete process.env.GITHUB_WORKFLOW;
+
+      run();
+
+      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+    });
+
+    it("should run both JS scripts and Ruff when HAS_JS=true and HAS_PYTHON=true", () => {
+      process.env.HAS_JS = "true";
+      process.env.HAS_PYTHON = "true";
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ scripts: { check: "npm run check" } }) as any,
+      );
+
+      run();
+
+      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff check .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("ruff format --check .", { stdio: "inherit" });
+    });
+
+    it("should log info and skip execution when HAS_JS=false and HAS_PYTHON=false", () => {
+      process.env.HAS_JS = "false";
+      process.env.HAS_PYTHON = "false";
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith(
+        "Neither JavaScript/TypeScript nor Python detected. Skipping lint and format steps.",
+      );
+      expect(execSync).not.toHaveBeenCalled();
     });
   });
 });

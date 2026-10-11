@@ -21,6 +21,18 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  has-js:
+    description: "Whether JavaScript/TypeScript was detected"
+    value: ${{ steps.resolve_environment.outputs.has-js }}
+  has-python:
+    description: "Whether Python/Ruff was detected"
+    value: ${{ steps.resolve_environment.outputs.has-python }}
+  python-version:
+    description: "The Python version used"
+    value: ${{ steps.resolve_environment.outputs.python-version }}
+  ruff-version:
+    description: "The Ruff version used"
+    value: ${{ steps.resolve_environment.outputs.ruff-version }}
 
 runs:
   using: "composite"
@@ -34,7 +46,7 @@ runs:
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Setup PNPM
-      if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.has-js == 'true' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3
       with:
         version: ${{ steps.resolve_environment.outputs.package-manager-version }}
@@ -43,13 +55,13 @@ runs:
         cache: true
 
     - name: Setup Bun
-      if: ${{ steps.resolve_environment.outputs.setup-bun == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.has-js == 'true' && steps.resolve_environment.outputs.setup-bun == 'true' }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version: ${{ steps.resolve_environment.outputs.bun-version }}
 
     - name: Setup Node.js
-      if: ${{ steps.resolve_environment.outputs.setup-node == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.has-js == 'true' && steps.resolve_environment.outputs.setup-node == 'true' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
@@ -58,6 +70,7 @@ runs:
           **/package-lock.json
 
     - name: Install dependencies
+      if: ${{ steps.resolve_environment.outputs.has-js == 'true' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -78,11 +91,28 @@ runs:
             ;;
         esac
 
+    - name: Setup Python
+      if: ${{ steps.resolve_environment.outputs.has-python == 'true' }}
+      uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+      with:
+        python-version: ${{ steps.resolve_environment.outputs.python-version }}
+
+    - name: Install Ruff
+      if: ${{ steps.resolve_environment.outputs.has-python == 'true' }}
+      shell: bash
+      env:
+        RUFF_VERSION: ${{ steps.resolve_environment.outputs.ruff-version }}
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install "ruff==${RUFF_VERSION}"
+
     - name: Run lint and format
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
+        HAS_JS: ${{ steps.resolve_environment.outputs.has-js }}
+        HAS_PYTHON: ${{ steps.resolve_environment.outputs.has-python }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$RUNTIME" = "bun" ]; then

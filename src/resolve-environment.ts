@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -130,6 +131,174 @@ export const DEFAULT_NPM_VERSION = "12";
 // renovate: datasource=npm depName=pnpm
 export const DEFAULT_PNPM_VERSION = "12";
 
+/** Default Python fallback version */
+// renovate: datasource=python-version depName=python
+export const DEFAULT_PYTHON_VERSION = "3.12";
+
+/** Default Ruff fallback version */
+// renovate: datasource=pypi depName=ruff
+export const DEFAULT_RUFF_VERSION = "0.9.10";
+
+const EXCLUDED_DIRS_SET = new Set([
+  ".git",
+  "node_modules",
+  ".venv",
+  "venv",
+  "env",
+  ".env",
+  "virtualenv",
+  "dist",
+  "build",
+  "out",
+  "target",
+  ".tox",
+  ".nox",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".mypy_cache",
+  "__pycache__",
+  ".next",
+  ".astro",
+  ".nuxt",
+  ".output",
+  ".hg",
+  ".svn",
+]);
+
+export function detectJsLanguage(rootDir: string = process.cwd()): boolean {
+  try {
+    return fs.existsSync(path.join(rootDir, "package.json"));
+  } catch {
+    return false;
+  }
+}
+
+export interface PythonDetectionResult {
+  hasPython: boolean;
+  hasPythonSource: boolean;
+  hasRuffConfig: boolean;
+}
+
+function scanForPythonSourceFiles(dirPath: string): boolean {
+  if (!fs.existsSync(dirPath)) return false;
+  let items: fs.Dirent[];
+  try {
+    items = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
+  for (const item of items) {
+    if (item.isDirectory()) {
+      if (EXCLUDED_DIRS_SET.has(item.name)) {
+        continue;
+      }
+      if (scanForPythonSourceFiles(path.join(dirPath, item.name))) {
+        return true;
+      }
+    } else if (item.isFile()) {
+      const ext = path.extname(item.name).toLowerCase();
+      if (ext === ".py" || ext === ".pyi") {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function checkRuffConfig(rootDir: string): boolean {
+  try {
+    if (
+      fs.existsSync(path.join(rootDir, "ruff.toml")) ||
+      fs.existsSync(path.join(rootDir, ".ruff.toml"))
+    ) {
+      return true;
+    }
+    const pyprojectPath = path.join(rootDir, "pyproject.toml");
+    if (fs.existsSync(pyprojectPath)) {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      if (/^\s*\[\s*tool\.ruff(?:\.|\s*\])/m.test(content)) {
+        return true;
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return false;
+}
+
+export function detectPythonLanguage(rootDir: string = process.cwd()): PythonDetectionResult {
+  const hasPythonSource = scanForPythonSourceFiles(rootDir);
+  const hasRuffConfig = checkRuffConfig(rootDir);
+  const hasPython = hasPythonSource || hasRuffConfig;
+
+  return {
+    hasPython,
+    hasPythonSource,
+    hasRuffConfig,
+  };
+}
+
+export function resolvePythonVersion(rootDir: string = process.cwd()): string {
+  try {
+    const pythonVersionFile = path.join(rootDir, ".python-version");
+    if (fs.existsSync(pythonVersionFile)) {
+      const content = fs.readFileSync(pythonVersionFile, "utf8").trim();
+      const firstLine = content.split("\n")[0]?.trim();
+      if (firstLine && !firstLine.startsWith("#")) {
+        return firstLine;
+      }
+    }
+
+    const pyprojectPath = path.join(rootDir, "pyproject.toml");
+    if (fs.existsSync(pyprojectPath)) {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      const match =
+        content.match(/requires-python\s*=\s*"([^"]+)"/i) ||
+        content.match(/python\s*=\s*"([^"]+)"/i);
+      if (match && match[1]) {
+        const verMatch = match[1].match(/([0-9]+(?:\.[0-9]+)+)/);
+        if (verMatch && verMatch[1]) {
+          return verMatch[1];
+        }
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+
+  return DEFAULT_PYTHON_VERSION;
+}
+
+export function resolveRuffVersion(rootDir: string = process.cwd()): string {
+  try {
+    const pyprojectPath = path.join(rootDir, "pyproject.toml");
+    if (fs.existsSync(pyprojectPath)) {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      const match =
+        content.match(/ruff\s*=\s*"?(?:==)?([0-9]+\.[0-9]+\.[0-9]+)"?/i) ||
+        content.match(/ruff\s*==\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/i);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+
+    const reqPath = path.join(rootDir, "requirements.txt");
+    if (fs.existsSync(reqPath)) {
+      const content = fs.readFileSync(reqPath, "utf8");
+      const match = content.match(/ruff\s*==\s*([0-9]+\.[0-9]+\.[0-9]+)/i);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+
+  return DEFAULT_RUFF_VERSION;
+}
+
 /**
  * Returns the default fallback version for a given package manager name.
  */
@@ -155,6 +324,10 @@ export interface ResolvedEnvironment {
   bunVersion: string;
   pm: PackageManager;
   runtime: "node" | "bun";
+  hasJs?: boolean;
+  hasPython?: boolean;
+  pythonVersion?: string;
+  ruffVersion?: string;
 }
 
 /** Legacy type alias for ResolvedEnvironment */
@@ -668,12 +841,20 @@ export function writeOutput(
   pm: PackageManager,
   bunVersion?: string,
   runtime?: "bun" | "node",
+  hasJs?: boolean,
+  hasPython?: boolean,
+  pythonVersion?: string,
+  ruffVersion?: string,
 ): void;
 export function writeOutput(
   nodeVersionOrEnv: string | ResolvedEnvironment,
   pm?: PackageManager,
   bunVersion: string = "",
   runtime: "bun" | "node" = "node",
+  hasJsArg?: boolean,
+  hasPythonArg?: boolean,
+  pythonVersionArg?: string,
+  ruffVersionArg?: string,
 ): void {
   let env: ResolvedEnvironment;
   if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
@@ -689,8 +870,18 @@ export function writeOutput(
       pm,
       bunVersion,
       runtime,
+      hasJs: hasJsArg,
+      hasPython: hasPythonArg,
+      pythonVersion: pythonVersionArg,
+      ruffVersion: ruffVersionArg,
     };
   }
+
+  const rootDir = process.cwd();
+  const hasJs = env.hasJs ?? detectJsLanguage(rootDir);
+  const hasPython = env.hasPython ?? detectPythonLanguage(rootDir).hasPython;
+  const pythonVersion = env.pythonVersion ?? (hasPython ? resolvePythonVersion(rootDir) : "");
+  const ruffVersion = env.ruffVersion ?? (hasPython ? resolveRuffVersion(rootDir) : "");
 
   const nodeSetup = setupNode(env);
   const bunSetup = setupBun(env);
@@ -703,10 +894,15 @@ export function writeOutput(
   core.setOutput("runtime", env.runtime);
   core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
-  core.setOutput("setup-node", String(nodeSetup.shouldSetup));
+  core.setOutput("has-js", String(hasJs));
+  core.setOutput("has-python", String(hasPython));
+  core.setOutput("python-version", pythonVersion);
+  core.setOutput("ruff-version", ruffVersion);
+
+  core.setOutput("setup-node", String(hasJs && nodeSetup.shouldSetup));
   core.setOutput("setup-node-cache", nodeSetup.cache);
-  core.setOutput("setup-bun", String(bunSetup.shouldSetup));
-  core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
+  core.setOutput("setup-bun", String(hasJs && bunSetup.shouldSetup));
+  core.setOutput("setup-pnpm", String(hasJs && pmSetup.shouldSetupPnpm));
 }
 
 /**
@@ -715,6 +911,7 @@ export function writeOutput(
  */
 export function resolveEnvironment(
   runtimeInput: string = core.getInput("runtime"),
+  rootDir: string = process.cwd(),
 ): ResolvedEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectProjectEnvironment();
@@ -722,11 +919,20 @@ export function resolveEnvironment(
   const runtime = resolveRuntime(parsedInputs, pm);
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
 
+  const hasJs = detectJsLanguage(rootDir);
+  const pythonDetection = detectPythonLanguage(rootDir);
+  const pythonVersion = resolvePythonVersion(rootDir);
+  const ruffVersion = resolveRuffVersion(rootDir);
+
   const env: ResolvedEnvironment = {
     nodeVersion: versions.nodeVersion,
     bunVersion: versions.bunVersion,
     pm,
     runtime,
+    hasJs,
+    hasPython: pythonDetection.hasPython,
+    pythonVersion,
+    ruffVersion,
   };
 
   return validateEnvironment(env);
@@ -739,7 +945,7 @@ export function run(): void {
   try {
     const runtimeInput = core.getInput("runtime");
     const env = resolveEnvironment(runtimeInput);
-    writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
+    writeOutput(env);
   } catch (error) {
     if (error instanceof WorkflowError) {
       core.setFailed(error);
