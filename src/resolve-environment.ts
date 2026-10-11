@@ -159,6 +159,9 @@ const EXCLUDED_DIRS_SET = new Set([
   ".output",
   ".hg",
   ".svn",
+  "__tests__",
+  "tests",
+  "fixtures",
 ]);
 
 export function detectJsLanguage(rootDir: string = process.cwd()): boolean {
