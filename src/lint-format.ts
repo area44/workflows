@@ -60,6 +60,28 @@ function isRuffInstalledOnPath(): boolean {
   }
 }
 
+function runRuffSingleCommand(cmd: string, hasUv: boolean): void {
+  core.info(`Executing: ${cmd}`);
+  try {
+    execSync(cmd, { stdio: "inherit" });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (
+      hasUv &&
+      (errMsg.includes("No such file") ||
+        errMsg.includes("not found") ||
+        errMsg.includes("executable file not found"))
+    ) {
+      core.error(
+        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
+      );
+    } else {
+      core.error(`Command "${cmd}" failed`);
+    }
+    process.exit(1);
+  }
+}
+
 export function executePythonRuff(
   isAutofix: boolean = process.env.GITHUB_WORKFLOW === "autofix.ci",
   hasUv: boolean = process.env.HAS_UV === "true",
@@ -73,54 +95,17 @@ export function executePythonRuff(
     process.exit(1);
   }
 
+  const modeName = isAutofix ? "autofix" : "check-only";
+  const ruffMsg = hasUv
+    ? `Running project-managed Ruff via uv (${modeName} mode)`
+    : `Running project-managed Ruff (${modeName} mode)`;
+  core.info(ruffMsg);
+
   const checkCmd = isAutofix ? `${ruffPrefix} check --fix .` : `${ruffPrefix} check .`;
   const formatCmd = isAutofix ? `${ruffPrefix} format .` : `${ruffPrefix} format --check .`;
 
-  if (hasUv) {
-    core.info(`Running project-managed Ruff via uv (${isAutofix ? "autofix" : "check-only"} mode)`);
-  } else {
-    core.info(`Running project-managed Ruff (${isAutofix ? "autofix" : "check-only"} mode)`);
-  }
-
-  try {
-    core.info(`Executing: ${checkCmd}`);
-    execSync(checkCmd, { stdio: "inherit" });
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (
-      hasUv &&
-      (errMsg.includes("No such file") ||
-        errMsg.includes("not found") ||
-        errMsg.includes("executable file not found"))
-    ) {
-      core.error(
-        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
-      );
-    } else {
-      core.error(`Command "${checkCmd}" failed`);
-    }
-    process.exit(1);
-  }
-
-  try {
-    core.info(`Executing: ${formatCmd}`);
-    execSync(formatCmd, { stdio: "inherit" });
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (
-      hasUv &&
-      (errMsg.includes("No such file") ||
-        errMsg.includes("not found") ||
-        errMsg.includes("executable file not found"))
-    ) {
-      core.error(
-        "Ruff is not declared or available in the uv project environment. Please add Ruff to development dependencies (e.g. run 'uv add --dev ruff').",
-      );
-    } else {
-      core.error(`Command "${formatCmd}" failed`);
-    }
-    process.exit(1);
-  }
+  runRuffSingleCommand(checkCmd, hasUv);
+  runRuffSingleCommand(formatCmd, hasUv);
 }
 
 export function executeRuff(
