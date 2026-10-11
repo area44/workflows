@@ -65,12 +65,7 @@ runs:
         DEFAULT_BUILD_COMMAND: "vpr build"
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
-      run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/build-command.mjs"
-        else
-          node "$ACTION_PATH/../dist/build-command.mjs"
-        fi
+      run: node "$ACTION_PATH/../dist/build-command.mjs"
 
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
