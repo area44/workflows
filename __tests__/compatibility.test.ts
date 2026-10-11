@@ -188,27 +188,17 @@ describe("Compatibility Contract Validation", () => {
     });
 
     describe("Vite+ Action Toolchain Setup Invariants", () => {
-      it("should configure vite-plus/action.yml with setup-pnpm (version-only), setup-bun (conditional), and setup-vp (central installer)", () => {
+      it("should configure vite-plus/action.yml with setup-vp as sole setup step without pnpm/setup or setup-bun steps", () => {
         const vpYml = fs.readFileSync(path.join(rootDir, "vite-plus", "action.yml"), "utf8");
         const parsed = parseYaml(vpYml);
         const steps = parsed.runs.steps;
 
-        // Verify Setup PNPM is present with version only (install: false, no runtime or cache)
+        // Verify standalone pnpm/setup and setup-bun steps are removed from vite-plus
         const pnpmStep = steps.find((s: any) => s.name === "Setup PNPM");
-        expect(pnpmStep).toBeDefined();
-        expect(pnpmStep.if).toBe("${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}");
-        expect(pnpmStep.uses).toContain("pnpm/setup@");
-        expect(pnpmStep.with?.version).toBe("${{ steps.resolve_environment.outputs.package-manager-version }}");
-        expect(pnpmStep.with?.install).toBe(false);
-        expect(pnpmStep.with?.runtime).toBeUndefined();
-        expect(pnpmStep.with?.cache).toBeUndefined();
+        expect(pnpmStep).toBeUndefined();
 
-        // Verify Setup Bun is present when setup-bun == 'true'
         const bunStep = steps.find((s: any) => s.name === "Setup Bun");
-        expect(bunStep).toBeDefined();
-        expect(bunStep.if).toBe("${{ steps.resolve_environment.outputs.setup-bun == 'true' }}");
-        expect(bunStep.uses).toContain("oven-sh/setup-bun@");
-        expect(bunStep.with?.["bun-version"]).toBe("${{ steps.resolve_environment.outputs.bun-version }}");
+        expect(bunStep).toBeUndefined();
 
         // Verify Setup Vite+ is present
         const vpStep = steps.find((s: any) => s.name === "Setup Vite+");

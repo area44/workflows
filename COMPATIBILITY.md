@@ -123,9 +123,8 @@ Every composite action in this repository shares a common environment resolution
   - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
   - `vp-version`: The version of Vite+ installed by `voidzero-dev/setup-vp`.
 - **Behavior & Constraints**:
-  - Uses `voidzero-dev/setup-vp` as the central owner of toolchain setup, store caching (`cache: true`), and dependency installation (`run-install: true`).
-  - Uses `pnpm/setup` with `version` input for pnpm CLI setup without duplicate runtime or store cache setup.
-  - Uses `oven-sh/setup-bun` when Bun runtime is requested (`setup-bun == 'true'`).
+  - Uses `voidzero-dev/setup-vp` as the central owner of toolchain setup, package-manager integration, store caching (`cache: true`), and dependency installation (`run-install: true`).
+  - Contains no standalone `pnpm/setup` or `oven-sh/setup-bun` setup steps.
   - Defaults build command to `vpr build`.
   - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
 
