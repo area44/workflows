@@ -188,18 +188,17 @@ describe("Compatibility Contract Validation", () => {
     });
 
     describe("Vite+ Action Toolchain Setup Invariants", () => {
-      it("should configure vite-plus/action.yml without redundant runtime or cache setup in pnpm/setup", () => {
+      it("should configure vite-plus/action.yml with setup-vp as sole setup step and no standalone pnpm/setup or setup-bun steps", () => {
         const vpYml = fs.readFileSync(path.join(rootDir, "vite-plus", "action.yml"), "utf8");
         const parsed = parseYaml(vpYml);
         const steps = parsed.runs.steps;
 
+        // Verify standalone pnpm/setup and setup-bun steps are removed from vite-plus
         const pnpmStep = steps.find((s: any) => s.name === "Setup PNPM");
-        expect(pnpmStep).toBeDefined();
-        expect(pnpmStep.with?.version).toBe("${{ steps.resolve_environment.outputs.package-manager-version }}");
-        expect(pnpmStep.with?.install).toBe(false);
-        // Ensure pnpm/setup does not redundantly specify runtime or cache
-        expect(pnpmStep.with?.runtime).toBeUndefined();
-        expect(pnpmStep.with?.cache).toBeUndefined();
+        expect(pnpmStep).toBeUndefined();
+
+        const bunStep = steps.find((s: any) => s.name === "Setup Bun");
+        expect(bunStep).toBeUndefined();
 
         const vpStep = steps.find((s: any) => s.name === "Setup Vite+");
         expect(vpStep).toBeDefined();
@@ -207,10 +206,6 @@ describe("Compatibility Contract Validation", () => {
         expect(vpStep.with?.["node-version"]).toBe("${{ steps.resolve_environment.outputs.node-version }}");
         expect(vpStep.with?.cache).toBe(true);
         expect(vpStep.with?.["run-install"]).toBe(true);
-
-        const bunStep = steps.find((s: any) => s.name === "Setup Bun");
-        expect(bunStep).toBeDefined();
-        expect(bunStep.uses).toContain("oven-sh/setup-bun@");
 
         // Verify vite-plus does not contain a separate redundant install step
         const installStep = steps.find((s: any) => s.name === "Install dependencies");
