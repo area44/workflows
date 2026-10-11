@@ -69,5 +69,5 @@ Resolved environment state is converted to GitHub Actions setup toolchain config
 
 ### Composite Action Setup Responsibilities
 
-- **`vite-plus`**: Uses `voidzero-dev/setup-vp` as the central single setup layer for Node.js runtime setup, package-manager integration, store caching (`cache: true`), and dependency installation (`run-install: true`). Standalone `pnpm/setup` and `oven-sh/setup-bun` steps are removed from `vite-plus`.
+- **`vite-plus`**: Uses `voidzero-dev/setup-vp` as the central setup layer for Node.js runtime setup, package-manager integration, store caching (`cache: true`), and dependency installation (`run-install: true`). Standalone `pnpm/setup` steps are removed from `vite-plus`. `oven-sh/setup-bun` runs conditionally when Bun runtime is requested (`setup-bun == 'true'`) to provision the `bun` runtime binary.
 - **`astro` / `vite` / `lint-format`**: Use `actions/setup-node`, `pnpm/setup`, or `oven-sh/setup-bun` depending on the resolved package manager, followed by a dedicated dependency installation step.

@@ -62,7 +62,7 @@ export function setupNode(env: ResolvedEnvironment): NodeSetupConfig {
  * Derives setup parameters for oven-sh/setup-bun from a resolved environment.
  */
 export function setupBun(env: ResolvedEnvironment): BunSetupConfig {
-  const shouldSetup = env.pm.name !== "pnpm" && Boolean(env.bunVersion);
+  const shouldSetup = Boolean(env.bunVersion);
   return {
     shouldSetup,
     bunVersion: env.bunVersion,

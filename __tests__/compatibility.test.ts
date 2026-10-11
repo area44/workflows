@@ -188,17 +188,20 @@ describe("Compatibility Contract Validation", () => {
     });
 
     describe("Vite+ Action Toolchain Setup Invariants", () => {
-      it("should configure vite-plus/action.yml with setup-vp as sole setup step and no standalone pnpm/setup or setup-bun steps", () => {
+      it("should configure vite-plus/action.yml with setup-vp as central setup layer without standalone pnpm/setup", () => {
         const vpYml = fs.readFileSync(path.join(rootDir, "vite-plus", "action.yml"), "utf8");
         const parsed = parseYaml(vpYml);
         const steps = parsed.runs.steps;
 
-        // Verify standalone pnpm/setup and setup-bun steps are removed from vite-plus
+        // Verify standalone pnpm/setup step is removed from vite-plus
         const pnpmStep = steps.find((s: any) => s.name === "Setup PNPM");
         expect(pnpmStep).toBeUndefined();
 
+        // Verify Setup Bun is conditional on setup-bun == 'true'
         const bunStep = steps.find((s: any) => s.name === "Setup Bun");
-        expect(bunStep).toBeUndefined();
+        expect(bunStep).toBeDefined();
+        expect(bunStep.if).toBe("${{ steps.resolve_environment.outputs.setup-bun == 'true' }}");
+        expect(bunStep.uses).toContain("oven-sh/setup-bun@");
 
         const vpStep = steps.find((s: any) => s.name === "Setup Vite+");
         expect(vpStep).toBeDefined();
@@ -206,6 +209,11 @@ describe("Compatibility Contract Validation", () => {
         expect(vpStep.with?.["node-version"]).toBe("${{ steps.resolve_environment.outputs.node-version }}");
         expect(vpStep.with?.cache).toBe(true);
         expect(vpStep.with?.["run-install"]).toBe(true);
+
+        // Verify build step uses node interpreter
+        const buildStep = steps.find((s: any) => s.name === "Build Vite+ site");
+        expect(buildStep).toBeDefined();
+        expect(buildStep.run).toBe('node "$ACTION_PATH/../dist/build-command.mjs"');
 
         // Verify vite-plus does not contain a separate redundant install step
         const installStep = steps.find((s: any) => s.name === "Install dependencies");

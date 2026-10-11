@@ -505,7 +505,7 @@ describe("resolve-environment", () => {
         });
       });
 
-      it("should return shouldSetup=false when package manager is pnpm", () => {
+      it("should return shouldSetup=true when package manager is pnpm and bunVersion is set", () => {
         const env: ResolvedEnvironment = {
           nodeVersion: "24",
           bunVersion: "1.4",
@@ -513,7 +513,7 @@ describe("resolve-environment", () => {
           runtime: "bun",
         };
         expect(setupBun(env)).toEqual({
-          shouldSetup: false,
+          shouldSetup: true,
           bunVersion: "1.4",
         });
       });
@@ -1490,7 +1490,7 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
     });
   });
