@@ -93,7 +93,11 @@ describe("Changesets Release Architecture and Workflow", () => {
         (f) => !f.startsWith(".changeset/") && !f.startsWith("docs/") && !f.endsWith(".md"),
       );
       const changesetFiles = changedFiles.filter(
-        (f) => f.startsWith(".changeset/") && f.endsWith(".md"),
+        (f) =>
+          f.startsWith(".changeset/") &&
+          f.endsWith(".md") &&
+          !f.endsWith("/README.md") &&
+          !f.endsWith("/config.json"),
       );
 
       const requiresChangeset = nonDocFiles.length > 0 && changesetFiles.length === 0;
@@ -119,7 +123,14 @@ describe("Changesets Release Architecture and Workflow", () => {
       expect(result.nonDocFiles).toEqual(codeFiles);
     });
 
-    it("should PASS when source files are modified WITH a changeset file", () => {
+    it("should REQUIRE changeset when code files are changed and only .changeset/README.md is modified", () => {
+      const filesWithReadme = ["src/resolve-environment.ts", ".changeset/README.md"];
+      const result = evaluatePRChangesetRequirement(filesWithReadme);
+      expect(result.requiresChangeset).toBe(true);
+      expect(result.changesetFiles).toHaveLength(0);
+    });
+
+    it("should PASS when source files are modified WITH a valid changeset file", () => {
       const mixedFiles = [
         "src/resolve-environment.ts",
         ".changeset/friendly-pandas-dance.md",

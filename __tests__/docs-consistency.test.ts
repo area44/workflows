@@ -480,7 +480,6 @@ describe("Documentation Consistency Verification", () => {
     it("README.md should exist and contain main entry point usage and action navigation", () => {
       expect(readmeContent).toContain("area44/workflows");
       expect(readmeContent).toContain("Composite Actions");
-      expect(readmeContent).toContain("Quick Usage");
       expect(readmeContent).toContain("Public Action API Summary");
       expect(readmeContent).toContain("Compatibility Overview");
       expect(readmeContent).toContain("Documentation Architecture");

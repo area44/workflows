@@ -9,35 +9,6 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 - **[Vite+](./vite-plus/README.md)** (`area44/workflows/vite-plus@main`): Build and deploy Vite+ sites to GitHub Pages.
 - **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically run linting and formatting scripts.
 
-## Quick Usage
-
-```yaml
-name: GitHub Pages
-
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build Astro site
-        uses: area44/workflows/astro@main
-        with:
-          # Optional: runtime: 'node@24'
-          # Optional: path: 'dist'
-```
-
 ## Public Action API Summary
 
 Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status), validated automatically via `npm run test:actions`.
@@ -140,14 +111,6 @@ Specialized documentation guides explain specific contracts and operational guar
 - **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
 - **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
 - **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, release process, and pre-merge checklist.
-
-## Versioning and Releases
-
-This repository represents a single private workspace (`@area44/workflows`) containing composite GitHub Actions (`astro`, `vite`, `vite-plus`, `autofix`). Releases and Semantic Versioning are managed automatically via [Changesets](https://github.com/changesets/changesets).
-
-- Every pull request introducing non-documentation changes must include a changeset generated via `npx changeset`.
-- Bumping versions and updating release notes is handled automatically via a Version PR created by Changesets.
-- Merging the Version PR creates unified version git tags (`vX.Y.Z`) and GitHub Releases.
 
 ## License
 

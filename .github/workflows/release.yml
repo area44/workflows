@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -27,7 +27,7 @@ jobs:
         run: node "dist/resolve-environment.mjs"
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@39370e3970a6c050c480ff640003f4ee92470c98 # v4.1.0
         with:
           node-version: ${{ steps.resolve_environment.outputs.node-version }}
           cache: "npm"
@@ -48,6 +48,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push Git Tags
-        if: steps.changesets.outputs.published == 'true'
-        run: git push --tags
+      - name: Push Git Tags and Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push --tags || true
+          for tag in $(git tag --points-at HEAD); do
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" --generate-notes --title "$tag" || true
+            fi
+          done
