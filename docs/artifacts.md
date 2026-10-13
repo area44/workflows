@@ -13,10 +13,10 @@ This document defines the build policy, generated artifact structure, release in
 - **Build Command**: `npm run build` (invokes `vp pack`).
 - **Entry Configuration**: Configured in `vite.config.ts`, mapping entrypoints:
   - `src/resolve-environment.ts` → `dist/resolve-environment.mjs`
-  - `src/lint-format.ts` → `dist/lint-format.mjs`
+  - `src/autofix.ts` → `dist/autofix.mjs`
   - `src/site-variables.ts` → `dist/site-variables.mjs`
   - `src/build-command.ts` → `dist/build-command.mjs`
-- **Consumer Action Entry Points**: Public composite actions (`astro`, `vite`, `vite-plus`, `lint-format`) execute generated entrypoints via `$ACTION_PATH/../dist/<entrypoint>.mjs`.
+- **Consumer Action Entry Points**: Public composite actions (`astro`, `vite`, `vite-plus`, `autofix`) execute generated entrypoints via `$ACTION_PATH/../dist/<entrypoint>.mjs`.
 
 ## Verification Engine & Integrity Rules
 

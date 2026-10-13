@@ -46,7 +46,7 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 
 ## Public Action API Contract & Source of Truth
 
-The public API contract of all composite actions (`astro`, `vite`, `vite-plus`, `lint-format`) is explicitly defined in and derived from each action's `action.yml` file, which serves as the single source of truth:
+The public API contract of all composite actions (`astro`, `vite`, `vite-plus`, `autofix`) is explicitly defined in and derived from each action's `action.yml` file, which serves as the single source of truth:
 
 ```
 action.yml
@@ -60,7 +60,7 @@ documentation
 
 ### Public API Action Contract Governance
 
-- **Public Actions**: `astro`, `vite`, `vite-plus`, `lint-format`.
+- **Public Actions**: `astro`, `vite`, `vite-plus`, `autofix`.
 - **Source of Truth**: `action.yml` in each action's directory. No external or redundant source of truth is created.
 - **Contract Verification**: Validated programmatically by `parseActionContract` and `validateAllPublicActionContracts` in `src/action-contract.ts`, and enforced in CI via `npm run test:actions`.
 - **Breaking API Changes**:
@@ -127,7 +127,7 @@ Every composite action in this repository shares a common environment resolution
   - Defaults build command to `vpr build`.
   - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
 
-#### `lint-format` (Lint and Format Verification)
+#### `autofix` (Lint and Format Verification)
 
 - **Supported Runtimes**: `node` (default), `bun`
 - **Supported Package Managers**: `npm`, `pnpm`, `bun`
@@ -137,7 +137,7 @@ Every composite action in this repository shares a common environment resolution
   - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
 - **Behavior & Constraints**:
   - Installs dependencies (`pnpm install --no-frozen-lockfile`, `bun install`, or `npm install`).
-  - Executes linting/formatting via `dist/lint-format.mjs`.
+  - Executes linting/formatting via `dist/autofix.mjs`.
   - Triggers `autofix-ci/action` when running in a workflow named `autofix.ci`.
 
 ---

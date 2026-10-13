@@ -30,7 +30,7 @@ describe("Artifact Integrity Verification", () => {
 
       const names = artifacts.map((a) => a.name);
       expect(names).toContain("resolve-environment");
-      expect(names).toContain("lint-format");
+      expect(names).toContain("autofix");
       expect(names).toContain("site-variables");
       expect(names).toContain("build-command");
 

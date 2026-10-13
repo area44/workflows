@@ -16,7 +16,7 @@ describe("Repository Health Verification", () => {
       const result = verifyRepositoryHealth(realRootDir, { checkGitStatus: false });
       expect(result.valid).toBe(true);
       expect(result.errors).toEqual([]);
-      expect(result.publicActions).toEqual(["astro", "vite", "vite-plus", "lint-format"]);
+      expect(result.publicActions).toEqual(["astro", "vite", "vite-plus", "autofix"]);
       expect(result.artifactsVerified).toBe(true);
       expect(result.orphanDocs).toEqual([]);
       expect(result.orphanFixtures).toEqual([]);
@@ -243,7 +243,7 @@ function copyValidRepoStructure(srcDir: string, destDir: string): void {
     "astro",
     "vite",
     "vite-plus",
-    "lint-format",
+    "autofix",
     "docs",
     "dist",
     "src",

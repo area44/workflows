@@ -1,0 +1,9 @@
+{
+  "name": "autofix-npm-basic",
+  "scripts": {
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
+  },
+  "packageManager": "npm@11.19.0",
+  "type": "module"
+}

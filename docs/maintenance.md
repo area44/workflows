@@ -16,19 +16,19 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 
 To avoid duplication and configuration drift, specific files serve as authoritative sources of truth:
 
-| Domain              | Authoritative Source of Truth File                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Package Versioning  | `package.json` (`version` property)                                                                               |
-| Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `vite-plus/action.yml`, `lint-format/action.yml`) |
-| Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                                                          |
-| Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                                                     |
-| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                                                 |
+| Domain              | Authoritative Source of Truth File                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Package Versioning  | `package.json` (`version` property)                                                                           |
+| Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `vite-plus/action.yml`, `autofix/action.yml`) |
+| Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                                                      |
+| Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                                                 |
+| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                                             |
 
 ## Public Action Structure
 
 Every public action provided by this repository must adhere to the following structure:
 
-- A dedicated directory at the repository root matching its declared action name (e.g., `astro/`, `vite/`, `vite-plus/`, `lint-format/`).
+- A dedicated directory at the repository root matching its declared action name (e.g., `astro/`, `vite/`, `vite-plus/`, `autofix/`).
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
 - Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
@@ -51,7 +51,7 @@ Artifact Integrity Verification
 The following generated files are produced from source code and checked into git:
 
 - `dist/resolve-environment.mjs` (generated from `src/resolve-environment.ts` and imports)
-- `dist/lint-format.mjs` (generated from `src/lint-format.ts`)
+- `dist/autofix.mjs` (generated from `src/autofix.ts`)
 - `dist/site-variables.mjs` (generated from `src/site-variables.ts`)
 - `dist/build-command.mjs` (generated from `src/build-command.ts`)
 

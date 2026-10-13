@@ -1,0 +1,8 @@
+{
+  "name": "autofix-bun-minimal",
+  "scripts": {
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
+  },
+  "type": "module"
+}

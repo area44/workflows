@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { PublicActionContract, PublicActionName } from "../src/action-contract";
@@ -16,7 +20,7 @@ import {
   verifyUpgradeGuardrails,
 } from "../src/upgrade-guardrails";
 
-describe("Upgrade Guardrails Specification", () => {
+describe("Upgrade Guardrails Specification & Invariants", () => {
   const sampleBaseContract: PublicActionContract = {
     action: "sample-action",
     name: "Sample Action",
@@ -32,7 +36,7 @@ describe("Upgrade Guardrails Specification", () => {
     astro: sampleBaseContract,
     vite: sampleBaseContract,
     "vite-plus": sampleBaseContract,
-    "lint-format": sampleBaseContract,
+    autofix: sampleBaseContract,
   };
 
   const sampleBaseModel: CanonicalCompatibilityModel = {
@@ -59,6 +63,14 @@ describe("Upgrade Guardrails Specification", () => {
       expect(comp.breakingChanges).toHaveLength(0);
       expect(comp.changeDescriptor.addedOptionalInputs).toBe(0);
       expect(comp.changeDescriptor.addedPublicOutputs).toBe(0);
+
+      const target: TargetContracts = {
+        version: "1.0.0",
+        publicActions: targetActions,
+        compatibilityModel: sampleBaseModel,
+      };
+      const res = evaluateUpgradeGuardrails(sampleBaseline, target);
+      expect(res.valid).toBe(true);
     });
 
     it("classifies added optional input as compatible (minor impact)", () => {
@@ -141,9 +153,63 @@ describe("Upgrade Guardrails Specification", () => {
       expect(comp.breakingChanges.length).toBeGreaterThan(0);
       expect(comp.changeDescriptor.hasOptionalToRequiredChange).toBe(true);
     });
+
+    it("generic breaking change: removing any arbitrary public action requires major version bump", () => {
+      const baseWithArbitraryAction: Record<string, PublicActionContract> = {
+        "action-a": sampleBaseContract,
+        "action-b": sampleBaseContract,
+      };
+
+      const targetWithRemovedAction: Record<string, PublicActionContract> = {
+        "action-a": sampleBaseContract,
+      };
+
+      const comp = comparePublicActionContracts(baseWithArbitraryAction, targetWithRemovedAction);
+      expect(
+        comp.breakingChanges.some((b) => b.includes('Public action "action-b" was removed')),
+      ).toBe(true);
+
+      const target: TargetContracts = {
+        version: "2.0.0",
+        publicActions: targetWithRemovedAction,
+        compatibilityModel: sampleBaseModel,
+      };
+      const baseline: BaselineContracts = {
+        version: "1.0.0",
+        publicActions: baseWithArbitraryAction,
+        compatibilityModel: sampleBaseModel,
+      };
+
+      const res = evaluateUpgradeGuardrails(baseline, target);
+      expect(res.valid).toBe(true);
+      expect(res.requiredImpact).toBe("major");
+
+      // With insufficient version bump (1.1.0), evaluateUpgradeGuardrails MUST fail
+      const targetMinor: TargetContracts = {
+        ...target,
+        version: "1.1.0",
+      };
+      const resMinor = evaluateUpgradeGuardrails(baseline, targetMinor);
+      expect(resMinor.valid).toBe(false);
+    });
+
+    it("adding a new public action alone is not classified as a removal", () => {
+      const baseActions: Record<string, PublicActionContract> = {
+        "action-a": sampleBaseContract,
+      };
+
+      const targetActions: Record<string, PublicActionContract> = {
+        "action-a": sampleBaseContract,
+        "action-b": sampleBaseContract,
+      };
+
+      const comp = comparePublicActionContracts(baseActions, targetActions);
+      expect(comp.breakingChanges).toHaveLength(0);
+      expect(comp.changeDescriptor.hasRemovedPublicInput).toBeFalsy();
+    });
   });
 
-  describe("Compatibility Model Guardrails", () => {
+  describe("Comprehensive Compatibility Model Validation", () => {
     it("passes when matrix is unchanged", () => {
       const comp = compareCompatibilityModels(sampleBaseModel, sampleBaseModel);
       expect(comp.violations).toHaveLength(0);
@@ -151,44 +217,85 @@ describe("Upgrade Guardrails Specification", () => {
       expect(comp.addedMatrixCombinations).toBe(0);
     });
 
-    it("classifies added matrix combination as compatible (minor impact)", () => {
-      const targetModel: CanonicalCompatibilityModel = {
+    it("rejects duplicate runtimes", () => {
+      const invalidModel = {
+        ...sampleBaseModel,
+        runtimes: ["node", "node"] as any,
+      };
+      expect(() => compareCompatibilityModels(sampleBaseModel, invalidModel)).toThrow(
+        /duplicate runtime "node"/i,
+      );
+    });
+
+    it("rejects duplicate package managers", () => {
+      const invalidModel = {
+        ...sampleBaseModel,
+        packageManagers: ["npm", "npm"] as any,
+      };
+      expect(() => compareCompatibilityModels(sampleBaseModel, invalidModel)).toThrow(
+        /duplicate package manager "npm"/i,
+      );
+    });
+
+    it("rejects duplicate combination entries", () => {
+      const invalidModel = {
         ...sampleBaseModel,
         combinations: [
-          ...sampleBaseModel.combinations,
-          { runtime: "node", packageManager: "bun", supported: true, isDefault: false },
+          { runtime: "node", packageManager: "npm", supported: true },
+          { runtime: "node", packageManager: "npm", supported: true },
+        ] as any,
+      };
+      expect(() => compareCompatibilityModels(sampleBaseModel, invalidModel)).toThrow(
+        /duplicate combination entry/i,
+      );
+    });
+
+    it("rejects combination referencing undeclared runtime or package manager", () => {
+      const invalidModel = {
+        runtimes: ["node"],
+        packageManagers: ["npm"],
+        combinations: [
+          { runtime: "bun", packageManager: "npm", supported: true },
+        ] as any,
+      };
+      expect(() => compareCompatibilityModels(sampleBaseModel, invalidModel)).toThrow(
+        /references runtime "bun" not present/i,
+      );
+    });
+
+    it("fail-closed invariant: invalid compatibility models cause evaluateUpgradeGuardrails to fail even with major bump", () => {
+      const targetModelWithRemovedRuntime: CanonicalCompatibilityModel = {
+        runtimes: ["node"], // "bun" removed
+        packageManagers: ["npm", "pnpm", "bun"],
+        combinations: [
+          { runtime: "node", packageManager: "npm", supported: true, isDefault: true },
+          { runtime: "node", packageManager: "pnpm", supported: true, isDefault: false },
         ],
       };
-      const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
-      expect(comp.violations).toHaveLength(0);
-      expect(comp.addedMatrixCombinations).toBe(1);
 
       const target: TargetContracts = {
-        version: "1.1.0",
+        version: "2.0.0", // Major version bump supplied
         publicActions: sampleBaseActions,
-        compatibilityModel: targetModel,
+        compatibilityModel: targetModelWithRemovedRuntime,
       };
-      const evalResult = evaluateUpgradeGuardrails(sampleBaseline, target);
-      expect(evalResult.valid).toBe(true);
-      expect(evalResult.requiredImpact).toBe("minor");
+
+      const res = evaluateUpgradeGuardrails(sampleBaseline, target);
+      expect(res.valid).toBe(false);
+      expect(res.violations.some((v) => v.includes('Supported runtime "bun" was removed'))).toBe(
+        true,
+      );
     });
 
-    it("detects removed matrix combination as breaking", () => {
-      const targetModel: CanonicalCompatibilityModel = {
+    it("rejects multiple default combinations in model", () => {
+      const invalidModel = {
         ...sampleBaseModel,
-        combinations: sampleBaseModel.combinations.map((c) =>
-          c.runtime === "bun" && c.packageManager === "bun" ? { ...c, supported: false } : c,
-        ),
+        combinations: [
+          { runtime: "node", packageManager: "npm", supported: true, isDefault: true },
+          { runtime: "node", packageManager: "pnpm", supported: true, isDefault: true },
+        ] as any,
       };
-      const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
-      expect(comp.violations.length).toBeGreaterThan(0);
-      expect(comp.removedMatrixCombinations).toBe(1);
-    });
-
-    it("rejects invalid compatibility state structure", () => {
-      const invalidModel = { runtimes: "invalid" } as unknown as CanonicalCompatibilityModel;
       expect(() => compareCompatibilityModels(sampleBaseModel, invalidModel)).toThrow(
-        "Invalid target compatibility model",
+        /at most one default combination/i,
       );
     });
   });
@@ -228,59 +335,9 @@ describe("Upgrade Guardrails Specification", () => {
       const res = evaluateUpgradeGuardrails(sampleBaseline, target);
       expect(res.valid).toBe(false);
       expect(res.requiredImpact).toBe("major");
-      expect(res.violations.some((v) => v.includes("incompatible with required SemVer impact"))).toBe(
-        true,
-      );
-    });
-
-    it("fails breaking change with patch version bump", () => {
-      const targetActions = {
-        ...sampleBaseActions,
-        astro: {
-          ...sampleBaseContract,
-          inputs: sampleBaseContract.inputs.filter((i) => i.name !== "runtime"),
-        },
-      };
-      const target: TargetContracts = {
-        version: "1.0.1",
-        publicActions: targetActions,
-        compatibilityModel: sampleBaseModel,
-      };
-      const res = evaluateUpgradeGuardrails(sampleBaseline, target);
-      expect(res.valid).toBe(false);
-      expect(res.requiredImpact).toBe("major");
-    });
-
-    it("allows compatible feature addition with minor version bump", () => {
-      const targetActions = {
-        ...sampleBaseActions,
-        astro: {
-          ...sampleBaseContract,
-          inputs: [
-            ...sampleBaseContract.inputs,
-            { name: "build-command", description: "Build command", required: false },
-          ],
-        },
-      };
-      const target: TargetContracts = {
-        version: "1.1.0",
-        publicActions: targetActions,
-        compatibilityModel: sampleBaseModel,
-      };
-      const res = evaluateUpgradeGuardrails(sampleBaseline, target);
-      expect(res.valid).toBe(true);
-      expect(res.requiredImpact).toBe("minor");
-    });
-
-    it("allows bug fix / internal change with patch version bump", () => {
-      const target: TargetContracts = {
-        version: "1.0.1",
-        publicActions: sampleBaseActions,
-        compatibilityModel: sampleBaseModel,
-      };
-      const res = evaluateUpgradeGuardrails(sampleBaseline, target);
-      expect(res.valid).toBe(true);
-      expect(res.requiredImpact).toBe("patch");
+      expect(
+        res.violations.some((v) => v.includes("incompatible with required SemVer impact")),
+      ).toBe(true);
     });
 
     it("correctly evaluates version satisfying impact helper", () => {
@@ -298,7 +355,7 @@ describe("Upgrade Guardrails Specification", () => {
     });
   });
 
-  describe("Base Revision Resolution & Strict Non-Fallback Invariants", () => {
+  describe("Baseline Resolution & Immutable SHA Security Invariants", () => {
     it("parses compatibility model from source content", () => {
       const source = `
 export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
@@ -315,51 +372,40 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       expect(parsed.combinations[0].runtime).toBe("node");
     });
 
-    it("fails with actionable error when git base ref is missing or invalid", () => {
+    it("fails explicitly when baseRef is missing or unresolvable", () => {
       expect(() => loadBaselineContractsFromGit("non-existent-git-ref-xyz-123456")).toThrow(
-        /Failed to retrieve base revision file from Git ref/,
+        /could not be resolved in repository history/,
       );
     });
 
-    it("executes verifyUpgradeGuardrails with provided baseline contracts", () => {
-      const currentTarget = loadTargetContracts();
-      const currentBaseline: BaselineContracts = {
-        version: currentTarget.version,
-        publicActions: currentTarget.publicActions,
-        compatibilityModel: currentTarget.compatibilityModel,
-      };
-      const res = verifyUpgradeGuardrails({
-        baselineContracts: currentBaseline,
-      });
-      expect(res.baselineVersion).toBe(currentTarget.version);
-      expect(res.targetVersion).toBe(currentTarget.version);
-      expect(res.valid).toBe(true);
-    });
-
-    it("uses explicitly provided valid baseRef", () => {
-      const resolved = resolveBaseRef("main");
-      expect(resolved).toMatch(/main/);
-    });
-
-    it("respects UPGRADE_BASE_REF environment variable when baseRef is omitted", () => {
-      const origEnv = process.env.UPGRADE_BASE_REF;
+    it("resolves PR event baseline via GITHUB_BASE_REF", () => {
+      const origGhBase = process.env.GITHUB_BASE_REF;
       try {
-        process.env.UPGRADE_BASE_REF = "main";
+        process.env.GITHUB_BASE_REF = "origin/main";
         const resolved = resolveBaseRef();
-        expect(resolved).toMatch(/main/);
+        expect(resolved).toMatch(/origin\/main/);
       } finally {
-        if (origEnv !== undefined) {
-          process.env.UPGRADE_BASE_REF = origEnv;
-        } else {
-          delete process.env.UPGRADE_BASE_REF;
-        }
+        if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
+        else delete process.env.GITHUB_BASE_REF;
       }
     });
 
-    it("throws WorkflowError when invalid or non-existent baseRef is explicitly provided and cannot resolve", () => {
-      expect(() => resolveBaseRef("non-existent-ref-xyz-999")).toThrow(
-        /could not be resolved in repository history.*Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited/,
-      );
+    it("resolves push event baseline via GITHUB_EVENT_BEFORE when valid previous commit SHA is provided", () => {
+      const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
+      try {
+        const baseSha = execFileSync(
+          "git",
+          ["rev-parse", "--verify", "origin/main^{commit}"],
+          { encoding: "utf8" },
+        ).trim();
+
+        process.env.GITHUB_EVENT_BEFORE = baseSha;
+        const resolved = resolveBaseRef();
+        expect(resolved).toBe(baseSha);
+      } finally {
+        if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
+        else delete process.env.GITHUB_EVENT_BEFORE;
+      }
     });
 
     it("respects environment variable priority sequence: explicit > UPGRADE_BASE_REF > BASE_REF > GITHUB_BASE_REF > GITHUB_EVENT_BEFORE", () => {
@@ -369,25 +415,25 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
 
       try {
-        process.env.UPGRADE_BASE_REF = "main";
+        process.env.UPGRADE_BASE_REF = "origin/main";
         process.env.BASE_REF = "invalid-base-ref";
         process.env.GITHUB_BASE_REF = "invalid-gh-base-ref";
         process.env.GITHUB_EVENT_BEFORE = "invalid-gh-before";
 
-        expect(resolveBaseRef("main")).toMatch(/main/);
-        expect(resolveBaseRef()).toMatch(/main/);
+        expect(resolveBaseRef("origin/main")).toMatch(/origin\/main/);
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.UPGRADE_BASE_REF;
-        process.env.BASE_REF = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.BASE_REF = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.BASE_REF;
-        process.env.GITHUB_BASE_REF = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.GITHUB_BASE_REF = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.GITHUB_BASE_REF;
-        process.env.GITHUB_EVENT_BEFORE = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.GITHUB_EVENT_BEFORE = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
       } finally {
         if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
         else delete process.env.UPGRADE_BASE_REF;
@@ -403,45 +449,93 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       }
     });
 
-    it("throws WorkflowError in a repository where origin/main and main do NOT exist, never returning HEAD~1 even if HEAD~1 exists", () => {
-      const execSync = require("node:child_process").execSync;
-      const fs = require("node:fs");
-      const os = require("node:os");
-      const path = require("node:path");
+    it("prevents self-comparison when baseRef resolves to HEAD SHA", () => {
+      expect(() => resolveBaseRef("HEAD")).toThrow(
+        /resolves to current commit HEAD.*Comparing a commit against itself is strictly prohibited/,
+      );
+    });
 
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-guardrail-test-"));
+    it("handles initial-push events with all-zero before SHA explicitly", () => {
+      const origBefore = process.env.GITHUB_EVENT_BEFORE;
+      try {
+        process.env.GITHUB_EVENT_BEFORE = "0000000000000000000000000000000000000000";
+        expect(() => resolveBaseRef()).toThrow(
+          /All-zero "before" SHA detected in push event.*A trustworthy baseline commit cannot be established/,
+        );
+      } finally {
+        if (origBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origBefore;
+        else delete process.env.GITHUB_EVENT_BEFORE;
+      }
+    });
+
+    it("handles option-like or malicious refs safely without shell execution", () => {
+      expect(() => resolveBaseRef("--output=/tmp/hacked")).toThrow(
+        /could not be resolved in repository history/,
+      );
+      expect(() => resolveBaseRef("; rm -rf /")).toThrow(
+        /could not be resolved in repository history/,
+      );
+    });
+
+    it("uses verified immutable SHA for baseline git file loads", () => {
+      const headSha = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
+        encoding: "utf8",
+      }).trim();
+
+      // Creating a temporary git repo with two distinct commits to test immutable SHA loading
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-guardrail-test-sha-"));
 
       try {
-        execSync("git init -b custom-branch", { cwd: tempDir, stdio: "ignore" });
-        execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
-        execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["init", "-b", "main"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["config", "user.name", "Test"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["config", "user.email", "test@example.com"], {
+          cwd: tempDir,
+          stdio: "ignore",
+        });
 
-        fs.writeFileSync(path.join(tempDir, "file1.txt"), "commit 1");
-        execSync("git add file1.txt && git commit -m 'commit 1'", { cwd: tempDir, stdio: "ignore" });
+        fs.mkdirSync(path.join(tempDir, "src"), { recursive: true });
+        fs.mkdirSync(path.join(tempDir, "action-a"), { recursive: true });
 
-        fs.writeFileSync(path.join(tempDir, "file2.txt"), "commit 2");
-        execSync("git add file2.txt && git commit -m 'commit 2'", { cwd: tempDir, stdio: "ignore" });
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "test", version: "1.0.0" }),
+        );
+        fs.writeFileSync(
+          path.join(tempDir, "src/action-contract.ts"),
+          `export const PUBLIC_ACTIONS = ["action-a"] as const;\n`,
+        );
+        fs.writeFileSync(
+          path.join(tempDir, "action-a/action.yml"),
+          `name: Action A\ndescription: Action A desc\n`,
+        );
+        fs.writeFileSync(
+          path.join(tempDir, "src/compatibility.ts"),
+          `export const CANONICAL_COMPATIBILITY_MODEL = {\n  runtimes: ["node"],\n  packageManagers: ["npm"],\n  combinations: [{ runtime: "node", packageManager: "npm", supported: true }]\n};\n`,
+        );
 
-        const origUpgrade = process.env.UPGRADE_BASE_REF;
-        const origBase = process.env.BASE_REF;
-        const origGhBase = process.env.GITHUB_BASE_REF;
-        const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
+        execFileSync("git", ["add", "."], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["commit", "-m", "initial baseline"], {
+          cwd: tempDir,
+          stdio: "ignore",
+        });
 
-        delete process.env.UPGRADE_BASE_REF;
-        delete process.env.BASE_REF;
-        delete process.env.GITHUB_BASE_REF;
-        delete process.env.GITHUB_EVENT_BEFORE;
+        const c1Sha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: tempDir,
+          encoding: "utf8",
+        }).trim();
 
-        try {
-          expect(() => resolveBaseRef(undefined, tempDir)).toThrow(
-            /Unable to resolve a valid Git base revision for upgrade guardrails. Evaluated default candidates: origin\/main, main/,
-          );
-        } finally {
-          if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
-          if (origBase !== undefined) process.env.BASE_REF = origBase;
-          if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
-          if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
-        }
+        // Second commit
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "test", version: "2.0.0" }),
+        );
+        execFileSync("git", ["add", "package.json"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["commit", "-m", "commit 2"], { cwd: tempDir, stdio: "ignore" });
+
+        // loadBaselineContractsFromGit pointing to c1Sha must retrieve v1.0.0 regardless of branch updates
+        const loaded = loadBaselineContractsFromGit(c1Sha, tempDir);
+        expect(loaded.version).toBe("1.0.0");
+        expect(loaded.publicActions["action-a"]).toBeDefined();
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

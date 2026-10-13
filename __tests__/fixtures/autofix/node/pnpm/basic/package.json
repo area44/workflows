@@ -1,0 +1,9 @@
+{
+  "name": "autofix-pnpm-basic",
+  "scripts": {
+    "format": "echo 'formatting'",
+    "lint": "echo 'linting'"
+  },
+  "packageManager": "pnpm@11.21.0",
+  "type": "module"
+}

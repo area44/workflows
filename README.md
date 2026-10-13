@@ -7,7 +7,7 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 - **[Astro](./astro/README.md)** (`area44/workflows/astro@main`): Build and deploy Astro sites to GitHub Pages.
 - **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite sites to GitHub Pages.
 - **[Vite+](./vite-plus/README.md)** (`area44/workflows/vite-plus@main`): Build and deploy Vite+ sites to GitHub Pages.
-- **[Lint/Format](./lint-format/README.md)** (`area44/workflows/lint-format@main`): Run linting and formatting scripts.
+- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically run linting and formatting scripts.
 
 ## Quick Usage
 
@@ -103,7 +103,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `runtime`                 | The runtime used (node or bun)          |
 | `vp-version`              | The version of Vite+ installed          |
 
-### `lint-format` (Lint and Format Verification)
+### `autofix` (Lint and Format Verification)
 
 #### Inputs
 

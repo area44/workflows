@@ -25,7 +25,7 @@ Baseline git ref resolution is governed by `resolveBaseRef()` in `src/upgrade-gu
 
 Upgrade guardrails compare target contracts against baseline contracts for:
 
-- **Public Action API Contracts**: Parses `action.yml` across composite actions (`astro`, `vite`, `vite-plus`, `lint-format`) to detect removed inputs/outputs, newly required inputs, or default value modifications.
+- **Public Action API Contracts**: Parses `action.yml` across composite actions (`astro`, `vite`, `vite-plus`, `autofix`) to detect removed inputs/outputs, newly required inputs, or default value modifications.
 - **Compatibility Matrix Contracts**: Compares `CANONICAL_COMPATIBILITY_MODEL` entries to detect removed or unsupported runtime/package-manager combinations.
 - **SemVer Impact Validation**: Computes required SemVer impact level (`patch`, `minor`, `major`) via `classifyChangeImpact()` and asserts that `package.json` target version satisfies the required impact over the baseline version.
 

@@ -12,7 +12,7 @@ This document formalizes the security architecture, input trust model, shell com
 - **Custom Build Commands**: `src/build-command.ts` parses custom `build-command` strings using a custom tokenizer that respects single quotes, double quotes, and backslash escapes.
 - **No Subshell Invocation**: Commands are executed directly as binary names and argument arrays without subshell expansion (avoiding `sh -c` or `bash -c`).
 - **Injection Prevention**: Shell metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values, preventing shell command injection.
-- **Script Runner Sanitization**: `src/lint-format.ts` sanitizes package manager names via `sanitizePackageManager()` (restricting names to alphanumeric and hyphen characters) before running script hooks.
+- **Script Runner Sanitization**: `src/autofix.ts` sanitizes package manager names via `sanitizePackageManager()` (restricting names to alphanumeric and hyphen characters) before running script hooks.
 
 ## Credential & Token Sanitization
 
