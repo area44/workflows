@@ -95,9 +95,7 @@ export function comparePublicActionContracts(
   let hasRemovedPublicInput = false;
   let hasRemovedPublicOutput = false;
 
-  const allActionNames = Array.from(
-    new Set([...Object.keys(baseline), ...Object.keys(target)]),
-  );
+  const allActionNames = Array.from(new Set([...Object.keys(baseline), ...Object.keys(target)]));
 
   for (const actionName of allActionNames) {
     const baseContract = baseline[actionName];
@@ -400,9 +398,13 @@ export function loadBaselineContractsFromGit(
   let basePublicActions: string[] = [...PUBLIC_ACTIONS];
   try {
     const contractSource = gitExec(`git show ${baseRef}:src/action-contract.ts`);
-    const match = contractSource.match(/export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+    const match = contractSource.match(
+      /export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/,
+    );
     if (match && match[1]) {
-      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map((m) => m[1]);
+      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map(
+        (m) => m[1],
+      );
       if (extracted.length > 0) {
         basePublicActions = extracted;
       }
