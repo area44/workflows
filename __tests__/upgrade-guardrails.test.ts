@@ -421,74 +421,91 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       };
     }
 
+    function withIsolatedEnv<T>(
+      envOverlay: Partial<Record<string, string | undefined>>,
+      fn: () => T,
+    ): T {
+      const envVars = ["UPGRADE_BASE_REF", "BASE_REF", "GITHUB_BASE_REF", "GITHUB_EVENT_BEFORE"];
+      const originalEnv: Record<string, string | undefined> = {};
+
+      for (const key of envVars) {
+        originalEnv[key] = process.env[key];
+        delete process.env[key];
+      }
+
+      for (const [key, val] of Object.entries(envOverlay)) {
+        if (val === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = val;
+        }
+      }
+
+      try {
+        return fn();
+      } finally {
+        for (const key of envVars) {
+          if (originalEnv[key] !== undefined) {
+            process.env[key] = originalEnv[key];
+          } else {
+            delete process.env[key];
+          }
+        }
+      }
+    }
+
     it("resolves PR event baseline via GITHUB_BASE_REF", () => {
       const { tempDir, cleanup } = createTestGitRepoForBaseRef();
-      const origGhBase = process.env.GITHUB_BASE_REF;
       try {
-        process.env.GITHUB_BASE_REF = "origin/main";
-        const resolved = resolveBaseRef(undefined, tempDir);
-        expect(resolved).toMatch(/origin\/main/);
+        withIsolatedEnv({ GITHUB_BASE_REF: "origin/main" }, () => {
+          const resolved = resolveBaseRef(undefined, tempDir);
+          expect(resolved).toMatch(/origin\/main/);
+        });
       } finally {
-        if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
-        else delete process.env.GITHUB_BASE_REF;
         cleanup();
       }
     });
 
     it("resolves push event baseline via GITHUB_EVENT_BEFORE when valid previous commit SHA is provided", () => {
       const { tempDir, c1Sha, cleanup } = createTestGitRepoForBaseRef();
-      const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
       try {
-        process.env.GITHUB_EVENT_BEFORE = c1Sha;
-        const resolved = resolveBaseRef(undefined, tempDir);
-        expect(resolved).toBe(c1Sha);
+        withIsolatedEnv({ GITHUB_EVENT_BEFORE: c1Sha }, () => {
+          const resolved = resolveBaseRef(undefined, tempDir);
+          expect(resolved).toBe(c1Sha);
+        });
       } finally {
-        if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
-        else delete process.env.GITHUB_EVENT_BEFORE;
         cleanup();
       }
     });
 
     it("respects environment variable priority sequence: explicit > UPGRADE_BASE_REF > BASE_REF > GITHUB_BASE_REF > GITHUB_EVENT_BEFORE", () => {
       const { tempDir, cleanup } = createTestGitRepoForBaseRef();
-      const origUpgrade = process.env.UPGRADE_BASE_REF;
-      const origBase = process.env.BASE_REF;
-      const origGhBase = process.env.GITHUB_BASE_REF;
-      const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
-
       try {
-        process.env.UPGRADE_BASE_REF = "origin/main";
-        process.env.BASE_REF = "invalid-base-ref";
-        process.env.GITHUB_BASE_REF = "invalid-gh-base-ref";
-        process.env.GITHUB_EVENT_BEFORE = "invalid-gh-before";
+        withIsolatedEnv(
+          {
+            UPGRADE_BASE_REF: "origin/main",
+            BASE_REF: "invalid-base-ref",
+            GITHUB_BASE_REF: "invalid-gh-base-ref",
+            GITHUB_EVENT_BEFORE: "invalid-gh-before",
+          },
+          () => {
+            expect(resolveBaseRef("origin/main", tempDir)).toMatch(/origin\/main/);
+            expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
-        expect(resolveBaseRef("origin/main", tempDir)).toMatch(/origin\/main/);
-        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
+            delete process.env.UPGRADE_BASE_REF;
+            process.env.BASE_REF = "origin/main";
+            expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
-        delete process.env.UPGRADE_BASE_REF;
-        process.env.BASE_REF = "origin/main";
-        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
+            delete process.env.BASE_REF;
+            process.env.GITHUB_BASE_REF = "origin/main";
+            expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
-        delete process.env.BASE_REF;
-        process.env.GITHUB_BASE_REF = "origin/main";
-        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
-
-        delete process.env.GITHUB_BASE_REF;
-        process.env.GITHUB_EVENT_BEFORE = "origin/main";
-        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
+            delete process.env.GITHUB_BASE_REF;
+            process.env.GITHUB_EVENT_BEFORE = "origin/main";
+            expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
+          },
+        );
       } finally {
-        if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
-        else delete process.env.UPGRADE_BASE_REF;
-
-        if (origBase !== undefined) process.env.BASE_REF = origBase;
-        else delete process.env.BASE_REF;
-
-        if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
-        else delete process.env.GITHUB_BASE_REF;
-
-        if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
-        else delete process.env.GITHUB_EVENT_BEFORE;
-
         cleanup();
       }
     });
@@ -500,15 +517,18 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
     });
 
     it("handles initial-push events with all-zero before SHA explicitly", () => {
-      const origBefore = process.env.GITHUB_EVENT_BEFORE;
+      const { tempDir, cleanup } = createTestGitRepoForBaseRef();
       try {
-        process.env.GITHUB_EVENT_BEFORE = "0000000000000000000000000000000000000000";
-        expect(() => resolveBaseRef()).toThrow(
-          /All-zero "before" SHA detected in push event.*A trustworthy baseline commit cannot be established/,
+        withIsolatedEnv(
+          { GITHUB_EVENT_BEFORE: "0000000000000000000000000000000000000000" },
+          () => {
+            expect(() => resolveBaseRef(undefined, tempDir)).toThrow(
+              /All-zero "before" SHA detected in push event.*A trustworthy baseline commit cannot be established/,
+            );
+          },
         );
       } finally {
-        if (origBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origBefore;
-        else delete process.env.GITHUB_EVENT_BEFORE;
+        cleanup();
       }
     });
 
