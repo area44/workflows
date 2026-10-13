@@ -121,20 +121,6 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
 
-## Migration from `lint-format`
-
-The `lint-format` action has been renamed to `autofix`. To migrate your workflow:
-
-```yaml
-# Old usage:
-# uses: area44/workflows/lint-format@main
-
-# New usage:
-uses: area44/workflows/autofix@main
-```
-
-A compatibility wrapper is maintained at `area44/workflows/lint-format@main` to ensure backward compatibility.
-
 ## Compatibility Overview
 
 Environment resolution (`src/resolve-environment.ts`) automatically discovers workspace configuration or falls back to canonical default versions:

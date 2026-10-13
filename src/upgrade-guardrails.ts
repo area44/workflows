@@ -1,13 +1,12 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import vm from "node:vm";
 
 import type { PublicActionContract } from "./action-contract.js";
-import type { CanonicalCompatibilityModel, MatrixCombinationEntry } from "./compatibility.ts";
+import type { CanonicalCompatibilityModel, MatrixCombinationEntry } from "./compatibility.js";
 
 import {
   detectBreakingChanges,
   parseActionContractYaml,
-  PUBLIC_ACTIONS,
   validateAllPublicActionContracts,
 } from "./action-contract.js";
 import { CANONICAL_COMPATIBILITY_MODEL } from "./compatibility.js";
@@ -201,6 +200,9 @@ export function comparePublicActionContracts(
   };
 }
 
+/**
+ * Comprehensively validates structure and consistency of a CanonicalCompatibilityModel.
+ */
 function validateCompatibilityModelStructure(
   model: CanonicalCompatibilityModel,
   label: string,
@@ -212,39 +214,176 @@ function validateCompatibilityModelStructure(
       { stage: "upgrade-guardrail" },
     );
   }
-  if (!Array.isArray(model.runtimes) || !Array.isArray(model.packageManagers)) {
+
+  if (!Array.isArray(model.runtimes) || model.runtimes.length === 0) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Invalid ${label} compatibility model: "runtimes" and "packageManagers" must be arrays.`,
+      `Invalid ${label} compatibility model: "runtimes" must be a non-empty array.`,
       { stage: "upgrade-guardrail" },
     );
   }
-  if (!Array.isArray(model.combinations)) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Invalid ${label} compatibility model: "combinations" must be an array.`,
-      { stage: "upgrade-guardrail" },
-    );
-  }
-  for (const comb of model.combinations) {
-    if (
-      !comb ||
-      typeof comb !== "object" ||
-      typeof comb.runtime !== "string" ||
-      typeof comb.packageManager !== "string" ||
-      typeof comb.supported !== "boolean"
-    ) {
+
+  const seenRuntimes = new Set<string>();
+  for (const rt of model.runtimes) {
+    if (typeof rt !== "string" || rt.trim() === "") {
       throw new WorkflowError(
         "INVALID_INPUT",
-        `Invalid ${label} compatibility model: combination entries must contain valid "runtime", "packageManager", and "supported" fields.`,
+        `Invalid ${label} compatibility model: "runtimes" elements must be non-empty strings.`,
         { stage: "upgrade-guardrail" },
       );
     }
+    if (seenRuntimes.has(rt)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate runtime "${rt}" found in runtimes list.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenRuntimes.add(rt);
+  }
+
+  if (!Array.isArray(model.packageManagers) || model.packageManagers.length === 0) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: "packageManagers" must be a non-empty array.`,
+      { stage: "upgrade-guardrail" },
+    );
+  }
+
+  const seenPms = new Set<string>();
+  for (const pm of model.packageManagers) {
+    if (typeof pm !== "string" || pm.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: "packageManagers" elements must be non-empty strings.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    if (seenPms.has(pm)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate package manager "${pm}" found in packageManagers list.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenPms.add(pm);
+  }
+
+  if (!Array.isArray(model.combinations) || model.combinations.length === 0) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: "combinations" must be a non-empty array.`,
+      { stage: "upgrade-guardrail" },
+    );
+  }
+
+  const seenCombinations = new Set<string>();
+  let defaultCount = 0;
+
+  for (const comb of model.combinations) {
+    if (!comb || typeof comb !== "object") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination entries must be objects.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.runtime !== "string" || comb.runtime.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "runtime" must be a non-empty string.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (!seenRuntimes.has(comb.runtime)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination references runtime "${comb.runtime}" not present in declared runtimes.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.packageManager !== "string" || comb.packageManager.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "packageManager" must be a non-empty string.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (!seenPms.has(comb.packageManager)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination references package manager "${comb.packageManager}" not present in declared packageManagers.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.supported !== "boolean") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "supported" must be a boolean.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    const key = `${comb.runtime}:${comb.packageManager}`;
+    if (seenCombinations.has(key)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate combination entry found for "${comb.runtime}+${comb.packageManager}".`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenCombinations.add(key);
+
+    if (comb.isDefault !== undefined) {
+      if (typeof comb.isDefault !== "boolean") {
+        throw new WorkflowError(
+          "INVALID_INPUT",
+          `Invalid ${label} compatibility model: combination field "isDefault" must be a boolean.`,
+          { stage: "upgrade-guardrail" },
+        );
+      }
+      if (comb.isDefault) {
+        if (!comb.supported) {
+          throw new WorkflowError(
+            "INVALID_INPUT",
+            `Invalid ${label} compatibility model: unsupported combination "${comb.runtime}+${comb.packageManager}" cannot be marked as default.`,
+            { stage: "upgrade-guardrail" },
+          );
+        }
+        defaultCount++;
+      }
+    }
+
+    if (!comb.supported) {
+      if (
+        comb.reason !== undefined &&
+        (typeof comb.reason !== "string" || comb.reason.trim() === "")
+      ) {
+        throw new WorkflowError(
+          "INVALID_INPUT",
+          `Invalid ${label} compatibility model: unsupported combination "${comb.runtime}+${comb.packageManager}" must have a valid non-empty reason string when specified.`,
+          { stage: "upgrade-guardrail" },
+        );
+      }
+    }
+  }
+
+  if (defaultCount > 1) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: at most one default combination may be declared (found ${defaultCount}).`,
+      { stage: "upgrade-guardrail" },
+    );
   }
 }
 
 /**
- * Compares baseline and target compatibility models to detect removed or added combinations.
+ * Compares baseline and target compatibility models to detect removed runtimes, package managers, or combinations.
  */
 export function compareCompatibilityModels(
   baseline: CanonicalCompatibilityModel,
@@ -260,6 +399,22 @@ export function compareCompatibilityModels(
   const violations: string[] = [];
   let removedMatrixCombinations = 0;
   let addedMatrixCombinations = 0;
+
+  for (const baseRt of baseline.runtimes) {
+    if (!target.runtimes.includes(baseRt)) {
+      violations.push(`Supported runtime "${baseRt}" was removed from target compatibility model.`);
+      removedMatrixCombinations++;
+    }
+  }
+
+  for (const basePm of baseline.packageManagers) {
+    if (!target.packageManagers.includes(basePm)) {
+      violations.push(
+        `Supported package manager "${basePm}" was removed from target compatibility model.`,
+      );
+      removedMatrixCombinations++;
+    }
+  }
 
   const getCombKey = (c: MatrixCombinationEntry) => `${c.runtime}:${c.packageManager}`;
 
@@ -305,10 +460,27 @@ export function evaluateUpgradeGuardrails(
   const violations: string[] = [];
 
   const apiComp = comparePublicActionContracts(baseline.publicActions, target.publicActions);
-  const compatComp = compareCompatibilityModels(
-    baseline.compatibilityModel,
-    target.compatibilityModel,
-  );
+
+  let compatComp: {
+    violations: string[];
+    removedMatrixCombinations: number;
+    addedMatrixCombinations: number;
+  };
+
+  try {
+    compatComp = compareCompatibilityModels(baseline.compatibilityModel, target.compatibilityModel);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    compatComp = {
+      violations: [`Compatibility model validation error: ${msg}`],
+      removedMatrixCombinations: 1,
+      addedMatrixCombinations: 0,
+    };
+  }
+
+  if (compatComp.violations.length > 0) {
+    violations.push(...compatComp.violations);
+  }
 
   const changeDescriptor: ChangeDescriptor = {
     ...apiComp.changeDescriptor,
@@ -333,16 +505,9 @@ export function evaluateUpgradeGuardrails(
 
   const isVersionOk = isVersionSatisfyingImpact(baseline.version, target.version, requiredImpact);
   if (!isVersionOk) {
-    const changeSummary: string[] = [];
     if (apiComp.breakingChanges.length > 0) {
-      changeSummary.push(...apiComp.breakingChanges);
-    }
-    if (compatComp.violations.length > 0) {
-      changeSummary.push(...compatComp.violations);
-    }
-    if (changeSummary.length > 0) {
       violations.push(
-        `Declared target version "${target.version}" is incompatible with required SemVer impact "${requiredImpact}" over baseline version "${baseline.version}". Changes requiring ${requiredImpact.toUpperCase()} version bump:\n  - ${changeSummary.join("\n  - ")}`,
+        `Declared target version "${target.version}" is incompatible with required SemVer impact "${requiredImpact}" over baseline version "${baseline.version}". Changes requiring ${requiredImpact.toUpperCase()} version bump:\n  - ${apiComp.breakingChanges.join("\n  - ")}`,
       );
     } else {
       violations.push(
@@ -391,32 +556,114 @@ export function parseCompatibilityModelFromSource(content: string): CanonicalCom
 }
 
 /**
- * Loads baseline contracts from git revision `baseRef`.
+ * Safely resolves a candidate Git ref to its full commit SHA using argument-based execFileSync.
+ */
+function verifyGitRef(
+  candidate: string,
+  rootDir: string,
+): { ref: string; sha: string } | undefined {
+  if (!candidate || typeof candidate !== "string" || candidate.trim() === "") {
+    return undefined;
+  }
+
+  const trimmed = candidate.trim();
+  if (trimmed.startsWith("-")) {
+    return undefined;
+  }
+
+  try {
+    const sha = execFileSync("git", ["rev-parse", "--verify", "--quiet", `${trimmed}^{commit}`], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (sha && /^[0-9a-fA-F]{40}$/.test(sha)) {
+      return { ref: trimmed, sha };
+    }
+  } catch {
+    if (!trimmed.startsWith("origin/")) {
+      try {
+        const sha = execFileSync(
+          "git",
+          ["rev-parse", "--verify", "--quiet", `origin/${trimmed}^{commit}`],
+          { cwd: rootDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        ).trim();
+        if (sha && /^[0-9a-fA-F]{40}$/.test(sha)) {
+          return { ref: `origin/${trimmed}`, sha };
+        }
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolves current HEAD commit SHA.
+ */
+function getHeadSha(rootDir: string): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch (err) {
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      "Failed to resolve HEAD commit SHA in Git repository.",
+      { stage: "upgrade-guardrail", cause: err },
+    );
+  }
+}
+
+/**
+ * Loads baseline contracts from git revision `baseRef`, strictly using the verified immutable commit SHA.
  */
 export function loadBaselineContractsFromGit(
   baseRef: string,
   rootDir: string = process.cwd(),
 ): BaselineContracts {
-  const gitExec = (cmd: string): string => {
+  const verifiedBase = verifyGitRef(baseRef, rootDir);
+  if (!verifiedBase) {
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Git base revision "${baseRef}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth.`,
+      { stage: "upgrade-guardrail", baseRef },
+    );
+  }
+
+  const gitShow = (fileInRepo: string): string => {
     try {
-      return execSync(cmd, { cwd: rootDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      return execFileSync("git", ["show", `${verifiedBase.sha}:${fileInRepo}`], {
+        cwd: rootDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
     } catch (err) {
       throw new WorkflowError(
         "MISSING_CONFIGURATION",
-        `Failed to retrieve base revision file from Git ref "${baseRef}": command "${cmd}" failed. Ensure Git base revision is available (e.g. non-shallow clone).`,
-        { stage: "upgrade-guardrail", baseRef, cause: err },
+        `Failed to retrieve base revision file "${fileInRepo}" from Git commit "${verifiedBase.sha}". Ensure Git base revision is available (e.g. non-shallow clone).`,
+        {
+          stage: "upgrade-guardrail",
+          baseRef,
+          sha: verifiedBase.sha,
+          file: fileInRepo,
+          cause: err,
+        },
       );
     }
   };
 
-  const pkgJsonContent = gitExec(`git show ${baseRef}:package.json`);
+  const pkgJsonContent = gitShow("package.json");
   let pkgJson: Record<string, unknown>;
   try {
     pkgJson = JSON.parse(pkgJsonContent) as Record<string, unknown>;
   } catch (err) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Malformed package.json in base revision "${baseRef}".`,
+      `Malformed package.json in base revision "${baseRef}" (${verifiedBase.sha}).`,
       { stage: "upgrade-guardrail", cause: err },
     );
   }
@@ -425,41 +672,111 @@ export function loadBaselineContractsFromGit(
   if (!version) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Missing or invalid version in package.json from base revision "${baseRef}".`,
+      `Missing or invalid version in package.json from base revision "${baseRef}" (${verifiedBase.sha}).`,
       { stage: "upgrade-guardrail" },
     );
   }
 
-  let basePublicActions: string[] = [...PUBLIC_ACTIONS];
+  let basePublicActions: string[] = [];
+  let contractSource: string | undefined;
   try {
-    const contractSource = gitExec(`git show ${baseRef}:src/action-contract.ts`);
+    contractSource = gitShow("src/action-contract.ts");
+  } catch {
+    // src/action-contract.ts is missing in baseline revision
+  }
+
+  if (contractSource) {
     const match = contractSource.match(
       /export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/,
     );
-    if (match && match[1]) {
-      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map(
-        (m) => m[1],
+    if (!match || !match[1]) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Failed to parse PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}" (${verifiedBase.sha}).`,
+        { stage: "upgrade-guardrail", baseRef },
       );
-      if (extracted.length > 0) {
-        basePublicActions = extracted;
-      }
     }
-  } catch {
-    // Fall back to target's PUBLIC_ACTIONS if src/action-contract.ts is not retrievable
+
+    const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map((m) => m[1]);
+    if (extracted.length === 0) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Parsed empty PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}" (${verifiedBase.sha}).`,
+        { stage: "upgrade-guardrail", baseRef },
+      );
+    }
+    basePublicActions = extracted;
+  } else {
+    try {
+      const treeOutput = execFileSync("git", ["ls-tree", "--name-only", verifiedBase.sha], {
+        cwd: rootDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const entries = treeOutput
+        .split("\n")
+        .map((e) => e.trim())
+        .filter(Boolean);
+      for (const entry of entries) {
+        if (
+          entry.startsWith(".") ||
+          entry === "node_modules" ||
+          entry === "src" ||
+          entry === "dist" ||
+          entry === "docs" ||
+          entry === "__tests__"
+        ) {
+          continue;
+        }
+        let hasYml = false;
+        try {
+          gitShow(`${entry}/action.yml`);
+          hasYml = true;
+        } catch {
+          try {
+            gitShow(`${entry}/action.yaml`);
+            hasYml = true;
+          } catch {
+            // Not an action dir
+          }
+        }
+        if (hasYml) {
+          basePublicActions.push(entry);
+        }
+      }
+    } catch {
+      // Failed to list git tree
+    }
+
+    if (basePublicActions.length === 0) {
+      throw new WorkflowError(
+        "MISSING_CONFIGURATION",
+        `Unable to construct trustworthy baseline contracts from Git ref "${baseRef}" (${verifiedBase.sha}): missing "src/action-contract.ts" and no valid public action directories found in base revision.`,
+        { stage: "upgrade-guardrail", baseRef },
+      );
+    }
   }
 
   const publicActions = {} as Record<string, PublicActionContract>;
   for (const actionName of basePublicActions) {
     let actionYamlContent = "";
     try {
-      actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yml`);
+      actionYamlContent = gitShow(`${actionName}/action.yml`);
     } catch {
-      actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yaml`);
+      try {
+        actionYamlContent = gitShow(`${actionName}/action.yaml`);
+      } catch {
+        throw new WorkflowError(
+          "MISSING_CONFIGURATION",
+          `Missing action.yml/action.yaml for public action "${actionName}" in base revision "${baseRef}" (${verifiedBase.sha}).`,
+          { stage: "upgrade-guardrail", actionName, baseRef },
+        );
+      }
     }
     publicActions[actionName] = parseActionContractYaml(actionName, actionYamlContent);
   }
 
-  const compatContent = gitExec(`git show ${baseRef}:src/compatibility.ts`);
+  const compatContent = gitShow("src/compatibility.ts");
   const compatibilityModel = parseCompatibilityModelFromSource(compatContent);
 
   return {
@@ -470,55 +787,97 @@ export function loadBaselineContractsFromGit(
 }
 
 /**
- * Resolves the default base ref if not explicitly provided.
- */
-function verifyGitRef(candidate: string, rootDir: string): string | undefined {
-  try {
-    execSync(`git rev-parse --verify "${candidate}"`, { cwd: rootDir, stdio: "ignore" });
-    return candidate;
-  } catch {
-    if (!candidate.startsWith("origin/")) {
-      try {
-        execSync(`git rev-parse --verify "origin/${candidate}"`, { cwd: rootDir, stdio: "ignore" });
-        return `origin/${candidate}`;
-      } catch {
-        return undefined;
-      }
-    }
-    return undefined;
-  }
-}
-
-/**
- * Resolves the default base ref if not explicitly provided.
+ * Resolves the default base ref if not explicitly provided, adhering strictly to baseline selection rules.
  */
 export function resolveBaseRef(explicitBaseRef?: string, rootDir: string = process.cwd()): string {
-  const specifiedCandidate =
-    explicitBaseRef ||
-    process.env.UPGRADE_BASE_REF ||
-    process.env.BASE_REF ||
-    process.env.GITHUB_BASE_REF ||
-    (process.env.GITHUB_EVENT_BEFORE && !/^0+$/.test(process.env.GITHUB_EVENT_BEFORE)
-      ? process.env.GITHUB_EVENT_BEFORE
-      : undefined);
+  const headSha = getHeadSha(rootDir);
 
-  if (specifiedCandidate) {
-    const resolved = verifyGitRef(specifiedCandidate, rootDir);
-    if (resolved) {
-      return resolved;
+  if (explicitBaseRef && explicitBaseRef.trim() !== "") {
+    const trimmed = explicitBaseRef.trim();
+    const resolved = verifyGitRef(trimmed, rootDir);
+    if (!resolved) {
+      throw new WorkflowError(
+        "MISSING_CONFIGURATION",
+        `Explicitly specified Git base revision "${trimmed}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth. Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited.`,
+        { stage: "upgrade-guardrail", candidate: trimmed },
+      );
     }
-    throw new WorkflowError(
-      "MISSING_CONFIGURATION",
-      `Explicitly specified or configured Git base revision "${specifiedCandidate}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth. Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited.`,
-      { stage: "upgrade-guardrail", candidate: specifiedCandidate },
-    );
+    if (resolved.sha === headSha) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Baseline revision "${trimmed}" (${resolved.sha}) resolves to current commit HEAD (${headSha}). Comparing a commit against itself is strictly prohibited for upgrade guardrails. Ensure a valid previous commit or base branch is provided.`,
+        { stage: "upgrade-guardrail", candidate: trimmed, sha: resolved.sha },
+      );
+    }
+    return resolved.ref;
+  }
+
+  const envCandidates = [
+    { name: "UPGRADE_BASE_REF", value: process.env.UPGRADE_BASE_REF },
+    { name: "BASE_REF", value: process.env.BASE_REF },
+    { name: "GITHUB_BASE_REF", value: process.env.GITHUB_BASE_REF },
+  ];
+
+  for (const envVar of envCandidates) {
+    if (envVar.value && envVar.value.trim() !== "") {
+      const candidateVal = envVar.value.trim();
+      const resolved = verifyGitRef(candidateVal, rootDir);
+      if (!resolved) {
+        throw new WorkflowError(
+          "MISSING_CONFIGURATION",
+          `Configured Git base revision from ${envVar.name} "${candidateVal}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth. Automatic guessing via relative revisions like "HEAD~1" is strictly prohibited.`,
+          { stage: "upgrade-guardrail", envVar: envVar.name, candidate: candidateVal },
+        );
+      }
+      if (resolved.sha === headSha) {
+        throw new WorkflowError(
+          "INVALID_INPUT",
+          `Baseline revision from ${envVar.name} "${candidateVal}" (${resolved.sha}) resolves to current commit HEAD (${headSha}). Comparing a commit against itself is strictly prohibited for upgrade guardrails. Ensure a valid previous commit or base branch is provided.`,
+          {
+            stage: "upgrade-guardrail",
+            envVar: envVar.name,
+            candidate: candidateVal,
+            sha: resolved.sha,
+          },
+        );
+      }
+      return resolved.ref;
+    }
+  }
+
+  if (process.env.GITHUB_EVENT_BEFORE && process.env.GITHUB_EVENT_BEFORE.trim() !== "") {
+    const beforeVal = process.env.GITHUB_EVENT_BEFORE.trim();
+    if (/^0+$/.test(beforeVal)) {
+      throw new WorkflowError(
+        "MISSING_CONFIGURATION",
+        `All-zero "before" SHA detected in push event ("${beforeVal}"). A trustworthy baseline commit cannot be established for initial push events without previous commit history. Supply an explicit baseline ref via UPGRADE_BASE_REF or BASE_REF.`,
+        { stage: "upgrade-guardrail", beforeSha: beforeVal },
+      );
+    }
+
+    const resolved = verifyGitRef(beforeVal, rootDir);
+    if (!resolved) {
+      throw new WorkflowError(
+        "MISSING_CONFIGURATION",
+        `Git "before" commit from push event "${beforeVal}" could not be resolved in repository history. Ensure base revision exists and Git checkout has required depth.`,
+        { stage: "upgrade-guardrail", candidate: beforeVal },
+      );
+    }
+    if (resolved.sha === headSha) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Baseline revision from GITHUB_EVENT_BEFORE "${beforeVal}" (${resolved.sha}) resolves to current commit HEAD (${headSha}). Comparing a commit against itself is strictly prohibited for upgrade guardrails. Ensure a valid previous commit or base branch is provided.`,
+        { stage: "upgrade-guardrail", candidate: beforeVal, sha: resolved.sha },
+      );
+    }
+    return resolved.ref;
   }
 
   const defaultCandidates = ["origin/main", "main"];
-  for (const candidate of defaultCandidates) {
-    const resolved = verifyGitRef(candidate, rootDir);
-    if (resolved) {
-      return resolved;
+  for (const cand of defaultCandidates) {
+    const resolved = verifyGitRef(cand, rootDir);
+    if (resolved && resolved.sha !== headSha) {
+      return resolved.ref;
     }
   }
 

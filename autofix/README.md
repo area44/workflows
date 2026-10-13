@@ -43,17 +43,3 @@ jobs:
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
-
-## Migration from `lint-format`
-
-The `lint-format` action has been renamed to `autofix`. To migrate your workflow:
-
-```yaml
-# Old usage:
-# uses: area44/workflows/lint-format@main
-
-# New usage:
-uses: area44/workflows/autofix@main
-```
-
-A compatibility wrapper is maintained at `area44/workflows/lint-format@main` to avoid breaking existing pipelines.

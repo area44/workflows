@@ -140,10 +140,6 @@ Every composite action in this repository shares a common environment resolution
   - Executes linting/formatting via `dist/autofix.mjs`.
   - Triggers `autofix-ci/action` when running in a workflow named `autofix.ci`.
 
-#### Migration from `lint-format`
-
-The `lint-format` action was renamed to `autofix`. Workflows should update references from `area44/workflows/lint-format@main` to `area44/workflows/autofix@main`. A compatibility wrapper in `lint-format/action.yml` delegates to `dist/autofix.mjs` to maintain backward compatibility.
-
 ---
 
 ## Compatibility Matrix
