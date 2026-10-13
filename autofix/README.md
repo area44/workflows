@@ -43,4 +43,3 @@ jobs:
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
-
