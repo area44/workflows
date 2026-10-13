@@ -44,7 +44,8 @@ jobs:
 
       - name: Verify upgrade guardrails
         env:
-          BASE_REF: ${{ github.base_ref || 'origin/main' }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: npm run verify:upgrade
 
       - name: Verify documentation consistency

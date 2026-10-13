@@ -46,14 +46,12 @@ jobs:
 
 ## Migration from `lint-format`
 
-The `lint-format` action has been renamed to `autofix`. To migrate your workflow:
+The legacy `lint-format` action has been removed in v8.0.0. Workflows must be updated to use `area44/workflows/autofix`:
 
 ```yaml
-# Old usage:
+# Old usage (removed):
 # uses: area44/workflows/lint-format@main
 
 # New usage:
 uses: area44/workflows/autofix@main
 ```
-
-A compatibility wrapper is maintained at `area44/workflows/lint-format@main` to avoid breaking existing pipelines.

@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { PublicActionContract, PublicActionName } from "../src/action-contract";
@@ -141,6 +145,40 @@ describe("Upgrade Guardrails Specification", () => {
       expect(comp.breakingChanges.length).toBeGreaterThan(0);
       expect(comp.changeDescriptor.hasOptionalToRequiredChange).toBe(true);
     });
+
+    it("classifies removing lint-format and adding autofix as a breaking change requiring major version bump", () => {
+      const baseWithLintFormat: Record<string, PublicActionContract> = {
+        astro: sampleBaseContract,
+        vite: sampleBaseContract,
+        "vite-plus": sampleBaseContract,
+        "lint-format": sampleBaseContract,
+      };
+
+      const targetWithAutofix: Record<string, PublicActionContract> = {
+        astro: sampleBaseContract,
+        vite: sampleBaseContract,
+        "vite-plus": sampleBaseContract,
+        autofix: sampleBaseContract,
+      };
+
+      const comp = comparePublicActionContracts(baseWithLintFormat, targetWithAutofix);
+      expect(comp.breakingChanges.some((b) => b.includes('Public action "lint-format" was removed'))).toBe(true);
+
+      const target: TargetContracts = {
+        version: "8.0.0",
+        publicActions: targetWithAutofix,
+        compatibilityModel: sampleBaseModel,
+      };
+      const baseline: BaselineContracts = {
+        version: "7.0.0",
+        publicActions: baseWithLintFormat,
+        compatibilityModel: sampleBaseModel,
+      };
+
+      const res = evaluateUpgradeGuardrails(baseline, target);
+      expect(res.valid).toBe(true);
+      expect(res.requiredImpact).toBe("major");
+    });
   });
 
   describe("Compatibility Model Guardrails", () => {
@@ -183,6 +221,39 @@ describe("Upgrade Guardrails Specification", () => {
       const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
       expect(comp.violations.length).toBeGreaterThan(0);
       expect(comp.removedMatrixCombinations).toBe(1);
+    });
+
+    it("detects removed runtime as breaking violation", () => {
+      const targetModel: CanonicalCompatibilityModel = {
+        ...sampleBaseModel,
+        runtimes: ["node"],
+      };
+      const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
+      expect(comp.violations.some((v) => v.includes('Supported runtime "bun" was removed'))).toBe(true);
+      expect(comp.removedMatrixCombinations).toBeGreaterThan(0);
+    });
+
+    it("detects removed package manager as breaking violation", () => {
+      const targetModel: CanonicalCompatibilityModel = {
+        ...sampleBaseModel,
+        packageManagers: ["npm", "pnpm"],
+      };
+      const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
+      expect(comp.violations.some((v) => v.includes('Supported package manager "bun" was removed'))).toBe(true);
+      expect(comp.removedMatrixCombinations).toBeGreaterThan(0);
+    });
+
+    it("detects target combination referencing undeclared runtime or package manager", () => {
+      const targetModel: CanonicalCompatibilityModel = {
+        runtimes: ["node"],
+        packageManagers: ["npm"],
+        combinations: [
+          { runtime: "bun" as any, packageManager: "bun" as any, supported: true, isDefault: false },
+        ],
+      };
+      const comp = compareCompatibilityModels(sampleBaseModel, targetModel);
+      expect(comp.violations.some((v) => v.includes("references runtime"))).toBe(true);
+      expect(comp.violations.some((v) => v.includes("references package manager"))).toBe(true);
     });
 
     it("rejects invalid compatibility state structure", () => {
@@ -317,7 +388,7 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
 
     it("fails with actionable error when git base ref is missing or invalid", () => {
       expect(() => loadBaselineContractsFromGit("non-existent-git-ref-xyz-123456")).toThrow(
-        /Failed to retrieve base revision file from Git ref/,
+        /could not be resolved in repository history/,
       );
     });
 
@@ -337,16 +408,44 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
     });
 
     it("uses explicitly provided valid baseRef", () => {
-      const resolved = resolveBaseRef("main");
-      expect(resolved).toMatch(/main/);
+      const resolved = resolveBaseRef("origin/main");
+      expect(resolved).toMatch(/origin\/main/);
+    });
+
+    it("prevents self-comparison when baseRef resolves to HEAD SHA", () => {
+      expect(() => resolveBaseRef("HEAD")).toThrow(
+        /resolves to current commit HEAD.*Comparing a commit against itself is strictly prohibited/,
+      );
+    });
+
+    it("handles initial-push events with all-zero before SHA explicitly", () => {
+      const origBefore = process.env.GITHUB_EVENT_BEFORE;
+      try {
+        process.env.GITHUB_EVENT_BEFORE = "0000000000000000000000000000000000000000";
+        expect(() => resolveBaseRef()).toThrow(
+          /All-zero "before" SHA detected in push event.*A trustworthy baseline commit cannot be established/,
+        );
+      } finally {
+        if (origBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origBefore;
+        else delete process.env.GITHUB_EVENT_BEFORE;
+      }
+    });
+
+    it("handles option-like or invalid refs safely without shell execution", () => {
+      expect(() => resolveBaseRef("--output=/tmp/hacked")).toThrow(
+        /could not be resolved in repository history/,
+      );
+      expect(() => resolveBaseRef("; rm -rf /")).toThrow(
+        /could not be resolved in repository history/,
+      );
     });
 
     it("respects UPGRADE_BASE_REF environment variable when baseRef is omitted", () => {
       const origEnv = process.env.UPGRADE_BASE_REF;
       try {
-        process.env.UPGRADE_BASE_REF = "main";
+        process.env.UPGRADE_BASE_REF = "origin/main";
         const resolved = resolveBaseRef();
-        expect(resolved).toMatch(/main/);
+        expect(resolved).toMatch(/origin\/main/);
       } finally {
         if (origEnv !== undefined) {
           process.env.UPGRADE_BASE_REF = origEnv;
@@ -369,25 +468,25 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
 
       try {
-        process.env.UPGRADE_BASE_REF = "main";
+        process.env.UPGRADE_BASE_REF = "origin/main";
         process.env.BASE_REF = "invalid-base-ref";
         process.env.GITHUB_BASE_REF = "invalid-gh-base-ref";
         process.env.GITHUB_EVENT_BEFORE = "invalid-gh-before";
 
-        expect(resolveBaseRef("main")).toMatch(/main/);
-        expect(resolveBaseRef()).toMatch(/main/);
+        expect(resolveBaseRef("origin/main")).toMatch(/origin\/main/);
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.UPGRADE_BASE_REF;
-        process.env.BASE_REF = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.BASE_REF = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.BASE_REF;
-        process.env.GITHUB_BASE_REF = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.GITHUB_BASE_REF = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
 
         delete process.env.GITHUB_BASE_REF;
-        process.env.GITHUB_EVENT_BEFORE = "main";
-        expect(resolveBaseRef()).toMatch(/main/);
+        process.env.GITHUB_EVENT_BEFORE = "origin/main";
+        expect(resolveBaseRef()).toMatch(/origin\/main/);
       } finally {
         if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
         else delete process.env.UPGRADE_BASE_REF;
@@ -404,23 +503,20 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
     });
 
     it("throws WorkflowError in a repository where origin/main and main do NOT exist, never returning HEAD~1 even if HEAD~1 exists", () => {
-      const execSync = require("node:child_process").execSync;
-      const fs = require("node:fs");
-      const os = require("node:os");
-      const path = require("node:path");
-
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-guardrail-test-"));
 
       try {
-        execSync("git init -b custom-branch", { cwd: tempDir, stdio: "ignore" });
-        execSync("git config user.name 'Test'", { cwd: tempDir, stdio: "ignore" });
-        execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["init", "-b", "custom-branch"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["config", "user.name", "Test"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: tempDir, stdio: "ignore" });
 
         fs.writeFileSync(path.join(tempDir, "file1.txt"), "commit 1");
-        execSync("git add file1.txt && git commit -m 'commit 1'", { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["add", "file1.txt"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["commit", "-m", "commit 1"], { cwd: tempDir, stdio: "ignore" });
 
         fs.writeFileSync(path.join(tempDir, "file2.txt"), "commit 2");
-        execSync("git add file2.txt && git commit -m 'commit 2'", { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["add", "file2.txt"], { cwd: tempDir, stdio: "ignore" });
+        execFileSync("git", ["commit", "-m", "commit 2"], { cwd: tempDir, stdio: "ignore" });
 
         const origUpgrade = process.env.UPGRADE_BASE_REF;
         const origBase = process.env.BASE_REF;
