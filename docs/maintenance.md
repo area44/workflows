@@ -42,8 +42,6 @@ The build artifact pipeline converts TypeScript sources into bundled, executable
 src/
   ↓ (npm run build / vp pack)
 dist/
-  ↓ (npm run verify:artifacts)
-Artifact Integrity Verification
 ```
 
 ### Generated Files
@@ -57,21 +55,25 @@ The following generated files are produced from source code and checked into git
 
 Build artifacts must never be edited directly. Modifications must be made in `src/`, followed by re-running `npm run build` to update `dist/`.
 
-## Verification Commands
+## Quality Gates and Test Commands
 
-Maintainers and automated CI pipelines run the following verification commands:
+Maintainers and automated CI pipelines run the following verification and test commands:
 
-| Command                    | Description                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `npm test`                 | Runs all Vitest/Vite+ unit test suites                                                           |
-| `npm run lint`             | Runs code linting rules via Vite+                                                                |
-| `npm run format`           | Verifies code formatting via Vite+                                                               |
-| `npm run build`            | Bundles TypeScript source files in `src/` to `dist/`                                             |
-| `npm run verify:artifacts` | Verifies expected `dist/` build artifacts exist, are non-empty, and match git state              |
-| `npm run verify:version`   | Verifies `package.json` version format and `package-lock.json` synchronization                   |
-| `npm run verify:upgrade`   | Evaluates upgrade guardrails against baseline revision to prevent breaking contract changes      |
-| `npm run verify:docs`      | Verifies semantic consistency between action contracts, compatibility matrix, and documentation  |
-| `npm run verify:health`    | Runs comprehensive repository health verification across structures, contracts, fixtures, and CI |
+| Command             | Description                                          |
+| ------------------- | ---------------------------------------------------- |
+| `npm test`          | Runs all Vitest/Vite+ unit test suites               |
+| `npm run lint`      | Runs code linting rules via Vite+                    |
+| `npm run format`    | Verifies code formatting via Vite+                   |
+| `npm run build`     | Bundles TypeScript source files in `src/` to `dist/` |
+| `npm run changeset` | Interactively creates a new changeset file           |
+
+## Release Process and Versioning
+
+This repository uses `@changesets/cli` to automate package versioning, changelog generation, and tag creation for the private `@area44/workflows` repository and its composite actions:
+
+1. **Creating Changesets**: Every PR making code changes must include a changeset file (`.changeset/*.md`) added via `npx changeset`.
+2. **Version PR**: When PRs are merged into `main`, GitHub Actions triggers Changesets to automatically open or update a Version PR.
+3. **Tagging and Release**: Merging the Version PR executes `changeset git-tag`, creating release git tags (e.g. `v8.0.1`) and GitHub Releases. No publication to npm occurs as the workspace is private.
 
 ## Pre-Merge & Pre-Release Checklist
 
@@ -79,13 +81,8 @@ Before merging pull requests or cutting a new release, maintainers must complete
 
 - Ensure all source changes are compiled to `dist/` by executing `npm run build`.
 - Verify code formatting and linting pass with `npm run format` and `npm run lint`.
-- Execute the full verification suite locally:
-  - `npm test`
-  - `npm run verify:artifacts`
-  - `npm run verify:version`
-  - `npm run verify:upgrade`
-  - `npm run verify:docs`
-  - `npm run verify:health`
+- Execute the full test suite locally via `npm test`.
+- For code modifications, ensure a changeset file is present (`npx changeset`).
 - Check git status using `git status --short` and `git diff --check` to ensure no untracked files or whitespace errors exist.
 
 ## Change Classification Guidelines

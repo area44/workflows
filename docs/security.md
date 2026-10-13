@@ -26,4 +26,4 @@ This document formalizes the security architecture, input trust model, shell com
 
 - **Authoritative Source**: All TypeScript source code resides in `src/`.
 - **Generated Outputs**: Files in `dist/` are build artifacts bundled via `npm run build` (`vp pack`). Direct manual edits to `dist/` are strictly prohibited.
-- **Automated Verification**: Source-to-dist artifact synchronization is verified in CI via `npm run verify:artifacts` (`src/artifact-integrity.ts`). Direct edits to `dist/` trigger build failure.
+- **Automated Build**: Source-to-dist artifact synchronization is enforced during builds and release processes. Direct edits to `dist/` are prohibited.

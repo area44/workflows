@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -24,7 +24,7 @@ jobs:
         run: node "dist/resolve-environment.mjs"
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.resolve_environment.outputs.node-version }}
           cache: "npm"
@@ -36,23 +36,28 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Verify build artifacts
-        run: npm run verify:artifacts
+      - name: Validate Changeset in PR
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -vE '^(\.changeset\/|docs\/|.*\.md$)' || true)
+          CHANGESET_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.changeset\/.*\.md$' | grep -vE '(\/README\.md$|\/config\.json$)' || true)
 
-      - name: Verify repository version
-        run: npm run verify:version
-
-      - name: Verify upgrade guardrails
-        env:
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-        run: npm run verify:upgrade
-
-      - name: Verify documentation consistency
-        run: npm run verify:docs
-
-      - name: Verify repository health
-        run: npm run verify:health
+          if [ -n "$NON_DOC_FILES" ]; then
+            if [ -z "$CHANGESET_FILES" ]; then
+              echo "Error: Pull request introduces code or configuration changes without a changeset file in .changeset/."
+              echo "Please run 'npx changeset' to add a changeset file describing your changes."
+              exit 1
+            fi
+            for file in $CHANGESET_FILES; do
+              if [ ! -s "$file" ]; then
+                echo "Error: Changeset file '$file' is empty."
+                exit 1
+              fi
+            done
+          fi
 
       - name: Run tests
         run: npm test

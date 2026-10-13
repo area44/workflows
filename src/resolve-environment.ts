@@ -69,51 +69,6 @@ export {
   validateWorkflowMatrix,
 } from "./compatibility";
 
-export {
-  getExpectedArtifacts,
-  parseViteConfigPack,
-  runArtifactVerification,
-  verifyArtifactIntegrity,
-} from "./artifact-integrity";
-
-export type {
-  ChangeDescriptor,
-  ParsedSemVer,
-  RepositoryVersion,
-  VersionImpact,
-} from "./versioning";
-export {
-  classifyChangeImpact,
-  getRepositoryVersion,
-  isValidSemVer,
-  parseSemVer,
-  runVersionVerification,
-  SEMVER_REGEX,
-  validateRepositoryVersion,
-} from "./versioning";
-
-export type {
-  BaselineContracts,
-  TargetContracts,
-  UpgradeGuardrailOptions,
-  UpgradeGuardrailResult,
-} from "./upgrade-guardrails.js";
-export {
-  compareCompatibilityModels,
-  comparePublicActionContracts,
-  evaluateUpgradeGuardrails,
-  isVersionSatisfyingImpact,
-  loadBaselineContractsFromGit,
-  loadTargetContracts,
-  parseCompatibilityModelFromSource,
-  resolveBaseRef,
-  runUpgradeVerification,
-  verifyUpgradeGuardrails,
-} from "./upgrade-guardrails.js";
-
-export type { HealthVerificationResult } from "./repository-health.js";
-export { runHealthVerification, verifyRepositoryHealth } from "./repository-health.js";
-
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
 export const DEFAULT_NODE_VERSION = "24";

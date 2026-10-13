@@ -489,22 +489,16 @@ describe("Documentation Consistency Verification", () => {
     it("README.md should link to COMPATIBILITY.md and all specialized docs files", () => {
       expect(readmeContent).toContain("./COMPATIBILITY.md");
       expect(readmeContent).toContain("./docs/compatibility.md");
-      expect(readmeContent).toContain("./docs/versioning.md");
-      expect(readmeContent).toContain("./docs/upgrade-guardrails.md");
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
-      expect(readmeContent).toContain("./docs/artifacts.md");
       expect(readmeContent).toContain("./docs/maintenance.md");
     });
 
     it("all documentation files in docs/ should exist", () => {
       const expectedFiles = [
         "compatibility.md",
-        "versioning.md",
-        "upgrade-guardrails.md",
         "errors.md",
         "security.md",
-        "artifacts.md",
         "maintenance.md",
       ];
       for (const file of expectedFiles) {
@@ -568,52 +562,7 @@ describe("Documentation Consistency Verification", () => {
     });
   });
 
-  describe("Versioning Documentation Consistency", () => {
-    const docVersioningContent = fs.readFileSync(path.join(docsDir, "versioning.md"), "utf8");
-
-    it("should document package.json as authoritative source of truth", () => {
-      expect(docVersioningContent).toContain("package.json");
-      expect(docVersioningContent.toLowerCase()).toContain("authoritative");
-
-      expect(compatibilityContent).toContain("package.json");
-      expect(compatibilityContent.toLowerCase()).toContain("authoritative");
-    });
-
-    it("should document SemVer change impact categories (patch, minor, major)", () => {
-      expect(docVersioningContent).toContain("Patch Releases");
-      expect(docVersioningContent).toContain("Minor Releases");
-      expect(docVersioningContent).toContain("Major Releases");
-    });
-  });
-
-  describe("Upgrade Guardrails Documentation Consistency", () => {
-    const docGuardrailsContent = fs.readFileSync(
-      path.join(docsDir, "upgrade-guardrails.md"),
-      "utf8",
-    );
-
-    it("should document baseline resolution candidate chain", () => {
-      const requiredRefs = [
-        "baseRef",
-        "UPGRADE_BASE_REF",
-        "BASE_REF",
-        "GITHUB_BASE_REF",
-        "GITHUB_EVENT_BEFORE",
-        "origin/main",
-        "main",
-      ];
-      for (const ref of requiredRefs) {
-        expect(docGuardrailsContent).toContain(ref);
-      }
-    });
-
-    it("should explicitly prohibit contract guessing via HEAD~1", () => {
-      expect(docGuardrailsContent).toContain("HEAD~1");
-      expect(docGuardrailsContent.toLowerCase()).toContain("prohibited");
-    });
-  });
-
-  describe("Error, Security & Artifact Integrity Documentation Consistency", () => {
+  describe("Error & Security Documentation Consistency", () => {
     it("docs/errors.md should document all WorkflowErrorCode enum values", () => {
       const docErrorsContent = fs.readFileSync(path.join(docsDir, "errors.md"), "utf8");
       const codes = [
@@ -633,14 +582,6 @@ describe("Documentation Consistency Verification", () => {
       const docSecurityContent = fs.readFileSync(path.join(docsDir, "security.md"), "utf8");
       expect(docSecurityContent).toContain("sanitizeCommandString");
       expect(docSecurityContent.toLowerCase()).toContain("subshell");
-    });
-
-    it("docs/artifacts.md should document source to dist build policy and verification command", () => {
-      const docArtifactsContent = fs.readFileSync(path.join(docsDir, "artifacts.md"), "utf8");
-      expect(docArtifactsContent).toContain("npm run build");
-      expect(docArtifactsContent).toContain("npm run verify:artifacts");
-      expect(docArtifactsContent).toContain("src/");
-      expect(docArtifactsContent).toContain("dist/");
     });
   });
 

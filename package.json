@@ -15,14 +15,13 @@
     "build": "vp pack",
     "test": "vp test",
     "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
-    "verify:artifacts": "node --input-type=module -e 'import { runArtifactVerification } from \"./dist/resolve-environment.mjs\"; runArtifactVerification();'",
-    "verify:version": "node --input-type=module -e 'import { runVersionVerification } from \"./dist/resolve-environment.mjs\"; runVersionVerification();'",
-    "verify:upgrade": "node --input-type=module -e 'import { runUpgradeVerification } from \"./dist/resolve-environment.mjs\"; runUpgradeVerification();'",
-    "verify:docs": "vp test __tests__/docs-consistency.test.ts",
-    "verify:health": "node --input-type=module -e 'import { runHealthVerification } from \"./dist/resolve-environment.mjs\"; runHealthVerification();'"
+    "changeset": "changeset",
+    "version": "changeset version && npm install --package-lock-only && npm run build",
+    "release": "changeset tag"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^24.19.1",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@^1.1.0",
