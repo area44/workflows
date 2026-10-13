@@ -52,9 +52,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push --tags || true
-          for tag in $(git tag --points-at HEAD); do
-            if ! gh release view "$tag" >/dev/null 2>&1; then
-              gh release create "$tag" --generate-notes --title "$tag" || true
-            fi
-          done
+          TAGS=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$TAGS" ]; then
+            echo "Pushing git tags: $TAGS"
+            git push origin $TAGS
+            for tag in $TAGS; do
+              if ! gh release view "$tag" >/dev/null 2>&1; then
+                echo "Creating GitHub Release for $tag"
+                gh release create "$tag" --generate-notes --title "$tag"
+              else
+                echo "GitHub Release for $tag already exists."
+              fi
+            done
+          fi

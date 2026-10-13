@@ -17,7 +17,7 @@
     "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
     "changeset": "changeset",
     "version": "changeset version && npm install --package-lock-only && npm run build",
-    "release": "changeset git-tag"
+    "release": "changeset tag"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
