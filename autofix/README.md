@@ -44,14 +44,10 @@ jobs:
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
 
-## Migration from `lint-format`
+## Migration to `autofix`
 
-The legacy `lint-format` action has been removed in v8.0.0. Workflows must be updated to use `area44/workflows/autofix`:
+Workflows must use `area44/workflows/autofix`:
 
 ```yaml
-# Old usage (removed):
-# uses: area44/workflows/lint-format@main
-
-# New usage:
 uses: area44/workflows/autofix@main
 ```

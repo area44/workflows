@@ -200,6 +200,9 @@ export function comparePublicActionContracts(
   };
 }
 
+/**
+ * Comprehensively validates structure and consistency of a CanonicalCompatibilityModel.
+ */
 function validateCompatibilityModelStructure(
   model: CanonicalCompatibilityModel,
   label: string,
@@ -211,34 +214,171 @@ function validateCompatibilityModelStructure(
       { stage: "upgrade-guardrail" },
     );
   }
-  if (!Array.isArray(model.runtimes) || !Array.isArray(model.packageManagers)) {
+
+  if (!Array.isArray(model.runtimes) || model.runtimes.length === 0) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Invalid ${label} compatibility model: "runtimes" and "packageManagers" must be arrays.`,
+      `Invalid ${label} compatibility model: "runtimes" must be a non-empty array.`,
       { stage: "upgrade-guardrail" },
     );
   }
-  if (!Array.isArray(model.combinations)) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Invalid ${label} compatibility model: "combinations" must be an array.`,
-      { stage: "upgrade-guardrail" },
-    );
-  }
-  for (const comb of model.combinations) {
-    if (
-      !comb ||
-      typeof comb !== "object" ||
-      typeof comb.runtime !== "string" ||
-      typeof comb.packageManager !== "string" ||
-      typeof comb.supported !== "boolean"
-    ) {
+
+  const seenRuntimes = new Set<string>();
+  for (const rt of model.runtimes) {
+    if (typeof rt !== "string" || rt.trim() === "") {
       throw new WorkflowError(
         "INVALID_INPUT",
-        `Invalid ${label} compatibility model: combination entries must contain valid "runtime", "packageManager", and "supported" fields.`,
+        `Invalid ${label} compatibility model: "runtimes" elements must be non-empty strings.`,
         { stage: "upgrade-guardrail" },
       );
     }
+    if (seenRuntimes.has(rt)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate runtime "${rt}" found in runtimes list.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenRuntimes.add(rt);
+  }
+
+  if (!Array.isArray(model.packageManagers) || model.packageManagers.length === 0) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: "packageManagers" must be a non-empty array.`,
+      { stage: "upgrade-guardrail" },
+    );
+  }
+
+  const seenPms = new Set<string>();
+  for (const pm of model.packageManagers) {
+    if (typeof pm !== "string" || pm.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: "packageManagers" elements must be non-empty strings.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    if (seenPms.has(pm)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate package manager "${pm}" found in packageManagers list.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenPms.add(pm);
+  }
+
+  if (!Array.isArray(model.combinations) || model.combinations.length === 0) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: "combinations" must be a non-empty array.`,
+      { stage: "upgrade-guardrail" },
+    );
+  }
+
+  const seenCombinations = new Set<string>();
+  let defaultCount = 0;
+
+  for (const comb of model.combinations) {
+    if (!comb || typeof comb !== "object") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination entries must be objects.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.runtime !== "string" || comb.runtime.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "runtime" must be a non-empty string.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (!seenRuntimes.has(comb.runtime)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination references runtime "${comb.runtime}" not present in declared runtimes.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.packageManager !== "string" || comb.packageManager.trim() === "") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "packageManager" must be a non-empty string.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (!seenPms.has(comb.packageManager)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination references package manager "${comb.packageManager}" not present in declared packageManagers.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    if (typeof comb.supported !== "boolean") {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: combination field "supported" must be a boolean.`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+
+    const key = `${comb.runtime}:${comb.packageManager}`;
+    if (seenCombinations.has(key)) {
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid ${label} compatibility model: duplicate combination entry found for "${comb.runtime}+${comb.packageManager}".`,
+        { stage: "upgrade-guardrail" },
+      );
+    }
+    seenCombinations.add(key);
+
+    if (comb.isDefault !== undefined) {
+      if (typeof comb.isDefault !== "boolean") {
+        throw new WorkflowError(
+          "INVALID_INPUT",
+          `Invalid ${label} compatibility model: combination field "isDefault" must be a boolean.`,
+          { stage: "upgrade-guardrail" },
+        );
+      }
+      if (comb.isDefault) {
+        if (!comb.supported) {
+          throw new WorkflowError(
+            "INVALID_INPUT",
+            `Invalid ${label} compatibility model: unsupported combination "${comb.runtime}+${comb.packageManager}" cannot be marked as default.`,
+            { stage: "upgrade-guardrail" },
+          );
+        }
+        defaultCount++;
+      }
+    }
+
+    if (!comb.supported) {
+      if (
+        comb.reason !== undefined &&
+        (typeof comb.reason !== "string" || comb.reason.trim() === "")
+      ) {
+        throw new WorkflowError(
+          "INVALID_INPUT",
+          `Invalid ${label} compatibility model: unsupported combination "${comb.runtime}+${comb.packageManager}" must have a valid non-empty reason string when specified.`,
+          { stage: "upgrade-guardrail" },
+        );
+      }
+    }
+  }
+
+  if (defaultCount > 1) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Invalid ${label} compatibility model: at most one default combination may be declared (found ${defaultCount}).`,
+      { stage: "upgrade-guardrail" },
+    );
   }
 }
 
@@ -302,19 +442,6 @@ export function compareCompatibilityModels(
     }
   }
 
-  for (const comb of target.combinations) {
-    if (!target.runtimes.includes(comb.runtime)) {
-      violations.push(
-        `Target compatibility combination "${comb.runtime}+${comb.packageManager}" references runtime "${comb.runtime}" not present in declared target runtimes.`,
-      );
-    }
-    if (!target.packageManagers.includes(comb.packageManager)) {
-      violations.push(
-        `Target compatibility combination "${comb.runtime}+${comb.packageManager}" references package manager "${comb.packageManager}" not present in declared target package managers.`,
-      );
-    }
-  }
-
   return {
     violations,
     removedMatrixCombinations,
@@ -333,10 +460,27 @@ export function evaluateUpgradeGuardrails(
   const violations: string[] = [];
 
   const apiComp = comparePublicActionContracts(baseline.publicActions, target.publicActions);
-  const compatComp = compareCompatibilityModels(
-    baseline.compatibilityModel,
-    target.compatibilityModel,
-  );
+
+  let compatComp: {
+    violations: string[];
+    removedMatrixCombinations: number;
+    addedMatrixCombinations: number;
+  };
+
+  try {
+    compatComp = compareCompatibilityModels(baseline.compatibilityModel, target.compatibilityModel);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    compatComp = {
+      violations: [`Compatibility model validation error: ${msg}`],
+      removedMatrixCombinations: 1,
+      addedMatrixCombinations: 0,
+    };
+  }
+
+  if (compatComp.violations.length > 0) {
+    violations.push(...compatComp.violations);
+  }
 
   const changeDescriptor: ChangeDescriptor = {
     ...apiComp.changeDescriptor,
@@ -361,16 +505,9 @@ export function evaluateUpgradeGuardrails(
 
   const isVersionOk = isVersionSatisfyingImpact(baseline.version, target.version, requiredImpact);
   if (!isVersionOk) {
-    const changeSummary: string[] = [];
     if (apiComp.breakingChanges.length > 0) {
-      changeSummary.push(...apiComp.breakingChanges);
-    }
-    if (compatComp.violations.length > 0) {
-      changeSummary.push(...compatComp.violations);
-    }
-    if (changeSummary.length > 0) {
       violations.push(
-        `Declared target version "${target.version}" is incompatible with required SemVer impact "${requiredImpact}" over baseline version "${baseline.version}". Changes requiring ${requiredImpact.toUpperCase()} version bump:\n  - ${changeSummary.join("\n  - ")}`,
+        `Declared target version "${target.version}" is incompatible with required SemVer impact "${requiredImpact}" over baseline version "${baseline.version}". Changes requiring ${requiredImpact.toUpperCase()} version bump:\n  - ${apiComp.breakingChanges.join("\n  - ")}`,
       );
     } else {
       violations.push(
@@ -440,7 +577,7 @@ function verifyGitRef(
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    if (sha) {
+    if (sha && /^[0-9a-fA-F]{40}$/.test(sha)) {
       return { ref: trimmed, sha };
     }
   } catch {
@@ -451,7 +588,7 @@ function verifyGitRef(
           ["rev-parse", "--verify", "--quiet", `origin/${trimmed}^{commit}`],
           { cwd: rootDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
         ).trim();
-        if (sha) {
+        if (sha && /^[0-9a-fA-F]{40}$/.test(sha)) {
           return { ref: `origin/${trimmed}`, sha };
         }
       } catch {
@@ -482,7 +619,7 @@ function getHeadSha(rootDir: string): string {
 }
 
 /**
- * Loads baseline contracts from git revision `baseRef`.
+ * Loads baseline contracts from git revision `baseRef`, strictly using the verified immutable commit SHA.
  */
 export function loadBaselineContractsFromGit(
   baseRef: string,
@@ -499,7 +636,7 @@ export function loadBaselineContractsFromGit(
 
   const gitShow = (fileInRepo: string): string => {
     try {
-      return execFileSync("git", ["show", `${verifiedBase.ref}:${fileInRepo}`], {
+      return execFileSync("git", ["show", `${verifiedBase.sha}:${fileInRepo}`], {
         cwd: rootDir,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
@@ -507,8 +644,14 @@ export function loadBaselineContractsFromGit(
     } catch (err) {
       throw new WorkflowError(
         "MISSING_CONFIGURATION",
-        `Failed to retrieve base revision file "${fileInRepo}" from Git ref "${baseRef}". Ensure Git base revision is available (e.g. non-shallow clone).`,
-        { stage: "upgrade-guardrail", baseRef, file: fileInRepo, cause: err },
+        `Failed to retrieve base revision file "${fileInRepo}" from Git commit "${verifiedBase.sha}". Ensure Git base revision is available (e.g. non-shallow clone).`,
+        {
+          stage: "upgrade-guardrail",
+          baseRef,
+          sha: verifiedBase.sha,
+          file: fileInRepo,
+          cause: err,
+        },
       );
     }
   };
@@ -520,7 +663,7 @@ export function loadBaselineContractsFromGit(
   } catch (err) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Malformed package.json in base revision "${baseRef}".`,
+      `Malformed package.json in base revision "${baseRef}" (${verifiedBase.sha}).`,
       { stage: "upgrade-guardrail", cause: err },
     );
   }
@@ -529,7 +672,7 @@ export function loadBaselineContractsFromGit(
   if (!version) {
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Missing or invalid version in package.json from base revision "${baseRef}".`,
+      `Missing or invalid version in package.json from base revision "${baseRef}" (${verifiedBase.sha}).`,
       { stage: "upgrade-guardrail" },
     );
   }
@@ -549,7 +692,7 @@ export function loadBaselineContractsFromGit(
     if (!match || !match[1]) {
       throw new WorkflowError(
         "INVALID_INPUT",
-        `Failed to parse PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}".`,
+        `Failed to parse PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}" (${verifiedBase.sha}).`,
         { stage: "upgrade-guardrail", baseRef },
       );
     }
@@ -558,14 +701,14 @@ export function loadBaselineContractsFromGit(
     if (extracted.length === 0) {
       throw new WorkflowError(
         "INVALID_INPUT",
-        `Parsed empty PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}".`,
+        `Parsed empty PUBLIC_ACTIONS array from "src/action-contract.ts" in base revision "${baseRef}" (${verifiedBase.sha}).`,
         { stage: "upgrade-guardrail", baseRef },
       );
     }
     basePublicActions = extracted;
   } else {
     try {
-      const treeOutput = execFileSync("git", ["ls-tree", "--name-only", verifiedBase.ref], {
+      const treeOutput = execFileSync("git", ["ls-tree", "--name-only", verifiedBase.sha], {
         cwd: rootDir,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
@@ -608,7 +751,7 @@ export function loadBaselineContractsFromGit(
     if (basePublicActions.length === 0) {
       throw new WorkflowError(
         "MISSING_CONFIGURATION",
-        `Unable to construct trustworthy baseline contracts from Git ref "${baseRef}": missing "src/action-contract.ts" and no valid public action directories found in base revision.`,
+        `Unable to construct trustworthy baseline contracts from Git ref "${baseRef}" (${verifiedBase.sha}): missing "src/action-contract.ts" and no valid public action directories found in base revision.`,
         { stage: "upgrade-guardrail", baseRef },
       );
     }
@@ -625,7 +768,7 @@ export function loadBaselineContractsFromGit(
       } catch {
         throw new WorkflowError(
           "MISSING_CONFIGURATION",
-          `Missing action.yml/action.yaml for public action "${actionName}" in base revision "${baseRef}".`,
+          `Missing action.yml/action.yaml for public action "${actionName}" in base revision "${baseRef}" (${verifiedBase.sha}).`,
           { stage: "upgrade-guardrail", actionName, baseRef },
         );
       }
