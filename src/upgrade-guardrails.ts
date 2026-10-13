@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import vm from "node:vm";
 
-import type { PublicActionContract, PublicActionName } from "./action-contract.js";
+import type { PublicActionContract } from "./action-contract.js";
 import type { CanonicalCompatibilityModel, MatrixCombinationEntry } from "./compatibility.ts";
 
 import {
@@ -79,6 +79,79 @@ export function isVersionSatisfyingImpact(
 /**
  * Compares baseline and target public action contracts to detect breaking and backward-compatible changes.
  */
+interface ActionDiffFlags {
+  hasRequiredInputAddition: boolean;
+  hasOptionalToRequiredChange: boolean;
+  hasDefaultValueChange: boolean;
+  hasRemovedPublicInput: boolean;
+  hasRemovedPublicOutput: boolean;
+  addedOptionalInputs: number;
+  addedPublicOutputs: number;
+}
+
+function processNewActionContract(
+  actionName: string,
+  targetContract: PublicActionContract,
+  flags: ActionDiffFlags,
+  breakingChanges: string[],
+): void {
+  flags.addedOptionalInputs += targetContract.inputs.filter((i) => !i.required).length;
+  flags.addedPublicOutputs += targetContract.outputs.length;
+  if (targetContract.inputs.some((i) => i.required)) {
+    flags.hasRequiredInputAddition = true;
+    breakingChanges.push(`Newly added public action "${actionName}" has required inputs.`);
+  }
+}
+
+function processBreakingChanges(
+  actionName: string,
+  baseContract: PublicActionContract,
+  targetContract: PublicActionContract,
+  flags: ActionDiffFlags,
+  breakingChanges: string[],
+): void {
+  const breaking = detectBreakingChanges(baseContract, targetContract);
+  for (const b of breaking) {
+    breakingChanges.push(`[${actionName}] ${b.problem}`);
+    if (b.type === "REMOVED_INPUT") flags.hasRemovedPublicInput = true;
+    if (b.type === "REMOVED_OUTPUT") flags.hasRemovedPublicOutput = true;
+    if (b.type === "REQUIRED_CHANGED") flags.hasOptionalToRequiredChange = true;
+    if (b.type === "DEFAULT_CHANGED") flags.hasDefaultValueChange = true;
+  }
+}
+
+function processActionInputsAndOutputs(
+  actionName: string,
+  baseContract: PublicActionContract,
+  targetContract: PublicActionContract,
+  flags: ActionDiffFlags,
+  breakingChanges: string[],
+): void {
+  const baseInputMap = new Map(baseContract.inputs.map((i) => [i.name, i]));
+  for (const targetInput of targetContract.inputs) {
+    if (!baseInputMap.has(targetInput.name)) {
+      if (targetInput.required) {
+        flags.hasRequiredInputAddition = true;
+        breakingChanges.push(
+          `[${actionName}] Newly added public input "${targetInput.name}" is required.`,
+        );
+      } else {
+        flags.addedOptionalInputs++;
+      }
+    }
+  }
+
+  const baseOutputMap = new Map(baseContract.outputs.map((o) => [o.name, o]));
+  for (const targetOutput of targetContract.outputs) {
+    if (!baseOutputMap.has(targetOutput.name)) {
+      flags.addedPublicOutputs++;
+    }
+  }
+}
+
+/**
+ * Compares baseline and target public action contracts to detect breaking and backward-compatible changes.
+ */
 export function comparePublicActionContracts(
   baseline: Record<string, PublicActionContract>,
   target: Record<string, PublicActionContract>,
@@ -87,27 +160,26 @@ export function comparePublicActionContracts(
   changeDescriptor: Partial<ChangeDescriptor>;
 } {
   const breakingChanges: string[] = [];
-  let addedOptionalInputs = 0;
-  let addedPublicOutputs = 0;
-  let hasRequiredInputAddition = false;
-  let hasOptionalToRequiredChange = false;
-  let hasDefaultValueChange = false;
-  let hasRemovedPublicInput = false;
-  let hasRemovedPublicOutput = false;
+  const flags: ActionDiffFlags = {
+    addedOptionalInputs: 0,
+    addedPublicOutputs: 0,
+    hasRequiredInputAddition: false,
+    hasOptionalToRequiredChange: false,
+    hasDefaultValueChange: false,
+    hasRemovedPublicInput: false,
+    hasRemovedPublicOutput: false,
+  };
 
-  const allActionNames = Array.from(new Set([...Object.keys(baseline), ...Object.keys(target)]));
+  const allActionNames = Array.from(
+    new Set([...Object.keys(baseline), ...Object.keys(target)]),
+  );
 
   for (const actionName of allActionNames) {
     const baseContract = baseline[actionName];
     const targetContract = target[actionName];
 
     if (!baseContract && targetContract) {
-      addedOptionalInputs += targetContract.inputs.filter((i) => !i.required).length;
-      addedPublicOutputs += targetContract.outputs.length;
-      if (targetContract.inputs.some((i) => i.required)) {
-        hasRequiredInputAddition = true;
-        breakingChanges.push(`Newly added public action "${actionName}" has required inputs.`);
-      }
+      processNewActionContract(actionName, targetContract, flags, breakingChanges);
       continue;
     }
 
@@ -117,52 +189,17 @@ export function comparePublicActionContracts(
 
     if (!targetContract) {
       breakingChanges.push(`Public action "${actionName}" was removed from target contracts.`);
-      hasRemovedPublicInput = true;
+      flags.hasRemovedPublicInput = true;
       continue;
     }
 
-    const breaking = detectBreakingChanges(baseContract, targetContract);
-    for (const b of breaking) {
-      breakingChanges.push(`[${actionName}] ${b.problem}`);
-      if (b.type === "REMOVED_INPUT") hasRemovedPublicInput = true;
-      if (b.type === "REMOVED_OUTPUT") hasRemovedPublicOutput = true;
-      if (b.type === "REQUIRED_CHANGED") hasOptionalToRequiredChange = true;
-      if (b.type === "DEFAULT_CHANGED") hasDefaultValueChange = true;
-    }
-
-    const baseInputMap = new Map(baseContract.inputs.map((i) => [i.name, i]));
-    for (const targetInput of targetContract.inputs) {
-      if (!baseInputMap.has(targetInput.name)) {
-        if (targetInput.required) {
-          hasRequiredInputAddition = true;
-          breakingChanges.push(
-            `[${actionName}] Newly added public input "${targetInput.name}" is required.`,
-          );
-        } else {
-          addedOptionalInputs++;
-        }
-      }
-    }
-
-    const baseOutputMap = new Map(baseContract.outputs.map((o) => [o.name, o]));
-    for (const targetOutput of targetContract.outputs) {
-      if (!baseOutputMap.has(targetOutput.name)) {
-        addedPublicOutputs++;
-      }
-    }
+    processBreakingChanges(actionName, baseContract, targetContract, flags, breakingChanges);
+    processActionInputsAndOutputs(actionName, baseContract, targetContract, flags, breakingChanges);
   }
 
   return {
     breakingChanges,
-    changeDescriptor: {
-      hasRequiredInputAddition,
-      hasOptionalToRequiredChange,
-      hasDefaultValueChange,
-      hasRemovedPublicInput,
-      hasRemovedPublicOutput,
-      addedOptionalInputs,
-      addedPublicOutputs,
-    },
+    changeDescriptor: { ...flags },
   };
 }
 
@@ -398,13 +435,9 @@ export function loadBaselineContractsFromGit(
   let basePublicActions: string[] = [...PUBLIC_ACTIONS];
   try {
     const contractSource = gitExec(`git show ${baseRef}:src/action-contract.ts`);
-    const match = contractSource.match(
-      /export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/,
-    );
+    const match = contractSource.match(/export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
     if (match && match[1]) {
-      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map(
-        (m) => m[1],
-      );
+      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map((m) => m[1]);
       if (extracted.length > 0) {
         basePublicActions = extracted;
       }
