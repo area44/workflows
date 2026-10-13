@@ -16,13 +16,13 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 
 To avoid duplication and configuration drift, specific files serve as authoritative sources of truth:
 
-| Domain              | Authoritative Source of Truth File                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Package Versioning  | `package.json` (`version` property)                                                                               |
+| Domain              | Authoritative Source of Truth File                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Package Versioning  | `package.json` (`version` property)                                                                           |
 | Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `vite-plus/action.yml`, `autofix/action.yml`) |
-| Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                                                          |
-| Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                                                     |
-| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                                                 |
+| Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                                                      |
+| Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                                                 |
+| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                                             |
 
 ## Public Action Structure
 
