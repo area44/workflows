@@ -137,12 +137,17 @@ For complete toolchain guarantees and combination matrices, see the **[Compatibi
 Specialized documentation guides explain specific contracts and operational guarantees:
 
 - **[Compatibility Contract](./COMPATIBILITY.md)** & **[Detailed Toolchain Matrix](./docs/compatibility.md)**: Toolchain baselines, compatibility matrix, and setup adapters.
-- **[Versioning Model](./docs/versioning.md)**: Authoritative `package.json` version source, SemVer 2.0.0 rules, and change impact classification (`classifyChangeImpact`).
-- **[Upgrade Guardrails](./docs/upgrade-guardrails.md)**: Baseline ref resolution chain, contract diffing, and SemVer impact enforcement.
 - **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
 - **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
-- **[Artifact Integrity](./docs/artifacts.md)**: Source to `dist/` build policy, entrypoint artifact verification, and synchronization enforcement.
-- **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, verification commands, and pre-merge checklist.
+- **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, release process, and pre-merge checklist.
+
+## Versioning and Releases
+
+This repository represents a single private workspace (`@area44/workflows`) containing composite GitHub Actions (`astro`, `vite`, `vite-plus`, `autofix`). Releases and Semantic Versioning are managed automatically via [Changesets](https://github.com/changesets/changesets).
+
+- Every pull request introducing non-documentation changes must include a changeset generated via `npx changeset`.
+- Bumping versions and updating release notes is handled automatically via a Version PR created by Changesets.
+- Merging the Version PR creates unified version git tags (`vX.Y.Z`) and GitHub Releases.
 
 ## License
 

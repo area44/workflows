@@ -36,23 +36,20 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Verify build artifacts
-        run: npm run verify:artifacts
+      - name: Validate Changeset in PR
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1 || true
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -vE '^(\.changeset\/|docs\/|.*\.md$)' || true)
+          CHANGESET_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.changeset\/.*\.md$' || true)
 
-      - name: Verify repository version
-        run: npm run verify:version
-
-      - name: Verify upgrade guardrails
-        env:
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-        run: npm run verify:upgrade
-
-      - name: Verify documentation consistency
-        run: npm run verify:docs
-
-      - name: Verify repository health
-        run: npm run verify:health
+          if [ -n "$NON_DOC_FILES" ] && [ -z "$CHANGESET_FILES" ]; then
+            echo "Error: Pull request introduces code or configuration changes without a changeset."
+            echo "Please run 'npx changeset' to create a changeset file for your PR."
+            exit 1
+          fi
 
       - name: Run tests
         run: npm test
