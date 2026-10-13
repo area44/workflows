@@ -15,7 +15,7 @@ This document defines the build policy, generated artifact structure, release in
   - `src/resolve-environment.ts` → `dist/resolve-environment.mjs`
   - `src/autofix.ts` → `dist/autofix.mjs`
   - `src/site-variables.ts` → `dist/site-variables.mjs`
-  - `src/autofix.ts` → `dist/autofix.mjs`
+  - `src/build-command.ts` → `dist/build-command.mjs`
 - **Consumer Action Entry Points**: Public composite actions (`astro`, `vite`, `vite-plus`, `autofix`) execute generated entrypoints via `$ACTION_PATH/../dist/<entrypoint>.mjs`.
 
 ## Verification Engine & Integrity Rules
