@@ -378,37 +378,79 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
       );
     });
 
+    function createTestGitRepoForBaseRef(): {
+      tempDir: string;
+      c1Sha: string;
+      c2Sha: string;
+      cleanup: () => void;
+    } {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-guardrail-test-baseref-"));
+      execFileSync("git", ["init", "-b", "main"], { cwd: tempDir, stdio: "ignore" });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: tempDir, stdio: "ignore" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: tempDir,
+        stdio: "ignore",
+      });
+
+      fs.writeFileSync(path.join(tempDir, "file.txt"), "v1");
+      execFileSync("git", ["add", "."], { cwd: tempDir, stdio: "ignore" });
+      execFileSync("git", ["commit", "-m", "commit 1"], { cwd: tempDir, stdio: "ignore" });
+      const c1Sha = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: tempDir,
+        encoding: "utf8",
+      }).trim();
+
+      execFileSync("git", ["update-ref", "refs/remotes/origin/main", c1Sha], {
+        cwd: tempDir,
+        stdio: "ignore",
+      });
+
+      fs.writeFileSync(path.join(tempDir, "file.txt"), "v2");
+      execFileSync("git", ["add", "."], { cwd: tempDir, stdio: "ignore" });
+      execFileSync("git", ["commit", "-m", "commit 2"], { cwd: tempDir, stdio: "ignore" });
+      const c2Sha = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: tempDir,
+        encoding: "utf8",
+      }).trim();
+
+      return {
+        tempDir,
+        c1Sha,
+        c2Sha,
+        cleanup: () => fs.rmSync(tempDir, { recursive: true, force: true }),
+      };
+    }
+
     it("resolves PR event baseline via GITHUB_BASE_REF", () => {
+      const { tempDir, cleanup } = createTestGitRepoForBaseRef();
       const origGhBase = process.env.GITHUB_BASE_REF;
       try {
         process.env.GITHUB_BASE_REF = "origin/main";
-        const resolved = resolveBaseRef();
+        const resolved = resolveBaseRef(undefined, tempDir);
         expect(resolved).toMatch(/origin\/main/);
       } finally {
         if (origGhBase !== undefined) process.env.GITHUB_BASE_REF = origGhBase;
         else delete process.env.GITHUB_BASE_REF;
+        cleanup();
       }
     });
 
     it("resolves push event baseline via GITHUB_EVENT_BEFORE when valid previous commit SHA is provided", () => {
+      const { tempDir, c1Sha, cleanup } = createTestGitRepoForBaseRef();
       const origGhBefore = process.env.GITHUB_EVENT_BEFORE;
       try {
-        const baseSha = execFileSync(
-          "git",
-          ["rev-parse", "--verify", "origin/main^{commit}"],
-          { encoding: "utf8" },
-        ).trim();
-
-        process.env.GITHUB_EVENT_BEFORE = baseSha;
-        const resolved = resolveBaseRef();
-        expect(resolved).toBe(baseSha);
+        process.env.GITHUB_EVENT_BEFORE = c1Sha;
+        const resolved = resolveBaseRef(undefined, tempDir);
+        expect(resolved).toBe(c1Sha);
       } finally {
         if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
         else delete process.env.GITHUB_EVENT_BEFORE;
+        cleanup();
       }
     });
 
     it("respects environment variable priority sequence: explicit > UPGRADE_BASE_REF > BASE_REF > GITHUB_BASE_REF > GITHUB_EVENT_BEFORE", () => {
+      const { tempDir, cleanup } = createTestGitRepoForBaseRef();
       const origUpgrade = process.env.UPGRADE_BASE_REF;
       const origBase = process.env.BASE_REF;
       const origGhBase = process.env.GITHUB_BASE_REF;
@@ -420,20 +462,20 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
         process.env.GITHUB_BASE_REF = "invalid-gh-base-ref";
         process.env.GITHUB_EVENT_BEFORE = "invalid-gh-before";
 
-        expect(resolveBaseRef("origin/main")).toMatch(/origin\/main/);
-        expect(resolveBaseRef()).toMatch(/origin\/main/);
+        expect(resolveBaseRef("origin/main", tempDir)).toMatch(/origin\/main/);
+        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
         delete process.env.UPGRADE_BASE_REF;
         process.env.BASE_REF = "origin/main";
-        expect(resolveBaseRef()).toMatch(/origin\/main/);
+        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
         delete process.env.BASE_REF;
         process.env.GITHUB_BASE_REF = "origin/main";
-        expect(resolveBaseRef()).toMatch(/origin\/main/);
+        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
 
         delete process.env.GITHUB_BASE_REF;
         process.env.GITHUB_EVENT_BEFORE = "origin/main";
-        expect(resolveBaseRef()).toMatch(/origin\/main/);
+        expect(resolveBaseRef(undefined, tempDir)).toMatch(/origin\/main/);
       } finally {
         if (origUpgrade !== undefined) process.env.UPGRADE_BASE_REF = origUpgrade;
         else delete process.env.UPGRADE_BASE_REF;
@@ -446,6 +488,8 @@ export const CANONICAL_COMPATIBILITY_MODEL: CanonicalCompatibilityModel = {
 
         if (origGhBefore !== undefined) process.env.GITHUB_EVENT_BEFORE = origGhBefore;
         else delete process.env.GITHUB_EVENT_BEFORE;
+
+        cleanup();
       }
     });
 
