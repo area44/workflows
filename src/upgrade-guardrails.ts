@@ -435,11 +435,11 @@ function verifyGitRef(
   }
 
   try {
-    const sha = execFileSync(
-      "git",
-      ["rev-parse", "--verify", "--quiet", `${trimmed}^{commit}`],
-      { cwd: rootDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
+    const sha = execFileSync("git", ["rev-parse", "--verify", "--quiet", `${trimmed}^{commit}`], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
     if (sha) {
       return { ref: trimmed, sha };
     }
@@ -554,9 +554,7 @@ export function loadBaselineContractsFromGit(
       );
     }
 
-    const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map(
-      (m) => m[1],
-    );
+    const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map((m) => m[1]);
     if (extracted.length === 0) {
       throw new WorkflowError(
         "INVALID_INPUT",
@@ -572,7 +570,10 @@ export function loadBaselineContractsFromGit(
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
-      const entries = treeOutput.split("\n").map((e) => e.trim()).filter(Boolean);
+      const entries = treeOutput
+        .split("\n")
+        .map((e) => e.trim())
+        .filter(Boolean);
       for (const entry of entries) {
         if (
           entry.startsWith(".") ||
@@ -689,7 +690,12 @@ export function resolveBaseRef(explicitBaseRef?: string, rootDir: string = proce
         throw new WorkflowError(
           "INVALID_INPUT",
           `Baseline revision from ${envVar.name} "${candidateVal}" (${resolved.sha}) resolves to current commit HEAD (${headSha}). Comparing a commit against itself is strictly prohibited for upgrade guardrails. Ensure a valid previous commit or base branch is provided.`,
-          { stage: "upgrade-guardrail", envVar: envVar.name, candidate: candidateVal, sha: resolved.sha },
+          {
+            stage: "upgrade-guardrail",
+            envVar: envVar.name,
+            candidate: candidateVal,
+            sha: resolved.sha,
+          },
         );
       }
       return resolved.ref;
