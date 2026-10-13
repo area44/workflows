@@ -58,7 +58,7 @@ describe("site-variables", () => {
     });
 
     it("should not set SITE and BASE variables for action paths not matching astro/vite/vite-plus", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/lint-format";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/autofix";
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 

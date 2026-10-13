@@ -1013,7 +1013,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "bun",
       },
       {
-        action: "lint-format",
+        action: "autofix",
         runtime: "node",
         pm: "npm",
         type: "basic",
@@ -1023,7 +1023,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "lint-format",
+        action: "autofix",
         runtime: "node",
         pm: "pnpm",
         type: "basic",

@@ -32,7 +32,7 @@ describe("Upgrade Guardrails Specification", () => {
     astro: sampleBaseContract,
     vite: sampleBaseContract,
     "vite-plus": sampleBaseContract,
-    "lint-format": sampleBaseContract,
+    autofix: sampleBaseContract,
   };
 
   const sampleBaseModel: CanonicalCompatibilityModel = {

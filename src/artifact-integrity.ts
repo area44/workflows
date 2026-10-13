@@ -214,7 +214,10 @@ function checkGitStatusDrift(rootDir: string): string[] {
     if (statusOutput) {
       const lines = statusOutput.split("\n");
       for (const line of lines) {
-        const file = line.trim().split(/\s+/).slice(1).join(" ");
+        let file = line.trim().split(/\s+/).slice(1).join(" ");
+        if (file.includes("->")) {
+          file = file.split("->").pop()!.trim();
+        }
         if (file) {
           staleArtifacts.push(path.normalize(file));
         }

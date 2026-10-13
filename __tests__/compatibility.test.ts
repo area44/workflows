@@ -99,7 +99,7 @@ describe("Compatibility Contract Validation", () => {
     it("should verify no duplicated compatibility matrices exist outside src/compatibility.ts", () => {
       const srcFiles = [
         "build-command.ts",
-        "lint-format.ts",
+        "autofix.ts",
         "resolve-environment.ts",
         "setup-adapters.ts",
         "site-variables.ts",
@@ -150,7 +150,7 @@ describe("Compatibility Contract Validation", () => {
         ],
       },
       {
-        name: "lint-format",
+        name: "autofix",
         expectedInputs: ["runtime"],
         expectedOutputs: [
           "node-version",
@@ -184,7 +184,7 @@ describe("Compatibility Contract Validation", () => {
 
     it("should validate all public action contracts via parseActionContract", () => {
       const contracts = validateAllPublicActionContracts(rootDir);
-      expect(Object.keys(contracts)).toEqual(["astro", "vite", "vite-plus", "lint-format"]);
+      expect(Object.keys(contracts)).toEqual(["astro", "vite", "vite-plus", "autofix"]);
     });
   });
 
@@ -436,7 +436,7 @@ describe("Compatibility Contract Validation", () => {
   describe("Compatibility Matrix Validation in CI Workflow", () => {
     const testActionsYmlPath = path.join(rootDir, ".github/workflows/test-actions.yml");
     const testActionsYml = fs.readFileSync(testActionsYmlPath, "utf8");
-    const actions = ["astro", "vite", "vite-plus", "lint-format"];
+    const actions = ["astro", "vite", "vite-plus", "autofix"];
 
     it("should parse test-actions.yml structurally and extract matrix entries", () => {
       const entries = extractWorkflowMatrixEntries(testActionsYml);
@@ -588,7 +588,7 @@ jobs:
     it("should verify runtime output against matrix.runtime in test-actions.yml", () => {
       expect(testActionsYml).toContain("EXPECTED_RUNTIME: ${{ matrix.runtime }}");
       expect(testActionsYml).toContain(
-        'DETECTED_RUNTIME="${ASTRO_RUNTIME}${LINT_FORMAT_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
+        'DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
       );
       expect(testActionsYml).toContain('if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then');
     });

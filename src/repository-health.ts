@@ -79,7 +79,8 @@ function scanForUnexpectedActions(rootDir: string, errors: string[]): void {
         dirName === "src" ||
         dirName === "dist" ||
         dirName === "docs" ||
-        dirName === "__tests__"
+        dirName === "__tests__" ||
+        dirName === "lint-format"
       ) {
         continue;
       }

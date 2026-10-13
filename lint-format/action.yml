@@ -1,5 +1,5 @@
-name: Lint and Format
-description: Automatically lint and format code using project-defined scripts and autofix.ci
+name: Lint and Format (Deprecated Wrapper)
+description: "Deprecated: use area44/workflows/autofix instead. Automatically lint and format code using project-defined scripts and autofix.ci"
 inputs:
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
@@ -86,9 +86,9 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/lint-format.mjs"
+          bun "$ACTION_PATH/../dist/autofix.mjs"
         else
-          node "$ACTION_PATH/../dist/lint-format.mjs"
+          node "$ACTION_PATH/../dist/autofix.mjs"
         fi
 
     - name: Run autofix.ci
