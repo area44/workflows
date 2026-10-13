@@ -22,13 +22,13 @@ import {
 
 export interface BaselineContracts {
   version: string;
-  publicActions: Record<PublicActionName, PublicActionContract>;
+  publicActions: Record<string, PublicActionContract>;
   compatibilityModel: CanonicalCompatibilityModel;
 }
 
 export interface TargetContracts {
   version: string;
-  publicActions: Record<PublicActionName, PublicActionContract>;
+  publicActions: Record<string, PublicActionContract>;
   compatibilityModel: CanonicalCompatibilityModel;
 }
 
@@ -80,8 +80,8 @@ export function isVersionSatisfyingImpact(
  * Compares baseline and target public action contracts to detect breaking and backward-compatible changes.
  */
 export function comparePublicActionContracts(
-  baseline: Record<PublicActionName, PublicActionContract>,
-  target: Record<PublicActionName, PublicActionContract>,
+  baseline: Record<string, PublicActionContract>,
+  target: Record<string, PublicActionContract>,
 ): {
   breakingChanges: string[];
   changeDescriptor: Partial<ChangeDescriptor>;
@@ -95,9 +95,23 @@ export function comparePublicActionContracts(
   let hasRemovedPublicInput = false;
   let hasRemovedPublicOutput = false;
 
-  for (const actionName of PUBLIC_ACTIONS) {
+  const allActionNames = Array.from(
+    new Set([...Object.keys(baseline), ...Object.keys(target)]),
+  );
+
+  for (const actionName of allActionNames) {
     const baseContract = baseline[actionName];
     const targetContract = target[actionName];
+
+    if (!baseContract && targetContract) {
+      addedOptionalInputs += targetContract.inputs.filter((i) => !i.required).length;
+      addedPublicOutputs += targetContract.outputs.length;
+      if (targetContract.inputs.some((i) => i.required)) {
+        hasRequiredInputAddition = true;
+        breakingChanges.push(`Newly added public action "${actionName}" has required inputs.`);
+      }
+      continue;
+    }
 
     if (!baseContract) {
       continue;
@@ -383,8 +397,22 @@ export function loadBaselineContractsFromGit(
     );
   }
 
-  const publicActions = {} as Record<PublicActionName, PublicActionContract>;
-  for (const actionName of PUBLIC_ACTIONS) {
+  let basePublicActions: string[] = [...PUBLIC_ACTIONS];
+  try {
+    const contractSource = gitExec(`git show ${baseRef}:src/action-contract.ts`);
+    const match = contractSource.match(/export\s+const\s+PUBLIC_ACTIONS\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+    if (match && match[1]) {
+      const extracted = Array.from(match[1].matchAll(/["\x27]([^"\x27]+)["\x27]/g)).map((m) => m[1]);
+      if (extracted.length > 0) {
+        basePublicActions = extracted;
+      }
+    }
+  } catch {
+    // Fall back to target's PUBLIC_ACTIONS if src/action-contract.ts is not retrievable
+  }
+
+  const publicActions = {} as Record<string, PublicActionContract>;
+  for (const actionName of basePublicActions) {
     let actionYamlContent = "";
     try {
       actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yml`);
