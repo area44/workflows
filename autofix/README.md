@@ -44,10 +44,3 @@ jobs:
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
 
-## Migration to `autofix`
-
-Workflows must use `area44/workflows/autofix`:
-
-```yaml
-uses: area44/workflows/autofix@main
-```

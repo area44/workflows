@@ -121,14 +121,6 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
 
-## Migration to `autofix`
-
-Workflows must use `area44/workflows/autofix`:
-
-```yaml
-uses: area44/workflows/autofix@main
-```
-
 ## Compatibility Overview
 
 Environment resolution (`src/resolve-environment.ts`) automatically discovers workspace configuration or falls back to canonical default versions:
