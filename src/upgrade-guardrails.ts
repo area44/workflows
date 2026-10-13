@@ -389,7 +389,19 @@ export function loadBaselineContractsFromGit(
     try {
       actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yml`);
     } catch {
-      actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yaml`);
+      try {
+        actionYamlContent = gitExec(`git show ${baseRef}:${actionName}/action.yaml`);
+      } catch (err) {
+        if (actionName === "autofix") {
+          try {
+            actionYamlContent = gitExec(`git show ${baseRef}:lint-format/action.yml`);
+          } catch {
+            actionYamlContent = gitExec(`git show ${baseRef}:lint-format/action.yaml`);
+          }
+        } else {
+          throw err;
+        }
+      }
     }
     publicActions[actionName] = parseActionContractYaml(actionName, actionYamlContent);
   }
