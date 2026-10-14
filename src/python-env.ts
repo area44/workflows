@@ -453,72 +453,74 @@ export function isRuffExecutableInEnvironment(
   }
 }
 
-export function ensureRuffAvailable(
+function ensureRuffStandalone(
   pmInfo: PythonPackageManagerInfo,
-  cwd: string = process.cwd(),
-  checkExec: (bin: string) => boolean = isExecutableAvailable,
+  cwd: string,
+  checkExec: (bin: string) => boolean,
 ): void {
-  if (pmInfo.isStandalone) {
-    if (
-      checkExec("ruff") ||
-      checkExec("uvx") ||
-      checkExec("uv") ||
-      checkExec("pipx") ||
-      isRuffExecutableInEnvironment(pmInfo, cwd)
-    ) {
-      return;
-    }
-    const pyBin = getPythonBinary();
-    core.info(`Ruff not found in PATH for standalone project. Installing Ruff using ${pyBin}...`);
-    try {
-      execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
-    } catch {
-      try {
-        execSync("pip install ruff", { stdio: "inherit", cwd });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new WorkflowError(
-          "SETUP_FAILURE",
-          `Failed to install Ruff for standalone Python project: ${msg}`,
-          { stage: "ruff-installation", cause: err },
-        );
-      }
-    }
+  if (
+    checkExec("ruff") ||
+    checkExec("uvx") ||
+    checkExec("uv") ||
+    checkExec("pipx") ||
+    isRuffExecutableInEnvironment(pmInfo, cwd)
+  ) {
     return;
   }
-
-  if (isRuffDeclaredInProject(cwd, pmInfo)) {
-    if (isRuffExecutableInEnvironment(pmInfo, cwd)) {
-      return;
-    }
-
-    const pyBin = getPythonBinary();
-    core.info(`Ruff is declared as a project dependency but is not executable. Installing...`);
+  const pyBin = getPythonBinary();
+  core.info(`Ruff not found in PATH for standalone project. Installing Ruff using ${pyBin}...`);
+  try {
+    execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
+  } catch {
     try {
-      if (pmInfo.name === "uv") {
-        execSync("uv sync", { stdio: "inherit", cwd });
-      } else {
-        execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
-      }
+      execSync("pip install ruff", { stdio: "inherit", cwd });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new WorkflowError(
         "SETUP_FAILURE",
-        `Failed to install declared Ruff dependency in project environment: ${msg}`,
+        `Failed to install Ruff for standalone Python project: ${msg}`,
         { stage: "ruff-installation", cause: err },
       );
     }
+  }
+}
 
-    if (!isRuffExecutableInEnvironment(pmInfo, cwd)) {
-      throw new WorkflowError(
-        "SETUP_FAILURE",
-        "Ruff is declared as a project dependency but remains unexecutable after installation.",
-        { stage: "ruff-verification" },
-      );
-    }
+function ensureRuffDeclared(pmInfo: PythonPackageManagerInfo, cwd: string): void {
+  if (isRuffExecutableInEnvironment(pmInfo, cwd)) {
     return;
   }
 
+  const pyBin = getPythonBinary();
+  core.info(`Ruff is declared as a project dependency but is not executable. Installing...`);
+  try {
+    if (pmInfo.name === "uv") {
+      execSync("uv sync", { stdio: "inherit", cwd });
+    } else {
+      execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new WorkflowError(
+      "SETUP_FAILURE",
+      `Failed to install declared Ruff dependency in project environment: ${msg}`,
+      { stage: "ruff-installation", cause: err },
+    );
+  }
+
+  if (!isRuffExecutableInEnvironment(pmInfo, cwd)) {
+    throw new WorkflowError(
+      "SETUP_FAILURE",
+      "Ruff is declared as a project dependency but remains unexecutable after installation.",
+      { stage: "ruff-verification" },
+    );
+  }
+}
+
+function ensureRuffUndeclared(
+  pmInfo: PythonPackageManagerInfo,
+  cwd: string,
+  checkExec: (bin: string) => boolean,
+): void {
   if (
     checkExec("ruff") ||
     checkExec("uvx") ||
@@ -545,6 +547,24 @@ export function ensureRuffAvailable(
       );
     }
   }
+}
+
+export function ensureRuffAvailable(
+  pmInfo: PythonPackageManagerInfo,
+  cwd: string = process.cwd(),
+  checkExec: (bin: string) => boolean = isExecutableAvailable,
+): void {
+  if (pmInfo.isStandalone) {
+    ensureRuffStandalone(pmInfo, cwd, checkExec);
+    return;
+  }
+
+  if (isRuffDeclaredInProject(cwd, pmInfo)) {
+    ensureRuffDeclared(pmInfo, cwd);
+    return;
+  }
+
+  ensureRuffUndeclared(pmInfo, cwd, checkExec);
 }
 
 export function getPythonRuffCommands(
