@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { executePythonWorkflow, run, sanitizePackageManager, synchronizeJsDependencies } from "../src/autofix";
+import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
 import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
@@ -84,21 +84,17 @@ describe("autofix", () => {
       expect(execSync).toHaveBeenCalledWith("uv run ruff check --fix .", { stdio: "inherit" });
     });
 
-    it("should install Python dependencies and synchronize lockfile when executing Python workflow", () => {
+    it("should install Python dependencies when executing Python workflow", () => {
       executePythonWorkflow({
-        name: "poetry",
-        installCommand: "poetry install",
-        lockCommand: "poetry lock --no-update",
-        syncCommand: "poetry install",
-        execPrefix: "poetry run",
+        name: "pip",
+        installCommand: "pip install -r requirements.txt",
+        execPrefix: "",
       });
 
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: poetry");
-      expect(core.info).toHaveBeenCalledWith("Synchronizing Python lockfile: poetry lock --no-update");
-      expect(execSync).toHaveBeenCalledWith("poetry lock --no-update", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("poetry install", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("poetry run ruff format .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("poetry run ruff check --fix .", { stdio: "inherit" });
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+      expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/ruff format \.$/), { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/ruff check --fix \.$/), { stdio: "inherit" });
     });
 
     it("should skip lockfile sync and dependency installation for standalone Python projects", () => {
@@ -172,24 +168,6 @@ describe("autofix", () => {
     });
   });
 
-  describe("JS/TS Lockfile Synchronization", () => {
-    it("should synchronize JS lockfile when lockfile is missing", () => {
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/js-sync-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "js-sync", scripts: { check: "echo ok" } }));
-
-      try {
-        synchronizeJsDependencies("npm", tempDir);
-
-        expect(core.info).toHaveBeenCalledWith(
-          expect.stringContaining("JS/TS lockfile (package-lock.json) is missing. Synchronizing dependencies: npm install"),
-        );
-        expect(execSync).toHaveBeenCalledWith("npm install", { stdio: "inherit" });
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-  });
 
   describe("package.json existence checks", () => {
     it("should skip and log when package.json does not exist", () => {

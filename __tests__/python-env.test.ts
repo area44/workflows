@@ -77,8 +77,8 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
 
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
-    it("should define priority order as uv > poetry > pdm > pipenv > pip", () => {
-      expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "poetry", "pdm", "pipenv", "pip"]);
+    it("should define priority order as uv > pip", () => {
+      expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
     });
   });
 
@@ -107,43 +107,6 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(pmInfo?.execPrefix).toBe("uv run");
     });
 
-    it("should detect poetry package manager from poetry fixture directory", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "poetry"));
-      expect(pmInfo).not.toBeNull();
-      expect(pmInfo?.name).toBe("poetry");
-      expect(pmInfo?.lockfile).toBe("poetry.lock");
-      expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("poetry install");
-      expect(pmInfo?.execPrefix).toBe("poetry run");
-    });
-
-    it("should detect pdm package manager from pdm fixture directory", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "pdm"));
-      expect(pmInfo).not.toBeNull();
-      expect(pmInfo?.name).toBe("pdm");
-      expect(pmInfo?.lockfile).toBe("pdm.lock");
-      expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("pdm install");
-      expect(pmInfo?.execPrefix).toBe("pdm run");
-    });
-
-    it("should detect pipenv package manager when Pipfile or Pipfile.lock exists", () => {
-      const tempDir = path.join(fixturesDir, "pipenv-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "Pipfile"), "[packages]\nruff = '*'\n");
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pipenv");
-        expect(pmInfo?.configFile).toBe("Pipfile");
-        expect(pmInfo?.installCommand).toBe("pipenv install --dev");
-        expect(pmInfo?.execPrefix).toBe("pipenv run");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
 
     it("should detect pip package manager from pip fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "pip"));

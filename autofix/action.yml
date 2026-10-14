@@ -28,7 +28,7 @@ outputs:
     description: "The Python version used"
     value: ${{ steps.resolve_environment.outputs.python-version }}
   python-package-manager:
-    description: "The Python package manager detected (uv, poetry, pdm, pipenv, or pip)"
+    description: "The Python package manager detected (uv or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
 
 runs:
@@ -80,7 +80,7 @@ runs:
         PM="${PACKAGE_MANAGER:-npm}"
         case "$PM" in
           pnpm)
-            pnpm install --no-frozen-lockfile
+            pnpm install
             ;;
           bun)
             bun install

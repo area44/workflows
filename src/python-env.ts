@@ -2,13 +2,10 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-export type PythonPackageManager = "uv" | "poetry" | "pdm" | "pipenv" | "pip";
+export type PythonPackageManager = "uv" | "pip";
 
 export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = [
   "uv",
-  "poetry",
-  "pdm",
-  "pipenv",
   "pip",
 ] as const;
 
@@ -81,29 +78,7 @@ function readPyprojectPythonVersion(cwd: string): string | undefined {
     const content = fs.readFileSync(pyprojectFile, "utf8");
     const reqMatch = content.match(/requires-python\s*=\s*["']([^"']+)["']/i);
     if (reqMatch && reqMatch[1]) {
-      const ver = parsePythonVersionFromConstraint(reqMatch[1]);
-      if (ver) return ver;
-    }
-    const poetryMatch = content.match(
-      /\[tool\.poetry\.dependencies\][^[]*?\bpython\s*=\s*["']([^"']+)["']/s,
-    );
-    if (poetryMatch && poetryMatch[1]) {
-      return parsePythonVersionFromConstraint(poetryMatch[1]);
-    }
-  } catch {
-    // Ignore read errors
-  }
-  return undefined;
-}
-
-function readPipfilePythonVersion(cwd: string): string | undefined {
-  const pipfile = path.join(cwd, "Pipfile");
-  if (!fs.existsSync(pipfile)) return undefined;
-  try {
-    const content = fs.readFileSync(pipfile, "utf8");
-    const match = content.match(/python_version\s*=\s*["']([^"']+)["']/i);
-    if (match && match[1]) {
-      return parsePythonVersionFromConstraint(match[1]);
+      return parsePythonVersionFromConstraint(reqMatch[1]);
     }
   } catch {
     // Ignore read errors
@@ -124,13 +99,12 @@ function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
 
 /**
  * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, Pipfile, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
+ * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
  */
 export function resolvePythonVersion(cwd: string = process.cwd()): string {
   return (
     readPythonVersionFile(cwd) ||
     readPyprojectPythonVersion(cwd) ||
-    readPipfilePythonVersion(cwd) ||
     readRuntimeTxtPythonVersion(cwd) ||
     DEFAULT_PYTHON_VERSION
   );
@@ -220,54 +194,6 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
   };
 }
 
-function detectPoetry(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
-  const hasPoetryLock = fs.existsSync(path.join(cwd, "poetry.lock"));
-  const hasPoetryConfig =
-    pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "poetry");
-  if (!hasPoetryLock && !hasPoetryConfig) return null;
-
-  return {
-    name: "poetry",
-    lockfile: hasPoetryLock ? "poetry.lock" : undefined,
-    configFile: hasPoetryConfig ? "pyproject.toml" : undefined,
-    installCommand: "poetry install",
-    lockCommand: "poetry lock --no-update",
-    syncCommand: "poetry install",
-    execPrefix: "poetry run",
-  };
-}
-
-function detectPdm(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
-  const hasPdmLock = fs.existsSync(path.join(cwd, "pdm.lock"));
-  const hasPdmConfig = pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "pdm");
-  if (!hasPdmLock && !hasPdmConfig) return null;
-
-  return {
-    name: "pdm",
-    lockfile: hasPdmLock ? "pdm.lock" : undefined,
-    configFile: hasPdmConfig ? "pyproject.toml" : undefined,
-    installCommand: "pdm install",
-    lockCommand: "pdm lock",
-    syncCommand: "pdm install",
-    execPrefix: "pdm run",
-  };
-}
-
-function detectPipenv(cwd: string): PythonPackageManagerInfo | null {
-  const hasPipfileLock = fs.existsSync(path.join(cwd, "Pipfile.lock"));
-  const hasPipfile = fs.existsSync(path.join(cwd, "Pipfile"));
-  if (!hasPipfileLock && !hasPipfile) return null;
-
-  return {
-    name: "pipenv",
-    lockfile: hasPipfileLock ? "Pipfile.lock" : undefined,
-    configFile: "Pipfile",
-    installCommand: "pipenv install --dev",
-    lockCommand: "pipenv lock",
-    syncCommand: "pipenv install --dev",
-    execPrefix: "pipenv run",
-  };
-}
 
 function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
@@ -325,12 +251,7 @@ export function detectPythonPackageManager(
     }
   }
 
-  const detected =
-    detectUv(cwd, pyprojectContent) ||
-    detectPoetry(cwd, pyprojectContent) ||
-    detectPdm(cwd, pyprojectContent) ||
-    detectPipenv(cwd) ||
-    detectPip(cwd, pyprojectContent);
+  const detected = detectUv(cwd, pyprojectContent) || detectPip(cwd, pyprojectContent);
 
   if (detected) {
     return detected;
@@ -363,8 +284,7 @@ export function isRuffDeclaredInProject(
 
   return (
     hasRuffInFile(path.join(cwd, "pyproject.toml"), /\bruff\b/i) ||
-    hasRuffInFile(path.join(cwd, "requirements.txt"), /^\s*ruff\b/im) ||
-    hasRuffInFile(path.join(cwd, "Pipfile"), /\bruff\b/i)
+    hasRuffInFile(path.join(cwd, "requirements.txt"), /^\s*ruff\b/im)
   );
 }
 
