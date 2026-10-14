@@ -1,0 +1,12 @@
+[project]
+name = "conflicting-fixture"
+version = "0.1.0"
+
+[tool.uv]
+dev-dependencies = ["ruff"]
+
+[tool.poetry]
+name = "conflicting-fixture"
+
+[tool.pdm]
+dev-dependencies = ["ruff"]

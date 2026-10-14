@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { run, sanitizePackageManager } from "../src/autofix";
+import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
+import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");
@@ -17,6 +18,7 @@ describe("autofix", () => {
     vi.clearAllMocks();
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
+    delete process.env.SKIP_PYTHON_INSTALL;
   });
 
   afterEach(() => {
@@ -67,6 +69,68 @@ describe("autofix", () => {
     });
   });
 
+  describe("Python Integration", () => {
+    const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
+
+    it("should execute Python workflow for uv fixture", () => {
+      process.chdir(path.join(pythonFixturesDir, "uv"));
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
+      expect(execSync).toHaveBeenCalledWith("uv sync", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run ruff format .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv run ruff check --fix .", { stdio: "inherit" });
+    });
+
+    it("should install Python dependencies when executing Python workflow", () => {
+      executePythonWorkflow({
+        name: "poetry",
+        installCommand: "poetry install",
+        execPrefix: "poetry run",
+      });
+
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: poetry");
+      expect(execSync).toHaveBeenCalledWith("poetry install", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("poetry run ruff format .", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("poetry run ruff check --fix .", { stdio: "inherit" });
+    });
+
+    it("should warn and skip if python and package manager binaries are not available", () => {
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+
+      executePythonWorkflow({
+        name: "uv",
+        installCommand: "uv sync",
+        execPrefix: "uv run",
+      });
+
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("Python environment or package manager 'uv' is not available in PATH"),
+      );
+    });
+
+    it("should handle failure in Python commands gracefully", () => {
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(true);
+      vi.mocked(execSync).mockImplementation((cmd: string) => {
+        if (!cmd.startsWith("command -v") && !cmd.startsWith("where")) {
+          throw new Error("Ruff failed");
+        }
+        return "" as any;
+      });
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+      executePythonWorkflow({
+        name: "pip",
+        installCommand: "pip install ruff",
+        execPrefix: "",
+      });
+
+      expect(core.error).toHaveBeenCalledWith('Python command "pip install ruff" failed');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("package.json existence checks", () => {
     it("should skip and log when package.json does not exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
@@ -80,7 +144,7 @@ describe("autofix", () => {
 
   describe("script execution routing", () => {
     it("should prioritize and run 'check' script if present", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -104,7 +168,7 @@ describe("autofix", () => {
       expect(sanitizePackageManager("pnpm-10")).toBe("pnpm-10");
 
       process.env.PACKAGE_MANAGER = "npm; rm -rf /";
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -122,7 +186,7 @@ describe("autofix", () => {
     });
 
     it("should run both 'format' and 'lint' if they are both defined", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -141,7 +205,7 @@ describe("autofix", () => {
     });
 
     it("should run both 'fmt' and 'lint' if 'format' is missing but 'fmt' is defined", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -160,7 +224,7 @@ describe("autofix", () => {
     });
 
     it("should execute only 'lint' if format/fmt are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -176,7 +240,7 @@ describe("autofix", () => {
     });
 
     it("should execute only 'format' if lint/fmt are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -192,7 +256,7 @@ describe("autofix", () => {
     });
 
     it("should execute only 'fmt' if lint/format are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -208,7 +272,7 @@ describe("autofix", () => {
     });
 
     it("should log info and skip execution when scripts are empty or no matched script exists", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -226,7 +290,7 @@ describe("autofix", () => {
     });
 
     it("should log info and skip execution when scripts block is missing entirely in package.json", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ name: "my-package" }) as any);
 
       run();
@@ -241,7 +305,7 @@ describe("autofix", () => {
   describe("package manager environmental options", () => {
     it("should respect custom PACKAGE_MANAGER env variable values such as pnpm", () => {
       process.env.PACKAGE_MANAGER = "pnpm";
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -258,7 +322,7 @@ describe("autofix", () => {
 
     it("should respect custom PACKAGE_MANAGER env variable values such as bun", () => {
       process.env.PACKAGE_MANAGER = "bun";
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
@@ -275,7 +339,7 @@ describe("autofix", () => {
 
     it("should fall back to npm if PACKAGE_MANAGER environment variable is undefined or blank", () => {
       delete process.env.PACKAGE_MANAGER;
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
