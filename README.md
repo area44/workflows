@@ -113,16 +113,16 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Outputs
 
-| Name                      | Description                                     |
-| ------------------------- | ----------------------------------------------- |
-| `node-version`            | The Node.js version used                        |
-| `bun-version`             | The Bun version used                            |
-| `package-manager`         | The package manager used                        |
-| `package-manager-version` | The version of the package manager used         |
-| `runtime`                 | The runtime used (node or bun)                  |
-| `has-python-source`       | Whether Python source code was detected         |
-| `python-version`          | The Python version used                         |
-| `python-package-manager`  | The Python package manager detected (uv or pip) |
+| Name                      | Description                                                           |
+| ------------------------- | --------------------------------------------------------------------- |
+| `node-version`            | The Node.js version used                                              |
+| `bun-version`             | The Bun version used                                                  |
+| `package-manager`         | The package manager used                                              |
+| `package-manager-version` | The version of the package manager used                               |
+| `runtime`                 | The runtime used (node or bun)                                        |
+| `has-python-source`       | Whether Python source code was detected                               |
+| `python-version`          | The Python version used                                               |
+| `python-package-manager`  | The Python package manager detected (uv or pip)                       |
 | `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
 ## Compatibility Overview

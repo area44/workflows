@@ -272,7 +272,10 @@ export function detectPythonPackageManager(
 
 export function extractRuffVersionSpecifier(raw: string): string | undefined {
   if (!raw) return undefined;
-  const cleaned = raw.trim().replace(/^ruff\s*/i, "").replace(/['"]/g, "");
+  const cleaned = raw
+    .trim()
+    .replace(/^ruff\s*/i, "")
+    .replace(/['"]/g, "");
   if (!cleaned) return undefined;
 
   // Exact pin like ==0.4.2 or 0.4.2 or @0.4.2
