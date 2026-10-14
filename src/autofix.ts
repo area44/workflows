@@ -74,11 +74,28 @@ export function executePythonWorkflow(
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
-  const hasPmBin = isExecutableAvailable(requiredBin);
-  const hasPythonBin = isExecutableAvailable("python3") || isExecutableAvailable("python");
+  let hasPmBin = isExecutableAvailable(requiredBin);
 
-  if (!hasPmBin && !hasPythonBin && !pmInfo.isStandalone) {
-    core.error(`Python environment or package manager '${requiredBin}' is not available in PATH.`);
+  if (pmInfo.name === "uv" && !hasPmBin) {
+    if (
+      isExecutableAvailable("pip") ||
+      isExecutableAvailable("python3") ||
+      isExecutableAvailable("python")
+    ) {
+      core.info("uv is not available in PATH. Attempting to install uv via pip...");
+      try {
+        execSync("pip install uv", { stdio: "inherit" });
+        hasPmBin = isExecutableAvailable("uv");
+      } catch {
+        // Installation attempt failed
+      }
+    }
+  }
+
+  if (!hasPmBin && !pmInfo.isStandalone) {
+    core.error(
+      `Required Python package manager '${requiredBin}' is not available in PATH.`,
+    );
     process.exit(1);
   }
 

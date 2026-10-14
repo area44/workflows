@@ -73,6 +73,19 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(isRuffDeclaredInProject(path.join(fixturesDir, "pip"))).toBe(true);
       expect(isRuffDeclaredInProject(path.join(fixturesDir, "none"))).toBe(false);
     });
+
+    it("should return false when pyproject.toml contains only [tool.ruff] configuration without dependency declaration", () => {
+      const tempDir = path.join(fixturesDir, "tool-ruff-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      try {
+        expect(isRuffDeclaredInProject(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
 

@@ -265,26 +265,44 @@ export function detectPythonPackageManager(
   };
 }
 
-function hasRuffInFile(filePath: string, pattern: RegExp): boolean {
-  if (!fs.existsSync(filePath)) return false;
-  try {
-    const content = fs.readFileSync(filePath, "utf8");
-    return pattern.test(content);
-  } catch {
-    return false;
-  }
-}
-
 export function isRuffDeclaredInProject(
   cwd: string = process.cwd(),
   pmInfo?: PythonPackageManagerInfo,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  return (
-    hasRuffInFile(path.join(cwd, "pyproject.toml"), /\bruff\b/i) ||
-    hasRuffInFile(path.join(cwd, "requirements.txt"), /^\s*ruff\b/im)
-  );
+  const pyprojectPath = path.join(cwd, "pyproject.toml");
+  if (fs.existsSync(pyprojectPath)) {
+    try {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      // Strip comments and [tool.ruff...] configuration sections
+      const stripped = content
+        .replace(/#.*/g, "")
+        .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
+      const hasInArray = /["']ruff(?:[<>=~^!].*|["'])/i.test(stripped);
+      const hasInKeyVal = /^\s*ruff\s*=/im.test(stripped);
+      if (hasInArray || hasInKeyVal) {
+        return true;
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+
+  const reqPath = path.join(cwd, "requirements.txt");
+  if (fs.existsSync(reqPath)) {
+    try {
+      const content = fs.readFileSync(reqPath, "utf8");
+      const stripped = content.replace(/#.*/g, "");
+      if (/^\s*ruff\b/im.test(stripped)) {
+        return true;
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+
+  return false;
 }
 
 export function getPythonRuffCommands(
@@ -296,12 +314,16 @@ export function getPythonRuffCommands(
 
   if (isRuffDeclaredInProject(cwd, pmInfo)) {
     prefix = pmInfo.execPrefix ? `${pmInfo.execPrefix} ` : "";
-  } else if (pmInfo.name === "uv" || isExecutableAvailable("uv")) {
+  } else if (isExecutableAvailable("uvx") || isExecutableAvailable("uv")) {
     prefix = "uvx ";
   } else if (isExecutableAvailable("pipx")) {
     prefix = "pipx run ";
+  } else if (isExecutableAvailable("ruff")) {
+    prefix = "";
+  } else if (pmInfo.execPrefix) {
+    prefix = `${pmInfo.execPrefix} `;
   } else {
-    prefix = pmInfo.execPrefix ? `${pmInfo.execPrefix} ` : "";
+    prefix = "";
   }
 
   switch (mode) {

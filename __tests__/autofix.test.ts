@@ -131,7 +131,7 @@ describe("autofix", () => {
       }
     });
 
-    it("should error and exit if python and package manager binaries are not available", () => {
+    it("should error and exit if required package manager binary is not available in PATH", () => {
       vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
@@ -142,9 +142,27 @@ describe("autofix", () => {
       });
 
       expect(core.error).toHaveBeenCalledWith(
-        expect.stringContaining("Python environment or package manager 'uv' is not available in PATH"),
+        expect.stringContaining("Required Python package manager 'uv' is not available in PATH"),
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("should run Python workflow in Python-only repository without package.json", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/py-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('py-only')\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+        expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/ruff format \.$/), { stdio: "inherit" });
+        expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/ruff check --fix \.$/), { stdio: "inherit" });
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should handle failure in Python commands gracefully", () => {
