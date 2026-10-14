@@ -6,6 +6,7 @@ import {
   DEFAULT_PYTHON_VERSION,
   detectPythonPackageManager,
   ensureRuffAvailable,
+  extractRuffVersionSpecifier,
   getPythonBinary,
   getPythonRuffCommands,
   hasPythonSource,
@@ -14,6 +15,7 @@ import {
   parsePythonVersionFromConstraint,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonVersion,
+  resolveRuffVersion,
   type PythonPackageManagerInfo,
 } from "../src/python-env.js";
 
@@ -102,6 +104,92 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
+    });
+  });
+
+  describe("resolveRuffVersion() and specifier extraction", () => {
+    it("should extract exact pin or version constraint from specifiers", () => {
+      expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
+      expect(extractRuffVersionSpecifier("ruff>=0.3.0")).toBe(">=0.3.0");
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("^0.4.0");
+      expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
+      expect(extractRuffVersionSpecifier("")).toBeUndefined();
+    });
+
+    it("should resolve locked ruff version from uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "ruff-uv-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("0.4.2");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve ruff version from pyproject.toml with exact pin", () => {
+      const tempDir = path.join(fixturesDir, "ruff-pin-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\ndependencies = ['ruff==0.4.2']\n",
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("0.4.2");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve ruff version constraint from pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "ruff-range-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['ruff>=0.3.0,<0.5.0']\n",
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe(">=0.3.0,<0.5.0");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve ruff version from requirements.txt", () => {
+      const tempDir = path.join(fixturesDir, "ruff-req-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "ruff==0.4.0\nrequests==2.31.0\n");
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("0.4.0");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return empty string when pyproject.toml contains only [tool.ruff] configuration", () => {
+      const tempDir = path.join(fixturesDir, "ruff-tool-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n",
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return empty string when no manifest or ruff declaration exists", () => {
+      expect(resolveRuffVersion(path.join(fixturesDir, "none"))).toBe("");
     });
   });
 

@@ -287,10 +287,40 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
     return exactMatch[1];
   }
 
+  // Version constraint or range like >=0.3.0,<0.5.0 or ^0.4.0 or ~=0.4.0
+  const rangeMatch = cleaned.match(
+    /^([<>=~^!]+\s*\d+\.\d+(?:\.\d+)?(?:,\s*[<>=~^!]+\s*\d+\.\d+(?:\.\d+)?)*)$/,
+  );
+  if (rangeMatch) {
+    return rangeMatch[1];
+  }
+
+  const specMatch = cleaned.match(/([<>=~^!]+\s*\d+\.\d+(?:\.\d+)?)/);
+  if (specMatch) {
+    return specMatch[1];
+  }
+
   return undefined;
 }
 
 export function resolveRuffVersion(cwd: string = process.cwd()): string {
+  // 1. Check uv.lock for locked ruff package version
+  const uvLockPath = path.join(cwd, "uv.lock");
+  if (fs.existsSync(uvLockPath)) {
+    try {
+      const content = fs.readFileSync(uvLockPath, "utf8");
+      const match = content.match(
+        /\[\[package\]\][\s\S]*?name\s*=\s*["']ruff["'][\s\S]*?version\s*=\s*["']([^"']+)["']/i,
+      );
+      if (match && match[1]) {
+        return match[1];
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+
+  // 2. pyproject.toml
   const pyprojectPath = path.join(cwd, "pyproject.toml");
   if (fs.existsSync(pyprojectPath)) {
     try {
@@ -315,6 +345,7 @@ export function resolveRuffVersion(cwd: string = process.cwd()): string {
     }
   }
 
+  // 3. requirements.txt
   const reqPath = path.join(cwd, "requirements.txt");
   if (fs.existsSync(reqPath)) {
     try {

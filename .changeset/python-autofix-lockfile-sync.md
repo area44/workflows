@@ -2,4 +2,4 @@
 "@area44/workflows": minor
 ---
 
-Add Python source detection, version resolution, setup-python integration, Ruff tool execution, and lockfile synchronization for Python and JavaScript/TypeScript package managers in autofix workflow.
+Add Python source detection, version resolution, uv and pip package manager support, dependency installation, lockfile synchronization, and Ruff formatting and linting using official Astral GitHub Actions in autofix workflow.
