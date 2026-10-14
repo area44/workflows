@@ -63,75 +63,77 @@ export function parsePythonVersionFromConstraint(raw: string): string | undefine
   return match ? match[1] : undefined;
 }
 
+function readPythonVersionFile(cwd: string): string | undefined {
+  const pythonVersionFile = path.join(cwd, ".python-version");
+  if (!fs.existsSync(pythonVersionFile)) return undefined;
+  try {
+    const content = fs.readFileSync(pythonVersionFile, "utf8").trim();
+    return parsePythonVersionFromConstraint(content);
+  } catch {
+    return undefined;
+  }
+}
+
+function readPyprojectPythonVersion(cwd: string): string | undefined {
+  const pyprojectFile = path.join(cwd, "pyproject.toml");
+  if (!fs.existsSync(pyprojectFile)) return undefined;
+  try {
+    const content = fs.readFileSync(pyprojectFile, "utf8");
+    const reqMatch = content.match(/requires-python\s*=\s*["']([^"']+)["']/i);
+    if (reqMatch && reqMatch[1]) {
+      const ver = parsePythonVersionFromConstraint(reqMatch[1]);
+      if (ver) return ver;
+    }
+    const poetryMatch = content.match(
+      /\[tool\.poetry\.dependencies\][^[]*?\bpython\s*=\s*["']([^"']+)["']/s,
+    );
+    if (poetryMatch && poetryMatch[1]) {
+      return parsePythonVersionFromConstraint(poetryMatch[1]);
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return undefined;
+}
+
+function readPipfilePythonVersion(cwd: string): string | undefined {
+  const pipfile = path.join(cwd, "Pipfile");
+  if (!fs.existsSync(pipfile)) return undefined;
+  try {
+    const content = fs.readFileSync(pipfile, "utf8");
+    const match = content.match(/python_version\s*=\s*["']([^"']+)["']/i);
+    if (match && match[1]) {
+      return parsePythonVersionFromConstraint(match[1]);
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return undefined;
+}
+
+function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
+  const runtimeTxt = path.join(cwd, "runtime.txt");
+  if (!fs.existsSync(runtimeTxt)) return undefined;
+  try {
+    const content = fs.readFileSync(runtimeTxt, "utf8").trim();
+    return parsePythonVersionFromConstraint(content);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Resolves the target Python version from project configuration files (.python-version,
  * pyproject.toml, Pipfile, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
  */
 export function resolvePythonVersion(cwd: string = process.cwd()): string {
-  // 1. Check .python-version
-  const pythonVersionFile = path.join(cwd, ".python-version");
-  if (fs.existsSync(pythonVersionFile)) {
-    try {
-      const content = fs.readFileSync(pythonVersionFile, "utf8").trim();
-      const ver = parsePythonVersionFromConstraint(content);
-      if (ver) return ver;
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  // 2. Check pyproject.toml
-  const pyprojectFile = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectFile)) {
-    try {
-      const content = fs.readFileSync(pyprojectFile, "utf8");
-      // PEP 621 or PDM: requires-python = ">=3.11"
-      const reqMatch = content.match(/requires-python\s*=\s*["']([^"']+)["']/i);
-      if (reqMatch && reqMatch[1]) {
-        const ver = parsePythonVersionFromConstraint(reqMatch[1]);
-        if (ver) return ver;
-      }
-      // Poetry: python = "^3.11"
-      const poetryMatch = content.match(
-        /\[tool\.poetry\.dependencies\][^[]*?\bpython\s*=\s*["']([^"']+)["']/s,
-      );
-      if (poetryMatch && poetryMatch[1]) {
-        const ver = parsePythonVersionFromConstraint(poetryMatch[1]);
-        if (ver) return ver;
-      }
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  // 3. Check Pipfile
-  const pipfile = path.join(cwd, "Pipfile");
-  if (fs.existsSync(pipfile)) {
-    try {
-      const content = fs.readFileSync(pipfile, "utf8");
-      const match = content.match(/python_version\s*=\s*["']([^"']+)["']/i);
-      if (match && match[1]) {
-        const ver = parsePythonVersionFromConstraint(match[1]);
-        if (ver) return ver;
-      }
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  // 4. Check runtime.txt
-  const runtimeTxt = path.join(cwd, "runtime.txt");
-  if (fs.existsSync(runtimeTxt)) {
-    try {
-      const content = fs.readFileSync(runtimeTxt, "utf8").trim();
-      const ver = parsePythonVersionFromConstraint(content);
-      if (ver) return ver;
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  return DEFAULT_PYTHON_VERSION;
+  return (
+    readPythonVersionFile(cwd) ||
+    readPyprojectPythonVersion(cwd) ||
+    readPipfilePythonVersion(cwd) ||
+    readRuntimeTxtPythonVersion(cwd) ||
+    DEFAULT_PYTHON_VERSION
+  );
 }
 
 export type RuffExecutionMode = "check" | "format-check" | "format" | "autofix";
@@ -343,49 +345,27 @@ export function detectPythonPackageManager(
   };
 }
 
+function hasRuffInFile(filePath: string, pattern: RegExp): boolean {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    return pattern.test(content);
+  } catch {
+    return false;
+  }
+}
+
 export function isRuffDeclaredInProject(
   cwd: string = process.cwd(),
   pmInfo?: PythonPackageManagerInfo,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      if (/\bruff\b/i.test(content)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
-    }
-  }
-
-  const reqPath = path.join(cwd, "requirements.txt");
-  if (fs.existsSync(reqPath)) {
-    try {
-      const content = fs.readFileSync(reqPath, "utf8");
-      if (/^\s*ruff\b/im.test(content)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
-    }
-  }
-
-  const pipfilePath = path.join(cwd, "Pipfile");
-  if (fs.existsSync(pipfilePath)) {
-    try {
-      const content = fs.readFileSync(pipfilePath, "utf8");
-      if (/\bruff\b/i.test(content)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
-    }
-  }
-
-  return false;
+  return (
+    hasRuffInFile(path.join(cwd, "pyproject.toml"), /\bruff\b/i) ||
+    hasRuffInFile(path.join(cwd, "requirements.txt"), /^\s*ruff\b/im) ||
+    hasRuffInFile(path.join(cwd, "Pipfile"), /\bruff\b/i)
+  );
 }
 
 export function getPythonRuffCommands(
