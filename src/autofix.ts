@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   detectPythonPackageManager,
+  ensureRuffAvailable,
   getPythonRuffCommands,
   isExecutableAvailable,
   type PythonPackageManagerInfo,
@@ -104,6 +105,8 @@ export function executePythonWorkflow(
       runPythonCommand(installCmd);
     }
   }
+
+  ensureRuffAvailable(pmInfo, process.cwd());
 
   const commands = getPythonRuffCommands(pmInfo, mode, process.cwd());
   for (const cmd of commands) {

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
+import * as pythonEnv from "../src/python-env.js";
 import {
   DEFAULT_PYTHON_VERSION,
   detectPythonPackageManager,
@@ -38,6 +39,22 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    it("should return true when ruff is in optional/dev dependencies in pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "dev-ruff-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['ruff>=0.1.0']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      try {
+        expect(isRuffDeclaredInProject(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("resolvePythonVersion() and constraint parsing", () => {
@@ -57,6 +74,26 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
       try {
         expect(resolvePythonVersion(tempDir)).toBe("3.11");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should generate combined installCommand for repositories containing both requirements.txt and pyproject.toml package", () => {
+      const tempDir = path.join(fixturesDir, "both-manifests-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'my-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -127,7 +164,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(pmInfo?.name).toBe("pip");
       expect(pmInfo?.lockfile).toBe("requirements.txt");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt");
+      expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
       expect(pmInfo?.execPrefix).toBe("");
     });
 
@@ -225,7 +262,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       ]);
     });
 
-    it("should use uvx fallback when ruff is not declared as a project dependency", () => {
+    it("should use uvx fallback when ruff is not declared as a project dependency and uvx is available", () => {
       const standaloneInfo: PythonPackageManagerInfo = {
         name: "pip",
         installCommand: "",
@@ -233,8 +270,21 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
         isStandalone: true,
       };
       const cmds = getPythonRuffCommands(standaloneInfo, "autofix", path.join(fixturesDir, "none"));
-      expect(cmds[0]).toMatch(/^(uvx |pipx run |ruff )?ruff format \.$/);
-      expect(cmds[1]).toMatch(/^(uvx |pipx run |ruff )?ruff check --fix \.$/);
+      expect(cmds[0]).toMatch(/^(uvx |uv tool run |pipx run |python -m |ruff )?ruff format \.$/);
+      expect(cmds[1]).toMatch(/^(uvx |uv tool run |pipx run |python -m |ruff )?ruff check --fix \.$/);
+    });
+
+    it("should use uv tool run when uv is available but uvx is missing", () => {
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin: string) => bin === "uv");
+      const standaloneInfo: PythonPackageManagerInfo = {
+        name: "pip",
+        installCommand: "",
+        execPrefix: "",
+        isStandalone: true,
+      };
+      const cmds = getPythonRuffCommands(standaloneInfo, "autofix", path.join(fixturesDir, "none"));
+      expect(cmds[0]).toBe("uv tool run ruff format .");
+      expect(cmds[1]).toBe("uv tool run ruff check --fix .");
     });
   });
 });

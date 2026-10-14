@@ -214,13 +214,18 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
     configFile = "setup.cfg";
   }
 
-  let installCommand = "pip install ruff";
+  let installCommand = "";
   let lockfile: string | undefined;
 
-  if (hasRequirements) {
+  const isPackage = hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
+
+  if (hasRequirements && isPackage) {
+    installCommand = "pip install -r requirements.txt && pip install -e .";
+    lockfile = "requirements.txt";
+  } else if (hasRequirements) {
     installCommand = "pip install -r requirements.txt";
     lockfile = "requirements.txt";
-  } else if (hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem) {
+  } else if (isPackage) {
     installCommand = "pip install -e .";
   }
 
@@ -305,6 +310,30 @@ export function isRuffDeclaredInProject(
   return false;
 }
 
+export function ensureRuffAvailable(
+  pmInfo: PythonPackageManagerInfo,
+  cwd: string = process.cwd(),
+): void {
+  if (isRuffDeclaredInProject(cwd, pmInfo)) {
+    return;
+  }
+
+  if (
+    isExecutableAvailable("uvx") ||
+    isExecutableAvailable("uv") ||
+    isExecutableAvailable("pipx") ||
+    isExecutableAvailable("ruff")
+  ) {
+    return;
+  }
+
+  try {
+    execSync("pip install ruff", { stdio: "inherit" });
+  } catch {
+    execSync("python3 -m pip install ruff", { stdio: "inherit" });
+  }
+}
+
 export function getPythonRuffCommands(
   pmInfo: PythonPackageManagerInfo,
   mode: RuffExecutionMode = "autofix",
@@ -314,16 +343,16 @@ export function getPythonRuffCommands(
 
   if (isRuffDeclaredInProject(cwd, pmInfo)) {
     prefix = pmInfo.execPrefix ? `${pmInfo.execPrefix} ` : "";
-  } else if (isExecutableAvailable("uvx") || isExecutableAvailable("uv")) {
+  } else if (exports.isExecutableAvailable("uvx")) {
     prefix = "uvx ";
-  } else if (isExecutableAvailable("pipx")) {
+  } else if (exports.isExecutableAvailable("uv")) {
+    prefix = "uv tool run ";
+  } else if (exports.isExecutableAvailable("pipx")) {
     prefix = "pipx run ";
-  } else if (isExecutableAvailable("ruff")) {
+  } else if (exports.isExecutableAvailable("ruff")) {
     prefix = "";
-  } else if (pmInfo.execPrefix) {
-    prefix = `${pmInfo.execPrefix} `;
   } else {
-    prefix = "";
+    prefix = "python -m ";
   }
 
   switch (mode) {
