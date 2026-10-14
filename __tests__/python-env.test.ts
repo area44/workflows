@@ -275,14 +275,19 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
     });
 
     it("should use uv tool run when uv is available but uvx is missing", () => {
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin: string) => bin === "uv");
+      const mockCheckExec = (bin: string) => bin === "uv";
       const standaloneInfo: PythonPackageManagerInfo = {
         name: "pip",
         installCommand: "",
         execPrefix: "",
         isStandalone: true,
       };
-      const cmds = getPythonRuffCommands(standaloneInfo, "autofix", path.join(fixturesDir, "none"));
+      const cmds = getPythonRuffCommands(
+        standaloneInfo,
+        "autofix",
+        path.join(fixturesDir, "none"),
+        mockCheckExec,
+      );
       expect(cmds[0]).toBe("uv tool run ruff format .");
       expect(cmds[1]).toBe("uv tool run ruff check --fix .");
     });

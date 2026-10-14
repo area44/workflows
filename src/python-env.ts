@@ -313,16 +313,17 @@ export function isRuffDeclaredInProject(
 export function ensureRuffAvailable(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
+  checkExec: (bin: string) => boolean = isExecutableAvailable,
 ): void {
   if (isRuffDeclaredInProject(cwd, pmInfo)) {
     return;
   }
 
   if (
-    isExecutableAvailable("uvx") ||
-    isExecutableAvailable("uv") ||
-    isExecutableAvailable("pipx") ||
-    isExecutableAvailable("ruff")
+    checkExec("uvx") ||
+    checkExec("uv") ||
+    checkExec("pipx") ||
+    checkExec("ruff")
   ) {
     return;
   }
@@ -338,18 +339,19 @@ export function getPythonRuffCommands(
   pmInfo: PythonPackageManagerInfo,
   mode: RuffExecutionMode = "autofix",
   cwd: string = process.cwd(),
+  checkExec: (bin: string) => boolean = isExecutableAvailable,
 ): string[] {
   let prefix = "";
 
   if (isRuffDeclaredInProject(cwd, pmInfo)) {
     prefix = pmInfo.execPrefix ? `${pmInfo.execPrefix} ` : "";
-  } else if (exports.isExecutableAvailable("uvx")) {
+  } else if (checkExec("uvx")) {
     prefix = "uvx ";
-  } else if (exports.isExecutableAvailable("uv")) {
+  } else if (checkExec("uv")) {
     prefix = "uv tool run ";
-  } else if (exports.isExecutableAvailable("pipx")) {
+  } else if (checkExec("pipx")) {
     prefix = "pipx run ";
-  } else if (exports.isExecutableAvailable("ruff")) {
+  } else if (checkExec("ruff")) {
     prefix = "";
   } else {
     prefix = "python -m ";
