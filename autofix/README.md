@@ -50,31 +50,37 @@ jobs:
 
 ## Python Tooling Support
 
-The Autofix action automatically detects Python projects and runs Ruff for linting and formatting alongside JavaScript/TypeScript tooling.
+The Autofix action conditionally sets up Python environment tools and runs Ruff for linting and formatting alongside JavaScript/TypeScript tooling.
 
-### Python Package Manager Detection Priority
+### Python Source Detection Rules
 
-When multiple lockfiles or configuration files exist in a repository, the Python package manager is detected in the following deterministic order:
+Python setup and Ruff execution are strictly gated on the presence of actual Python source files (`.py` or `.pyi`) in the workspace outside excluded directories (such as `.venv`, `node_modules`, `dist`, `build`, `.git`, etc.):
+
+- **Source Code Prerequisite**: A repository must contain `.py` or `.pyi` source files to trigger Python setup, dependency installation, or Ruff execution.
+- **Metadata and Configuration Only**: The presence of `pyproject.toml`, `[tool.ruff]`, `requirements.txt`, or other manifests without `.py` or `.pyi` files will not trigger Python setup or Ruff.
+- **Mixed-Language Repositories**: Repositories containing both JavaScript/TypeScript and Python code continue running language-specific autofix steps and run Ruff when Python source files exist.
+
+### Python Package Manager Detection
+
+When Python source files are detected, supported dependency package managers are identified in deterministic priority:
 
 - `uv`: Detected via `uv.lock` or `[tool.uv]` table in `pyproject.toml`.
 - `pip`: Detected via `requirements.txt`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`.
 
-### Python Dependency Installation and Ruff Execution
+Supported package managers are `uv` and `pip`. If a required package manager binary is unavailable in PATH, the workflow fails fast with a clear error without attempting undocumented installation fallbacks.
 
-- **Dependency Installation**:
-  - `uv`: Installs dependencies using `uv sync` (when `uv.lock` or `[tool.uv]` exists) or `uv pip install -r requirements.txt` (when `requirements.txt` exists).
-  - `pip`: Installs dependencies using `pip install -r requirements.txt && pip install -e .` (when both `requirements.txt` and package metadata exist), `pip install -r requirements.txt` (for requirements-only projects), or `pip install -e .` (for editable package installations).
-- **Ruff Version Resolution**:
-  - Inspects `uv.lock` for locked Ruff package versions.
-  - Inspects `pyproject.toml` (`dependencies`, `optional-dependencies`, `dependency-groups`) and `requirements.txt` for exact pins or version constraints.
-  - Passes resolved version to `astral-sh/ruff-action` (`astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89`), or falls back to standard version resolution if no version is declared.
-- **Ruff Formatting and Linting**:
+### Single Ruff Execution Mechanism
+
+All Python formatting and linting are handled exclusively by the pinned GitHub Action `astral-sh/ruff-action`:
+
+- **Single Architecture**: No inline Ruff installations or custom runners (`uvx`, `pipx`, `python -m ruff`) are executed by the action scripts.
+- **Ruff Operations**:
   - Code formatting: `ruff format .`
   - Code linting & autofix: `ruff check --fix .`
-  - Central configuration is defined in `pyproject.toml` under `[tool.ruff]`.
-- **Ruff Declaration vs Availability**:
-  - Distinguishes whether Ruff is declared as a project dependency vs executable in the target Python environment.
-  - If Ruff is declared in dependencies (`pyproject.toml`, `requirements.txt`, `uv.lock`) but not yet installed, the workflow automatically provisions project dependencies before formatting or linting.
-  - Setting `SKIP_PYTHON_INSTALL=true` bypasses project dependency installation step when dependencies are already pre-installed.
-- **Failure Behavior and Troubleshooting**:
-  - If a required Python package manager (`uv` or `pip`) is unavailable, dependency installation fails, or Ruff execution encounters unresolvable errors, the action logs actionable error details and fails fast with `WorkflowError`.
+- **Ruff Version Resolution**:
+  - Exact pins (`ruff==0.4.2`, `0.4.2`, `@0.4.2`) in `uv.lock`, `pyproject.toml` (excluding `[tool.ruff]` configuration blocks), or `requirements.txt` are passed to `astral-sh/ruff-action`.
+  - Non-exact range constraints (`>=`, `^`, `~=`) return an empty string, allowing `astral-sh/ruff-action` to use its documented default version.
+
+### Skip Environment Options
+
+- `SKIP_PYTHON_INSTALL=true`: Skips project dependency installation when dependencies are already pre-installed, while continuing to run `ruff-action` when Python source files are present.

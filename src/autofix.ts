@@ -5,11 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   detectPythonPackageManager,
-  ensureRuffAvailable,
-  getPythonRuffCommands,
   isExecutableAvailable,
   type PythonPackageManagerInfo,
-  type RuffExecutionMode,
 } from "./python-env.js";
 
 interface PackageJson {
@@ -68,30 +65,11 @@ function runPythonCommand(cmd: string): void {
   }
 }
 
-export function executePythonWorkflow(
-  pmInfo: PythonPackageManagerInfo,
-  mode: RuffExecutionMode = "autofix",
-): void {
+export function executePythonWorkflow(pmInfo: PythonPackageManagerInfo): void {
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
-  let hasPmBin = isExecutableAvailable(requiredBin);
-
-  if (pmInfo.name === "uv" && !hasPmBin) {
-    if (
-      isExecutableAvailable("pip") ||
-      isExecutableAvailable("python3") ||
-      isExecutableAvailable("python")
-    ) {
-      core.info("uv is not available in PATH. Attempting to install uv via pip...");
-      try {
-        execSync("pip install uv", { stdio: "inherit" });
-        hasPmBin = isExecutableAvailable("uv");
-      } catch {
-        // Installation attempt failed
-      }
-    }
-  }
+  const hasPmBin = isExecutableAvailable(requiredBin);
 
   if (!hasPmBin && !pmInfo.isStandalone) {
     core.error(`Required Python package manager '${requiredBin}' is not available in PATH.`);
@@ -104,20 +82,6 @@ export function executePythonWorkflow(
       core.info(`Installing Python dependencies: ${installCmd}`);
       runPythonCommand(installCmd);
     }
-  }
-
-  if (process.env.SKIP_INLINE_RUFF === "true") {
-    core.info(
-      "Skipping inline Ruff execution because running in GitHub Actions (handled by ruff-action).",
-    );
-    return;
-  }
-
-  ensureRuffAvailable(pmInfo, process.cwd());
-
-  const commands = getPythonRuffCommands(pmInfo, mode, process.cwd());
-  for (const cmd of commands) {
-    runPythonCommand(cmd);
   }
 }
 

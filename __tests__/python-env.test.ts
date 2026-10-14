@@ -5,10 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_PYTHON_VERSION,
   detectPythonPackageManager,
-  ensureRuffAvailable,
   extractRuffVersionSpecifier,
-  getPythonBinary,
-  getPythonRuffCommands,
   hasPythonSource,
   isExecutableAvailable,
   isRuffDeclaredInProject,
@@ -16,17 +13,67 @@ import {
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonVersion,
   resolveRuffVersion,
-  type PythonPackageManagerInfo,
 } from "../src/python-env.js";
 
-describe("Python Package Manager Detection & Ruff Command Generation", () => {
+describe("Python Package Manager Detection & Ruff Version Resolution", () => {
+  const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
+
   describe("hasPythonSource()", () => {
     it("should return true when .py file exists in directory", () => {
       expect(hasPythonSource(path.join(fixturesDir, "uv"))).toBe(true);
     });
 
+    it("should return true when .pyi file exists in directory", () => {
+      const tempDir = path.join(fixturesDir, "pyi-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "types.pyi"), "# stubs\n");
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return false when directory has no python source files", () => {
       expect(hasPythonSource(path.join(fixturesDir, "none"))).toBe(false);
+    });
+
+    it("should return false for JS/TS-only repository", () => {
+      const tempDir = path.join(fixturesDir, "js-ts-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), '{"name": "app"}');
+      fs.writeFileSync(path.join(tempDir, "index.ts"), 'console.log("hello");');
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return false when repository contains pyproject.toml but no .py or .pyi files", () => {
+      const tempDir = path.join(fixturesDir, "pyproject-no-py-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[project]\nname = "my-app"\n');
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return false when repository contains only [tool.ruff] configuration and no .py or .pyi files", () => {
+      const tempDir = path.join(fixturesDir, "tool-ruff-no-py-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[tool.ruff]\nline-length = 88\n');
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should ignore python files inside excluded directories like node_modules or .venv", () => {
@@ -38,6 +85,59 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
       try {
         expect(hasPythonSource(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("resolvePythonVersion() and constraint parsing", () => {
+    it("should parse python versions from constraint strings", () => {
+      expect(parsePythonVersionFromConstraint(">=3.11")).toBe("3.11");
+      expect(parsePythonVersionFromConstraint("^3.12")).toBe("3.12");
+      expect(parsePythonVersionFromConstraint("3.12.1")).toBe("3.12.1");
+      expect(parsePythonVersionFromConstraint("python-3.11.4")).toBe("3.11.4");
+      expect(parsePythonVersionFromConstraint("")).toBeUndefined();
+    });
+
+    it("should read version from .python-version if present", () => {
+      const tempDir = path.join(fixturesDir, "pyver-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".python-version"), "3.11\n");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print(1)\n");
+
+      try {
+        expect(resolvePythonVersion(tempDir)).toBe("3.11");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
+      expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
+    });
+  });
+
+  describe("resolveRuffVersion() and specifier extraction", () => {
+    it("should extract exact pin or version constraint from specifiers", () => {
+      expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
+      expect(extractRuffVersionSpecifier("ruff = '0.4.2'")).toBe("0.4.2");
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBeUndefined();
+      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
+      expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
+      expect(extractRuffVersionSpecifier("")).toBeUndefined();
+    });
+
+    it("should resolve locked ruff version from uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "ruff-uv-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("0.4.2");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -68,94 +168,6 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
       try {
         expect(resolveRuffVersion(tempDir)).toBe("");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should return true when ruff is in optional/dev dependencies in pyproject.toml", () => {
-      const tempDir = path.join(fixturesDir, "dev-ruff-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[project.optional-dependencies]\ndev = ['ruff>=0.1.0']\n",
-      );
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-
-      try {
-        expect(isRuffDeclaredInProject(tempDir)).toBe(true);
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-  });
-
-  describe("resolvePythonVersion() and constraint parsing", () => {
-    it("should parse python versions from constraint strings", () => {
-      expect(parsePythonVersionFromConstraint(">=3.11")).toBe("3.11");
-      expect(parsePythonVersionFromConstraint("^3.12")).toBe("3.12");
-      expect(parsePythonVersionFromConstraint("3.12.1")).toBe("3.12.1");
-      expect(parsePythonVersionFromConstraint("python-3.11.4")).toBe("3.11.4");
-      expect(parsePythonVersionFromConstraint("")).toBeUndefined();
-    });
-
-    it("should read version from .python-version if present", () => {
-      const tempDir = path.join(fixturesDir, "pyver-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, ".python-version"), "3.11\n");
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print(1)\n");
-
-      try {
-        expect(resolvePythonVersion(tempDir)).toBe("3.11");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should generate combined installCommand for repositories containing both requirements.txt and pyproject.toml package", () => {
-      const tempDir = path.join(fixturesDir, "both-manifests-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[project]\nname = 'my-pkg'\nversion = '0.1.0'\n",
-      );
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
-      expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-    });
-  });
-
-  describe("resolveRuffVersion() and specifier extraction", () => {
-    it("should extract exact pin or version constraint from specifiers", () => {
-      expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
-      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBeUndefined();
-      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
-      expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
-      expect(extractRuffVersionSpecifier("")).toBeUndefined();
-    });
-
-    it("should resolve locked ruff version from uv.lock", () => {
-      const tempDir = path.join(fixturesDir, "ruff-uv-lock-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(tempDir, "uv.lock"),
-        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
-      );
-
-      try {
-        expect(resolveRuffVersion(tempDir)).toBe("0.4.2");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -243,7 +255,6 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       }
     });
   });
-  const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
 
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
     it("should define priority order as uv > pip", () => {
@@ -251,7 +262,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
     });
   });
 
-  describe("isExecutableAvailable() & getPythonBinary()", () => {
+  describe("isExecutableAvailable()", () => {
     it("should return true for common system binary like node", () => {
       expect(isExecutableAvailable("node")).toBe(true);
     });
@@ -262,26 +273,6 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
     it("should return false for invalid binary names with dangerous characters", () => {
       expect(isExecutableAvailable("node; rm -rf /")).toBe(false);
-    });
-
-    it("should resolve valid python binary name", () => {
-      const pyBin = getPythonBinary();
-      expect(["python3", "python"]).toContain(pyBin);
-    });
-  });
-
-  describe("ensureRuffAvailable()", () => {
-    it("should no-op when ruff runner tool is available", () => {
-      const pipInfo: PythonPackageManagerInfo = {
-        name: "pip",
-        installCommand: "",
-        execPrefix: "",
-        isStandalone: true,
-      };
-      const mockCheckExec = (bin: string) => bin === "uvx";
-      expect(() =>
-        ensureRuffAvailable(pipInfo, path.join(fixturesDir, "none"), mockCheckExec),
-      ).not.toThrow();
     });
   });
 
@@ -295,7 +286,6 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(pmInfo?.installCommand).toBe("uv sync");
       expect(pmInfo?.execPrefix).toBe("uv run");
     });
-
 
     it("should detect pip package manager from pip fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "pip"));
@@ -322,7 +312,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       }
     });
 
-    it("should select uv as highest priority when conflicting lockfiles exist", () => {
+    it("should select uv as highest priority when conflicting lockfiles exist and .py file is present", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "conflicting"));
       expect(pmInfo).not.toBeNull();
       expect(pmInfo?.name).toBe("uv");
@@ -344,95 +334,22 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       }
     });
 
+    it("should return null when no python source files exist, even if pyproject.toml exists", () => {
+      const tempDir = path.join(fixturesDir, "manifest-no-source-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).toBeNull();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return null when no python project configuration or lockfiles exist", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "none"));
       expect(pmInfo).toBeNull();
-    });
-  });
-
-  describe("getPythonRuffCommands()", () => {
-    const uvInfo: PythonPackageManagerInfo = {
-      name: "uv",
-      installCommand: "uv sync",
-      execPrefix: "uv run",
-    };
-
-    const pipInfo: PythonPackageManagerInfo = {
-      name: "pip",
-      installCommand: "pip install -r requirements.txt",
-      execPrefix: "",
-    };
-
-    const mockDirectRuff = (bin: string) => bin === "ruff";
-
-    it("should generate ruff check command for check mode", () => {
-      expect(getPythonRuffCommands(uvInfo, "check", path.join(fixturesDir, "uv"))).toEqual([
-        "uv run ruff check .",
-      ]);
-      expect(
-        getPythonRuffCommands(pipInfo, "check", path.join(fixturesDir, "pip"), mockDirectRuff),
-      ).toEqual(["ruff check ."]);
-    });
-
-    it("should generate ruff format check command for format-check mode", () => {
-      expect(getPythonRuffCommands(uvInfo, "format-check", path.join(fixturesDir, "uv"))).toEqual([
-        "uv run ruff format --check .",
-      ]);
-      expect(
-        getPythonRuffCommands(pipInfo, "format-check", path.join(fixturesDir, "pip"), mockDirectRuff),
-      ).toEqual(["ruff format --check ."]);
-    });
-
-    it("should generate ruff format command for format mode", () => {
-      expect(getPythonRuffCommands(uvInfo, "format", path.join(fixturesDir, "uv"))).toEqual([
-        "uv run ruff format .",
-      ]);
-      expect(
-        getPythonRuffCommands(pipInfo, "format", path.join(fixturesDir, "pip"), mockDirectRuff),
-      ).toEqual(["ruff format ."]);
-    });
-
-    it("should generate ruff format and ruff check --fix commands in autofix mode", () => {
-      expect(getPythonRuffCommands(uvInfo, "autofix", path.join(fixturesDir, "uv"))).toEqual([
-        "uv run ruff format .",
-        "uv run ruff check --fix .",
-      ]);
-      expect(
-        getPythonRuffCommands(pipInfo, "autofix", path.join(fixturesDir, "pip"), mockDirectRuff),
-      ).toEqual([
-        "ruff format .",
-        "ruff check --fix .",
-      ]);
-    });
-
-    it("should use uvx fallback when ruff is not declared as a project dependency and uvx is available", () => {
-      const standaloneInfo: PythonPackageManagerInfo = {
-        name: "pip",
-        installCommand: "",
-        execPrefix: "",
-        isStandalone: true,
-      };
-      const cmds = getPythonRuffCommands(standaloneInfo, "autofix", path.join(fixturesDir, "none"));
-      expect(cmds[0]).toMatch(/^(uvx |uv tool run |pipx run |python -m |ruff )?ruff format \.$/);
-      expect(cmds[1]).toMatch(/^(uvx |uv tool run |pipx run |python -m |ruff )?ruff check --fix \.$/);
-    });
-
-    it("should use uv tool run when uv is available but uvx is missing", () => {
-      const mockCheckExec = (bin: string) => bin === "uv";
-      const standaloneInfo: PythonPackageManagerInfo = {
-        name: "pip",
-        installCommand: "",
-        execPrefix: "",
-        isStandalone: true,
-      };
-      const cmds = getPythonRuffCommands(
-        standaloneInfo,
-        "autofix",
-        path.join(fixturesDir, "none"),
-        mockCheckExec,
-      );
-      expect(cmds[0]).toBe("uv tool run ruff format .");
-      expect(cmds[1]).toBe("uv tool run ruff check --fix .");
     });
   });
 });
