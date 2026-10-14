@@ -65,6 +65,7 @@ describe("Autofix & Action Source/Artifact Synchronization", () => {
         "build-command.mjs",
       ];
 
+      // Backup initial committed dist content
       const initialContents = new Map<string, string>();
       for (const artifact of expectedArtifacts) {
         const artifactPath = path.join(distDir, artifact);
@@ -72,17 +73,31 @@ describe("Autofix & Action Source/Artifact Synchronization", () => {
         initialContents.set(artifact, fs.readFileSync(artifactPath, "utf8"));
       }
 
-      execSync("npm run build", { cwd: rootDir, stdio: "pipe" });
+      const freshContents = new Map<string, string>();
+      try {
+        // Build fresh artifacts
+        execSync("npm run build", { cwd: rootDir, stdio: "pipe" });
 
+        for (const artifact of expectedArtifacts) {
+          const artifactPath = path.join(distDir, artifact);
+          freshContents.set(artifact, fs.readFileSync(artifactPath, "utf8"));
+        }
+      } finally {
+        // Restore initial committed dist contents to prevent workspace side effects during testing
+        for (const [artifact, originalContent] of initialContents) {
+          fs.writeFileSync(path.join(distDir, artifact), originalContent, "utf8");
+        }
+      }
+
+      // Assert zero-drift
       for (const artifact of expectedArtifacts) {
-        const artifactPath = path.join(distDir, artifact);
-        const freshContent = fs.readFileSync(artifactPath, "utf8");
-        const initialContent = initialContents.get(artifact);
+        const fresh = freshContents.get(artifact);
+        const committed = initialContents.get(artifact);
 
         expect(
-          freshContent,
+          fresh,
           `Artifact "dist/${artifact}" is out of sync with source files in "src/". Please run "npm run build" and commit the updated "dist/${artifact}".`,
-        ).toBe(initialContent);
+        ).toBe(committed);
       }
     });
   });
