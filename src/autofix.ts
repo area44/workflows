@@ -135,9 +135,7 @@ export function executePythonWorkflow(
   const hasPythonBin = isExecutableAvailable("python3") || isExecutableAvailable("python");
 
   if (!hasPmBin && !hasPythonBin && !pmInfo.isStandalone) {
-    core.error(
-      `Python environment or package manager '${requiredBin}' is not available in PATH.`,
-    );
+    core.error(`Python environment or package manager '${requiredBin}' is not available in PATH.`);
     process.exit(1);
   }
 
