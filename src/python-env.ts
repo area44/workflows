@@ -303,67 +303,72 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
   return undefined;
 }
 
-export function resolveRuffVersion(cwd: string = process.cwd()): string {
-  // 1. Check uv.lock for locked ruff package version
+function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
   const uvLockPath = path.join(cwd, "uv.lock");
-  if (fs.existsSync(uvLockPath)) {
-    try {
-      const content = fs.readFileSync(uvLockPath, "utf8");
-      const match = content.match(
-        /\[\[package\]\][\s\S]*?name\s*=\s*["']ruff["'][\s\S]*?version\s*=\s*["']([^"']+)["']/i,
-      );
-      if (match && match[1]) {
-        return match[1];
-      }
-    } catch {
-      // Ignore read error
-    }
+  if (!fs.existsSync(uvLockPath)) return undefined;
+  try {
+    const content = fs.readFileSync(uvLockPath, "utf8");
+    const match = content.match(
+      /\[\[package\]\][\s\S]*?name\s*=\s*["']ruff["'][\s\S]*?version\s*=\s*["']([^"']+)["']/,
+    );
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
   }
+}
 
-  // 2. pyproject.toml
+function resolveRuffVersionFromPyproject(cwd: string): string | undefined {
   const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = content
-        .replace(/#.*/g, "")
-        .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
+  if (!fs.existsSync(pyprojectPath)) return undefined;
+  try {
+    const content = fs.readFileSync(pyprojectPath, "utf8");
+    const stripped = content
+      .replace(/#.*/g, "")
+      .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
 
-      const arrayMatch = stripped.match(/["'](ruff(?:[<>=~^!].*?|))["']/i);
-      if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
-        const ver = extractRuffVersionSpecifier(arrayMatch[1]);
-        if (ver) return ver;
-      }
-
-      const keyValMatch = stripped.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
-      if (keyValMatch && keyValMatch[1]) {
-        const ver = extractRuffVersionSpecifier(keyValMatch[1]);
-        if (ver) return ver;
-      }
-    } catch {
-      // Ignore read error
+    const arrayMatch = stripped.match(/["'](ruff(?:[<>=~^!].*?|))["']/i);
+    if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
+      const ver = extractRuffVersionSpecifier(arrayMatch[1]);
+      if (ver) return ver;
     }
-  }
 
-  // 3. requirements.txt
+    const keyValMatch = stripped.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
+    if (keyValMatch && keyValMatch[1]) {
+      const ver = extractRuffVersionSpecifier(keyValMatch[1]);
+      if (ver) return ver;
+    }
+  } catch {
+    // Ignore read error
+  }
+  return undefined;
+}
+
+function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
   const reqPath = path.join(cwd, "requirements.txt");
-  if (fs.existsSync(reqPath)) {
-    try {
-      const content = fs.readFileSync(reqPath, "utf8");
-      const lines = content.split("\n");
-      for (const line of lines) {
-        const trimmed = line.replace(/#.*/, "").trim();
-        if (/^ruff\b/i.test(trimmed)) {
-          const ver = extractRuffVersionSpecifier(trimmed);
-          if (ver) return ver;
-        }
+  if (!fs.existsSync(reqPath)) return undefined;
+  try {
+    const content = fs.readFileSync(reqPath, "utf8");
+    const lines = content.split("\n");
+    for (const line of lines) {
+      const trimmed = line.replace(/#.*/, "").trim();
+      if (/^ruff\b/i.test(trimmed)) {
+        const ver = extractRuffVersionSpecifier(trimmed);
+        if (ver) return ver;
       }
-    } catch {
-      // Ignore read error
     }
+  } catch {
+    // Ignore read error
   }
+  return undefined;
+}
 
-  return "";
+export function resolveRuffVersion(cwd: string = process.cwd()): string {
+  return (
+    resolveRuffVersionFromUvLock(cwd) ||
+    resolveRuffVersionFromPyproject(cwd) ||
+    resolveRuffVersionFromRequirements(cwd) ||
+    ""
+  );
 }
 
 export function isRuffDeclaredInProject(
