@@ -36,30 +36,51 @@ jobs:
 
 ### Outputs
 
-| Name                      | Description                                                   |
-| ------------------------- | ------------------------------------------------------------- |
-| `node-version`            | The Node.js version used                                      |
-| `bun-version`             | The Bun version used                                          |
-| `package-manager`         | The package manager used                                      |
-| `package-manager-version` | The version of the package manager used                       |
-| `runtime`                 | The runtime used (node or bun)                                |
-| `python-package-manager`  | The Python package manager detected (uv, poetry, pdm, or pip) |
+| Name                      | Description                                                           |
+| ------------------------- | --------------------------------------------------------------------- |
+| `node-version`            | The Node.js version used                                              |
+| `bun-version`             | The Bun version used                                                  |
+| `package-manager`         | The package manager used                                              |
+| `package-manager-version` | The version of the package manager used                               |
+| `runtime`                 | The runtime used (node or bun)                                        |
+| `has-python-source`       | Whether Python source code was detected                               |
+| `python-version`          | The Python version used                                               |
+| `python-package-manager`  | The Python package manager detected (uv or pip)                       |
+| `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
 ## Python Tooling Support
 
-The Autofix action automatically detects Python projects and runs Ruff for linting and formatting alongside JavaScript/TypeScript tooling.
+The Autofix action conditionally sets up Python environment tools and runs Ruff for linting and formatting alongside JavaScript/TypeScript tooling.
 
-### Python Package Manager Detection Priority
+### Python Source Detection Rules
 
-When multiple lockfiles or configuration files exist in a repository, the Python package manager is detected in the following deterministic order:
+Python setup and Ruff execution are strictly gated on the presence of actual Python source files (`.py` or `.pyi`) in the workspace outside excluded directories (such as `.venv`, `node_modules`, `dist`, `build`, `.git`, etc.):
+
+- **Source Code Prerequisite**: A repository must contain `.py` or `.pyi` source files to trigger Python setup, dependency installation, or Ruff execution.
+- **Metadata and Configuration Only**: The presence of `pyproject.toml`, `[tool.ruff]`, `requirements.txt`, or other manifests without `.py` or `.pyi` files will not trigger Python setup or Ruff.
+- **Mixed-Language Repositories**: Repositories containing both JavaScript/TypeScript and Python code continue running language-specific autofix steps and run Ruff when Python source files exist.
+
+### Python Package Manager Detection
+
+When Python source files are detected, supported dependency package managers are identified in deterministic priority:
 
 - `uv`: Detected via `uv.lock` or `[tool.uv]` table in `pyproject.toml`.
-- `poetry`: Detected via `poetry.lock` or `[tool.poetry]` table in `pyproject.toml`.
-- `pdm`: Detected via `pdm.lock` or `[tool.pdm]` table in `pyproject.toml`.
-- `pip`: Detected via `requirements.txt`, `Pipfile.lock`, `Pipfile`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`.
+- `pip`: Detected via `requirements.txt`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`.
 
-### Python Dependency Installation and Ruff Execution
+Supported package managers are `uv` and `pip`. If a required package manager binary is unavailable in PATH, the workflow fails fast with a clear error without attempting undocumented installation fallbacks.
 
-- Dependencies are installed using the detected manager (`uv sync`, `poetry install`, `pdm install`, `pip install -r requirements.txt`).
-- Ruff checks and formats Python code (`ruff format` and `ruff check --fix`).
-- Central configuration is defined in `pyproject.toml` under `[tool.ruff]`.
+### Single Ruff Execution Mechanism
+
+All Python formatting and linting are handled exclusively by the pinned GitHub Action `astral-sh/ruff-action`:
+
+- **Single Architecture**: No inline Ruff installations or custom runners (`uvx`, `pipx`, `python -m ruff`) are executed by the action scripts.
+- **Ruff Operations**:
+  - Code formatting: `ruff format .`
+  - Code linting & autofix: `ruff check --fix .`
+- **Ruff Version Resolution**:
+  - Exact pins (`ruff==0.4.2`, `0.4.2`, `@0.4.2`) in `uv.lock`, `pyproject.toml` (excluding `[tool.ruff]` configuration blocks), or `requirements.txt` are passed to `astral-sh/ruff-action`.
+  - Non-exact range constraints (`>=`, `^`, `~=`) return an empty string, allowing `astral-sh/ruff-action` to use its documented default version.
+
+### Skip Environment Options
+
+- `SKIP_PYTHON_INSTALL=true`: Skips project dependency installation when dependencies are already pre-installed, while continuing to run `ruff-action` when Python source files are present.

@@ -5,10 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   detectPythonPackageManager,
-  getPythonRuffCommands,
   isExecutableAvailable,
   type PythonPackageManagerInfo,
-  type RuffExecutionMode,
 } from "./python-env.js";
 
 interface PackageJson {
@@ -67,31 +65,23 @@ function runPythonCommand(cmd: string): void {
   }
 }
 
-export function executePythonWorkflow(
-  pmInfo: PythonPackageManagerInfo,
-  mode: RuffExecutionMode = "autofix",
-): void {
+export function executePythonWorkflow(pmInfo: PythonPackageManagerInfo): void {
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
   const hasPmBin = isExecutableAvailable(requiredBin);
-  const hasPythonBin = isExecutableAvailable("python3") || isExecutableAvailable("python");
 
-  if (!hasPmBin && !hasPythonBin) {
-    core.warning(
-      `Python environment or package manager '${requiredBin}' is not available in PATH. Skipping Python workflow.`,
-    );
-    return;
+  if (!hasPmBin && !pmInfo.isStandalone) {
+    core.error(`Required Python package manager '${requiredBin}' is not available in PATH.`);
+    process.exit(1);
   }
 
-  if (process.env.SKIP_PYTHON_INSTALL !== "true") {
-    core.info(`Installing Python dependencies: ${pmInfo.installCommand}`);
-    runPythonCommand(pmInfo.installCommand);
-  }
-
-  const commands = getPythonRuffCommands(pmInfo, mode);
-  for (const cmd of commands) {
-    runPythonCommand(cmd);
+  if (!pmInfo.isStandalone && process.env.SKIP_PYTHON_INSTALL !== "true") {
+    const installCmd = pmInfo.installCommand;
+    if (installCmd) {
+      core.info(`Installing Python dependencies: ${installCmd}`);
+      runPythonCommand(installCmd);
+    }
   }
 }
 

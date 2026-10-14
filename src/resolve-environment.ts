@@ -10,12 +10,13 @@ import {
 import { WorkflowError } from "./errors.js";
 import {
   detectPythonPackageManager,
-  getPythonRuffCommands,
+  hasPythonSource,
   isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
+  resolvePythonVersion,
+  resolveRuffVersion,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
-  type RuffExecutionMode,
 } from "./python-env.js";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
 
@@ -78,13 +79,8 @@ export {
   validateWorkflowMatrix,
 } from "./compatibility";
 
-export type { PythonPackageManager, PythonPackageManagerInfo, RuffExecutionMode };
-export {
-  detectPythonPackageManager,
-  getPythonRuffCommands,
-  isExecutableAvailable,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
-};
+export type { PythonPackageManager, PythonPackageManagerInfo };
+export { detectPythonPackageManager, isExecutableAvailable, PYTHON_PACKAGE_MANAGER_PRIORITY };
 
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node
@@ -680,9 +676,22 @@ export function writeOutput(
   core.setOutput("setup-bun", String(bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
 
-  const pythonPmInfo = detectPythonPackageManager();
-  if (pythonPmInfo) {
-    core.setOutput("python-package-manager", pythonPmInfo.name);
+  const hasPySource = hasPythonSource();
+  core.setOutput("has-python-source", String(hasPySource));
+  core.setOutput("setup-python", String(hasPySource));
+
+  if (hasPySource) {
+    const pyVersion = resolvePythonVersion();
+    const pythonPmInfo = detectPythonPackageManager();
+    const ruffVer = resolveRuffVersion();
+
+    core.setOutput("python-version", pyVersion);
+    core.setOutput("ruff-version", ruffVer);
+    core.setOutput("python-package-manager", pythonPmInfo ? pythonPmInfo.name : "");
+  } else {
+    core.setOutput("python-version", "");
+    core.setOutput("ruff-version", "");
+    core.setOutput("python-package-manager", "");
   }
 }
 

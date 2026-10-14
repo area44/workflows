@@ -18,6 +18,7 @@ describe("autofix", () => {
     vi.clearAllMocks();
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
+    process.env.SKIP_JS_INSTALL = "true";
     delete process.env.SKIP_PYTHON_INSTALL;
   });
 
@@ -67,37 +68,92 @@ describe("autofix", () => {
       expect(execSync).toHaveBeenCalledWith("bun run lint", { stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
+
+    it("should not run Python workflow in JS/TS-only repository", () => {
+      const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
+      process.chdir(fixturePath);
+
+      run();
+
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
+      expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/pip install|uv sync/), expect.anything());
+    });
   });
 
   describe("Python Integration", () => {
     const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
 
-    it("should execute Python workflow for uv fixture", () => {
+    it("should execute Python workflow for uv fixture when Python source exists", () => {
       process.chdir(path.join(pythonFixturesDir, "uv"));
 
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
       expect(execSync).toHaveBeenCalledWith("uv sync", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("uv run ruff format .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("uv run ruff check --fix .", { stdio: "inherit" });
+      expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
     it("should install Python dependencies when executing Python workflow", () => {
       executePythonWorkflow({
-        name: "poetry",
-        installCommand: "poetry install",
-        execPrefix: "poetry run",
+        name: "pip",
+        installCommand: "pip install -r requirements.txt",
+        execPrefix: "",
       });
 
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: poetry");
-      expect(execSync).toHaveBeenCalledWith("poetry install", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("poetry run ruff format .", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("poetry run ruff check --fix .", { stdio: "inherit" });
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+      expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { stdio: "inherit" });
+      expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
-    it("should warn and skip if python and package manager binaries are not available", () => {
+    it("should skip dependency installation when SKIP_PYTHON_INSTALL=true", () => {
+      process.env.SKIP_PYTHON_INSTALL = "true";
+
+      executePythonWorkflow({
+        name: "pip",
+        installCommand: "pip install -r requirements.txt",
+        execPrefix: "",
+      });
+
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+      expect(execSync).not.toHaveBeenCalledWith("pip install -r requirements.txt", expect.anything());
+    });
+
+    it("should skip lockfile sync and dependency installation for standalone Python projects", () => {
+      executePythonWorkflow({
+        name: "pip",
+        installCommand: "",
+        execPrefix: "",
+        isStandalone: true,
+      });
+
+      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+      expect(execSync).not.toHaveBeenCalledWith("pip install", expect.anything());
+    });
+
+    it("should execute both JS scripts and Python dependency setup in mixed-language projects", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/mixed-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "npm run check" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('mixed')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+        expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+        expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { stdio: "inherit" });
+        expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should error and exit if required package manager binary is not available in PATH without fallback attempt", () => {
       vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
       executePythonWorkflow({
         name: "uv",
@@ -105,28 +161,77 @@ describe("autofix", () => {
         execPrefix: "uv run",
       });
 
-      expect(core.warning).toHaveBeenCalledWith(
-        expect.stringContaining("Python environment or package manager 'uv' is not available in PATH"),
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("Required Python package manager 'uv' is not available in PATH"),
       );
+      expect(execSync).not.toHaveBeenCalledWith("pip install uv", expect.anything());
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("should run Python workflow in Python-only repository without package.json when Python source exists", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/py-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('py-only')\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not run Python workflow for repository with only pyproject.toml and no .py files", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/pyproject-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
+        expect(execSync).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not run Python workflow for repository with only [tool.ruff] configuration and no .py files", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tool-ruff-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
+        expect(execSync).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should handle failure in Python commands gracefully", () => {
       vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(true);
-      vi.mocked(execSync).mockImplementation((cmd: string) => {
-        if (!cmd.startsWith("command -v") && !cmd.startsWith("where")) {
-          throw new Error("Ruff failed");
-        }
-        return "" as any;
+      vi.mocked(execSync).mockImplementation(() => {
+        throw new Error("Install failed");
       });
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
       executePythonWorkflow({
         name: "pip",
-        installCommand: "pip install ruff",
+        installCommand: "pip install -r requirements.txt",
         execPrefix: "",
       });
 
-      expect(core.error).toHaveBeenCalledWith('Python command "pip install ruff" failed');
+      expect(core.error).toHaveBeenCalledWith('Python command "pip install -r requirements.txt" failed');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

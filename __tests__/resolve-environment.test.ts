@@ -1431,6 +1431,38 @@ describe("resolve-environment", () => {
         "Missing package manager parameter in writeOutput",
       );
     });
+
+    it("should set has-python-source and setup-python to false and clear python outputs when no Python source files exist", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+      writeOutput("24", { name: "npm", version: "12" }, "", "node");
+
+      expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+    });
+
+    it("should set has-python-source and setup-python to true and resolve python outputs when Python source exists", () => {
+      const tempDir = path.join(fixturesDir, "python-source-test-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "ruff==0.4.2\n");
+
+      process.chdir(tempDir);
+      try {
+        writeOutput("24", { name: "npm", version: "12" }, "", "node");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("run", () => {
