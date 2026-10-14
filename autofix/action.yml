@@ -80,7 +80,7 @@ runs:
         PM="${PACKAGE_MANAGER:-npm}"
         case "$PM" in
           pnpm)
-            pnpm install
+            pnpm install --no-frozen-lockfile
             ;;
           bun)
             bun install
