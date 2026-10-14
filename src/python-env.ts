@@ -319,12 +319,7 @@ export function ensureRuffAvailable(
     return;
   }
 
-  if (
-    checkExec("uvx") ||
-    checkExec("uv") ||
-    checkExec("pipx") ||
-    checkExec("ruff")
-  ) {
+  if (checkExec("uvx") || checkExec("uv") || checkExec("pipx") || checkExec("ruff")) {
     return;
   }
 
