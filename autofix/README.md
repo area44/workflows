@@ -61,6 +61,16 @@ When multiple lockfiles or configuration files exist in a repository, the Python
 
 ### Python Dependency Installation and Ruff Execution
 
-- Dependencies are installed using the detected manager (`uv sync` or `pip install -r requirements.txt`).
-- Ruff checks and formats Python code (`ruff format` and `ruff check --fix`).
-- Central configuration is defined in `pyproject.toml` under `[tool.ruff]`.
+- **Dependency Installation**:
+  - `uv`: Installs dependencies using `uv sync` (when `uv.lock` or `[tool.uv]` exists) or `uv pip install -r requirements.txt` (when `requirements.txt` exists).
+  - `pip`: Installs dependencies using `pip install -r requirements.txt && pip install -e .` (when both `requirements.txt` and package metadata exist), `pip install -r requirements.txt` (for requirements-only projects), or `pip install -e .` (for editable package installations).
+- **Ruff Version Resolution**:
+  - Inspects `uv.lock` for locked Ruff package versions.
+  - Inspects `pyproject.toml` (`dependencies`, `optional-dependencies`, `dependency-groups`) and `requirements.txt` for exact pins or version constraints.
+  - Passes resolved version to `astral-sh/ruff-action` (`astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89`), or falls back to standard version resolution if no version is declared.
+- **Ruff Formatting and Linting**:
+  - Code formatting: `ruff format .`
+  - Code linting & autofix: `ruff check --fix .`
+  - Central configuration is defined in `pyproject.toml` under `[tool.ruff]`.
+- **Failure Behavior**:
+  - If a required Python package manager is missing or dependency installation fails, the workflow reports an actionable `WorkflowError` and fails fast.

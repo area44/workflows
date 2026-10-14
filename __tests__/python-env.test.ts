@@ -43,6 +43,36 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       }
     });
 
+    it("should resolve ruff version from uv.lock when dependency reference appears before package entry", () => {
+      const tempDir = path.join(fixturesDir, "ruff-uv-deps-first-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "my-app"\nversion = "0.1.0"\ndependencies = [\n  { name = "ruff" },\n]\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("0.4.2");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return empty string when uv.lock has no ruff package entry or malformed entry", () => {
+      const tempDir = path.join(fixturesDir, "ruff-uv-malformed-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "my-app"\nversion = "0.1.0"\ndependencies = [\n  { name = "ruff" },\n]\n',
+      );
+
+      try {
+        expect(resolveRuffVersion(tempDir)).toBe("");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return true when ruff is in optional/dev dependencies in pyproject.toml", () => {
       const tempDir = path.join(fixturesDir, "dev-ruff-temp");
       fs.mkdirSync(tempDir, { recursive: true });
@@ -110,8 +140,8 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
   describe("resolveRuffVersion() and specifier extraction", () => {
     it("should extract exact pin or version constraint from specifiers", () => {
       expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
-      expect(extractRuffVersionSpecifier("ruff>=0.3.0")).toBe(">=0.3.0");
-      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("^0.4.0");
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("0.4.0");
+      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
       expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
       expect(extractRuffVersionSpecifier("")).toBeUndefined();
     });
@@ -146,7 +176,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       }
     });
 
-    it("should resolve ruff version constraint from pyproject.toml", () => {
+    it("should return empty string for complex range constraints so ruff-action uses standard version resolution", () => {
       const tempDir = path.join(fixturesDir, "ruff-range-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(
@@ -155,7 +185,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       );
 
       try {
-        expect(resolveRuffVersion(tempDir)).toBe(">=0.3.0,<0.5.0");
+        expect(resolveRuffVersion(tempDir)).toBe("");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

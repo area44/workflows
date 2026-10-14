@@ -275,10 +275,16 @@ export function detectPythonPackageManager(
 
 export function extractRuffVersionSpecifier(raw: string): string | undefined {
   if (!raw) return undefined;
-  const cleaned = raw
+  let cleaned = raw
     .trim()
-    .replace(/^ruff\s*/i, "")
-    .replace(/['"]/g, "");
+    .replace(/^ruff\b/i, "")
+    .replace(/['"]/g, "")
+    .trim();
+
+  if (cleaned.startsWith("=") && !cleaned.startsWith("==")) {
+    cleaned = cleaned.slice(1).trim();
+  }
+
   if (!cleaned) return undefined;
 
   // Exact pin like ==0.4.2 or 0.4.2 or @0.4.2
@@ -287,19 +293,13 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
     return exactMatch[1];
   }
 
-  // Version constraint or range like >=0.3.0,<0.5.0 or ^0.4.0 or ~=0.4.0
-  const rangeMatch = cleaned.match(
-    /^([<>=~^!]+\s*\d+\.\d+(?:\.\d+)?(?:,\s*[<>=~^!]+\s*\d+\.\d+(?:\.\d+)?)*)$/,
-  );
-  if (rangeMatch) {
-    return rangeMatch[1];
+  // Caret, tilde, or constraint like ^0.4.0 or ~=0.4.0
+  const caretOrTilde = cleaned.match(/^(?:\^|~=|==)\s*(\d+\.\d+\.\d+)/);
+  if (caretOrTilde) {
+    return caretOrTilde[1];
   }
 
-  const specMatch = cleaned.match(/([<>=~^!]+\s*\d+\.\d+(?:\.\d+)?)/);
-  if (specMatch) {
-    return specMatch[1];
-  }
-
+  // Non-exact or complex ranges like >=0.3.0,<0.5.0 return undefined so ruff-action uses standard version resolution
   return undefined;
 }
 
@@ -308,13 +308,20 @@ function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
   if (!fs.existsSync(uvLockPath)) return undefined;
   try {
     const content = fs.readFileSync(uvLockPath, "utf8");
-    const match = content.match(
-      /\[\[package\]\][\s\S]*?name\s*=\s*["']ruff["'][\s\S]*?version\s*=\s*["']([^"']+)["']/,
-    );
-    return match ? match[1] : undefined;
+    const blocks = content.split(/^\[\[package\]\]/m);
+    for (const block of blocks) {
+      const nameMatch = block.match(/^\s*name\s*=\s*["']ruff["']/m);
+      if (nameMatch) {
+        const versionMatch = block.match(/^\s*version\s*=\s*["']([^"']+)["']/m);
+        if (versionMatch && versionMatch[1]) {
+          return versionMatch[1];
+        }
+      }
+    }
   } catch {
-    return undefined;
+    // Ignore read error
   }
+  return undefined;
 }
 
 function resolveRuffVersionFromPyproject(cwd: string): string | undefined {
