@@ -1,4 +1,3 @@
-import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -110,8 +109,6 @@ export function resolvePythonVersion(cwd: string = process.cwd()): string {
     DEFAULT_PYTHON_VERSION
   );
 }
-
-export type RuffExecutionMode = "check" | "format-check" | "format" | "autofix";
 
 /**
  * Recursively checks if directory contains Python source files (.py or .pyi),
@@ -239,6 +236,29 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
   };
 }
 
+function stripToolRuffSections(content: string): string {
+  const lines = content.split("\n");
+  const filteredLines: string[] = [];
+  let inToolRuff = false;
+
+  for (const line of lines) {
+    const sectionMatch = line.match(/^\s*\[\s*([^\]]+)\s*\]/);
+    if (sectionMatch) {
+      const header = sectionMatch[1].trim().toLowerCase();
+      if (header === "tool.ruff" || header.startsWith("tool.ruff.")) {
+        inToolRuff = true;
+      } else {
+        inToolRuff = false;
+      }
+    }
+    if (!inToolRuff) {
+      filteredLines.push(line);
+    }
+  }
+
+  return filteredLines.join("\n");
+}
+
 export function hasPythonProject(cwd: string = process.cwd()): boolean {
   if (hasPythonSource(cwd)) {
     return true;
@@ -248,7 +268,8 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
   if (fs.existsSync(pyprojectPath)) {
     try {
       const content = fs.readFileSync(pyprojectPath, "utf8");
-      if (/^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(content)) {
+      const stripped = stripToolRuffSections(content);
+      if (/^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(stripped)) {
         return true;
       }
       if (isRuffDeclaredInProject(cwd)) {
@@ -272,7 +293,7 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
 export function detectPythonPackageManager(
   cwd: string = process.cwd(),
 ): PythonPackageManagerInfo | null {
-  if (!hasPythonProject(cwd)) {
+  if (!hasPythonSource(cwd)) {
     return null;
   }
 
@@ -336,7 +357,7 @@ function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
       if (nameMatch) {
         const versionMatch = block.match(/^\s*version\s*=\s*["']([^"']+)["']/m);
         if (versionMatch && versionMatch[1]) {
-          return versionMatch[1];
+          return extractRuffVersionSpecifier(versionMatch[1]) || versionMatch[1];
         }
       }
     }
@@ -350,18 +371,16 @@ function resolveRuffVersionFromPyproject(cwd: string): string | undefined {
   const pyprojectPath = path.join(cwd, "pyproject.toml");
   if (!fs.existsSync(pyprojectPath)) return undefined;
   try {
-    const content = fs.readFileSync(pyprojectPath, "utf8");
-    const stripped = content
-      .replace(/#.*/g, "")
-      .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
+    const rawContent = fs.readFileSync(pyprojectPath, "utf8");
+    const strippedContent = stripToolRuffSections(rawContent).replace(/#.*/g, "");
 
-    const arrayMatch = stripped.match(/["'](ruff(?:[<>=~^!].*?|))["']/i);
+    const arrayMatch = strippedContent.match(/["'](ruff(?:[<>=~^!@].*?|))["']/i);
     if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
       const ver = extractRuffVersionSpecifier(arrayMatch[1]);
       if (ver) return ver;
     }
 
-    const keyValMatch = stripped.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
+    const keyValMatch = strippedContent.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
     if (keyValMatch && keyValMatch[1]) {
       const ver = extractRuffVersionSpecifier(keyValMatch[1]);
       if (ver) return ver;
@@ -413,9 +432,7 @@ export function isRuffDeclaredInProject(
   if (fs.existsSync(pyprojectPath)) {
     try {
       const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = content
-        .replace(/#.*/g, "")
-        .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
+      const stripped = stripToolRuffSections(content).replace(/#.*/g, "");
       if (/\bruff\b/i.test(stripped)) {
         return true;
       }
@@ -438,93 +455,4 @@ export function isRuffDeclaredInProject(
   }
 
   return false;
-}
-
-export function getPythonBinary(): string {
-  if (isExecutableAvailable("python3")) return "python3";
-  if (isExecutableAvailable("python")) return "python";
-  return "python3";
-}
-
-export function isRuffExecutableInEnvironment(
-  pmInfo: PythonPackageManagerInfo,
-  cwd: string = process.cwd(),
-): boolean {
-  if (pmInfo.name === "uv") {
-    try {
-      execSync("uv run ruff --version", { stdio: "ignore", cwd });
-      return true;
-    } catch {
-      // Fall through
-    }
-  }
-
-  const pyBin = getPythonBinary();
-  try {
-    execSync(`${pyBin} -m ruff --version`, { stdio: "ignore", cwd });
-    return true;
-  } catch {
-    // Fall through
-  }
-
-  try {
-    execSync("ruff --version", { stdio: "ignore", cwd });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function ensureRuffAvailable(
-  pmInfo: PythonPackageManagerInfo,
-  cwd: string = process.cwd(),
-  checkExec: (bin: string) => boolean = isExecutableAvailable,
-): void {
-  if (
-    checkExec("ruff") ||
-    checkExec("uvx") ||
-    checkExec("uv") ||
-    checkExec("pipx") ||
-    isRuffExecutableInEnvironment(pmInfo, cwd)
-  ) {
-    return;
-  }
-
-  core.info("Ruff installation and execution will be handled by astral-sh/ruff-action.");
-}
-
-export function getPythonRuffCommands(
-  pmInfo: PythonPackageManagerInfo,
-  mode: RuffExecutionMode = "autofix",
-  cwd: string = process.cwd(),
-  checkExec: (bin: string) => boolean = isExecutableAvailable,
-): string[] {
-  let prefix = "";
-
-  if (isRuffDeclaredInProject(cwd, pmInfo) && pmInfo.execPrefix) {
-    prefix = `${pmInfo.execPrefix} `;
-  } else if (checkExec("uvx")) {
-    prefix = "uvx ";
-  } else if (checkExec("uv")) {
-    prefix = "uv tool run ";
-  } else if (checkExec("pipx")) {
-    prefix = "pipx run ";
-  } else if (checkExec("ruff")) {
-    prefix = "";
-  } else {
-    const pyBin = getPythonBinary();
-    prefix = `${pyBin} -m `;
-  }
-
-  switch (mode) {
-    case "check":
-      return [`${prefix}ruff check .`];
-    case "format-check":
-      return [`${prefix}ruff format --check .`];
-    case "format":
-      return [`${prefix}ruff format .`];
-    case "autofix":
-    default:
-      return [`${prefix}ruff format .`, `${prefix}ruff check --fix .`];
-  }
 }

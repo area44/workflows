@@ -113,7 +113,6 @@ runs:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
-        SKIP_INLINE_RUFF: ${{ steps.resolve_environment.outputs.has-python-source }}
       run: |
         if [ "$RUNTIME" = "bun" ]; then
           bun "$ACTION_PATH/../dist/autofix.mjs"
