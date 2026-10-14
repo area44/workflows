@@ -270,23 +270,88 @@ export function detectPythonPackageManager(
   };
 }
 
+export function extractRuffVersionSpecifier(raw: string): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.trim().replace(/^ruff\s*/i, "").replace(/['"]/g, "");
+  if (!cleaned) return undefined;
+
+  // Exact pin like ==0.4.2 or 0.4.2 or @0.4.2
+  const exactMatch = cleaned.match(/^(?:==|@)?\s*(\d+\.\d+\.\d+(?:[a-z0-9_.-]+)?)$/i);
+  if (exactMatch) {
+    return exactMatch[1];
+  }
+
+  // Exact version digits inside constraints like ==0.4.2, ^0.4.0, ~=0.4.1
+  const versionMatch = cleaned.match(/(?:==|~=|\^)?\s*(\d+\.\d+\.\d+)/);
+  if (versionMatch) {
+    return versionMatch[1];
+  }
+
+  return undefined;
+}
+
+export function resolveRuffVersion(cwd: string = process.cwd()): string {
+  const pyprojectPath = path.join(cwd, "pyproject.toml");
+  if (fs.existsSync(pyprojectPath)) {
+    try {
+      const content = fs.readFileSync(pyprojectPath, "utf8");
+      const stripped = content
+        .replace(/#.*/g, "")
+        .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
+
+      const arrayMatch = stripped.match(/["'](ruff(?:[<>=~^!].*?|))["']/i);
+      if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
+        const ver = extractRuffVersionSpecifier(arrayMatch[1]);
+        if (ver) return ver;
+      }
+
+      const keyValMatch = stripped.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
+      if (keyValMatch && keyValMatch[1]) {
+        const ver = extractRuffVersionSpecifier(keyValMatch[1]);
+        if (ver) return ver;
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+
+  const reqPath = path.join(cwd, "requirements.txt");
+  if (fs.existsSync(reqPath)) {
+    try {
+      const content = fs.readFileSync(reqPath, "utf8");
+      const lines = content.split("\n");
+      for (const line of lines) {
+        const trimmed = line.replace(/#.*/, "").trim();
+        if (/^ruff\b/i.test(trimmed)) {
+          const ver = extractRuffVersionSpecifier(trimmed);
+          if (ver) return ver;
+        }
+      }
+    } catch {
+      // Ignore read error
+    }
+  }
+
+  return "";
+}
+
 export function isRuffDeclaredInProject(
   cwd: string = process.cwd(),
   pmInfo?: PythonPackageManagerInfo,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
+  const ver = resolveRuffVersion(cwd);
+  if (ver) return true;
+
   const pyprojectPath = path.join(cwd, "pyproject.toml");
   if (fs.existsSync(pyprojectPath)) {
     try {
       const content = fs.readFileSync(pyprojectPath, "utf8");
-      // Strip comments and [tool.ruff...] configuration sections
       const stripped = content
         .replace(/#.*/g, "")
         .replace(/\[\s*tool\.ruff(?:\.[^\]]+)?\s*\][\s\S]*?(?=\n\s*\[|$)/gi, "");
-      const hasInArray = /["']ruff(?:[<>=~^!].*|["'])/i.test(stripped);
-      const hasInKeyVal = /^\s*ruff\s*=/im.test(stripped);
-      if (hasInArray || hasInKeyVal) {
+      if (/\bruff\b/i.test(stripped)) {
         return true;
       }
     } catch {
@@ -321,7 +386,7 @@ export function ensureRuffAvailable(
   cwd: string = process.cwd(),
   checkExec: (bin: string) => boolean = isExecutableAvailable,
 ): void {
-  if (checkExec("uvx") || checkExec("uv") || checkExec("pipx") || checkExec("ruff")) {
+  if (checkExec("ruff") || checkExec("uvx") || checkExec("uv") || checkExec("pipx")) {
     return;
   }
 
@@ -334,13 +399,13 @@ export function ensureRuffAvailable(
   }
 
   try {
-    execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit" });
-  } catch {
-    // Secondary fallback attempt
+    execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
+  } catch (err) {
     try {
-      execSync("pip install ruff", { stdio: "inherit" });
-    } catch {
-      // Ignored
+      execSync("pip install ruff", { stdio: "inherit", cwd });
+    } catch (err2) {
+      const msg = err2 instanceof Error ? err2.message : String(err2);
+      throw new Error(`Failed to install Ruff in Python environment: ${msg}`);
     }
   }
 }

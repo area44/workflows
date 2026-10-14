@@ -46,6 +46,7 @@ jobs:
 | `has-python-source`       | Whether Python source code was detected         |
 | `python-version`          | The Python version used                         |
 | `python-package-manager`  | The Python package manager detected (uv or pip) |
+| `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
 ## Python Tooling Support
 

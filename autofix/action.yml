@@ -30,6 +30,9 @@ outputs:
   python-package-manager:
     description: "The Python package manager detected (uv or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
+  ruff-version:
+    description: "The Ruff version specified by the project or empty string for default"
+    value: ${{ steps.resolve_environment.outputs.ruff-version }}
 
 runs:
   using: "composite"
@@ -42,8 +45,15 @@ runs:
         INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
+    - name: Setup uv
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+      with:
+        python-version: ${{ steps.resolve_environment.outputs.python-version }}
+        enable-cache: true
+
     - name: Setup Python
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
@@ -109,6 +119,20 @@ runs:
         else
           node "$ACTION_PATH/../dist/autofix.mjs"
         fi
+
+    - name: Format Python code with Ruff
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
+      with:
+        version: ${{ steps.resolve_environment.outputs.ruff-version }}
+        args: "format ."
+
+    - name: Lint and fix Python code with Ruff
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
+      with:
+        version: ${{ steps.resolve_environment.outputs.ruff-version }}
+        args: "check --fix ."
 
     - name: Run autofix.ci
       if: ${{ github.workflow == 'autofix.ci' }}

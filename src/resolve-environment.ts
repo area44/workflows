@@ -15,6 +15,7 @@ import {
   isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonVersion,
+  resolveRuffVersion,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
   type RuffExecutionMode,
@@ -685,10 +686,12 @@ export function writeOutput(
   const hasPy = hasPythonSource();
   const pyVersion = resolvePythonVersion();
   const pythonPmInfo = detectPythonPackageManager();
+  const ruffVer = resolveRuffVersion();
 
   core.setOutput("has-python-source", String(hasPy));
   core.setOutput("setup-python", String(hasPy));
   core.setOutput("python-version", pyVersion);
+  core.setOutput("ruff-version", ruffVer);
   if (pythonPmInfo) {
     core.setOutput("python-package-manager", pythonPmInfo.name);
   } else {

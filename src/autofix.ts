@@ -106,6 +106,13 @@ export function executePythonWorkflow(
     }
   }
 
+  if (process.env.GITHUB_ACTIONS === "true") {
+    core.info(
+      "Skipping inline Ruff execution because running in GitHub Actions (handled by ruff-action).",
+    );
+    return;
+  }
+
   ensureRuffAvailable(pmInfo, process.cwd());
 
   const commands = getPythonRuffCommands(pmInfo, mode, process.cwd());
