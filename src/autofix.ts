@@ -93,9 +93,7 @@ export function executePythonWorkflow(
   }
 
   if (!hasPmBin && !pmInfo.isStandalone) {
-    core.error(
-      `Required Python package manager '${requiredBin}' is not available in PATH.`,
-    );
+    core.error(`Required Python package manager '${requiredBin}' is not available in PATH.`);
     process.exit(1);
   }
 
