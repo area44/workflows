@@ -1,0 +1,6 @@
+[project]
+name = "pdm-fixture"
+version = "0.1.0"
+
+[tool.pdm]
+dev-dependencies = ["ruff"]

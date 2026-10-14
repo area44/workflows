@@ -3,6 +3,13 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import {
+  detectPythonPackageManager,
+  getPythonRuffCommands,
+  type PythonPackageManagerInfo,
+  type RuffExecutionMode,
+} from "./python-env.js";
+
 interface PackageJson {
   scripts?: Record<string, string>;
 }
@@ -49,18 +56,49 @@ function executeScripts(scripts: Record<string, string>, pm: string): void {
   }
 }
 
+function runPythonCommand(cmd: string): void {
+  core.info(`Executing: ${cmd}`);
+  try {
+    execSync(cmd, { stdio: "inherit" });
+  } catch {
+    core.error(`Python command "${cmd}" failed`);
+    process.exit(1);
+  }
+}
+
+export function executePythonWorkflow(
+  pmInfo: PythonPackageManagerInfo,
+  mode: RuffExecutionMode = "autofix",
+): void {
+  core.info(`Detected Python package manager: ${pmInfo.name}`);
+
+  if (process.env.SKIP_PYTHON_INSTALL !== "true") {
+    core.info(`Installing Python dependencies: ${pmInfo.installCommand}`);
+    runPythonCommand(pmInfo.installCommand);
+  }
+
+  const commands = getPythonRuffCommands(pmInfo, mode);
+  for (const cmd of commands) {
+    runPythonCommand(cmd);
+  }
+}
+
 export function run(): void {
   try {
-    if (!fs.existsSync("package.json")) {
+    const hasPackageJson = fs.existsSync("package.json");
+    if (!hasPackageJson) {
       core.info("No package.json found. Skipping scripts.");
-      return;
+    } else {
+      const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      const scripts = pkg.scripts || {};
+      const pm = process.env.PACKAGE_MANAGER || "npm";
+      executeScripts(scripts, pm);
     }
 
-    const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-    const scripts = pkg.scripts || {};
-    const pm = process.env.PACKAGE_MANAGER || "npm";
-
-    executeScripts(scripts, pm);
+    const pythonPmInfo = detectPythonPackageManager();
+    if (pythonPmInfo) {
+      executePythonWorkflow(pythonPmInfo);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.setFailed(`Failed to run scripts: ${message}`);

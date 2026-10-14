@@ -21,6 +21,9 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  python-package-manager:
+    description: "The Python package manager detected (uv, poetry, pdm, or pip)"
+    value: ${{ steps.resolve_environment.outputs.python-package-manager }}
 
 runs:
   using: "composite"

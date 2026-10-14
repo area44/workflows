@@ -113,13 +113,14 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Outputs
 
-| Name                      | Description                             |
-| ------------------------- | --------------------------------------- |
-| `node-version`            | The Node.js version used                |
-| `bun-version`             | The Bun version used                    |
-| `package-manager`         | The package manager used                |
-| `package-manager-version` | The version of the package manager used |
-| `runtime`                 | The runtime used (node or bun)          |
+| Name                      | Description                                                   |
+| ------------------------- | ------------------------------------------------------------- |
+| `node-version`            | The Node.js version used                                      |
+| `bun-version`             | The Bun version used                                          |
+| `package-manager`         | The package manager used                                      |
+| `package-manager-version` | The version of the package manager used                       |
+| `runtime`                 | The runtime used (node or bun)                                |
+| `python-package-manager`  | The Python package manager detected (uv, poetry, pdm, or pip) |
 
 ## Compatibility Overview
 

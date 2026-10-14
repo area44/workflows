@@ -1,0 +1,6 @@
+[tool.poetry]
+name = "poetry-fixture"
+version = "0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.3.0"

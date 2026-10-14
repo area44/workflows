@@ -36,6 +36,15 @@ To prevent ambiguity and avoid overclaiming compatibility across unverified vers
 4. **CI Tested Versions**:
    - Versions explicitly exercised in automated CI integration testing (`.github/workflows/test-actions.yml` and test fixtures): Node.js 24 / 24.19.0, Bun 1.4, npm 12 / 11.19.0, pnpm 12 / 11.21.0.
 
+### Python Package Manager Detection Priority
+
+When running Python linting and formatting workflows, the Python package manager is automatically detected using this deterministic priority sequence:
+
+1. `uv` (`uv.lock` or `[tool.uv]` in `pyproject.toml`)
+2. `poetry` (`poetry.lock` or `[tool.poetry]` in `pyproject.toml`)
+3. `pdm` (`pdm.lock` or `[tool.pdm]` in `pyproject.toml`)
+4. `pip` (`requirements.txt`, `Pipfile.lock`, `Pipfile`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`)
+
 ### GitHub Actions Runner Assumptions
 
 - **Runner OS**: `ubuntu-latest` (Linux x64).
@@ -137,7 +146,7 @@ Every composite action in this repository shares a common environment resolution
   - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
 - **Behavior & Constraints**:
   - Installs dependencies (`pnpm install --no-frozen-lockfile`, `bun install`, or `npm install`).
-  - Executes linting/formatting via `dist/autofix.mjs`.
+  - Executes linting/formatting via `dist/autofix.mjs` (and Python Ruff linting/formatting when Python projects are detected).
   - Triggers `autofix-ci/action` when running in a workflow named `autofix.ci`.
 
 ---
