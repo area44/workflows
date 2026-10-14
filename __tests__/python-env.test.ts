@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import * as pythonEnv from "../src/python-env.js";
 import {
   DEFAULT_PYTHON_VERSION,
   detectPythonPackageManager,
+  ensureRuffAvailable,
+  getPythonBinary,
   getPythonRuffCommands,
   hasPythonSource,
   isExecutableAvailable,
@@ -132,7 +133,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
     });
   });
 
-  describe("isExecutableAvailable()", () => {
+  describe("isExecutableAvailable() & getPythonBinary()", () => {
     it("should return true for common system binary like node", () => {
       expect(isExecutableAvailable("node")).toBe(true);
     });
@@ -143,6 +144,26 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
 
     it("should return false for invalid binary names with dangerous characters", () => {
       expect(isExecutableAvailable("node; rm -rf /")).toBe(false);
+    });
+
+    it("should resolve valid python binary name", () => {
+      const pyBin = getPythonBinary();
+      expect(["python3", "python"]).toContain(pyBin);
+    });
+  });
+
+  describe("ensureRuffAvailable()", () => {
+    it("should no-op when ruff runner tool is available", () => {
+      const pipInfo: PythonPackageManagerInfo = {
+        name: "pip",
+        installCommand: "",
+        execPrefix: "",
+        isStandalone: true,
+      };
+      const mockCheckExec = (bin: string) => bin === "uvx";
+      expect(() =>
+        ensureRuffAvailable(pipInfo, path.join(fixturesDir, "none"), mockCheckExec),
+      ).not.toThrow();
     });
   });
 
@@ -224,31 +245,33 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       execPrefix: "",
     };
 
+    const mockDirectRuff = (bin: string) => bin === "ruff";
+
     it("should generate ruff check command for check mode", () => {
       expect(getPythonRuffCommands(uvInfo, "check", path.join(fixturesDir, "uv"))).toEqual([
         "uv run ruff check .",
       ]);
-      expect(getPythonRuffCommands(pipInfo, "check", path.join(fixturesDir, "pip"))).toEqual([
-        "ruff check .",
-      ]);
+      expect(
+        getPythonRuffCommands(pipInfo, "check", path.join(fixturesDir, "pip"), mockDirectRuff),
+      ).toEqual(["ruff check ."]);
     });
 
     it("should generate ruff format check command for format-check mode", () => {
       expect(getPythonRuffCommands(uvInfo, "format-check", path.join(fixturesDir, "uv"))).toEqual([
         "uv run ruff format --check .",
       ]);
-      expect(getPythonRuffCommands(pipInfo, "format-check", path.join(fixturesDir, "pip"))).toEqual([
-        "ruff format --check .",
-      ]);
+      expect(
+        getPythonRuffCommands(pipInfo, "format-check", path.join(fixturesDir, "pip"), mockDirectRuff),
+      ).toEqual(["ruff format --check ."]);
     });
 
     it("should generate ruff format command for format mode", () => {
       expect(getPythonRuffCommands(uvInfo, "format", path.join(fixturesDir, "uv"))).toEqual([
         "uv run ruff format .",
       ]);
-      expect(getPythonRuffCommands(pipInfo, "format", path.join(fixturesDir, "pip"))).toEqual([
-        "ruff format .",
-      ]);
+      expect(
+        getPythonRuffCommands(pipInfo, "format", path.join(fixturesDir, "pip"), mockDirectRuff),
+      ).toEqual(["ruff format ."]);
     });
 
     it("should generate ruff format and ruff check --fix commands in autofix mode", () => {
@@ -256,7 +279,9 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
         "uv run ruff format .",
         "uv run ruff check --fix .",
       ]);
-      expect(getPythonRuffCommands(pipInfo, "autofix", path.join(fixturesDir, "pip"))).toEqual([
+      expect(
+        getPythonRuffCommands(pipInfo, "autofix", path.join(fixturesDir, "pip"), mockDirectRuff),
+      ).toEqual([
         "ruff format .",
         "ruff check --fix .",
       ]);

@@ -310,23 +310,38 @@ export function isRuffDeclaredInProject(
   return false;
 }
 
+export function getPythonBinary(): string {
+  if (isExecutableAvailable("python3")) return "python3";
+  if (isExecutableAvailable("python")) return "python";
+  return "python3";
+}
+
 export function ensureRuffAvailable(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
   checkExec: (bin: string) => boolean = isExecutableAvailable,
 ): void {
-  if (isRuffDeclaredInProject(cwd, pmInfo)) {
-    return;
-  }
-
   if (checkExec("uvx") || checkExec("uv") || checkExec("pipx") || checkExec("ruff")) {
     return;
   }
 
+  const pyBin = getPythonBinary();
   try {
-    execSync("pip install ruff", { stdio: "inherit" });
+    execSync(`${pyBin} -m ruff --version`, { stdio: "ignore" });
+    return;
   } catch {
-    execSync("python3 -m pip install ruff", { stdio: "inherit" });
+    // Not installed yet
+  }
+
+  try {
+    execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit" });
+  } catch {
+    // Secondary fallback attempt
+    try {
+      execSync("pip install ruff", { stdio: "inherit" });
+    } catch {
+      // Ignored
+    }
   }
 }
 
@@ -338,8 +353,8 @@ export function getPythonRuffCommands(
 ): string[] {
   let prefix = "";
 
-  if (isRuffDeclaredInProject(cwd, pmInfo)) {
-    prefix = pmInfo.execPrefix ? `${pmInfo.execPrefix} ` : "";
+  if (isRuffDeclaredInProject(cwd, pmInfo) && pmInfo.execPrefix) {
+    prefix = `${pmInfo.execPrefix} `;
   } else if (checkExec("uvx")) {
     prefix = "uvx ";
   } else if (checkExec("uv")) {
@@ -349,7 +364,8 @@ export function getPythonRuffCommands(
   } else if (checkExec("ruff")) {
     prefix = "";
   } else {
-    prefix = "python -m ";
+    const pyBin = getPythonBinary();
+    prefix = `${pyBin} -m `;
   }
 
   switch (mode) {
