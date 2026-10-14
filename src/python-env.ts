@@ -194,7 +194,6 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
   };
 }
 
-
 function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
