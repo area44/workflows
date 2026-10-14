@@ -72,5 +72,9 @@ When multiple lockfiles or configuration files exist in a repository, the Python
   - Code formatting: `ruff format .`
   - Code linting & autofix: `ruff check --fix .`
   - Central configuration is defined in `pyproject.toml` under `[tool.ruff]`.
-- **Failure Behavior**:
-  - If a required Python package manager is missing or dependency installation fails, the workflow reports an actionable `WorkflowError` and fails fast.
+- **Ruff Declaration vs Availability**:
+  - Distinguishes whether Ruff is declared as a project dependency vs executable in the target Python environment.
+  - If Ruff is declared in dependencies (`pyproject.toml`, `requirements.txt`, `uv.lock`) but not yet installed, the workflow automatically provisions project dependencies before formatting or linting.
+  - Setting `SKIP_PYTHON_INSTALL=true` bypasses project dependency installation step when dependencies are already pre-installed.
+- **Failure Behavior and Troubleshooting**:
+  - If a required Python package manager (`uv` or `pip`) is unavailable, dependency installation fails, or Ruff execution encounters unresolvable errors, the action logs actionable error details and fails fast with `WorkflowError`.

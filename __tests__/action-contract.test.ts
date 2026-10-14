@@ -79,6 +79,22 @@ describe("Public Action API Contract Specification", () => {
         expect(contract.description).toBeTruthy();
       },
     );
+
+    it("autofix/action.yml should pin all third-party actions to full commit SHAs", () => {
+      const fs = require("node:fs");
+      const actionContent = fs.readFileSync(path.join(rootDir, "autofix/action.yml"), "utf8");
+      const usesLines = actionContent
+        .split("\n")
+        .map((l: string) => l.trim())
+        .filter((l: string) => l.startsWith("uses:"));
+
+      for (const line of usesLines) {
+        const target = line.replace(/^uses:\s*/, "");
+        if (target.startsWith("./") || target.startsWith("../")) continue;
+        // Verify format like owner/repo@40-char-sha
+        expect(target).toMatch(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+@[a-f0-9]{40}(?:\s*#.*)?$/);
+      }
+    });
   });
 
   describe("Contract Validation Rules & Error Messages", () => {
