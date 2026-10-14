@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
+import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");
@@ -95,9 +96,27 @@ describe("autofix", () => {
       expect(execSync).toHaveBeenCalledWith("poetry run ruff check --fix .", { stdio: "inherit" });
     });
 
+    it("should warn and skip if python and package manager binaries are not available", () => {
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+
+      executePythonWorkflow({
+        name: "uv",
+        installCommand: "uv sync",
+        execPrefix: "uv run",
+      });
+
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("Python environment or package manager 'uv' is not available in PATH"),
+      );
+    });
+
     it("should handle failure in Python commands gracefully", () => {
-      vi.mocked(execSync).mockImplementation(() => {
-        throw new Error("Ruff failed");
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(true);
+      vi.mocked(execSync).mockImplementation((cmd: string) => {
+        if (!cmd.startsWith("command -v") && !cmd.startsWith("where")) {
+          throw new Error("Ruff failed");
+        }
+        return "" as any;
       });
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 

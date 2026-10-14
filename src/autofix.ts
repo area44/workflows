@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   detectPythonPackageManager,
   getPythonRuffCommands,
+  isExecutableAvailable,
   type PythonPackageManagerInfo,
   type RuffExecutionMode,
 } from "./python-env.js";
@@ -71,6 +72,17 @@ export function executePythonWorkflow(
   mode: RuffExecutionMode = "autofix",
 ): void {
   core.info(`Detected Python package manager: ${pmInfo.name}`);
+
+  const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
+  const hasPmBin = isExecutableAvailable(requiredBin);
+  const hasPythonBin = isExecutableAvailable("python3") || isExecutableAvailable("python");
+
+  if (!hasPmBin && !hasPythonBin) {
+    core.warning(
+      `Python environment or package manager '${requiredBin}' is not available in PATH. Skipping Python workflow.`,
+    );
+    return;
+  }
 
   if (process.env.SKIP_PYTHON_INSTALL !== "true") {
     core.info(`Installing Python dependencies: ${pmInfo.installCommand}`);

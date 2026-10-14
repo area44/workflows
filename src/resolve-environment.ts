@@ -11,6 +11,7 @@ import { WorkflowError } from "./errors.js";
 import {
   detectPythonPackageManager,
   getPythonRuffCommands,
+  isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
@@ -78,7 +79,12 @@ export {
 } from "./compatibility";
 
 export type { PythonPackageManager, PythonPackageManagerInfo, RuffExecutionMode };
-export { detectPythonPackageManager, getPythonRuffCommands, PYTHON_PACKAGE_MANAGER_PRIORITY };
+export {
+  detectPythonPackageManager,
+  getPythonRuffCommands,
+  isExecutableAvailable,
+  PYTHON_PACKAGE_MANAGER_PRIORITY,
+};
 
 /** Default Node.js fallback version */
 // renovate: datasource=node-version depName=node versioning=node

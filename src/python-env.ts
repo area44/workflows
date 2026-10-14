@@ -1,12 +1,14 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-export type PythonPackageManager = "uv" | "poetry" | "pdm" | "pip";
+export type PythonPackageManager = "uv" | "poetry" | "pdm" | "pipenv" | "pip";
 
 export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = [
   "uv",
   "poetry",
   "pdm",
+  "pipenv",
   "pip",
 ] as const;
 
@@ -19,6 +21,19 @@ export interface PythonPackageManagerInfo {
 }
 
 export type RuffExecutionMode = "check" | "format-check" | "format" | "autofix";
+
+export function isExecutableAvailable(binName: string): boolean {
+  if (!binName || !/^[a-z0-9_.-]+$/i.test(binName)) {
+    return false;
+  }
+  try {
+    const cmd = process.platform === "win32" ? `where ${binName}` : `command -v ${binName}`;
+    execSync(cmd, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function hasTomlTable(content: string, tableName: string): boolean {
   const escaped = tableName.replace(/\./g, "\\.");
@@ -74,28 +89,43 @@ function detectPdm(cwd: string, pyprojectContent?: string): PythonPackageManager
   };
 }
 
-function resolvePipConfigFile(
-  hasPyproject: boolean,
-  hasPipfile: boolean,
-  hasSetupPy: boolean,
-  hasSetupCfg: boolean,
-): string | undefined {
-  if (hasPyproject) return "pyproject.toml";
-  if (hasPipfile) return "Pipfile";
-  if (hasSetupPy) return "setup.py";
-  if (hasSetupCfg) return "setup.cfg";
-  return undefined;
+function detectPipenv(cwd: string): PythonPackageManagerInfo | null {
+  const hasPipfileLock = fs.existsSync(path.join(cwd, "Pipfile.lock"));
+  const hasPipfile = fs.existsSync(path.join(cwd, "Pipfile"));
+  if (!hasPipfileLock && !hasPipfile) return null;
+
+  return {
+    name: "pipenv",
+    lockfile: hasPipfileLock ? "Pipfile.lock" : undefined,
+    configFile: "Pipfile",
+    installCommand: "pipenv install --dev",
+    execPrefix: "pipenv run",
+  };
 }
 
-function resolvePipInstallCommand(
-  cwd: string,
-  hasRequirements: boolean,
-  hasPipfileLock: boolean,
-  hasPipfile: boolean,
-  hasSetupPy: boolean,
-  hasSetupCfg: boolean,
-  hasProjectOrBuildSystem: boolean,
-): string {
+function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
+  const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
+  const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
+  const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
+  const hasProjectOrBuildSystem =
+    pyprojectContent !== undefined &&
+    /^\s*\[\s*(?:project|build-system)\s*\]/m.test(pyprojectContent);
+
+  const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
+  if (!isPipProject) return null;
+
+  let configFile: string | undefined;
+  if (hasProjectOrBuildSystem) {
+    configFile = "pyproject.toml";
+  } else if (hasSetupPy) {
+    configFile = "setup.py";
+  } else if (hasSetupCfg) {
+    configFile = "setup.cfg";
+  }
+
+  let installCommand = "pip install ruff";
+  let lockfile: string | undefined;
+
   if (hasRequirements) {
     const reqPath = path.join(cwd, "requirements.txt");
     let reqContent = "";
@@ -105,50 +135,13 @@ function resolvePipInstallCommand(
       // Ignore read error
     }
     const hasRuffInReqs = /^\s*ruff\b/im.test(reqContent);
-    return hasRuffInReqs
+    installCommand = hasRuffInReqs
       ? "pip install -r requirements.txt"
       : "pip install -r requirements.txt && pip install ruff";
+    lockfile = "requirements.txt";
+  } else if (hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem) {
+    installCommand = "pip install -e .";
   }
-  if (hasPipfileLock || hasPipfile) {
-    return "pipenv install --dev";
-  }
-  if (hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem) {
-    return "pip install -e .";
-  }
-  return "pip install ruff";
-}
-
-function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
-  const hasPipfileLock = fs.existsSync(path.join(cwd, "Pipfile.lock"));
-  const hasPipfile = fs.existsSync(path.join(cwd, "Pipfile"));
-  const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
-  const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
-  const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
-  const hasPyproject = pyprojectContent !== undefined;
-  const hasProjectOrBuildSystem =
-    pyprojectContent !== undefined &&
-    /^\s*\[\s*(?:project|build-system)\s*\]/m.test(pyprojectContent);
-
-  const isPipProject =
-    hasPipfileLock || hasPipfile || hasRequirements || hasSetupPy || hasSetupCfg || hasPyproject;
-
-  if (!isPipProject) return null;
-
-  const configFile = resolvePipConfigFile(hasPyproject, hasPipfile, hasSetupPy, hasSetupCfg);
-  const lockfile = hasRequirements
-    ? "requirements.txt"
-    : hasPipfileLock
-      ? "Pipfile.lock"
-      : undefined;
-  const installCommand = resolvePipInstallCommand(
-    cwd,
-    hasRequirements,
-    hasPipfileLock,
-    hasPipfile,
-    hasSetupPy,
-    hasSetupCfg,
-    hasProjectOrBuildSystem,
-  );
 
   return {
     name: "pip",
@@ -176,6 +169,7 @@ export function detectPythonPackageManager(
     detectUv(cwd, pyprojectContent) ||
     detectPoetry(cwd, pyprojectContent) ||
     detectPdm(cwd, pyprojectContent) ||
+    detectPipenv(cwd) ||
     detectPip(cwd, pyprojectContent)
   );
 }

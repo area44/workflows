@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   detectPythonPackageManager,
   getPythonRuffCommands,
+  isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   type PythonPackageManagerInfo,
 } from "../src/python-env.js";
@@ -13,8 +14,22 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
 
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
-    it("should define priority order as uv > poetry > pdm > pip", () => {
-      expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "poetry", "pdm", "pip"]);
+    it("should define priority order as uv > poetry > pdm > pipenv > pip", () => {
+      expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "poetry", "pdm", "pipenv", "pip"]);
+    });
+  });
+
+  describe("isExecutableAvailable()", () => {
+    it("should return true for common system binary like node", () => {
+      expect(isExecutableAvailable("node")).toBe(true);
+    });
+
+    it("should return false for non-existent binary", () => {
+      expect(isExecutableAvailable("non_existent_binary_xyz_123")).toBe(false);
+    });
+
+    it("should return false for invalid binary names with dangerous characters", () => {
+      expect(isExecutableAvailable("node; rm -rf /")).toBe(false);
     });
   });
 
@@ -49,6 +64,23 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(pmInfo?.execPrefix).toBe("pdm run");
     });
 
+    it("should detect pipenv package manager when Pipfile or Pipfile.lock exists", () => {
+      const tempDir = path.join(fixturesDir, "pipenv-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "Pipfile"), "[packages]\nruff = '*'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pipenv");
+        expect(pmInfo?.configFile).toBe("Pipfile");
+        expect(pmInfo?.installCommand).toBe("pipenv install --dev");
+        expect(pmInfo?.execPrefix).toBe("pipenv run");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should detect pip package manager from pip fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "pip"));
       expect(pmInfo).not.toBeNull();
@@ -59,18 +91,15 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
       expect(pmInfo?.execPrefix).toBe("");
     });
 
+    it("should return null for JS/TS repositories with tool-only pyproject.toml ([tool.ruff])", () => {
+      const pmInfo = detectPythonPackageManager(process.cwd()); // repo root has tool-only pyproject.toml
+      expect(pmInfo).toBeNull();
+    });
+
     it("should select uv as highest priority when conflicting lockfiles exist", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "conflicting"));
       expect(pmInfo).not.toBeNull();
       expect(pmInfo?.name).toBe("uv");
-    });
-
-    it("should safely handle pyproject.toml with tool-only configuration ([tool.ruff])", () => {
-      const pmInfo = detectPythonPackageManager(process.cwd()); // repo root has tool.ruff pyproject.toml
-      expect(pmInfo).not.toBeNull();
-      expect(pmInfo?.name).toBe("pip");
-      expect(pmInfo?.installCommand).toBe("pip install ruff");
-      expect(pmInfo?.execPrefix).toBe("");
     });
 
     it("should append pip install ruff when requirements.txt does not contain ruff", () => {
