@@ -36,14 +36,16 @@ jobs:
 
 ### Outputs
 
-| Name                      | Description                                                   |
-| ------------------------- | ------------------------------------------------------------- |
-| `node-version`            | The Node.js version used                                      |
-| `bun-version`             | The Bun version used                                          |
-| `package-manager`         | The package manager used                                      |
-| `package-manager-version` | The version of the package manager used                       |
-| `runtime`                 | The runtime used (node or bun)                                |
-| `python-package-manager`  | The Python package manager detected (uv, poetry, pdm, or pip) |
+| Name                      | Description                                                           |
+| ------------------------- | --------------------------------------------------------------------- |
+| `node-version`            | The Node.js version used                                              |
+| `bun-version`             | The Bun version used                                                  |
+| `package-manager`         | The package manager used                                              |
+| `package-manager-version` | The version of the package manager used                               |
+| `runtime`                 | The runtime used (node or bun)                                        |
+| `has-python-source`       | Whether Python source code was detected                               |
+| `python-version`          | The Python version used                                               |
+| `python-package-manager`  | The Python package manager detected (uv, poetry, pdm, pipenv, or pip) |
 
 ## Python Tooling Support
 

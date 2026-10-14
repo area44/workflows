@@ -21,8 +21,14 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  has-python-source:
+    description: "Whether Python source code was detected"
+    value: ${{ steps.resolve_environment.outputs.has-python-source }}
+  python-version:
+    description: "The Python version used"
+    value: ${{ steps.resolve_environment.outputs.python-version }}
   python-package-manager:
-    description: "The Python package manager detected (uv, poetry, pdm, or pip)"
+    description: "The Python package manager detected (uv, poetry, pdm, pipenv, or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
 
 runs:
@@ -35,6 +41,12 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_RUNTIME: ${{ inputs.runtime }}
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
+
+    - name: Setup Python
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ steps.resolve_environment.outputs.python-version }}
 
     - name: Setup PNPM
       if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}

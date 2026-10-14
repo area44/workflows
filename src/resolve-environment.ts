@@ -11,8 +11,10 @@ import { WorkflowError } from "./errors.js";
 import {
   detectPythonPackageManager,
   getPythonRuffCommands,
+  hasPythonSource,
   isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
+  resolvePythonVersion,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
   type RuffExecutionMode,
@@ -680,9 +682,17 @@ export function writeOutput(
   core.setOutput("setup-bun", String(bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
 
+  const hasPy = hasPythonSource();
+  const pyVersion = resolvePythonVersion();
   const pythonPmInfo = detectPythonPackageManager();
+
+  core.setOutput("has-python-source", String(hasPy));
+  core.setOutput("setup-python", String(hasPy));
+  core.setOutput("python-version", pyVersion);
   if (pythonPmInfo) {
     core.setOutput("python-package-manager", pythonPmInfo.name);
+  } else {
+    core.setOutput("python-package-manager", "");
   }
 }
 

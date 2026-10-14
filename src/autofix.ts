@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -67,6 +68,62 @@ function runPythonCommand(cmd: string): void {
   }
 }
 
+export function synchronizeJsDependencies(pm: string, cwd: string = process.cwd()): void {
+  const safePm = sanitizePackageManager(pm);
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return;
+
+  let lockfile: string | undefined;
+  let syncCmd: string;
+
+  switch (safePm) {
+    case "pnpm":
+      lockfile = "pnpm-lock.yaml";
+      syncCmd = "pnpm install --no-frozen-lockfile";
+      break;
+    case "bun":
+      lockfile = fs.existsSync(path.join(cwd, "bun.lock")) ? "bun.lock" : "bun.lockb";
+      syncCmd = "bun install";
+      break;
+    case "yarn":
+      lockfile = "yarn.lock";
+      syncCmd = "yarn install";
+      break;
+    case "npm":
+    default:
+      lockfile = "package-lock.json";
+      syncCmd = "npm install";
+      break;
+  }
+
+  const lockPath = path.join(cwd, lockfile);
+  const isMissing = !fs.existsSync(lockPath);
+  let isStale = false;
+  if (!isMissing) {
+    try {
+      const pkgMtime = fs.statSync(pkgPath).mtimeMs;
+      const lockMtime = fs.statSync(lockPath).mtimeMs;
+      if (pkgMtime > lockMtime) {
+        isStale = true;
+      }
+    } catch {
+      // Ignore stat error
+    }
+  }
+
+  if (isMissing || isStale) {
+    core.info(
+      `JS/TS lockfile (${lockfile}) is ${isMissing ? "missing" : "stale"}. Synchronizing dependencies: ${syncCmd}`,
+    );
+    try {
+      execSync(syncCmd, { stdio: "inherit" });
+    } catch {
+      core.error(`JS/TS dependency synchronization failed: ${syncCmd}`);
+      process.exit(1);
+    }
+  }
+}
+
 export function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   mode: RuffExecutionMode = "autofix",
@@ -77,19 +134,26 @@ export function executePythonWorkflow(
   const hasPmBin = isExecutableAvailable(requiredBin);
   const hasPythonBin = isExecutableAvailable("python3") || isExecutableAvailable("python");
 
-  if (!hasPmBin && !hasPythonBin) {
-    core.warning(
-      `Python environment or package manager '${requiredBin}' is not available in PATH. Skipping Python workflow.`,
+  if (!hasPmBin && !hasPythonBin && !pmInfo.isStandalone) {
+    core.error(
+      `Python environment or package manager '${requiredBin}' is not available in PATH.`,
     );
-    return;
+    process.exit(1);
   }
 
-  if (process.env.SKIP_PYTHON_INSTALL !== "true") {
-    core.info(`Installing Python dependencies: ${pmInfo.installCommand}`);
-    runPythonCommand(pmInfo.installCommand);
+  if (!pmInfo.isStandalone && process.env.SKIP_PYTHON_INSTALL !== "true") {
+    if (pmInfo.lockCommand) {
+      core.info(`Synchronizing Python lockfile: ${pmInfo.lockCommand}`);
+      runPythonCommand(pmInfo.lockCommand);
+    }
+    const installCmd = pmInfo.syncCommand || pmInfo.installCommand;
+    if (installCmd) {
+      core.info(`Installing Python dependencies: ${installCmd}`);
+      runPythonCommand(installCmd);
+    }
   }
 
-  const commands = getPythonRuffCommands(pmInfo, mode);
+  const commands = getPythonRuffCommands(pmInfo, mode, process.cwd());
   for (const cmd of commands) {
     runPythonCommand(cmd);
   }
@@ -104,6 +168,9 @@ export function run(): void {
       const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
       const scripts = pkg.scripts || {};
       const pm = process.env.PACKAGE_MANAGER || "npm";
+      if (process.env.SKIP_JS_INSTALL !== "true") {
+        synchronizeJsDependencies(pm);
+      }
       executeScripts(scripts, pm);
     }
 
