@@ -140,7 +140,7 @@ describe("Python Package Manager Detection & Ruff Command Generation", () => {
   describe("resolveRuffVersion() and specifier extraction", () => {
     it("should extract exact pin or version constraint from specifiers", () => {
       expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
-      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("0.4.0");
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBeUndefined();
       expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
       expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
       expect(extractRuffVersionSpecifier("")).toBeUndefined();

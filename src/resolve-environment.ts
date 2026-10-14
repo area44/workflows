@@ -11,7 +11,7 @@ import { WorkflowError } from "./errors.js";
 import {
   detectPythonPackageManager,
   getPythonRuffCommands,
-  hasPythonSource,
+  hasPythonProject,
   isExecutableAvailable,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonVersion,
@@ -683,7 +683,7 @@ export function writeOutput(
   core.setOutput("setup-bun", String(bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
 
-  const hasPy = hasPythonSource();
+  const hasPy = hasPythonProject();
   const pyVersion = resolvePythonVersion();
   const pythonPmInfo = detectPythonPackageManager();
   const ruffVer = resolveRuffVersion();
