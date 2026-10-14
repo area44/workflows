@@ -106,7 +106,7 @@ export function executePythonWorkflow(
     }
   }
 
-  if (process.env.GITHUB_ACTIONS === "true") {
+  if (process.env.SKIP_INLINE_RUFF === "true") {
     core.info(
       "Skipping inline Ruff execution because running in GitHub Actions (handled by ruff-action).",
     );

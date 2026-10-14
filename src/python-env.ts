@@ -1,6 +1,9 @@
+import * as core from "@actions/core";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+
+import { WorkflowError } from "./errors.js";
 
 export type PythonPackageManager = "uv" | "pip";
 
@@ -284,12 +287,6 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
     return exactMatch[1];
   }
 
-  // Exact version digits inside constraints like ==0.4.2, ^0.4.0, ~=0.4.1
-  const versionMatch = cleaned.match(/(?:==|~=|\^)?\s*(\d+\.\d+\.\d+)/);
-  if (versionMatch) {
-    return versionMatch[1];
-  }
-
   return undefined;
 }
 
@@ -389,26 +386,51 @@ export function ensureRuffAvailable(
   cwd: string = process.cwd(),
   checkExec: (bin: string) => boolean = isExecutableAvailable,
 ): void {
+  if (pmInfo.isStandalone) {
+    if (checkExec("ruff") || checkExec("uvx") || checkExec("uv") || checkExec("pipx")) {
+      return;
+    }
+    const pyBin = getPythonBinary();
+    core.info(`Ruff not found in PATH. Attempting to install Ruff using ${pyBin}...`);
+    try {
+      execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
+    } catch {
+      try {
+        execSync("pip install ruff", { stdio: "inherit", cwd });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new WorkflowError(
+          "SETUP_FAILURE",
+          `Failed to install Ruff for standalone Python project: ${msg}`,
+          { stage: "ruff-installation", cause: err },
+        );
+      }
+    }
+    return;
+  }
+
+  if (isRuffDeclaredInProject(cwd, pmInfo)) {
+    return;
+  }
+
   if (checkExec("ruff") || checkExec("uvx") || checkExec("uv") || checkExec("pipx")) {
     return;
   }
 
   const pyBin = getPythonBinary();
-  try {
-    execSync(`${pyBin} -m ruff --version`, { stdio: "ignore" });
-    return;
-  } catch {
-    // Not installed yet
-  }
-
+  core.info(`Ruff is not declared as a dependency. Attempting to install Ruff via ${pyBin}...`);
   try {
     execSync(`${pyBin} -m pip install ruff`, { stdio: "inherit", cwd });
-  } catch (err) {
+  } catch {
     try {
       execSync("pip install ruff", { stdio: "inherit", cwd });
-    } catch (err2) {
-      const msg = err2 instanceof Error ? err2.message : String(err2);
-      throw new Error(`Failed to install Ruff in Python environment: ${msg}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new WorkflowError(
+        "SETUP_FAILURE",
+        `Failed to install Ruff in Python environment: ${msg}`,
+        { stage: "ruff-installation", cause: err },
+      );
     }
   }
 }
