@@ -132,13 +132,11 @@ export function detectToolConfiguration(cwd: string = process.cwd()): ToolDetect
 
   const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
 
-  // Biome detection
   const hasBiomeConfig =
     fs.existsSync(resolveFilePath("biome.json", cwd)) ||
     fs.existsSync(resolveFilePath("biome.jsonc", cwd));
   const hasBiomeDep = Boolean(deps["@biomejs/biome"] || deps["biome"]);
 
-  // Prettier detection
   const prettierConfigFiles = [
     ".prettierrc",
     ".prettierrc.json",
@@ -161,19 +159,16 @@ export function detectToolConfiguration(cwd: string = process.cwd()): ToolDetect
     deps["prettier-plugin-toml"] || deps["@prettier/plugin-toml"],
   );
 
-  // Taplo detection
   const hasTaploConfig =
     fs.existsSync(resolveFilePath("taplo.toml", cwd)) ||
     fs.existsSync(resolveFilePath(".taplorc", cwd));
   const hasTaploDep = Boolean(deps["taplo"] || deps["@taplo/cli"]);
 
-  // dprint detection
   const hasDprintConfig =
     fs.existsSync(resolveFilePath("dprint.json", cwd)) ||
     fs.existsSync(resolveFilePath(".dprint.json", cwd));
   const hasDprintDep = Boolean(deps["dprint"]);
 
-  // ESLint detection
   const eslintConfigFiles = [
     ".eslintrc",
     ".eslintrc.js",
@@ -207,31 +202,9 @@ export function detectToolConfiguration(cwd: string = process.cwd()): ToolDetect
   };
 }
 
-export function buildFormatExecutionPlan(
-  cwd: string = process.cwd(),
-  pmName: string = "npm",
-): FormatExecutionPlan {
-  const detection = detectToolConfiguration(cwd);
-  const selections: FormatToolSelection[] = [];
-
-  // Helper for runner CLI executable based on package manager
-  const getExecPrefix = (): string => {
-    switch (pmName.toLowerCase()) {
-      case "pnpm":
-        return "pnpm exec";
-      case "bun":
-        return "bunx";
-      case "npm":
-      default:
-        return "npx";
-    }
-  };
-
-  const execPrefix = getExecPrefix();
-
-  // 1. JavaScript & TypeScript
+function selectJsTsSelections(detection: ToolDetectionResult): FormatToolSelection[] {
   if (detection.hasPackageScripts) {
-    selections.push(
+    return [
       {
         format: "javascript",
         tool: "package-scripts",
@@ -242,9 +215,10 @@ export function buildFormatExecutionPlan(
         tool: "package-scripts",
         reason: "Explicit package.json scripts take primary precedence for TypeScript.",
       },
-    );
-  } else if (detection.hasBiomeConfig || detection.hasBiomeDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasBiomeConfig || detection.hasBiomeDep) {
+    return [
       {
         format: "javascript",
         tool: "biome",
@@ -255,9 +229,10 @@ export function buildFormatExecutionPlan(
         tool: "biome",
         reason: "Biome configuration or dependency detected for TypeScript.",
       },
-    );
-  } else if (detection.hasPrettierConfig || detection.hasPrettierDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasPrettierConfig || detection.hasPrettierDep) {
+    return [
       {
         format: "javascript",
         tool: "prettier",
@@ -268,9 +243,10 @@ export function buildFormatExecutionPlan(
         tool: "prettier",
         reason: "Prettier configuration or dependency detected for TypeScript.",
       },
-    );
-  } else if (detection.hasEslintConfig || detection.hasEslintDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasEslintConfig || detection.hasEslintDep) {
+    return [
       {
         format: "javascript",
         tool: "eslint",
@@ -281,12 +257,14 @@ export function buildFormatExecutionPlan(
         tool: "eslint",
         reason: "ESLint configuration or dependency detected for TypeScript.",
       },
-    );
+    ];
   }
+  return [];
+}
 
-  // 2. JSON & JSONC
+function selectJsonSelections(detection: ToolDetectionResult): FormatToolSelection[] {
   if (detection.hasPackageScripts) {
-    selections.push(
+    return [
       {
         format: "json",
         tool: "package-scripts",
@@ -297,9 +275,10 @@ export function buildFormatExecutionPlan(
         tool: "package-scripts",
         reason: "Explicit package.json scripts take primary precedence for JSONC.",
       },
-    );
-  } else if (detection.hasBiomeConfig || detection.hasBiomeDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasBiomeConfig || detection.hasBiomeDep) {
+    return [
       {
         format: "json",
         tool: "biome",
@@ -310,9 +289,10 @@ export function buildFormatExecutionPlan(
         tool: "biome",
         reason: "Biome configuration or dependency detected for JSONC.",
       },
-    );
-  } else if (detection.hasPrettierConfig || detection.hasPrettierDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasPrettierConfig || detection.hasPrettierDep) {
+    return [
       {
         format: "json",
         tool: "prettier",
@@ -323,9 +303,10 @@ export function buildFormatExecutionPlan(
         tool: "prettier",
         reason: "Prettier configuration or dependency detected for JSONC.",
       },
-    );
-  } else if (detection.hasDprintConfig || detection.hasDprintDep) {
-    selections.push(
+    ];
+  }
+  if (detection.hasDprintConfig || detection.hasDprintDep) {
+    return [
       {
         format: "json",
         tool: "dprint",
@@ -336,81 +317,204 @@ export function buildFormatExecutionPlan(
         tool: "dprint",
         reason: "dprint configuration or dependency detected for JSONC.",
       },
-    );
+    ];
   }
+  return [];
+}
 
-  // 3. YAML
+function selectYamlSelections(detection: ToolDetectionResult): FormatToolSelection[] {
   if (detection.hasPackageScripts) {
-    selections.push({
-      format: "yaml",
-      tool: "package-scripts",
-      reason: "Explicit package.json scripts take primary precedence for YAML.",
-    });
-  } else if (detection.hasPrettierConfig || detection.hasPrettierDep) {
-    selections.push({
-      format: "yaml",
-      tool: "prettier",
-      reason: "Prettier configuration or dependency detected for YAML.",
-    });
+    return [
+      {
+        format: "yaml",
+        tool: "package-scripts",
+        reason: "Explicit package.json scripts take primary precedence for YAML.",
+      },
+    ];
   }
+  if (detection.hasPrettierConfig || detection.hasPrettierDep) {
+    return [
+      {
+        format: "yaml",
+        tool: "prettier",
+        reason: "Prettier configuration or dependency detected for YAML.",
+      },
+    ];
+  }
+  return [];
+}
 
-  // 4. TOML
+function selectTomlSelections(detection: ToolDetectionResult): FormatToolSelection[] {
   if (detection.hasPackageScripts) {
-    selections.push({
-      format: "toml",
-      tool: "package-scripts",
-      reason: "Explicit package.json scripts take primary precedence for TOML.",
-    });
-  } else if (detection.hasTaploConfig || detection.hasTaploDep) {
-    selections.push({
-      format: "toml",
-      tool: "taplo",
-      reason: "Taplo configuration or dependency detected for TOML.",
-    });
-  } else if (
+    return [
+      {
+        format: "toml",
+        tool: "package-scripts",
+        reason: "Explicit package.json scripts take primary precedence for TOML.",
+      },
+    ];
+  }
+  if (detection.hasTaploConfig || detection.hasTaploDep) {
+    return [
+      {
+        format: "toml",
+        tool: "taplo",
+        reason: "Taplo configuration or dependency detected for TOML.",
+      },
+    ];
+  }
+  if (
     (detection.hasPrettierConfig || detection.hasPrettierDep) &&
     detection.hasPrettierTomlPlugin
   ) {
-    selections.push({
-      format: "toml",
-      tool: "prettier",
-      reason: "Prettier detected with prettier-plugin-toml for TOML.",
-    });
+    return [
+      {
+        format: "toml",
+        tool: "prettier",
+        reason: "Prettier detected with prettier-plugin-toml for TOML.",
+      },
+    ];
   }
+  return [];
+}
 
-  // 5. Markdown
+function selectMarkdownSelections(detection: ToolDetectionResult): FormatToolSelection[] {
   if (detection.hasPackageScripts) {
-    selections.push({
-      format: "markdown",
-      tool: "package-scripts",
-      reason: "Explicit package.json scripts take primary precedence for Markdown.",
-    });
-  } else if (detection.hasPrettierConfig || detection.hasPrettierDep) {
-    selections.push({
-      format: "markdown",
-      tool: "prettier",
-      reason: "Prettier configuration or dependency detected for Markdown.",
-    });
-  } else if (detection.hasDprintConfig || detection.hasDprintDep) {
-    selections.push({
-      format: "markdown",
-      tool: "dprint",
-      reason: "dprint configuration or dependency detected for Markdown.",
-    });
+    return [
+      {
+        format: "markdown",
+        tool: "package-scripts",
+        reason: "Explicit package.json scripts take primary precedence for Markdown.",
+      },
+    ];
+  }
+  if (detection.hasPrettierConfig || detection.hasPrettierDep) {
+    return [
+      {
+        format: "markdown",
+        tool: "prettier",
+        reason: "Prettier configuration or dependency detected for Markdown.",
+      },
+    ];
+  }
+  if (detection.hasDprintConfig || detection.hasDprintDep) {
+    return [
+      {
+        format: "markdown",
+        tool: "dprint",
+        reason: "dprint configuration or dependency detected for Markdown.",
+      },
+    ];
+  }
+  return [];
+}
+
+function buildPrettierCommand(formats: SupportedFormat[], execPrefix: string): ToolCommand | null {
+  const patterns: string[] = [];
+  if (formats.includes("javascript") || formats.includes("typescript")) {
+    patterns.push("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx");
+  }
+  if (formats.includes("json") || formats.includes("jsonc")) {
+    patterns.push("json", "jsonc");
+  }
+  if (formats.includes("yaml")) {
+    patterns.push("yaml", "yml");
+  }
+  if (formats.includes("toml")) {
+    patterns.push("toml");
+  }
+  if (formats.includes("markdown")) {
+    patterns.push("md", "markdown");
   }
 
-  // Python is always assigned to ruff
-  selections.push({
-    format: "python",
-    tool: "ruff",
-    reason: "Ruff is the primary Python formatter and linter.",
-  });
+  if (patterns.length === 0) return null;
 
-  // Now group selections by tool to produce non-overlapping execution commands
+  const patternGlob =
+    patterns.length === 1 ? `**/*.${patterns[0]}` : `**/*.{${patterns.join(",")}}`;
+  return {
+    tool: "prettier",
+    command: `${execPrefix} prettier --write "${patternGlob}"`,
+    args: ["prettier", "--write", patternGlob],
+    formats,
+    reason: `Running Prettier format for formats: ${formats.join(", ")}.`,
+  };
+}
+
+function buildToolCommand(
+  tool: FormatterTool,
+  formats: SupportedFormat[],
+  execPrefix: string,
+): ToolCommand | null {
+  switch (tool) {
+    case "biome":
+      return {
+        tool: "biome",
+        command: `${execPrefix} biome check --write .`,
+        args: ["biome", "check", "--write", "."],
+        formats,
+        reason: `Running Biome autofix for formats: ${formats.join(", ")}.`,
+      };
+    case "prettier":
+      return buildPrettierCommand(formats, execPrefix);
+    case "taplo":
+      return {
+        tool: "taplo",
+        command: `${execPrefix} taplo fmt`,
+        args: ["taplo", "fmt"],
+        formats,
+        reason: "Running Taplo format for TOML.",
+      };
+    case "dprint":
+      return {
+        tool: "dprint",
+        command: `${execPrefix} dprint fmt`,
+        args: ["dprint", "fmt"],
+        formats,
+        reason: `Running dprint format for formats: ${formats.join(", ")}.`,
+      };
+    case "eslint":
+      return {
+        tool: "eslint",
+        command: `${execPrefix} eslint --fix .`,
+        args: ["eslint", "--fix", "."],
+        formats,
+        reason: `Running ESLint fix for formats: ${formats.join(", ")}.`,
+      };
+    default:
+      return null;
+  }
+}
+
+function getExecPrefix(pmName: string): string {
+  switch (pmName.toLowerCase()) {
+    case "pnpm":
+      return "pnpm exec";
+    case "bun":
+      return "bunx";
+    case "npm":
+    default:
+      return "npx";
+  }
+}
+
+export function buildFormatExecutionPlan(
+  cwd: string = process.cwd(),
+  pmName: string = "npm",
+): FormatExecutionPlan {
+  const detection = detectToolConfiguration(cwd);
+  const selections: FormatToolSelection[] = [
+    ...selectJsTsSelections(detection),
+    ...selectJsonSelections(detection),
+    ...selectYamlSelections(detection),
+    ...selectTomlSelections(detection),
+    ...selectMarkdownSelections(detection),
+    { format: "python", tool: "ruff", reason: "Ruff is the primary Python formatter and linter." },
+  ];
+
   const toolFormatMap = new Map<FormatterTool, SupportedFormat[]>();
   for (const sel of selections) {
     if (sel.tool === "package-scripts" || sel.tool === "ruff") {
-      continue; // Handled directly by executeJsWorkflow and ruff-action respectively
+      continue;
     }
     const existing = toolFormatMap.get(sel.tool) || [];
     if (!existing.includes(sel.format)) {
@@ -419,83 +523,14 @@ export function buildFormatExecutionPlan(
     }
   }
 
+  const execPrefix = getExecPrefix(pmName);
   const commands: ToolCommand[] = [];
 
-  // Generate commands for standalone tools (when not handled by package-scripts)
-  if (toolFormatMap.has("biome")) {
-    const formats = toolFormatMap.get("biome")!;
-    commands.push({
-      tool: "biome",
-      command: `${execPrefix} biome check --write .`,
-      args: ["biome", "check", "--write", "."],
-      formats,
-      reason: `Running Biome autofix for formats: ${formats.join(", ")}.`,
-    });
-  }
-
-  if (toolFormatMap.has("prettier")) {
-    const formats = toolFormatMap.get("prettier")!;
-    const patterns: string[] = [];
-    if (formats.includes("javascript") || formats.includes("typescript")) {
-      patterns.push("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx");
+  for (const [tool, formats] of toolFormatMap.entries()) {
+    const cmd = buildToolCommand(tool, formats, execPrefix);
+    if (cmd) {
+      commands.push(cmd);
     }
-    if (formats.includes("json") || formats.includes("jsonc")) {
-      patterns.push("json", "jsonc");
-    }
-    if (formats.includes("yaml")) {
-      patterns.push("yaml", "yml");
-    }
-    if (formats.includes("toml")) {
-      patterns.push("toml");
-    }
-    if (formats.includes("markdown")) {
-      patterns.push("md", "markdown");
-    }
-
-    if (patterns.length > 0) {
-      const patternGlob =
-        patterns.length === 1 ? `**/*.${patterns[0]}` : `**/*.{${patterns.join(",")}}`;
-      commands.push({
-        tool: "prettier",
-        command: `${execPrefix} prettier --write "${patternGlob}"`,
-        args: ["prettier", "--write", patternGlob],
-        formats,
-        reason: `Running Prettier format for formats: ${formats.join(", ")}.`,
-      });
-    }
-  }
-
-  if (toolFormatMap.has("taplo")) {
-    const formats = toolFormatMap.get("taplo")!;
-    commands.push({
-      tool: "taplo",
-      command: `${execPrefix} taplo fmt`,
-      args: ["taplo", "fmt"],
-      formats,
-      reason: "Running Taplo format for TOML.",
-    });
-  }
-
-  if (toolFormatMap.has("dprint")) {
-    const formats = toolFormatMap.get("dprint")!;
-    commands.push({
-      tool: "dprint",
-      command: `${execPrefix} dprint fmt`,
-      args: ["dprint", "fmt"],
-      formats,
-      reason: `Running dprint format for formats: ${formats.join(", ")}.`,
-    });
-  }
-
-  if (toolFormatMap.has("eslint")) {
-    const formats = toolFormatMap.get("eslint")!;
-    commands.push({
-      tool: "eslint",
-      command: `${execPrefix} eslint --fix .`,
-      args: ["eslint", "--fix", "."],
-      formats,
-      reason: `Running ESLint fix for formats: ${formats.join(", ")}.`,
-    });
   }
 
   return {
