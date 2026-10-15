@@ -98,12 +98,13 @@ describe("Public Action API Contract Specification", () => {
 
     it("autofix/action.yml should execute Ruff format and check --fix exactly once in order and gated on has-python-source", () => {
       const fs = require("node:fs");
-      const YAML = require("yaml");
+      const { parseDocument } = require("yaml");
       const actionContent = fs.readFileSync(path.join(rootDir, "autofix/action.yml"), "utf8");
-      const parsed = YAML.parse(actionContent);
+      const doc = parseDocument(actionContent);
+      const parsed = doc.toJSON();
 
       const ruffSteps = parsed.runs.steps.filter(
-        (step: any) => step.uses && step.uses.startsWith("astral-sh/ruff-action@"),
+        (step: any) => step.uses && typeof step.uses === "string" && step.uses.startsWith("astral-sh/ruff-action@"),
       );
 
       expect(ruffSteps).toHaveLength(2);
