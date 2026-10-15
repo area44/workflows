@@ -4,5 +4,9 @@
     "format": "echo 'formatting'",
     "lint": "echo 'linting'"
   },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "bun@1.2.0",
   "type": "module"
 }
