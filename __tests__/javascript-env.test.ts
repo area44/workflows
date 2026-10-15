@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { WorkflowError } from "../src/errors";
 import {
-  DEFAULT_BUN_VERSION,
-  DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   getJsInstallationPlan,
