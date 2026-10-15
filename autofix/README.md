@@ -32,7 +32,7 @@ The Autofix composite action is structured with clear separation of responsibili
 
 - **`autofix/action.yml`**: Keeps the composite action declarative and concise. Declares required environment setup actions (`actions/setup-node`, `oven-sh/setup-bun`, `pnpm/setup`, `actions/setup-python`, `astral-sh/setup-uv`), executes the generated TypeScript entrypoint (`dist/autofix.mjs`), and delegates Python formatting/linting to pinned `astral-sh/ruff-action` steps.
 - **`src/autofix.ts`**: The main orchestration entrypoint. Evaluates the resolved environment, determines applicable project scripts, coordinates dependency installation plans, executes matching scripts, and triggers Python environment setup.
-- **`src/javascript-env.ts`**: Dedicated JavaScript/TypeScript environment module. Inspects package manifests (`package.json`), detects package managers (`npm`, `pnpm`, `bun`) and version configurations (`packageManager`, `devEngines`), detects supported lockfiles, generates deterministic lockfile-respecting installation plans, and evaluates script selection precedence.
+- **`src/javascript-env.ts`**: Dedicated JavaScript/TypeScript environment module. Inspects package manifests (`package.json`), detects package managers (`npm`, `pnpm`, `bun`) and version configurations (`packageManager`, `devEngines`), detects lockfiles, generates installation plans, and evaluates script selection precedence.
 - **`src/python-env.ts`**: Owns Python-specific environment detection, Python version resolution, Python package manager detection (`uv`, `pip`), and Ruff version resolution from lockfiles and manifests.
 
 ## Public API Contract
@@ -61,17 +61,11 @@ The Autofix composite action is structured with clear separation of responsibili
 
 ### Package Manager & Lockfile Behavior
 
-Autofix inspects the project environment to determine the appropriate package manager (`npm`, `pnpm`, or `bun`) and generates a deterministic, lockfile-respecting installation plan:
+Autofix inspects the project environment to determine the appropriate package manager (`npm`, `pnpm`, or `bun`) and executes dependency installation commands that allow lockfiles to naturally update when package manifests change:
 
-- **`npm`**:
-  - **With `package-lock.json`**: Executes `npm ci` (frozen lockfile installation).
-  - **Without lockfile**: Falls back to `npm install` (non-frozen installation).
-- **`pnpm`**:
-  - **With `pnpm-lock.yaml`**: Executes `pnpm install --frozen-lockfile` (frozen lockfile installation).
-  - **Without lockfile**: Falls back to `pnpm install --no-frozen-lockfile` (non-frozen installation).
-- **`bun`**:
-  - **With `bun.lock` or `bun.lockb`**: Executes `bun install --frozen-lockfile` (frozen lockfile installation).
-  - **Without lockfile**: Falls back to `bun install` (non-frozen installation).
+- **`npm`**: Executes `npm install` to install dependencies and update `package-lock.json`.
+- **`pnpm`**: Executes `pnpm install --no-frozen-lockfile` to install dependencies and update `pnpm-lock.yaml`.
+- **`bun`**: Executes `bun install` to install dependencies and update `bun.lock`.
 
 ### Dependency Installation Skipping
 
@@ -122,4 +116,4 @@ All Python formatting and linting are handled exclusively by the pinned GitHub A
 ## Compatibility Considerations
 
 - Supported JavaScript package managers are `npm`, `pnpm`, and `bun`. Legacy or unsupported package managers (such as `yarn`) produce an explicit failure with clear actionable messages.
-- If a frozen installation fails (for example, due to an out-of-sync lockfile), the action does not silently retry with non-frozen flags, preserving reproducible build guarantees.
+- Standard dependency installation allows package managers to automatically update lockfiles when dependencies change, ensuring autofix.ci can commit updated lockfiles.

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { WorkflowError } from "../src/errors";
 import {
@@ -139,21 +139,21 @@ describe("javascript-env", () => {
   });
 
   describe("getJsInstallationPlan", () => {
-    it("should return frozen 'npm ci' plan when package-lock.json exists", () => {
+    it("should return 'npm install' plan when package-lock.json exists to allow lockfile updates", () => {
       const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: true };
       const plan = getJsInstallationPlan(project, "npm");
       expect(plan).toEqual({
         packageManager: "npm",
         command: "npm",
-        args: ["ci"],
-        isFrozen: true,
+        args: ["install"],
+        isFrozen: false,
         hasLockfile: true,
         lockfile: "package-lock.json",
-        reason: "Found package-lock.json, using frozen lockfile installation (npm ci).",
+        reason: "Installing dependencies with npm install to allow lockfile updates.",
       });
     });
 
-    it("should return fallback non-frozen 'npm install' plan when package-lock.json is absent", () => {
+    it("should return 'npm install' plan when package-lock.json is absent", () => {
       const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: false };
       const plan = getJsInstallationPlan(project, "npm");
       expect(plan.command).toBe("npm");
@@ -162,50 +162,32 @@ describe("javascript-env", () => {
       expect(plan.hasLockfile).toBe(false);
     });
 
-    it("should return frozen 'pnpm install --frozen-lockfile' plan when pnpm-lock.yaml exists", () => {
+    it("should return 'pnpm install --no-frozen-lockfile' plan when pnpm-lock.yaml exists to allow lockfile updates", () => {
       const project = { ...inspectJsProjectEnvironment(tempDir), hasPnpmLock: true };
       const plan = getJsInstallationPlan(project, "pnpm");
       expect(plan).toEqual({
         packageManager: "pnpm",
         command: "pnpm",
-        args: ["install", "--frozen-lockfile"],
-        isFrozen: true,
+        args: ["install", "--no-frozen-lockfile"],
+        isFrozen: false,
         hasLockfile: true,
         lockfile: "pnpm-lock.yaml",
-        reason: "Found pnpm-lock.yaml, using frozen lockfile installation (pnpm install --frozen-lockfile).",
+        reason: "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
       });
     });
 
-    it("should return fallback non-frozen 'pnpm install --no-frozen-lockfile' plan when pnpm-lock.yaml is absent", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasPnpmLock: false };
-      const plan = getJsInstallationPlan(project, "pnpm");
-      expect(plan.command).toBe("pnpm");
-      expect(plan.args).toEqual(["install", "--no-frozen-lockfile"]);
-      expect(plan.isFrozen).toBe(false);
-      expect(plan.hasLockfile).toBe(false);
-    });
-
-    it("should return frozen 'bun install --frozen-lockfile' plan when Bun lockfile exists", () => {
+    it("should return 'bun install' plan when Bun lockfile exists to allow lockfile updates", () => {
       const project = { ...inspectJsProjectEnvironment(tempDir), hasBunLock: true, bunLockFileName: "bun.lock" };
       const plan = getJsInstallationPlan(project, "bun");
       expect(plan).toEqual({
         packageManager: "bun",
         command: "bun",
-        args: ["install", "--frozen-lockfile"],
-        isFrozen: true,
+        args: ["install"],
+        isFrozen: false,
         hasLockfile: true,
         lockfile: "bun.lock",
-        reason: "Found bun.lock, using frozen lockfile installation (bun install --frozen-lockfile).",
+        reason: "Installing dependencies with bun install to allow lockfile updates.",
       });
-    });
-
-    it("should return fallback non-frozen 'bun install' plan when Bun lockfile is absent", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasBunLock: false };
-      const plan = getJsInstallationPlan(project, "bun");
-      expect(plan.command).toBe("bun");
-      expect(plan.args).toEqual(["install"]);
-      expect(plan.isFrozen).toBe(false);
-      expect(plan.hasLockfile).toBe(false);
     });
 
     it("should throw WorkflowError for unsupported package manager", () => {

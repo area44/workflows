@@ -2,7 +2,10 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isSupportedPackageManager, type SupportedPackageManager } from "./compatibility.js";
+import {
+  isSupportedPackageManager,
+  type SupportedPackageManager,
+} from "./compatibility.js";
 import { WorkflowError } from "./errors.js";
 
 /** Default npm fallback version */
@@ -209,7 +212,9 @@ function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInf
   return undefined;
 }
 
-export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
+export function resolveJsPackageManager(
+  project: JsProjectEnvironment,
+): JsPackageManagerInfo {
   if (project.packageJsonError) {
     core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
   } else if (project.packageJson) {
@@ -271,70 +276,36 @@ export function getJsInstallationPlan(
 
   switch (pmName) {
     case "npm": {
-      if (project.hasPackageLock) {
-        return {
-          packageManager: "npm",
-          command: "npm",
-          args: ["ci"],
-          isFrozen: true,
-          hasLockfile: true,
-          lockfile: "package-lock.json",
-          reason: "Found package-lock.json, using frozen lockfile installation (npm ci).",
-        };
-      }
       return {
         packageManager: "npm",
         command: "npm",
         args: ["install"],
         isFrozen: false,
-        hasLockfile: false,
-        reason:
-          "No package-lock.json found, falling back to non-frozen installation (npm install).",
+        hasLockfile: project.hasPackageLock,
+        lockfile: project.hasPackageLock ? "package-lock.json" : undefined,
+        reason: "Installing dependencies with npm install to allow lockfile updates.",
       };
     }
     case "pnpm": {
-      if (project.hasPnpmLock) {
-        return {
-          packageManager: "pnpm",
-          command: "pnpm",
-          args: ["install", "--frozen-lockfile"],
-          isFrozen: true,
-          hasLockfile: true,
-          lockfile: "pnpm-lock.yaml",
-          reason:
-            "Found pnpm-lock.yaml, using frozen lockfile installation (pnpm install --frozen-lockfile).",
-        };
-      }
       return {
         packageManager: "pnpm",
         command: "pnpm",
         args: ["install", "--no-frozen-lockfile"],
         isFrozen: false,
-        hasLockfile: false,
-        reason:
-          "No pnpm-lock.yaml found, falling back to non-frozen installation (pnpm install --no-frozen-lockfile).",
+        hasLockfile: project.hasPnpmLock,
+        lockfile: project.hasPnpmLock ? "pnpm-lock.yaml" : undefined,
+        reason: "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
       };
     }
     case "bun": {
-      if (project.hasBunLock) {
-        const lockfile = project.bunLockFileName || "bun.lock";
-        return {
-          packageManager: "bun",
-          command: "bun",
-          args: ["install", "--frozen-lockfile"],
-          isFrozen: true,
-          hasLockfile: true,
-          lockfile,
-          reason: `Found ${lockfile}, using frozen lockfile installation (bun install --frozen-lockfile).`,
-        };
-      }
       return {
         packageManager: "bun",
         command: "bun",
         args: ["install"],
         isFrozen: false,
-        hasLockfile: false,
-        reason: "No Bun lockfile found, falling back to non-frozen installation (bun install).",
+        hasLockfile: project.hasBunLock,
+        lockfile: project.bunLockFileName,
+        reason: "Installing dependencies with bun install to allow lockfile updates.",
       };
     }
   }

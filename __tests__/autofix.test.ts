@@ -96,48 +96,39 @@ describe("autofix", () => {
       }
     });
 
-    it("should run 'npm ci' when package-lock.json exists and matching script exists", () => {
+    it("should run 'npm install' when package-lock.json exists and matching script exists", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       run();
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm ci");
-      expect(execSync).toHaveBeenCalledWith("npm ci", { stdio: "inherit" });
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(execSync).toHaveBeenCalledWith("npm install", { stdio: "inherit" });
       expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
     });
 
-    it("should run 'pnpm install --frozen-lockfile' when pnpm-lock.yaml exists", () => {
+    it("should run 'pnpm install --no-frozen-lockfile' when pnpm-lock.yaml exists", () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
 
       run();
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: pnpm install --frozen-lockfile");
-      expect(execSync).toHaveBeenCalledWith("pnpm install --frozen-lockfile", { stdio: "inherit" });
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: pnpm install --no-frozen-lockfile");
+      expect(execSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", { stdio: "inherit" });
       expect(execSync).toHaveBeenCalledWith("pnpm run check", { stdio: "inherit" });
     });
 
-    it("should run 'bun install --frozen-lockfile' when bun.lock exists", () => {
+    it("should run 'bun install' when bun.lock exists", () => {
       process.env.PACKAGE_MANAGER = "bun";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
 
       run();
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install --frozen-lockfile");
-      expect(execSync).toHaveBeenCalledWith("bun install --frozen-lockfile", { stdio: "inherit" });
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install");
+      expect(execSync).toHaveBeenCalledWith("bun install", { stdio: "inherit" });
       expect(execSync).toHaveBeenCalledWith("bun run check", { stdio: "inherit" });
-    });
-
-    it("should fall back to 'npm install' when no package-lock.json exists", () => {
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
-
-      run();
-
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
-      expect(execSync).toHaveBeenCalledWith("npm install", { stdio: "inherit" });
     });
 
     it("should skip JS installation when package.json has no applicable scripts", () => {
@@ -149,22 +140,22 @@ describe("autofix", () => {
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
-      expect(execSync).not.toHaveBeenCalledWith("npm ci", expect.anything());
+      expect(execSync).not.toHaveBeenCalledWith("npm install", expect.anything());
     });
 
-    it("should exit with code 1 when JS dependency installation fails without retrying", () => {
+    it("should exit with code 1 when JS dependency installation fails", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       vi.mocked(execSync).mockImplementationOnce(() => {
-        throw new Error("npm ci failed");
+        throw new Error("npm install failed");
       });
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
       run();
 
-      expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm ci");
+      expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm install");
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
