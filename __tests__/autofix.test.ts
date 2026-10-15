@@ -583,9 +583,30 @@ describe("autofix", () => {
   });
 
   describe("error and exception handling", () => {
-    it("should set workflow as failed with error details when package.json parsing fails", () => {
+    it("should set INVALID_INPUT when package.json contains malformed JSON syntax", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
-      vi.spyOn(fs, "readFileSync").mockReturnValue("{ invalid json }" as any);
+      vi.spyOn(fs, "readFileSync").mockReturnValue("{ invalid json syntax }" as any);
+
+      run();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "INVALID_INPUT",
+          message: expect.stringContaining("Failed to parse package.json:"),
+          context: expect.objectContaining({
+            stage: "js-project-parsing",
+          }),
+        }),
+      );
+      expect(execSync).not.toHaveBeenCalled();
+    });
+
+    it("should set MISSING_CONFIGURATION when package.json encounters a read/file access error", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw new Error("EACCES: permission denied, open 'package.json'");
+      });
 
       run();
 
@@ -593,13 +614,32 @@ describe("autofix", () => {
         expect.objectContaining({
           name: "WorkflowError",
           code: "MISSING_CONFIGURATION",
-          message: expect.stringContaining("Failed to parse package.json:"),
+          message: expect.stringContaining("Failed to read package.json: EACCES: permission denied"),
           context: expect.objectContaining({
             stage: "js-project-inspection",
           }),
         }),
       );
-      expect(execSync).not.toHaveBeenCalled();
+    });
+
+    it("should handle unclassified package.json inspection errors with neutral error reporting", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw "Raw unexpected filesystem error";
+      });
+
+      run();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "MISSING_CONFIGURATION",
+          message: "Failed to read package.json: Raw unexpected filesystem error",
+          context: expect.objectContaining({
+            stage: "js-project-inspection",
+          }),
+        }),
+      );
     });
 
     it("should log an error and set workflow as failed if a script fails during execution", () => {
@@ -629,40 +669,6 @@ describe("autofix", () => {
             packageManager: "npm",
             command: "npm run check",
           }),
-        }),
-      );
-    });
-
-    it("should set workflow as failed for generic other errors such as filesystem failures on readFileSync", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw new Error("Permission Denied");
-      });
-
-      run();
-
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "WorkflowError",
-          code: "MISSING_CONFIGURATION",
-          message: "Failed to parse package.json: Permission Denied",
-        }),
-      );
-    });
-
-    it("should handle raw exceptions gracefully during run orchestration", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
-      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
-        throw "Raw unexpected error";
-      });
-
-      run();
-
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "WorkflowError",
-          code: "MISSING_CONFIGURATION",
-          message: "Failed to parse package.json: Raw unexpected error",
         }),
       );
     });
@@ -701,6 +707,35 @@ describe("autofix", () => {
           context: expect.objectContaining({
             cause: expect.objectContaining({
               message: expect.not.stringContaining("ghp_123456789012345678901234567890123456"),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("should sanitize tokens and secrets in nested error causes for generic script execution failures", () => {
+      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({
+          scripts: {
+            check: "exit 1",
+          },
+        }) as any,
+      );
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("Execution failed with token github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111");
+      });
+
+      run();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "COMMAND_EXECUTION_FAILURE",
+          context: expect.objectContaining({
+            cause: expect.objectContaining({
+              message: expect.not.stringContaining("github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111"),
             }),
           }),
         }),

@@ -45,10 +45,17 @@ export interface JsPackageManifest {
   workspaces?: string[] | { packages?: string[] };
 }
 
+export interface JsPackageJsonErrorInfo {
+  type: "read" | "parse" | "unknown";
+  message: string;
+  cause?: unknown;
+}
+
 export interface JsProjectEnvironment {
   hasPackageJson: boolean;
   packageJson?: JsPackageManifest;
   packageJsonError?: string;
+  packageJsonErrorInfo?: JsPackageJsonErrorInfo;
   nvmRcVersion?: string;
   nvmRcError?: string;
   nodeFileVersion?: string;
@@ -100,6 +107,7 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
   let bunFileError: string | undefined;
   let packageJson: JsPackageManifest | undefined;
   let packageJsonError: string | undefined;
+  let packageJsonErrorInfo: JsPackageJsonErrorInfo | undefined;
   let hasPnpmLock = false;
   let hasPackageLock = false;
   let hasBunLock = false;
@@ -134,12 +142,33 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
 
   const packageJsonPath = resolveFilePath("package.json", cwd);
   const hasPackageJson = fs.existsSync(packageJsonPath);
-  try {
-    if (hasPackageJson) {
-      packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  if (hasPackageJson) {
+    let rawContent: string | undefined;
+    try {
+      rawContent = fs.readFileSync(packageJsonPath, "utf8");
+    } catch (readErr) {
+      const msg = readErr instanceof Error ? readErr.message : String(readErr);
+      packageJsonError = msg;
+      packageJsonErrorInfo = {
+        type: "read",
+        message: `Failed to read package.json: ${msg}`,
+        cause: readErr,
+      };
     }
-  } catch (err) {
-    packageJsonError = err instanceof Error ? err.message : String(err);
+
+    if (rawContent !== undefined) {
+      try {
+        packageJson = JSON.parse(rawContent);
+      } catch (parseErr) {
+        const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+        packageJsonError = msg;
+        packageJsonErrorInfo = {
+          type: "parse",
+          message: `Failed to parse package.json: ${msg}`,
+          cause: parseErr,
+        };
+      }
+    }
   }
 
   try {
@@ -163,6 +192,7 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     hasPackageJson,
     packageJson,
     packageJsonError,
+    packageJsonErrorInfo,
     nvmRcVersion,
     nvmRcError,
     nodeFileVersion,

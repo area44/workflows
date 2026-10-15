@@ -18,3 +18,61 @@ export function sanitizeCommandString(cmdStr: string): string {
       )
   );
 }
+
+/**
+ * Sanitizes nested error causes and context values to prevent credential/token leaks.
+ */
+export function sanitizeCause(cause: unknown, seen = new WeakSet<object>()): unknown {
+  if (cause === null || cause === undefined) {
+    return cause;
+  }
+
+  if (typeof cause === "string") {
+    return sanitizeCommandString(cause);
+  }
+
+  if (typeof cause === "number" || typeof cause === "boolean") {
+    return cause;
+  }
+
+  if (cause instanceof Error) {
+    return {
+      name: cause.name,
+      message: sanitizeCommandString(cause.message),
+    };
+  }
+
+  if (typeof cause === "object") {
+    if (seen.has(cause as object)) {
+      return "[Circular]";
+    }
+    seen.add(cause as object);
+
+    try {
+      const sanitizedObj: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(cause as Record<string, unknown>)) {
+        if (typeof val === "string") {
+          sanitizedObj[key] = sanitizeCommandString(val);
+        } else if (val instanceof Error) {
+          sanitizedObj[key] = {
+            name: val.name,
+            message: sanitizeCommandString(val.message),
+          };
+        } else if (typeof val === "object" && val !== null) {
+          sanitizedObj[key] = sanitizeCause(val, seen);
+        } else {
+          sanitizedObj[key] = val;
+        }
+      }
+      return sanitizedObj;
+    } catch {
+      return sanitizeCommandString(JSON.stringify(cause));
+    }
+  }
+
+  return sanitizeCommandString(
+    typeof cause === "symbol" || typeof cause === "bigint" || typeof cause === "function"
+      ? String(cause)
+      : JSON.stringify(cause),
+  );
+}

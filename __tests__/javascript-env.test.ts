@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { WorkflowError } from "../src/errors";
 import {
@@ -18,6 +18,7 @@ describe("javascript-env", () => {
   let tempDir: string;
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     tempDir = path.join(originalCwd, "__tests__/fixtures/temp-js-env-" + Math.random().toString(36).substring(2, 9));
     fs.mkdirSync(tempDir, { recursive: true });
     process.chdir(tempDir);
@@ -88,12 +89,28 @@ describe("javascript-env", () => {
       expect(env2.bunLockFileName).toBe("bun.lockb");
     });
 
-    it("should capture package.json parsing errors", () => {
+    it("should distinguish JSON parsing errors from file read errors in packageJsonErrorInfo", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), "{ invalid json ");
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
-      expect(env.packageJsonError).toBeTruthy();
+      expect(env.packageJsonErrorInfo).toBeDefined();
+      expect(env.packageJsonErrorInfo?.type).toBe("parse");
+      expect(env.packageJsonErrorInfo?.message).toContain("Failed to parse package.json:");
+    });
+
+    it("should capture read/file access errors in packageJsonErrorInfo", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
+      vi.spyOn(fs, "readFileSync").mockImplementation(() => {
+        throw new Error("EACCES: permission denied");
+      });
+
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasPackageJson).toBe(true);
+      expect(env.packageJson).toBeUndefined();
+      expect(env.packageJsonErrorInfo).toBeDefined();
+      expect(env.packageJsonErrorInfo?.type).toBe("read");
+      expect(env.packageJsonErrorInfo?.message).toContain("Failed to read package.json: EACCES: permission denied");
     });
   });
 

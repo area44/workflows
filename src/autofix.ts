@@ -17,7 +17,7 @@ import {
   isExecutableAvailable,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
-import { sanitizeCommandString } from "./sanitize.js";
+import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };
 
@@ -37,7 +37,7 @@ function runScriptCommand(pm: string, name: string, cwd: string = process.cwd())
       packageManager: safePm,
       command: displayCmd,
       cwd,
-      cause: err instanceof Error ? { message: sanitizeCommandString(err.message) } : String(err),
+      cause: sanitizeCause(err),
     });
   }
 }
@@ -56,7 +56,7 @@ function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.c
       packageManager: plan.packageManager,
       command: displayCmd,
       cwd,
-      cause: err instanceof Error ? { message: sanitizeCommandString(err.message) } : String(err),
+      cause: sanitizeCause(err),
     });
   }
 }
@@ -93,12 +93,25 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     return;
   }
 
-  if (jsEnv.packageJsonError) {
-    const message = `Failed to parse package.json: ${jsEnv.packageJsonError}`;
-    throw new WorkflowError("MISSING_CONFIGURATION", message, {
-      stage: "js-project-inspection",
+  if (jsEnv.packageJsonErrorInfo) {
+    const errorInfo = jsEnv.packageJsonErrorInfo;
+    const sanitizedMsg = sanitizeCommandString(errorInfo.message);
+    const code = errorInfo.type === "parse" ? "INVALID_INPUT" : "MISSING_CONFIGURATION";
+    throw new WorkflowError(code, sanitizedMsg, {
+      stage: errorInfo.type === "parse" ? "js-project-parsing" : "js-project-inspection",
       cwd,
+      cause: sanitizeCause(errorInfo.cause),
     });
+  } else if (jsEnv.packageJsonError) {
+    const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
+    throw new WorkflowError(
+      "MISSING_CONFIGURATION",
+      `Failed to inspect package.json: ${sanitizedMsg}`,
+      {
+        stage: "js-project-inspection",
+        cwd,
+      },
+    );
   }
 
   const scripts = jsEnv.packageJson?.scripts || {};
@@ -133,7 +146,7 @@ function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd
       packageManager: pmName,
       command: displayCmd,
       cwd,
-      cause: err instanceof Error ? { message: sanitizeCommandString(err.message) } : String(err),
+      cause: sanitizeCause(err),
     });
   }
 }
@@ -182,7 +195,7 @@ export function run(cwd: string = process.cwd()): void {
       const wfError = new WorkflowError(
         "COMMAND_EXECUTION_FAILURE",
         `Failed to run scripts: ${sanitizeCommandString(message)}`,
-        { stage: "autofix-execution", cwd, cause: error },
+        { stage: "autofix-execution", cwd, cause: sanitizeCause(error) },
       );
       core.setFailed(wfError);
     }
