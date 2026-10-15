@@ -80,6 +80,95 @@ describe("autofix", () => {
     });
   });
 
+  describe("JS Dependency Installation Strategy", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      delete process.env.SKIP_JS_INSTALL;
+      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp-install-" + Math.random().toString(36).substring(2, 9));
+      fs.mkdirSync(tempDir, { recursive: true });
+      process.chdir(tempDir);
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should run 'npm ci' when package-lock.json exists and matching script exists", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm ci");
+      expect(execSync).toHaveBeenCalledWith("npm ci", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+    });
+
+    it("should run 'pnpm install --frozen-lockfile' when pnpm-lock.yaml exists", () => {
+      process.env.PACKAGE_MANAGER = "pnpm";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: pnpm install --frozen-lockfile");
+      expect(execSync).toHaveBeenCalledWith("pnpm install --frozen-lockfile", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm run check", { stdio: "inherit" });
+    });
+
+    it("should run 'bun install --frozen-lockfile' when bun.lock exists", () => {
+      process.env.PACKAGE_MANAGER = "bun";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install --frozen-lockfile");
+      expect(execSync).toHaveBeenCalledWith("bun install --frozen-lockfile", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun run check", { stdio: "inherit" });
+    });
+
+    it("should fall back to 'npm install' when no package-lock.json exists", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(execSync).toHaveBeenCalledWith("npm install", { stdio: "inherit" });
+    });
+
+    it("should skip JS installation when package.json has no applicable scripts", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      run();
+
+      expect(core.info).toHaveBeenCalledWith(
+        "No matching scripts (check, format, lint, etc.) found in package.json.",
+      );
+      expect(execSync).not.toHaveBeenCalledWith("npm ci", expect.anything());
+    });
+
+    it("should exit with code 1 when JS dependency installation fails without retrying", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("npm ci failed");
+      });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+      run();
+
+      expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm ci");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("Python Integration", () => {
     const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
 

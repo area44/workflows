@@ -26,6 +26,15 @@ jobs:
         uses: area44/workflows/autofix@main
 ```
 
+## Architecture and Responsibilities
+
+The Autofix composite action is structured with clear separation of responsibilities across declarative YAML and modular TypeScript modules:
+
+- **`autofix/action.yml`**: Keeps the composite action declarative and concise. Declares required environment setup actions (`actions/setup-node`, `oven-sh/setup-bun`, `pnpm/setup`, `actions/setup-python`, `astral-sh/setup-uv`), executes the generated TypeScript entrypoint (`dist/autofix.mjs`), and delegates Python formatting/linting to pinned `astral-sh/ruff-action` steps.
+- **`src/autofix.ts`**: The main orchestration entrypoint. Evaluates the resolved environment, determines applicable project scripts, coordinates dependency installation plans, executes matching scripts, and triggers Python environment setup.
+- **`src/javascript-env.ts`**: Dedicated JavaScript/TypeScript environment module. Inspects package manifests (`package.json`), detects package managers (`npm`, `pnpm`, `bun`) and version configurations (`packageManager`, `devEngines`), detects supported lockfiles, generates deterministic lockfile-respecting installation plans, and evaluates script selection precedence.
+- **`src/python-env.ts`**: Owns Python-specific environment detection, Python version resolution, Python package manager detection (`uv`, `pip`), and Ruff version resolution from lockfiles and manifests.
+
 ## Public API Contract
 
 ### Inputs
@@ -47,6 +56,30 @@ jobs:
 | `python-version`          | The Python version used                                               |
 | `python-package-manager`  | The Python package manager detected (uv or pip)                       |
 | `ruff-version`            | The Ruff version specified by the project or empty string for default |
+
+## JavaScript & TypeScript Dependency Handling
+
+### Package Manager & Lockfile Behavior
+
+Autofix inspects the project environment to determine the appropriate package manager (`npm`, `pnpm`, or `bun`) and generates a deterministic, lockfile-respecting installation plan:
+
+- **`npm`**:
+  - **With `package-lock.json`**: Executes `npm ci` (frozen lockfile installation).
+  - **Without lockfile**: Falls back to `npm install` (non-frozen installation).
+- **`pnpm`**:
+  - **With `pnpm-lock.yaml`**: Executes `pnpm install --frozen-lockfile` (frozen lockfile installation).
+  - **Without lockfile**: Falls back to `pnpm install --no-frozen-lockfile` (non-frozen installation).
+- **`bun`**:
+  - **With `bun.lock` or `bun.lockb`**: Executes `bun install --frozen-lockfile` (frozen lockfile installation).
+  - **Without lockfile**: Falls back to `bun install` (non-frozen installation).
+
+### Dependency Installation Skipping
+
+To optimize execution speed, dependency installation is handled intelligently:
+
+- **Skipped when no matched scripts exist**: If `package.json` contains no matching scripts (`check`, `format`, `fmt`, `lint`), JavaScript dependency installation is automatically skipped.
+- **Executed when scripts require dependencies**: If any selected project script is found, dependencies are installed prior to script execution.
+- **`SKIP_JS_INSTALL=true`**: Environment flag that explicitly skips JavaScript dependency installation when dependencies are pre-installed (such as in testing environments).
 
 ## Python Tooling Support
 
@@ -84,3 +117,9 @@ All Python formatting and linting are handled exclusively by the pinned GitHub A
 ### Skip Environment Options
 
 - `SKIP_PYTHON_INSTALL=true`: Skips project dependency installation when dependencies are already pre-installed, while continuing to run `ruff-action` when Python source files are present.
+- `SKIP_JS_INSTALL=true`: Skips JavaScript dependency installation when JavaScript dependencies are pre-installed.
+
+## Compatibility Considerations
+
+- Supported JavaScript package managers are `npm`, `pnpm`, and `bun`. Legacy or unsupported package managers (such as `yarn`) produce an explicit failure with clear actionable messages.
+- If a frozen installation fails (for example, due to an out-of-sync lockfile), the action does not silently retry with non-frozen flags, preserving reproducible build guarantees.

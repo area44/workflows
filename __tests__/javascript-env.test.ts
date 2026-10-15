@@ -1,0 +1,254 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { WorkflowError } from "../src/errors";
+import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
+  DEFAULT_NPM_VERSION,
+  DEFAULT_PNPM_VERSION,
+  getJsInstallationPlan,
+  inspectJsProjectEnvironment,
+  resolveJsPackageManager,
+  sanitizePackageManager,
+  selectAutofixScripts,
+} from "../src/javascript-env";
+
+describe("javascript-env", () => {
+  const originalCwd = process.cwd();
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = path.join(originalCwd, "__tests__/fixtures/temp-js-env-" + Math.random().toString(36).substring(2, 9));
+    fs.mkdirSync(tempDir, { recursive: true });
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  describe("sanitizePackageManager", () => {
+    it("should allow valid package manager names", () => {
+      expect(sanitizePackageManager("npm")).toBe("npm");
+      expect(sanitizePackageManager("pnpm")).toBe("pnpm");
+      expect(sanitizePackageManager("bun")).toBe("bun");
+      expect(sanitizePackageManager("pnpm-10")).toBe("pnpm-10");
+    });
+
+    it("should sanitize untrusted input containing shell injection", () => {
+      expect(sanitizePackageManager("npm; calc")).toBe("npm");
+      expect(sanitizePackageManager("pnpm && echo hack")).toBe("npm");
+      expect(sanitizePackageManager("bun || rm -rf /")).toBe("npm");
+    });
+  });
+
+  describe("inspectJsProjectEnvironment", () => {
+    it("should detect package.json, .nvmrc, .node-version, and .bun-version", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test-pkg" }));
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+      fs.writeFileSync(path.join(tempDir, ".node-version"), "22.0.0\n");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.1.0\n");
+
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasPackageJson).toBe(true);
+      expect(env.packageJson?.name).toBe("test-pkg");
+      expect(env.nvmRcVersion).toBe("20.10.0");
+      expect(env.nodeFileVersion).toBe("22.0.0");
+      expect(env.bunFileVersion).toBe("1.1.0");
+    });
+
+    it("should detect pnpm-lock.yaml", () => {
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasPnpmLock).toBe(true);
+      expect(env.hasPackageLock).toBe(false);
+      expect(env.hasBunLock).toBe(false);
+    });
+
+    it("should detect package-lock.json", () => {
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasPackageLock).toBe(true);
+      expect(env.hasPnpmLock).toBe(false);
+    });
+
+    it("should detect bun.lock and bun.lockb", () => {
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasBunLock).toBe(true);
+      expect(env.bunLockFileName).toBe("bun.lock");
+
+      fs.rmSync(path.join(tempDir, "bun.lock"));
+      fs.writeFileSync(path.join(tempDir, "bun.lockb"), "");
+      const env2 = inspectJsProjectEnvironment(tempDir);
+      expect(env2.hasBunLock).toBe(true);
+      expect(env2.bunLockFileName).toBe("bun.lockb");
+    });
+
+    it("should capture package.json parsing errors", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{ invalid json ");
+      const env = inspectJsProjectEnvironment(tempDir);
+      expect(env.hasPackageJson).toBe(true);
+      expect(env.packageJson).toBeUndefined();
+      expect(env.packageJsonError).toBeTruthy();
+    });
+  });
+
+  describe("resolveJsPackageManager", () => {
+    it("should resolve packageManager field from package.json", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "pnpm@9.5.0" }));
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
+    });
+
+    it("should resolve packageManager from devEngines if packageManager field is missing", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ devEngines: { packageManager: "bun@1.2.0" } }),
+      );
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "bun", version: "1.2.0" });
+    });
+
+    it("should resolve fallback package manager from lockfile when package.json does not specify packageManager", () => {
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+    });
+
+    it("should default to npm if no packageManager or lockfile is found", () => {
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+    });
+
+    it("should throw a WorkflowError if an unsupported package manager is specified in packageManager field", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "yarn@3.0.0" }));
+      const project = inspectJsProjectEnvironment(tempDir);
+      expect(() => resolveJsPackageManager(project)).toThrow(WorkflowError);
+      expect(() => resolveJsPackageManager(project)).toThrow(/Unsupported package manager 'yarn'/);
+    });
+  });
+
+  describe("getJsInstallationPlan", () => {
+    it("should return frozen 'npm ci' plan when package-lock.json exists", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: true };
+      const plan = getJsInstallationPlan(project, "npm");
+      expect(plan).toEqual({
+        packageManager: "npm",
+        command: "npm",
+        args: ["ci"],
+        isFrozen: true,
+        hasLockfile: true,
+        lockfile: "package-lock.json",
+        reason: "Found package-lock.json, using frozen lockfile installation (npm ci).",
+      });
+    });
+
+    it("should return fallback non-frozen 'npm install' plan when package-lock.json is absent", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: false };
+      const plan = getJsInstallationPlan(project, "npm");
+      expect(plan.command).toBe("npm");
+      expect(plan.args).toEqual(["install"]);
+      expect(plan.isFrozen).toBe(false);
+      expect(plan.hasLockfile).toBe(false);
+    });
+
+    it("should return frozen 'pnpm install --frozen-lockfile' plan when pnpm-lock.yaml exists", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasPnpmLock: true };
+      const plan = getJsInstallationPlan(project, "pnpm");
+      expect(plan).toEqual({
+        packageManager: "pnpm",
+        command: "pnpm",
+        args: ["install", "--frozen-lockfile"],
+        isFrozen: true,
+        hasLockfile: true,
+        lockfile: "pnpm-lock.yaml",
+        reason: "Found pnpm-lock.yaml, using frozen lockfile installation (pnpm install --frozen-lockfile).",
+      });
+    });
+
+    it("should return fallback non-frozen 'pnpm install --no-frozen-lockfile' plan when pnpm-lock.yaml is absent", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasPnpmLock: false };
+      const plan = getJsInstallationPlan(project, "pnpm");
+      expect(plan.command).toBe("pnpm");
+      expect(plan.args).toEqual(["install", "--no-frozen-lockfile"]);
+      expect(plan.isFrozen).toBe(false);
+      expect(plan.hasLockfile).toBe(false);
+    });
+
+    it("should return frozen 'bun install --frozen-lockfile' plan when Bun lockfile exists", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasBunLock: true, bunLockFileName: "bun.lock" };
+      const plan = getJsInstallationPlan(project, "bun");
+      expect(plan).toEqual({
+        packageManager: "bun",
+        command: "bun",
+        args: ["install", "--frozen-lockfile"],
+        isFrozen: true,
+        hasLockfile: true,
+        lockfile: "bun.lock",
+        reason: "Found bun.lock, using frozen lockfile installation (bun install --frozen-lockfile).",
+      });
+    });
+
+    it("should return fallback non-frozen 'bun install' plan when Bun lockfile is absent", () => {
+      const project = { ...inspectJsProjectEnvironment(tempDir), hasBunLock: false };
+      const plan = getJsInstallationPlan(project, "bun");
+      expect(plan.command).toBe("bun");
+      expect(plan.args).toEqual(["install"]);
+      expect(plan.isFrozen).toBe(false);
+      expect(plan.hasLockfile).toBe(false);
+    });
+
+    it("should throw WorkflowError for unsupported package manager", () => {
+      const project = inspectJsProjectEnvironment(tempDir);
+      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(WorkflowError);
+      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(/Unsupported package manager 'yarn'/);
+    });
+  });
+
+  describe("selectAutofixScripts", () => {
+    it("should prioritize 'check' script over others", () => {
+      const scripts = { check: "vp check", format: "prettier -w .", lint: "eslint ." };
+      expect(selectAutofixScripts(scripts)).toEqual(["check"]);
+    });
+
+    it("should select 'format' and 'lint' when both are defined", () => {
+      const scripts = { format: "prettier -w .", lint: "eslint ." };
+      expect(selectAutofixScripts(scripts)).toEqual(["format", "lint"]);
+    });
+
+    it("should select 'fmt' and 'lint' when 'format' is missing but 'fmt' is defined", () => {
+      const scripts = { fmt: "cargo fmt", lint: "eslint ." };
+      expect(selectAutofixScripts(scripts)).toEqual(["fmt", "lint"]);
+    });
+
+    it("should select single 'format' script when lint is missing", () => {
+      const scripts = { format: "prettier -w ." };
+      expect(selectAutofixScripts(scripts)).toEqual(["format"]);
+    });
+
+    it("should select single 'fmt' script when lint and format are missing", () => {
+      const scripts = { fmt: "cargo fmt" };
+      expect(selectAutofixScripts(scripts)).toEqual(["fmt"]);
+    });
+
+    it("should select single 'lint' script when format/fmt are missing", () => {
+      const scripts = { lint: "eslint ." };
+      expect(selectAutofixScripts(scripts)).toEqual(["lint"]);
+    });
+
+    it("should return empty array when no matching scripts exist", () => {
+      expect(selectAutofixScripts({ test: "vitest", build: "tsc" })).toEqual([]);
+      expect(selectAutofixScripts(undefined)).toEqual([]);
+    });
+  });
+});
