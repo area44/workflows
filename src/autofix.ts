@@ -96,7 +96,7 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
   if (jsEnv.packageJsonErrorInfo) {
     const errorInfo = jsEnv.packageJsonErrorInfo;
     const sanitizedMsg = sanitizeCommandString(errorInfo.message);
-    const code = errorInfo.type === "parse" ? "INVALID_INPUT" : "MISSING_CONFIGURATION";
+    const code = errorInfo.type === "parse" ? "INVALID_INPUT" : "SETUP_FAILURE";
     throw new WorkflowError(code, sanitizedMsg, {
       stage: errorInfo.type === "parse" ? "js-project-parsing" : "js-project-inspection",
       cwd,
@@ -104,14 +104,10 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     });
   } else if (jsEnv.packageJsonError) {
     const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
-    throw new WorkflowError(
-      "MISSING_CONFIGURATION",
-      `Failed to inspect package.json: ${sanitizedMsg}`,
-      {
-        stage: "js-project-inspection",
-        cwd,
-      },
-    );
+    throw new WorkflowError("SETUP_FAILURE", `Failed to inspect package.json: ${sanitizedMsg}`, {
+      stage: "js-project-inspection",
+      cwd,
+    });
   }
 
   const scripts = jsEnv.packageJson?.scripts || {};
