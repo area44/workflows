@@ -4,9 +4,6 @@
     "format": "echo 'formatting'",
     "lint": "echo 'linting'"
   },
-  "dependencies": {
-    "typescript": "^5.8.2"
-  },
   "packageManager": "npm@11.19.0",
   "type": "module"
 }
