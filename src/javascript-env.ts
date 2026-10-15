@@ -2,10 +2,7 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
 
-import {
-  isSupportedPackageManager,
-  type SupportedPackageManager,
-} from "./compatibility.js";
+import { isSupportedPackageManager, type SupportedPackageManager } from "./compatibility.js";
 import { WorkflowError } from "./errors.js";
 
 /** Default npm fallback version */
@@ -212,9 +209,7 @@ function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInf
   return undefined;
 }
 
-export function resolveJsPackageManager(
-  project: JsProjectEnvironment,
-): JsPackageManagerInfo {
+export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
   if (project.packageJsonError) {
     core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
   } else if (project.packageJson) {
@@ -294,7 +289,8 @@ export function getJsInstallationPlan(
         isFrozen: false,
         hasLockfile: project.hasPnpmLock,
         lockfile: project.hasPnpmLock ? "pnpm-lock.yaml" : undefined,
-        reason: "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
+        reason:
+          "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
       };
     }
     case "bun": {
