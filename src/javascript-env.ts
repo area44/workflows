@@ -98,78 +98,73 @@ function resolveFilePath(filename: string, cwd: string): string {
   return path.join(cwd, filename);
 }
 
-export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProjectEnvironment {
-  let nvmRcVersion: string | undefined;
-  let nvmRcError: string | undefined;
-  let nodeFileVersion: string | undefined;
-  let nodeFileError: string | undefined;
-  let bunFileVersion: string | undefined;
-  let bunFileError: string | undefined;
-  let packageJson: JsPackageManifest | undefined;
-  let packageJsonError: string | undefined;
-  let packageJsonErrorInfo: JsPackageJsonErrorInfo | undefined;
+function readVersionFile(filename: string, cwd: string): { version?: string; error?: string } {
+  const filePath = resolveFilePath(filename, cwd);
+  try {
+    if (fs.existsSync(filePath)) {
+      return { version: fs.readFileSync(filePath, "utf8").trim() };
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+  return {};
+}
+
+function inspectPackageJson(cwd: string): {
+  hasPackageJson: boolean;
+  packageJson?: JsPackageManifest;
+  packageJsonError?: string;
+  packageJsonErrorInfo?: JsPackageJsonErrorInfo;
+} {
+  const packageJsonPath = resolveFilePath("package.json", cwd);
+  const hasPackageJson = fs.existsSync(packageJsonPath);
+  if (!hasPackageJson) {
+    return { hasPackageJson: false };
+  }
+
+  let rawContent: string;
+  try {
+    rawContent = fs.readFileSync(packageJsonPath, "utf8");
+  } catch (readErr) {
+    const msg = readErr instanceof Error ? readErr.message : String(readErr);
+    return {
+      hasPackageJson: true,
+      packageJsonError: msg,
+      packageJsonErrorInfo: {
+        type: "read",
+        message: `Failed to read package.json: ${msg}`,
+        cause: readErr,
+      },
+    };
+  }
+
+  try {
+    const packageJson = JSON.parse(rawContent);
+    return { hasPackageJson: true, packageJson };
+  } catch (parseErr) {
+    const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    return {
+      hasPackageJson: true,
+      packageJsonError: msg,
+      packageJsonErrorInfo: {
+        type: "parse",
+        message: `Failed to parse package.json: ${msg}`,
+        cause: parseErr,
+      },
+    };
+  }
+}
+
+function detectLockfiles(cwd: string): {
+  hasPnpmLock: boolean;
+  hasPackageLock: boolean;
+  hasBunLock: boolean;
+  bunLockFileName?: string;
+} {
   let hasPnpmLock = false;
   let hasPackageLock = false;
   let hasBunLock = false;
   let bunLockFileName: string | undefined;
-
-  const nvmRcPath = resolveFilePath(".nvmrc", cwd);
-  try {
-    if (fs.existsSync(nvmRcPath)) {
-      nvmRcVersion = fs.readFileSync(nvmRcPath, "utf8").trim();
-    }
-  } catch (err) {
-    nvmRcError = err instanceof Error ? err.message : String(err);
-  }
-
-  const nodeVersionPath = resolveFilePath(".node-version", cwd);
-  try {
-    if (fs.existsSync(nodeVersionPath)) {
-      nodeFileVersion = fs.readFileSync(nodeVersionPath, "utf8").trim();
-    }
-  } catch (err) {
-    nodeFileError = err instanceof Error ? err.message : String(err);
-  }
-
-  const bunVersionPath = resolveFilePath(".bun-version", cwd);
-  try {
-    if (fs.existsSync(bunVersionPath)) {
-      bunFileVersion = fs.readFileSync(bunVersionPath, "utf8").trim();
-    }
-  } catch (err) {
-    bunFileError = err instanceof Error ? err.message : String(err);
-  }
-
-  const packageJsonPath = resolveFilePath("package.json", cwd);
-  const hasPackageJson = fs.existsSync(packageJsonPath);
-  if (hasPackageJson) {
-    let rawContent: string | undefined;
-    try {
-      rawContent = fs.readFileSync(packageJsonPath, "utf8");
-    } catch (readErr) {
-      const msg = readErr instanceof Error ? readErr.message : String(readErr);
-      packageJsonError = msg;
-      packageJsonErrorInfo = {
-        type: "read",
-        message: `Failed to read package.json: ${msg}`,
-        cause: readErr,
-      };
-    }
-
-    if (rawContent !== undefined) {
-      try {
-        packageJson = JSON.parse(rawContent);
-      } catch (parseErr) {
-        const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-        packageJsonError = msg;
-        packageJsonErrorInfo = {
-          type: "parse",
-          message: `Failed to parse package.json: ${msg}`,
-          cause: parseErr,
-        };
-      }
-    }
-  }
 
   try {
     hasPnpmLock = fs.existsSync(resolveFilePath("pnpm-lock.yaml", cwd));
@@ -188,21 +183,31 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     // Ignore detection errors
   }
 
+  return { hasPnpmLock, hasPackageLock, hasBunLock, bunLockFileName };
+}
+
+export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProjectEnvironment {
+  const nvmRc = readVersionFile(".nvmrc", cwd);
+  const nodeVersion = readVersionFile(".node-version", cwd);
+  const bunVersion = readVersionFile(".bun-version", cwd);
+  const pkgInfo = inspectPackageJson(cwd);
+  const lockfiles = detectLockfiles(cwd);
+
   return {
-    hasPackageJson,
-    packageJson,
-    packageJsonError,
-    packageJsonErrorInfo,
-    nvmRcVersion,
-    nvmRcError,
-    nodeFileVersion,
-    nodeFileError,
-    bunFileVersion,
-    bunFileError,
-    hasPnpmLock,
-    hasPackageLock,
-    hasBunLock,
-    bunLockFileName,
+    hasPackageJson: pkgInfo.hasPackageJson,
+    packageJson: pkgInfo.packageJson,
+    packageJsonError: pkgInfo.packageJsonError,
+    packageJsonErrorInfo: pkgInfo.packageJsonErrorInfo,
+    nvmRcVersion: nvmRc.version,
+    nvmRcError: nvmRc.error,
+    nodeFileVersion: nodeVersion.version,
+    nodeFileError: nodeVersion.error,
+    bunFileVersion: bunVersion.version,
+    bunFileError: bunVersion.error,
+    hasPnpmLock: lockfiles.hasPnpmLock,
+    hasPackageLock: lockfiles.hasPackageLock,
+    hasBunLock: lockfiles.hasBunLock,
+    bunLockFileName: lockfiles.bunLockFileName,
   };
 }
 

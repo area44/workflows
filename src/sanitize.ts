@@ -19,6 +19,38 @@ export function sanitizeCommandString(cmdStr: string): string {
   );
 }
 
+function sanitizeErrorCause(err: Error): { name: string; message: string } {
+  return {
+    name: err.name,
+    message: sanitizeCommandString(err.message),
+  };
+}
+
+function sanitizeObjectCause(causeObj: object, seen: WeakSet<object>): unknown {
+  if (seen.has(causeObj)) {
+    return "[Circular]";
+  }
+  seen.add(causeObj);
+
+  try {
+    const sanitizedObj: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(causeObj as Record<string, unknown>)) {
+      if (typeof val === "string") {
+        sanitizedObj[key] = sanitizeCommandString(val);
+      } else if (val instanceof Error) {
+        sanitizedObj[key] = sanitizeErrorCause(val);
+      } else if (typeof val === "object" && val !== null) {
+        sanitizedObj[key] = sanitizeCause(val, seen);
+      } else {
+        sanitizedObj[key] = val;
+      }
+    }
+    return sanitizedObj;
+  } catch {
+    return sanitizeCommandString(JSON.stringify(causeObj));
+  }
+}
+
 /**
  * Sanitizes nested error causes and context values to prevent credential/token leaks.
  */
@@ -36,38 +68,11 @@ export function sanitizeCause(cause: unknown, seen = new WeakSet<object>()): unk
   }
 
   if (cause instanceof Error) {
-    return {
-      name: cause.name,
-      message: sanitizeCommandString(cause.message),
-    };
+    return sanitizeErrorCause(cause);
   }
 
   if (typeof cause === "object") {
-    if (seen.has(cause as object)) {
-      return "[Circular]";
-    }
-    seen.add(cause as object);
-
-    try {
-      const sanitizedObj: Record<string, unknown> = {};
-      for (const [key, val] of Object.entries(cause as Record<string, unknown>)) {
-        if (typeof val === "string") {
-          sanitizedObj[key] = sanitizeCommandString(val);
-        } else if (val instanceof Error) {
-          sanitizedObj[key] = {
-            name: val.name,
-            message: sanitizeCommandString(val.message),
-          };
-        } else if (typeof val === "object" && val !== null) {
-          sanitizedObj[key] = sanitizeCause(val, seen);
-        } else {
-          sanitizedObj[key] = val;
-        }
-      }
-      return sanitizedObj;
-    } catch {
-      return sanitizeCommandString(JSON.stringify(cause));
-    }
+    return sanitizeObjectCause(cause, seen);
   }
 
   return sanitizeCommandString(
