@@ -3,7 +3,6 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { sanitizeCommandString } from "./build-command.js";
 import { isWorkflowError, WorkflowError } from "./errors.js";
 import {
   getJsInstallationPlan,
@@ -18,6 +17,7 @@ import {
   isExecutableAvailable,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
+import { sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };
 
