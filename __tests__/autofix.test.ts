@@ -38,8 +38,8 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(execSync).toHaveBeenCalledWith("npm run format", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("npm run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run format", { cwd: fixturePath, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run lint", { cwd: fixturePath, stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
@@ -51,8 +51,8 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(execSync).toHaveBeenCalledWith("pnpm run format", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("pnpm run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm run format", { cwd: fixturePath, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm run lint", { cwd: fixturePath, stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
@@ -64,8 +64,8 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(execSync).toHaveBeenCalledWith("bun run format", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("bun run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun run format", { cwd: fixturePath, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun run lint", { cwd: fixturePath, stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
@@ -80,14 +80,13 @@ describe("autofix", () => {
     });
   });
 
-  describe("JS Dependency Installation Strategy", () => {
+  describe("JS Dependency Installation Strategy & Working Directory", () => {
     let tempDir: string;
 
     beforeEach(() => {
       delete process.env.SKIP_JS_INSTALL;
-      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp-install-" + Math.random().toString(36).substring(2, 9));
+      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp install dir " + Math.random().toString(36).substring(2, 9));
       fs.mkdirSync(tempDir, { recursive: true });
-      process.chdir(tempDir);
     });
 
     afterEach(() => {
@@ -96,15 +95,15 @@ describe("autofix", () => {
       }
     });
 
-    it("should run 'npm install' when package-lock.json exists and matching script exists", () => {
+    it("should execute commands with explicit custom working directory and support paths with spaces", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
-      run();
+      run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
-      expect(execSync).toHaveBeenCalledWith("npm install", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm install", { cwd: tempDir, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: tempDir, stdio: "inherit" });
     });
 
     it("should run 'pnpm install --no-frozen-lockfile' when pnpm-lock.yaml exists", () => {
@@ -112,11 +111,11 @@ describe("autofix", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
 
-      run();
+      run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: pnpm install --no-frozen-lockfile");
-      expect(execSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("pnpm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", { cwd: tempDir, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm run check", { cwd: tempDir, stdio: "inherit" });
     });
 
     it("should run 'bun install' when bun.lock exists", () => {
@@ -124,23 +123,33 @@ describe("autofix", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
 
-      run();
+      run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install");
-      expect(execSync).toHaveBeenCalledWith("bun install", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("bun run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun install", { cwd: tempDir, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun run check", { cwd: tempDir, stdio: "inherit" });
     });
 
     it("should skip JS installation when package.json has no applicable scripts", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
-      run();
+      run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
       expect(execSync).not.toHaveBeenCalledWith("npm install", expect.anything());
+    });
+
+    it("should skip JS installation when SKIP_JS_INSTALL=true but still run matching scripts", () => {
+      process.env.SKIP_JS_INSTALL = "true";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+
+      run(tempDir);
+
+      expect(execSync).not.toHaveBeenCalledWith("npm install", expect.anything());
+      expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: tempDir, stdio: "inherit" });
     });
 
     it("should exit with code 1 when JS dependency installation fails", () => {
@@ -153,7 +162,7 @@ describe("autofix", () => {
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
-      run();
+      run(tempDir);
 
       expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm install");
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -164,24 +173,27 @@ describe("autofix", () => {
     const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
 
     it("should execute Python workflow for uv fixture when Python source exists", () => {
-      process.chdir(path.join(pythonFixturesDir, "uv"));
+      const fixturePath = path.join(pythonFixturesDir, "uv");
 
-      run();
+      run(fixturePath);
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
-      expect(execSync).toHaveBeenCalledWith("uv sync", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("uv sync", { cwd: fixturePath, stdio: "inherit" });
       expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
     it("should install Python dependencies when executing Python workflow", () => {
-      executePythonWorkflow({
-        name: "pip",
-        installCommand: "pip install -r requirements.txt",
-        execPrefix: "",
-      });
+      executePythonWorkflow(
+        {
+          name: "pip",
+          installCommand: "pip install -r requirements.txt",
+          execPrefix: "",
+        },
+        originalCwd,
+      );
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-      expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { cwd: originalCwd, stdio: "inherit" });
       expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
@@ -217,14 +229,13 @@ describe("autofix", () => {
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('mixed')\n");
       fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
 
-      process.chdir(tempDir);
       try {
-        run();
+        run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-        expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+        expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: tempDir, stdio: "inherit" });
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-        expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { stdio: "inherit" });
+        expect(execSync).toHaveBeenCalledWith("pip install -r requirements.txt", { cwd: tempDir, stdio: "inherit" });
         expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -253,9 +264,8 @@ describe("autofix", () => {
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('py-only')\n");
 
-      process.chdir(tempDir);
       try {
-        run();
+        run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
@@ -269,9 +279,8 @@ describe("autofix", () => {
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
-      process.chdir(tempDir);
       try {
-        run();
+        run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
@@ -286,9 +295,8 @@ describe("autofix", () => {
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
 
-      process.chdir(tempDir);
       try {
-        run();
+        run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
@@ -343,7 +351,7 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: process.cwd(), stdio: "inherit" });
     });
 
     it("should sanitize untrusted PACKAGE_MANAGER env values containing shell injection characters", () => {
@@ -365,7 +373,7 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: process.cwd(), stdio: "inherit" });
       expect(core.info).toHaveBeenCalledWith("Detected and executed script: check");
       expect(execSync).toHaveBeenCalledTimes(1);
     });
@@ -384,8 +392,8 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(execSync).toHaveBeenCalledWith("npm run format", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("npm run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run format", { cwd: process.cwd(), stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run lint", { cwd: process.cwd(), stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
@@ -403,8 +411,8 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: fmt, lint");
-      expect(execSync).toHaveBeenCalledWith("npm run fmt", { stdio: "inherit" });
-      expect(execSync).toHaveBeenCalledWith("npm run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run fmt", { cwd: process.cwd(), stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run lint", { cwd: process.cwd(), stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(2);
     });
 
@@ -420,7 +428,7 @@ describe("autofix", () => {
 
       run();
 
-      expect(execSync).toHaveBeenCalledWith("npm run lint", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run lint", { cwd: process.cwd(), stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(1);
     });
 
@@ -436,7 +444,7 @@ describe("autofix", () => {
 
       run();
 
-      expect(execSync).toHaveBeenCalledWith("npm run format", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run format", { cwd: process.cwd(), stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(1);
     });
 
@@ -452,7 +460,7 @@ describe("autofix", () => {
 
       run();
 
-      expect(execSync).toHaveBeenCalledWith("npm run fmt", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run fmt", { cwd: process.cwd(), stdio: "inherit" });
       expect(execSync).toHaveBeenCalledTimes(1);
     });
 
@@ -502,7 +510,7 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: pnpm run check");
-      expect(execSync).toHaveBeenCalledWith("pnpm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("pnpm run check", { cwd: process.cwd(), stdio: "inherit" });
     });
 
     it("should respect custom PACKAGE_MANAGER env variable values such as bun", () => {
@@ -519,7 +527,7 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: bun run check");
-      expect(execSync).toHaveBeenCalledWith("bun run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("bun run check", { cwd: process.cwd(), stdio: "inherit" });
     });
 
     it("should fall back to npm if PACKAGE_MANAGER environment variable is undefined or blank", () => {
@@ -536,7 +544,7 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(execSync).toHaveBeenCalledWith("npm run check", { stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: process.cwd(), stdio: "inherit" });
     });
   });
 
