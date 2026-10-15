@@ -9,11 +9,6 @@ Automatically lints and formats code using project-defined scripts and integrate
 - Python code formatting and linting powered by Ruff when Python source files exist.
 - Seamless integration with [autofix.ci](https://autofix.ci/) for automated pull request fixes.
 
-## Requirements
-
-- GitHub Actions workspace containing a supported Node.js/Bun package manifest (`package.json`) or Python source files (`.py`/`.pyi`).
-- Standard package manager lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `bun.lock`/`bun.lockb`, `uv.lock`, or `requirements.txt`).
-
 ## Usage
 
 ```yaml
@@ -38,13 +33,15 @@ jobs:
         uses: area44/workflows/autofix@main
 ```
 
-## Inputs
+## Public API Contract
+
+### Inputs
 
 | Name      | Description                                                   | Default | Required |
 | --------- | ------------------------------------------------------------- | ------- | -------- |
 | `runtime` | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
 
-## Outputs
+### Outputs
 
 | Name                      | Description                                                           |
 | ------------------------- | --------------------------------------------------------------------- |
