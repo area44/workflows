@@ -2,35 +2,43 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
-  isSupportedPackageManager,
-  isSupportedRuntime,
-  validateRuntimePackageManagerCompatibility,
-} from "./compatibility";
+import { isSupportedRuntime, validateRuntimePackageManagerCompatibility } from "./compatibility.js";
 import { WorkflowError } from "./errors.js";
+import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
+  DEFAULT_NPM_VERSION,
+  DEFAULT_PNPM_VERSION,
+  getDefaultJsPackageManagerVersion,
+  inspectJsProjectEnvironment,
+  resolveJsPackageManager,
+  type JsProjectEnvironment,
+} from "./javascript-env.js";
 import {
   detectPythonPackageManager,
   hasPythonSource,
-  isExecutableAvailable,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonVersion,
   resolveRuffVersion,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
-import { setupBun, setupNode, setupPackageManager } from "./setup-adapters";
+import { setupBun, setupNode, setupPackageManager } from "./setup-adapters.js";
 
 export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors.js";
 export { isWorkflowError, WorkflowError } from "./errors.js";
 
-export type { BunSetupConfig, NodeSetupConfig, PackageManagerSetupConfig } from "./setup-adapters";
+export type {
+  BunSetupConfig,
+  NodeSetupConfig,
+  PackageManagerSetupConfig,
+} from "./setup-adapters.js";
 export {
   getPnpmRuntime,
   resolvePnpmSetupRuntime,
   setupBun,
   setupNode,
   setupPackageManager,
-} from "./setup-adapters";
+} from "./setup-adapters.js";
 
 export type {
   ActionInputContract,
@@ -38,7 +46,7 @@ export type {
   BreakingChange,
   PublicActionContract,
   PublicActionName,
-} from "./action-contract";
+} from "./action-contract.js";
 export {
   detectBreakingChanges,
   isPublicAction,
@@ -46,7 +54,7 @@ export {
   parseActionContractYaml,
   PUBLIC_ACTIONS,
   validateAllPublicActionContracts,
-} from "./action-contract";
+} from "./action-contract.js";
 
 export type {
   CanonicalCompatibilityModel,
@@ -58,7 +66,7 @@ export type {
   SupportedFixtureType,
   SupportedPackageManager,
   SupportedRuntime,
-} from "./compatibility";
+} from "./compatibility.js";
 export {
   CANONICAL_COMPATIBILITY_MODEL,
   getCombinationCompatibility,
@@ -77,40 +85,19 @@ export {
   validateNoUnusedFixtures,
   validateRuntimePackageManagerCompatibility,
   validateWorkflowMatrix,
-} from "./compatibility";
+} from "./compatibility.js";
 
 export type { PythonPackageManager, PythonPackageManagerInfo };
-export { detectPythonPackageManager, isExecutableAvailable, PYTHON_PACKAGE_MANAGER_PRIORITY };
+export {
+  detectPythonPackageManager,
+  isExecutableAvailable,
+  PYTHON_PACKAGE_MANAGER_PRIORITY,
+} from "./python-env.js";
 
-/** Default Node.js fallback version */
-// renovate: datasource=node-version depName=node versioning=node
-export const DEFAULT_NODE_VERSION = "24";
+export { DEFAULT_BUN_VERSION, DEFAULT_NODE_VERSION, DEFAULT_NPM_VERSION, DEFAULT_PNPM_VERSION };
 
-/** Default Bun fallback version */
-// renovate: datasource=npm depName=bun
-export const DEFAULT_BUN_VERSION = "1.4";
-
-/** Default npm fallback version */
-// renovate: datasource=npm depName=npm
-export const DEFAULT_NPM_VERSION = "12";
-
-/** Default pnpm fallback version */
-// renovate: datasource=npm depName=pnpm
-export const DEFAULT_PNPM_VERSION = "12";
-
-/**
- * Returns the default fallback version for a given package manager name.
- */
 export function getDefaultPackageManagerVersion(pmName: string): string {
-  switch (pmName.toLowerCase()) {
-    case "pnpm":
-      return DEFAULT_PNPM_VERSION;
-    case "bun":
-      return DEFAULT_BUN_VERSION;
-    case "npm":
-    default:
-      return DEFAULT_NPM_VERSION;
-  }
+  return getDefaultJsPackageManagerVersion(pmName);
 }
 
 export interface PackageManager {
@@ -134,23 +121,11 @@ export interface ParsedInputs {
   bunVersion?: string;
 }
 
-export interface ProjectEnvironment {
-  nvmRcVersion?: string;
-  nvmRcError?: string;
-  nodeFileVersion?: string;
-  nodeFileError?: string;
-  bunFileVersion?: string;
-  bunFileError?: string;
-  packageJson?: any;
-  packageJsonError?: string;
-  hasPnpmLock: boolean;
-  hasPackageLock: boolean;
-  hasBunLock: boolean;
-}
+export type ProjectEnvironment = JsProjectEnvironment;
 
 function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): string | undefined {
   const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
-  if (pkg.devEngines) {
+  if (pkg && pkg.devEngines) {
     if (pkg.devEngines.runtime) {
       const runtimes = Array.isArray(pkg.devEngines.runtime)
         ? pkg.devEngines.runtime
@@ -169,35 +144,6 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
       return typeof val === "string" ? val : val.version || defaultVersion;
     }
   }
-  return undefined;
-}
-
-function getDevEnginePackageManager(pkg: any): PackageManager | undefined {
-  if (!pkg.devEngines) return undefined;
-
-  if (pkg.devEngines.packageManager) {
-    const pm = Array.isArray(pkg.devEngines.packageManager)
-      ? pkg.devEngines.packageManager[0]
-      : pkg.devEngines.packageManager;
-
-    if (typeof pm === "string") {
-      const [name, version] = pm.split("@");
-      return { name, version: version || getDefaultPackageManagerVersion(name) };
-    } else if (typeof pm === "object" && pm !== null && pm.name) {
-      return { name: pm.name, version: pm.version || getDefaultPackageManagerVersion(pm.name) };
-    }
-  }
-
-  for (const pm of ["pnpm", "npm", "bun"]) {
-    if (!isSupportedPackageManager(pm)) continue;
-    if (pkg.devEngines[pm]) {
-      const val = pkg.devEngines[pm];
-      const defaultVer = getDefaultPackageManagerVersion(pm);
-      const version = typeof val === "string" ? val : val.version || defaultVer;
-      return { name: pm, version };
-    }
-  }
-
   return undefined;
 }
 
@@ -326,72 +272,8 @@ export const parseRuntimeInput = parseEnvironmentInputs;
  * Project Environment Inspection
  * Inspects raw project state from workspace files and configurations.
  */
-export function inspectProjectEnvironment(): ProjectEnvironment {
-  let nvmRcVersion: string | undefined;
-  let nvmRcError: string | undefined;
-  let nodeFileVersion: string | undefined;
-  let nodeFileError: string | undefined;
-  let bunFileVersion: string | undefined;
-  let bunFileError: string | undefined;
-  let packageJson: any;
-  let packageJsonError: string | undefined;
-  let hasPnpmLock = false;
-  let hasPackageLock = false;
-  let hasBunLock = false;
-
-  try {
-    if (fs.existsSync(".nvmrc")) {
-      nvmRcVersion = fs.readFileSync(".nvmrc", "utf8").trim();
-    }
-  } catch (err) {
-    nvmRcError = err instanceof Error ? err.message : String(err);
-  }
-
-  try {
-    if (fs.existsSync(".node-version")) {
-      nodeFileVersion = fs.readFileSync(".node-version", "utf8").trim();
-    }
-  } catch (err) {
-    nodeFileError = err instanceof Error ? err.message : String(err);
-  }
-
-  try {
-    if (fs.existsSync(".bun-version")) {
-      bunFileVersion = fs.readFileSync(".bun-version", "utf8").trim();
-    }
-  } catch (err) {
-    bunFileError = err instanceof Error ? err.message : String(err);
-  }
-
-  try {
-    if (fs.existsSync("package.json")) {
-      packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-    }
-  } catch (err) {
-    packageJsonError = err instanceof Error ? err.message : String(err);
-  }
-
-  try {
-    hasPnpmLock = fs.existsSync("pnpm-lock.yaml");
-    hasPackageLock = fs.existsSync("package-lock.json");
-    hasBunLock = fs.existsSync("bun.lock") || fs.existsSync("bun.lockb");
-  } catch {
-    // Ignore detection errors
-  }
-
-  return {
-    nvmRcVersion,
-    nvmRcError,
-    nodeFileVersion,
-    nodeFileError,
-    bunFileVersion,
-    bunFileError,
-    packageJson,
-    packageJsonError,
-    hasPnpmLock,
-    hasPackageLock,
-    hasBunLock,
-  };
+export function inspectProjectEnvironment(cwd: string = process.cwd()): ProjectEnvironment {
+  return inspectJsProjectEnvironment(cwd);
 }
 
 /** Legacy wrapper alias for inspectProjectEnvironment */
@@ -402,39 +284,7 @@ export const detectProjectEnvironment = inspectProjectEnvironment;
  * Resolves final package manager and version given project environment state.
  */
 export function resolvePackageManager(project: ProjectEnvironment): PackageManager {
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const pkg = project.packageJson;
-    if (pkg.packageManager && typeof pkg.packageManager === "string") {
-      const [name, version] = pkg.packageManager.split("@");
-      const pmVersion = version || getDefaultPackageManagerVersion(name);
-      core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
-      return { name, version: pmVersion };
-    }
-
-    const devPm = getDevEnginePackageManager(pkg);
-    if (devPm) {
-      core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
-      return devPm;
-    }
-  }
-
-  if (project.hasPnpmLock) {
-    core.info(`Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`);
-    return { name: "pnpm", version: DEFAULT_PNPM_VERSION };
-  }
-  if (project.hasPackageLock) {
-    core.info(`Found package-lock.json, using npm@${DEFAULT_NPM_VERSION}`);
-    return { name: "npm", version: DEFAULT_NPM_VERSION };
-  }
-  if (project.hasBunLock) {
-    core.info(`Found bun lockfile, using bun@${DEFAULT_BUN_VERSION}`);
-    return { name: "bun", version: DEFAULT_BUN_VERSION };
-  }
-
-  core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);
-  return { name: "npm", version: DEFAULT_NPM_VERSION };
+  return resolveJsPackageManager(project);
 }
 
 /**

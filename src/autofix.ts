@@ -4,68 +4,112 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
+  getJsInstallationPlan,
+  inspectJsProjectEnvironment,
+  resolveJsPackageManager,
+  sanitizePackageManager,
+  selectAutofixScripts,
+  type JsInstallationPlan,
+} from "./javascript-env.js";
+import {
   detectPythonPackageManager,
   isExecutableAvailable,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
 
-interface PackageJson {
-  scripts?: Record<string, string>;
-}
+export { sanitizePackageManager };
 
-export function sanitizePackageManager(pm: string): string {
-  const clean = pm.trim().toLowerCase();
-  if (/^[a-z0-9_.-]+$/.test(clean)) {
-    return clean;
-  }
-  return "npm";
-}
-
-function runCommand(pm: string, name: string): void {
+function runScriptCommand(pm: string, name: string, cwd: string = process.cwd()): void {
   const safePm = sanitizePackageManager(pm);
   core.info(`Executing: ${safePm} run ${name}`);
   try {
-    execSync(`${safePm} run ${name}`, { stdio: "inherit" });
+    execSync(`${safePm} run ${name}`, { cwd, stdio: "inherit" });
   } catch {
     core.error(`Script "${name}" failed`);
     process.exit(1);
   }
 }
 
-function executeScripts(scripts: Record<string, string>, pm: string): void {
-  if (scripts.check) {
-    runCommand(pm, "check");
-    core.info("Detected and executed script: check");
-  } else if (scripts.format && scripts.lint) {
-    core.info("Detected lint/format scripts: format, lint");
-    runCommand(pm, "format");
-    runCommand(pm, "lint");
-  } else if (scripts.fmt && scripts.lint) {
-    core.info("Detected lint/format scripts: fmt, lint");
-    runCommand(pm, "fmt");
-    runCommand(pm, "lint");
-  } else if (scripts.format) {
-    runCommand(pm, "format");
-  } else if (scripts.fmt) {
-    runCommand(pm, "fmt");
-  } else if (scripts.lint) {
-    runCommand(pm, "lint");
-  } else {
-    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
+function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.cwd()): void {
+  const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
+  core.info(`Installing JS dependencies: ${fullCmd}`);
+  try {
+    execSync(fullCmd, { cwd, stdio: "inherit" });
+  } catch {
+    core.error(`JS dependency installation failed: ${fullCmd}`);
+    process.exit(1);
   }
 }
 
-function runPythonCommand(cmd: string): void {
+function executeJsScripts(
+  scripts: Record<string, string>,
+  pm: string,
+  cwd: string = process.cwd(),
+): void {
+  const selected = selectAutofixScripts(scripts);
+
+  if (scripts.check) {
+    runScriptCommand(pm, "check", cwd);
+    core.info("Detected and executed script: check");
+  } else if (scripts.format && scripts.lint) {
+    core.info("Detected lint/format scripts: format, lint");
+    runScriptCommand(pm, "format", cwd);
+    runScriptCommand(pm, "lint", cwd);
+  } else if (scripts.fmt && scripts.lint) {
+    core.info("Detected lint/format scripts: fmt, lint");
+    runScriptCommand(pm, "fmt", cwd);
+    runScriptCommand(pm, "lint", cwd);
+  } else if (selected.length > 0) {
+    for (const scriptName of selected) {
+      runScriptCommand(pm, scriptName, cwd);
+    }
+  }
+}
+
+export function executeJsWorkflow(cwd: string = process.cwd()): void {
+  const jsEnv = inspectJsProjectEnvironment(cwd);
+  if (!jsEnv.hasPackageJson) {
+    core.info("No package.json found. Skipping scripts.");
+    return;
+  }
+
+  if (jsEnv.packageJsonError) {
+    throw new Error(jsEnv.packageJsonError);
+  }
+
+  const scripts = jsEnv.packageJson?.scripts || {};
+  const selectedScripts = selectAutofixScripts(scripts);
+
+  if (selectedScripts.length === 0) {
+    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
+    return;
+  }
+
+  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+  const pm = sanitizePackageManager(rawPm);
+
+  if (process.env.SKIP_JS_INSTALL !== "true") {
+    const plan = getJsInstallationPlan(jsEnv, pm);
+    runJsInstallationPlan(plan, cwd);
+  }
+
+  executeJsScripts(scripts, pm, cwd);
+}
+
+function runPythonCommand(cmd: string, cwd: string = process.cwd()): void {
   core.info(`Executing: ${cmd}`);
   try {
-    execSync(cmd, { stdio: "inherit" });
+    execSync(cmd, { cwd, stdio: "inherit" });
   } catch {
     core.error(`Python command "${cmd}" failed`);
     process.exit(1);
   }
 }
 
-export function executePythonWorkflow(pmInfo: PythonPackageManagerInfo): void {
+export function executePythonWorkflow(
+  pmInfo: PythonPackageManagerInfo,
+  cwd: string = process.cwd(),
+): void {
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
@@ -80,26 +124,18 @@ export function executePythonWorkflow(pmInfo: PythonPackageManagerInfo): void {
     const installCmd = pmInfo.installCommand;
     if (installCmd) {
       core.info(`Installing Python dependencies: ${installCmd}`);
-      runPythonCommand(installCmd);
+      runPythonCommand(installCmd, cwd);
     }
   }
 }
 
-export function run(): void {
+export function run(cwd: string = process.cwd()): void {
   try {
-    const hasPackageJson = fs.existsSync("package.json");
-    if (!hasPackageJson) {
-      core.info("No package.json found. Skipping scripts.");
-    } else {
-      const pkg: PackageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-      const scripts = pkg.scripts || {};
-      const pm = process.env.PACKAGE_MANAGER || "npm";
-      executeScripts(scripts, pm);
-    }
+    executeJsWorkflow(cwd);
 
-    const pythonPmInfo = detectPythonPackageManager();
+    const pythonPmInfo = detectPythonPackageManager(cwd);
     if (pythonPmInfo) {
-      executePythonWorkflow(pythonPmInfo);
+      executePythonWorkflow(pythonPmInfo, cwd);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

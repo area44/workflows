@@ -82,32 +82,7 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
-    - name: Install dependencies
-      shell: bash
-      env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
-      run: |
-        if [ ! -f package.json ]; then
-          exit 0
-        fi
-        PM="${PACKAGE_MANAGER:-npm}"
-        case "$PM" in
-          pnpm)
-            pnpm install --no-frozen-lockfile
-            ;;
-          bun)
-            bun install
-            ;;
-          npm)
-            npm install
-            ;;
-          *)
-            echo "Error: Unsupported package manager '$PM'. Supported package managers are npm, pnpm, and bun."
-            exit 1
-            ;;
-        esac
-
-    - name: Run lint and format
+    - name: Run autofix
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
