@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { buildFormatExecutionPlan, type FormatExecutionPlan } from "./format-mapping.js";
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
@@ -66,10 +67,34 @@ function executeJsScripts(
   }
 }
 
+export function executeFormatTools(cwd: string = process.cwd(), pm: string = "npm"): void {
+  const plan: FormatExecutionPlan = buildFormatExecutionPlan(cwd, pm);
+  if (plan.commands.length === 0) {
+    return;
+  }
+
+  for (const cmd of plan.commands) {
+    core.info(cmd.reason);
+    core.info(`Executing: ${cmd.command}`);
+    try {
+      execSync(cmd.command, { cwd, stdio: "inherit" });
+    } catch {
+      core.error(`Tool command "${cmd.command}" failed`);
+      process.exit(1);
+    }
+  }
+}
+
 export function executeJsWorkflow(cwd: string = process.cwd()): void {
   const jsEnv = inspectJsProjectEnvironment(cwd);
+  const rawPm =
+    process.env.PACKAGE_MANAGER ||
+    (jsEnv.hasPackageJson ? resolveJsPackageManager(jsEnv).name : "npm");
+  const pm = sanitizePackageManager(rawPm);
+
   if (!jsEnv.hasPackageJson) {
     core.info("No package.json found. Skipping scripts.");
+    executeFormatTools(cwd, pm);
     return;
   }
 
@@ -79,21 +104,26 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
 
   const scripts = jsEnv.packageJson?.scripts || {};
   const selectedScripts = selectAutofixScripts(scripts);
+  const formatPlan = buildFormatExecutionPlan(cwd, pm);
+  const hasFormatCommands = formatPlan.commands.length > 0;
 
-  if (selectedScripts.length === 0) {
+  if (selectedScripts.length === 0 && !hasFormatCommands) {
     core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
     return;
   }
-
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-  const pm = sanitizePackageManager(rawPm);
 
   if (process.env.SKIP_JS_INSTALL !== "true") {
     const plan = getJsInstallationPlan(jsEnv, pm);
     runJsInstallationPlan(plan, cwd);
   }
 
-  executeJsScripts(scripts, pm, cwd);
+  if (selectedScripts.length > 0) {
+    executeJsScripts(scripts, pm, cwd);
+  } else {
+    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
+  }
+
+  executeFormatTools(cwd, pm);
 }
 
 function runPythonCommand(cmd: string, cwd: string = process.cwd()): void {

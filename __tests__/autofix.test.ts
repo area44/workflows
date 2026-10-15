@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
+import { executeFormatTools, executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
 import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
@@ -80,6 +80,68 @@ describe("autofix", () => {
     });
   });
 
+  describe("Multi-Format Tool Execution Strategy", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = path.join(
+        originalCwd,
+        "__tests__/fixtures/autofix/temp-multi-format-" + Math.random().toString(36).substring(2, 9),
+      );
+      fs.mkdirSync(tempDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should execute standalone Biome formatting when biome.json exists and no package scripts match", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      run(tempDir);
+
+      expect(execSync).toHaveBeenCalledWith("npx biome check --write .", { cwd: tempDir, stdio: "inherit" });
+    });
+
+    it("should execute Biome for JS/TS/JSON and Prettier for YAML/Markdown when both are configured without scripts", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          devDependencies: { prettier: "^3.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, ".prettierrc"), "{}");
+
+      run(tempDir);
+
+      expect(execSync).toHaveBeenCalledWith("npx biome check --write .", { cwd: tempDir, stdio: "inherit" });
+      expect(execSync).toHaveBeenCalledWith(
+        'npx prettier --write "**/*.{yaml,yml,md,markdown}"',
+        { cwd: tempDir, stdio: "inherit" },
+      );
+    });
+
+    it("should log error and exit if a format tool command fails", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("Biome command failed");
+      });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+      executeFormatTools(tempDir, "npm");
+
+      expect(core.error).toHaveBeenCalledWith('Tool command "npx biome check --write ." failed');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("JS Dependency Installation Strategy & Working Directory", () => {
     let tempDir: string;
 
@@ -130,7 +192,7 @@ describe("autofix", () => {
       expect(execSync).toHaveBeenCalledWith("bun run check", { cwd: tempDir, stdio: "inherit" });
     });
 
-    it("should skip JS installation when package.json has no applicable scripts", () => {
+    it("should skip JS installation when package.json has no applicable scripts and no format tools", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
