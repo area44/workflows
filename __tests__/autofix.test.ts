@@ -15,7 +15,10 @@ describe("autofix", () => {
   const originalCwd = process.cwd();
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
+    vi.mocked(execSync).mockReset();
+    vi.mocked(execSync).mockReturnValue(Buffer.from("") as any);
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
     process.env.SKIP_JS_INSTALL = "true";
@@ -152,7 +155,7 @@ describe("autofix", () => {
       expect(execSync).toHaveBeenCalledWith("npm run check", { cwd: tempDir, stdio: "inherit" });
     });
 
-    it("should exit with code 1 when JS dependency installation fails", () => {
+    it("should set workflow failed with WorkflowError when JS dependency installation fails", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
@@ -160,12 +163,21 @@ describe("autofix", () => {
         throw new Error("npm install failed");
       });
 
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
-
       run(tempDir);
 
       expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm install");
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "SETUP_FAILURE",
+          message: expect.stringContaining("JS dependency installation failed executing \"npm install\""),
+          context: expect.objectContaining({
+            stage: "js-dependency-installation",
+            packageManager: "npm",
+            command: "npm install",
+          }),
+        }),
+      );
     });
   });
 
@@ -242,21 +254,32 @@ describe("autofix", () => {
       }
     });
 
-    it("should error and exit if required package manager binary is not available in PATH without fallback attempt", () => {
+    it("should throw WorkflowError if required package manager binary is not available in PATH without fallback attempt", () => {
       vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
-      executePythonWorkflow({
-        name: "uv",
-        installCommand: "uv sync",
-        execPrefix: "uv run",
-      });
+      expect(() =>
+        executePythonWorkflow({
+          name: "uv",
+          installCommand: "uv sync",
+          execPrefix: "uv run",
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "MISSING_CONFIGURATION",
+          message: "Required Python package manager 'uv' is not available in PATH.",
+          context: expect.objectContaining({
+            stage: "python-environment-check",
+            packageManager: "uv",
+            requiredBinary: "uv",
+          }),
+        }),
+      );
 
       expect(core.error).toHaveBeenCalledWith(
-        expect.stringContaining("Required Python package manager 'uv' is not available in PATH"),
+        "Required Python package manager 'uv' is not available in PATH.",
       );
       expect(execSync).not.toHaveBeenCalledWith("pip install uv", expect.anything());
-      expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it("should run Python workflow in Python-only repository without package.json when Python source exists", () => {
@@ -306,21 +329,32 @@ describe("autofix", () => {
       }
     });
 
-    it("should handle failure in Python commands gracefully", () => {
+    it("should handle failure in Python commands gracefully throwing WorkflowError", () => {
       vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(true);
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execSync).mockImplementationOnce(() => {
         throw new Error("Install failed");
       });
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
-      executePythonWorkflow({
-        name: "pip",
-        installCommand: "pip install -r requirements.txt",
-        execPrefix: "",
-      });
+      expect(() =>
+        executePythonWorkflow({
+          name: "pip",
+          installCommand: "pip install -r requirements.txt",
+          execPrefix: "",
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "SETUP_FAILURE",
+          message: expect.stringContaining('Python command "pip install -r requirements.txt" failed'),
+          context: expect.objectContaining({
+            stage: "python-dependency-installation",
+            packageManager: "pip",
+            command: "pip install -r requirements.txt",
+          }),
+        }),
+      );
 
       expect(core.error).toHaveBeenCalledWith('Python command "pip install -r requirements.txt" failed');
-      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 
@@ -556,12 +590,19 @@ describe("autofix", () => {
       run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to run scripts:"),
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "MISSING_CONFIGURATION",
+          message: expect.stringContaining("Failed to parse package.json:"),
+          context: expect.objectContaining({
+            stage: "js-project-inspection",
+          }),
+        }),
       );
       expect(execSync).not.toHaveBeenCalled();
     });
 
-    it("should log an error and exit with code 1 if a script fails during execution", () => {
+    it("should log an error and set workflow as failed if a script fails during execution", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
@@ -570,16 +611,26 @@ describe("autofix", () => {
           },
         }) as any,
       );
-      vi.mocked(execSync).mockImplementation(() => {
+      vi.mocked(execSync).mockImplementationOnce(() => {
         throw new Error("Command failed: npm run check");
       });
-
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
 
       run();
 
       expect(core.error).toHaveBeenCalledWith('Script "check" failed');
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "COMMAND_EXECUTION_FAILURE",
+          message: 'Script "check" failed while executing "npm run check".',
+          context: expect.objectContaining({
+            stage: "js-script-execution",
+            script: "check",
+            packageManager: "npm",
+            command: "npm run check",
+          }),
+        }),
+      );
     });
 
     it("should set workflow as failed for generic other errors such as filesystem failures on readFileSync", () => {
@@ -590,7 +641,13 @@ describe("autofix", () => {
 
       run();
 
-      expect(core.setFailed).toHaveBeenCalledWith("Failed to run scripts: Permission Denied");
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "MISSING_CONFIGURATION",
+          message: "Failed to parse package.json: Permission Denied",
+        }),
+      );
     });
 
     it("should handle raw exceptions gracefully during run orchestration", () => {
@@ -601,7 +658,69 @@ describe("autofix", () => {
 
       run();
 
-      expect(core.setFailed).toHaveBeenCalledWith("Failed to run scripts: Raw unexpected error");
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "MISSING_CONFIGURATION",
+          message: "Failed to parse package.json: Raw unexpected error",
+        }),
+      );
+    });
+  });
+
+  describe("Secret Sanitization and File Safety", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp safety dir " + Math.random().toString(36).substring(2, 9));
+      fs.mkdirSync(tempDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should sanitize secrets/tokens in command strings when reporting installation failures", () => {
+      delete process.env.SKIP_JS_INSTALL;
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      process.env.PACKAGE_MANAGER = "npm";
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("Failed to connect with token ghp_123456789012345678901234567890123456");
+      });
+
+      run(tempDir);
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "SETUP_FAILURE",
+          context: expect.objectContaining({
+            cause: expect.objectContaining({
+              message: expect.not.stringContaining("ghp_123456789012345678901234567890123456"),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("should preserve existing user files and not perform destructive cleanups on failure", () => {
+      const userFile = path.join(tempDir, "unrelated-user-file.txt");
+      fs.writeFileSync(userFile, "important user content");
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "exit 1" } }));
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error("Script failed");
+      });
+
+      run(tempDir);
+
+      expect(core.setFailed).toHaveBeenCalled();
+      expect(fs.existsSync(userFile)).toBe(true);
+      expect(fs.readFileSync(userFile, "utf8")).toBe("important user content");
     });
   });
 });
