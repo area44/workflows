@@ -234,6 +234,14 @@ describe("autofix", () => {
       expect(core.error).toHaveBeenCalledWith('Python command "pip install -r requirements.txt" failed');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it("should not execute ruff formatting or linting commands inside TS script execution", () => {
+      process.chdir(path.join(pythonFixturesDir, "uv"));
+
+      run();
+
+      expect(execSync).not.toHaveBeenCalledWith(expect.stringMatching(/\bruff\b/), expect.anything());
+    });
   });
 
   describe("package.json existence checks", () => {

@@ -95,6 +95,33 @@ describe("Public Action API Contract Specification", () => {
         expect(target).toMatch(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+@[a-f0-9]{40}(?:\s*#.*)?$/);
       }
     });
+
+    it("autofix/action.yml should execute Ruff format and check --fix exactly once in order and gated on has-python-source", () => {
+      const fs = require("node:fs");
+      const YAML = require("yaml");
+      const actionContent = fs.readFileSync(path.join(rootDir, "autofix/action.yml"), "utf8");
+      const parsed = YAML.parse(actionContent);
+
+      const ruffSteps = parsed.runs.steps.filter(
+        (step: any) => step.uses && step.uses.startsWith("astral-sh/ruff-action@"),
+      );
+
+      expect(ruffSteps).toHaveLength(2);
+
+      expect(ruffSteps[0].name).toBe("Format Python code with Ruff");
+      expect(ruffSteps[0].if).toBe("${{ steps.resolve_environment.outputs.has-python-source == 'true' }}");
+      expect(ruffSteps[0].with).toEqual({
+        version: "${{ steps.resolve_environment.outputs.ruff-version }}",
+        args: "format .",
+      });
+
+      expect(ruffSteps[1].name).toBe("Lint and fix Python code with Ruff");
+      expect(ruffSteps[1].if).toBe("${{ steps.resolve_environment.outputs.has-python-source == 'true' }}");
+      expect(ruffSteps[1].with).toEqual({
+        version: "${{ steps.resolve_environment.outputs.ruff-version }}",
+        args: "check --fix .",
+      });
+    });
   });
 
   describe("Contract Validation Rules & Error Messages", () => {
