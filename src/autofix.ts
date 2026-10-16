@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { isWorkflowError, WorkflowError } from "./errors.js";
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
@@ -16,28 +17,47 @@ import {
   isExecutableAvailable,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
+import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };
 
 function runScriptCommand(pm: string, name: string, cwd: string = process.cwd()): void {
   const safePm = sanitizePackageManager(pm);
-  core.info(`Executing: ${safePm} run ${name}`);
+  const rawCmd = `${safePm} run ${name}`;
+  const displayCmd = sanitizeCommandString(rawCmd);
+  core.info(`Executing: ${displayCmd}`);
   try {
-    execSync(`${safePm} run ${name}`, { cwd, stdio: "inherit" });
-  } catch {
+    execSync(rawCmd, { cwd, stdio: "inherit" });
+  } catch (err) {
     core.error(`Script "${name}" failed`);
-    process.exit(1);
+    const message = `Script "${name}" failed while executing "${displayCmd}".`;
+    throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
+      stage: "js-script-execution",
+      script: name,
+      packageManager: safePm,
+      command: displayCmd,
+      cwd,
+      cause: sanitizeCause(err),
+    });
   }
 }
 
 function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.cwd()): void {
   const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
-  core.info(`Installing JS dependencies: ${fullCmd}`);
+  const displayCmd = sanitizeCommandString(fullCmd);
+  core.info(`Installing JS dependencies: ${displayCmd}`);
   try {
     execSync(fullCmd, { cwd, stdio: "inherit" });
-  } catch {
-    core.error(`JS dependency installation failed: ${fullCmd}`);
-    process.exit(1);
+  } catch (err) {
+    core.error(`JS dependency installation failed: ${displayCmd}`);
+    const message = `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`;
+    throw new WorkflowError("SETUP_FAILURE", message, {
+      stage: "js-dependency-installation",
+      packageManager: plan.packageManager,
+      command: displayCmd,
+      cwd,
+      cause: sanitizeCause(err),
+    });
   }
 }
 
@@ -73,8 +93,21 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     return;
   }
 
-  if (jsEnv.packageJsonError) {
-    throw new Error(jsEnv.packageJsonError);
+  if (jsEnv.packageJsonErrorInfo) {
+    const errorInfo = jsEnv.packageJsonErrorInfo;
+    const sanitizedMsg = sanitizeCommandString(errorInfo.message);
+    const code = errorInfo.type === "parse" ? "INVALID_INPUT" : "SETUP_FAILURE";
+    throw new WorkflowError(code, sanitizedMsg, {
+      stage: errorInfo.type === "parse" ? "js-project-parsing" : "js-project-inspection",
+      cwd,
+      cause: sanitizeCause(errorInfo.cause),
+    });
+  } else if (jsEnv.packageJsonError) {
+    const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
+    throw new WorkflowError("SETUP_FAILURE", `Failed to inspect package.json: ${sanitizedMsg}`, {
+      stage: "js-project-inspection",
+      cwd,
+    });
   }
 
   const scripts = jsEnv.packageJson?.scripts || {};
@@ -96,13 +129,21 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
   executeJsScripts(scripts, pm, cwd);
 }
 
-function runPythonCommand(cmd: string, cwd: string = process.cwd()): void {
-  core.info(`Executing: ${cmd}`);
+function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd()): void {
+  const displayCmd = sanitizeCommandString(cmd);
+  core.info(`Executing: ${displayCmd}`);
   try {
     execSync(cmd, { cwd, stdio: "inherit" });
-  } catch {
-    core.error(`Python command "${cmd}" failed`);
-    process.exit(1);
+  } catch (err) {
+    core.error(`Python command "${displayCmd}" failed`);
+    const message = `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`;
+    throw new WorkflowError("SETUP_FAILURE", message, {
+      stage: "python-dependency-installation",
+      packageManager: pmName,
+      command: displayCmd,
+      cwd,
+      cause: sanitizeCause(err),
+    });
   }
 }
 
@@ -116,15 +157,20 @@ export function executePythonWorkflow(
   const hasPmBin = isExecutableAvailable(requiredBin);
 
   if (!hasPmBin && !pmInfo.isStandalone) {
-    core.error(`Required Python package manager '${requiredBin}' is not available in PATH.`);
-    process.exit(1);
+    const message = `Required Python package manager '${requiredBin}' is not available in PATH.`;
+    core.error(message);
+    throw new WorkflowError("MISSING_CONFIGURATION", message, {
+      stage: "python-environment-check",
+      packageManager: pmInfo.name,
+      requiredBinary: requiredBin,
+    });
   }
 
   if (!pmInfo.isStandalone && process.env.SKIP_PYTHON_INSTALL !== "true") {
     const installCmd = pmInfo.installCommand;
     if (installCmd) {
-      core.info(`Installing Python dependencies: ${installCmd}`);
-      runPythonCommand(installCmd, cwd);
+      core.info(`Installing Python dependencies: ${sanitizeCommandString(installCmd)}`);
+      runPythonCommand(installCmd, pmInfo.name, cwd);
     }
   }
 }
@@ -138,8 +184,20 @@ export function run(cwd: string = process.cwd()): void {
       executePythonWorkflow(pythonPmInfo, cwd);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    core.setFailed(`Failed to run scripts: ${message}`);
+    if (isWorkflowError(error)) {
+      core.setFailed(error);
+    } else {
+      const message = error instanceof Error ? error.message : String(error);
+      const wfError = new WorkflowError(
+        "COMMAND_EXECUTION_FAILURE",
+        `Failed to run scripts: ${sanitizeCommandString(message)}`,
+        { stage: "autofix-execution", cwd, cause: sanitizeCause(error) },
+      );
+      core.setFailed(wfError);
+    }
+    if (process.env.NODE_ENV !== "test") {
+      process.exit(1);
+    }
   }
 }
 
