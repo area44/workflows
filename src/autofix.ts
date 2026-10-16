@@ -71,7 +71,9 @@ function runScriptCommand(pm: string, name: string, cwd: string = process.cwd())
   if (result.status !== 0 || result.error) {
     core.error(`Script "${name}" failed`);
     const message = `Script "${name}" failed while executing "${displayCmd}".`;
-    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
+    const causeObj =
+      result.error ||
+      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
       stage: "js-script-execution",
       script: name,
@@ -92,7 +94,9 @@ function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.c
   if (result.status !== 0 || result.error) {
     core.error(`JS dependency installation failed: ${displayCmd}`);
     const message = `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`;
-    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
+    const causeObj =
+      result.error ||
+      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("SETUP_FAILURE", message, {
       stage: "js-dependency-installation",
       packageManager: plan.packageManager,
@@ -178,7 +182,9 @@ function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd
   if (result.status !== 0 || result.error) {
     core.error(`Python command "${displayCmd}" failed`);
     const message = `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`;
-    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
+    const causeObj =
+      result.error ||
+      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("SETUP_FAILURE", message, {
       stage: "python-dependency-installation",
       packageManager: pmName,
