@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -21,23 +21,64 @@ import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };
 
+/**
+ * Executes a shell command synchronously while capturing and sanitizing stdout and stderr.
+ * Output lines are passed through `sanitizeCommandString()` before writing to `process.stdout`/`process.stderr`.
+ *
+ * Limitation note: Binary or non-UTF8 output chunks without newline boundaries might be partially sanitized per line,
+ * but line-buffered UTF-8 text (standard for log output) is fully sanitized.
+ */
+function execSanitized(
+  cmd: string,
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): { status: number | null; stdout: string; stderr: string; error?: Error } {
+  const cwd = options.cwd || process.cwd();
+  const res = spawnSync(cmd, {
+    cwd,
+    env: options.env || process.env,
+    shell: true,
+    encoding: "utf8",
+  });
+
+  const stdout = res.stdout || "";
+  const stderr = res.stderr || "";
+
+  if (stdout) {
+    const sanitizedStdout = sanitizeCommandString(stdout);
+    process.stdout.write(sanitizedStdout);
+  }
+
+  if (stderr) {
+    const sanitizedStderr = sanitizeCommandString(stderr);
+    process.stderr.write(sanitizedStderr);
+  }
+
+  return {
+    status: res.status,
+    stdout,
+    stderr,
+    error: res.error,
+  };
+}
+
 function runScriptCommand(pm: string, name: string, cwd: string = process.cwd()): void {
   const safePm = sanitizePackageManager(pm);
   const rawCmd = `${safePm} run ${name}`;
   const displayCmd = sanitizeCommandString(rawCmd);
   core.info(`Executing: ${displayCmd}`);
-  try {
-    execSync(rawCmd, { cwd, stdio: "inherit" });
-  } catch (err) {
+
+  const result = execSanitized(rawCmd, { cwd });
+  if (result.status !== 0 || result.error) {
     core.error(`Script "${name}" failed`);
     const message = `Script "${name}" failed while executing "${displayCmd}".`;
+    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
       stage: "js-script-execution",
       script: name,
       packageManager: safePm,
       command: displayCmd,
       cwd,
-      cause: sanitizeCause(err),
+      cause: sanitizeCause(causeObj),
     });
   }
 }
@@ -46,17 +87,18 @@ function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.c
   const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
   const displayCmd = sanitizeCommandString(fullCmd);
   core.info(`Installing JS dependencies: ${displayCmd}`);
-  try {
-    execSync(fullCmd, { cwd, stdio: "inherit" });
-  } catch (err) {
+
+  const result = execSanitized(fullCmd, { cwd });
+  if (result.status !== 0 || result.error) {
     core.error(`JS dependency installation failed: ${displayCmd}`);
     const message = `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`;
+    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("SETUP_FAILURE", message, {
       stage: "js-dependency-installation",
       packageManager: plan.packageManager,
       command: displayCmd,
       cwd,
-      cause: sanitizeCause(err),
+      cause: sanitizeCause(causeObj),
     });
   }
 }
@@ -132,17 +174,17 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
 function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd()): void {
   const displayCmd = sanitizeCommandString(cmd);
   core.info(`Executing: ${displayCmd}`);
-  try {
-    execSync(cmd, { cwd, stdio: "inherit" });
-  } catch (err) {
+  const result = execSanitized(cmd, { cwd });
+  if (result.status !== 0 || result.error) {
     core.error(`Python command "${displayCmd}" failed`);
     const message = `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`;
+    const causeObj = result.error || new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
     throw new WorkflowError("SETUP_FAILURE", message, {
       stage: "python-dependency-installation",
       packageManager: pmName,
       command: displayCmd,
       cwd,
-      cause: sanitizeCause(err),
+      cause: sanitizeCause(causeObj),
     });
   }
 }
