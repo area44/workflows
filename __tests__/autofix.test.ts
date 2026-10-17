@@ -30,8 +30,6 @@ describe("autofix", () => {
     vi.mocked(execSync).mockReturnValue(Buffer.from("") as any);
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
-    process.env.SKIP_JS_INSTALL = "true";
-    delete process.env.SKIP_PYTHON_INSTALL;
   });
 
   afterEach(() => {
@@ -42,43 +40,46 @@ describe("autofix", () => {
   describe("Fixture-based test cases", () => {
     const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
 
-    it("should run format and lint scripts for autofix/node/npm/basic fixture", () => {
+    it("should install dependencies and run format and lint scripts for autofix/node/npm/basic fixture", () => {
       const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "npm";
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
       expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(spawnSync).toHaveBeenCalledTimes(3);
     });
 
-    it("should run format and lint scripts using pnpm for autofix/node/pnpm/basic fixture", () => {
+    it("should install dependencies and run format/lint scripts using pnpm for autofix/node/pnpm/basic fixture", () => {
       const fixturePath = path.join(fixturesDir, "autofix/node/pnpm/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "pnpm";
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
       expect(spawnSync).toHaveBeenCalledWith("pnpm run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("pnpm run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(spawnSync).toHaveBeenCalledTimes(3);
     });
 
-    it("should run format and lint scripts using bun for autofix/bun/bun/basic fixture", () => {
+    it("should install dependencies and run format/lint scripts using bun for autofix/bun/bun/basic fixture", () => {
       const fixturePath = path.join(fixturesDir, "autofix/bun/bun/basic");
       process.chdir(fixturePath);
       process.env.PACKAGE_MANAGER = "bun";
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("bun install", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
       expect(spawnSync).toHaveBeenCalledWith("bun run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("bun run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(spawnSync).toHaveBeenCalledTimes(3);
     });
 
     it("should not run Python workflow in JS/TS-only repository", () => {
@@ -92,11 +93,104 @@ describe("autofix", () => {
     });
   });
 
+  describe("Lockfile Updates & Mutation Invariants", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp lockfile dir " + Math.random().toString(36).substring(2, 9));
+      fs.mkdirSync(tempDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should preserve updated package-lock.json when npm install synchronizes dependencies", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), JSON.stringify({ lockfileVersion: 2 }));
+
+      vi.mocked(spawnSync).mockImplementation((cmd, opts) => {
+        if (typeof cmd === "string" && cmd.startsWith("npm install")) {
+          fs.writeFileSync(path.join(tempDir, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, updated: true }));
+        }
+        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      });
+
+      run(tempDir);
+
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+      const updatedLock = JSON.parse(fs.readFileSync(path.join(tempDir, "package-lock.json"), "utf8"));
+      expect(updatedLock).toEqual({ lockfileVersion: 3, updated: true });
+      expect(core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it("should preserve updated pnpm-lock.yaml when pnpm install --no-frozen-lockfile updates lockfile", () => {
+      process.env.PACKAGE_MANAGER = "pnpm";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '6.0'");
+
+      vi.mocked(spawnSync).mockImplementation((cmd) => {
+        if (typeof cmd === "string" && cmd.startsWith("pnpm install")) {
+          fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\npackages:\n  foo: 1.0.0");
+        }
+        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      });
+
+      run(tempDir);
+
+      expect(spawnSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", expect.objectContaining({ cwd: tempDir, shell: true }));
+      const updatedLock = fs.readFileSync(path.join(tempDir, "pnpm-lock.yaml"), "utf8");
+      expect(updatedLock).toContain("lockfileVersion: '9.0'");
+      expect(core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it("should preserve updated bun.lock when bun install synchronizes dependencies", () => {
+      process.env.PACKAGE_MANAGER = "bun";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "old bun lock content");
+
+      vi.mocked(spawnSync).mockImplementation((cmd) => {
+        if (typeof cmd === "string" && cmd.startsWith("bun install")) {
+          fs.writeFileSync(path.join(tempDir, "bun.lock"), "new bun lock content with resolved hashes");
+        }
+        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      });
+
+      run(tempDir);
+
+      expect(spawnSync).toHaveBeenCalledWith("bun install", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(fs.readFileSync(path.join(tempDir, "bun.lock"), "utf8")).toBe("new bun lock content with resolved hashes");
+      expect(core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it("should preserve updated uv.lock when uv sync synchronizes Python dependencies", () => {
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      vi.mocked(spawnSync).mockImplementation((cmd) => {
+        if (typeof cmd === "string" && cmd.startsWith("uv sync")) {
+          fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n[[package]]\nname = 'requests'\nversion = '2.31.0'\n");
+        }
+        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      });
+
+      run(tempDir);
+
+      expect(spawnSync).toHaveBeenCalledWith("uv sync", expect.objectContaining({ cwd: tempDir, shell: true }));
+      const updatedLock = fs.readFileSync(path.join(tempDir, "uv.lock"), "utf8");
+      expect(updatedLock).toContain("name = 'requests'");
+      expect(core.setFailed).not.toHaveBeenCalled();
+    });
+  });
+
   describe("JS Dependency Installation Strategy & Working Directory", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      delete process.env.SKIP_JS_INSTALL;
       tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp install dir " + Math.random().toString(36).substring(2, 9));
       fs.mkdirSync(tempDir, { recursive: true });
     });
@@ -142,27 +236,19 @@ describe("autofix", () => {
       expect(spawnSync).toHaveBeenCalledWith("bun run check", expect.objectContaining({ cwd: tempDir, shell: true }));
     });
 
-    it("should skip JS installation when package.json has no applicable scripts", () => {
+    it("should install JS dependencies even when package.json has no applicable scripts", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       run(tempDir);
 
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
-      expect(spawnSync).not.toHaveBeenCalledWith("npm install", expect.anything());
     });
 
-    it("should skip JS installation when SKIP_JS_INSTALL=true but still run matching scripts", () => {
-      process.env.SKIP_JS_INSTALL = "true";
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
-
-      run(tempDir);
-
-      expect(spawnSync).not.toHaveBeenCalledWith("npm install", expect.anything());
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
-    });
 
     it("should set workflow failed with WorkflowError when JS dependency installation fails", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
@@ -223,18 +309,6 @@ describe("autofix", () => {
       expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
-    it("should skip dependency installation when SKIP_PYTHON_INSTALL=true", () => {
-      process.env.SKIP_PYTHON_INSTALL = "true";
-
-      executePythonWorkflow({
-        name: "pip",
-        installCommand: "pip install -r requirements.txt",
-        execPrefix: "",
-      });
-
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-      expect(spawnSync).not.toHaveBeenCalledWith("pip install -r requirements.txt", expect.anything());
-    });
 
     it("should skip lockfile sync and dependency installation for standalone Python projects", () => {
       executePythonWorkflow({
@@ -426,9 +500,10 @@ describe("autofix", () => {
       run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected and executed script: check");
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(spawnSync).toHaveBeenCalledTimes(2);
     });
 
     it("should run both 'format' and 'lint' if they are both defined", () => {
@@ -444,10 +519,11 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
       expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(spawnSync).toHaveBeenCalledTimes(3);
     });
 
     it("should run both 'fmt' and 'lint' if 'format' is missing but 'fmt' is defined", () => {
@@ -463,10 +539,11 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: fmt, lint");
       expect(spawnSync).toHaveBeenCalledWith("npm run fmt", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(spawnSync).toHaveBeenCalledTimes(3);
     });
 
     it("should execute only 'lint' if format/fmt are not defined", () => {
@@ -481,8 +558,9 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(spawnSync).toHaveBeenCalledTimes(2);
     });
 
     it("should execute only 'format' if lint/fmt are not defined", () => {
@@ -497,8 +575,9 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(spawnSync).toHaveBeenCalledTimes(2);
     });
 
     it("should execute only 'fmt' if lint/format are not defined", () => {
@@ -513,11 +592,12 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run fmt", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(spawnSync).toHaveBeenCalledTimes(2);
     });
 
-    it("should log info and skip execution when scripts are empty or no matched script exists", () => {
+    it("should log info and skip script execution when scripts are empty or no matched script exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
@@ -529,22 +609,24 @@ describe("autofix", () => {
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(spawnSync).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
-      expect(spawnSync).not.toHaveBeenCalled();
     });
 
-    it("should log info and skip execution when scripts block is missing entirely in package.json", () => {
+    it("should log info and skip script execution when scripts block is missing entirely in package.json", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ name: "my-package" }) as any);
 
       run();
 
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(spawnSync).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
-      expect(spawnSync).not.toHaveBeenCalled();
     });
   });
 
@@ -670,14 +752,23 @@ describe("autofix", () => {
           },
         }) as any,
       );
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Command failed: npm run check",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(spawnSync)
+        .mockReturnValueOnce({
+          status: 0,
+          stdout: "",
+          stderr: "",
+          pid: 1,
+          output: [],
+          signal: null,
+        } as any)
+        .mockReturnValueOnce({
+          status: 1,
+          stdout: "",
+          stderr: "Command failed: npm run check",
+          pid: 1,
+          output: [],
+          signal: null,
+        } as any);
 
       run();
 
@@ -713,7 +804,6 @@ describe("autofix", () => {
     });
 
     it("should sanitize secrets/tokens in command strings when reporting installation failures", () => {
-      delete process.env.SKIP_JS_INSTALL;
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
@@ -752,14 +842,23 @@ describe("autofix", () => {
         }) as any,
       );
 
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Execution failed with token github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(spawnSync)
+        .mockReturnValueOnce({
+          status: 0,
+          stdout: "",
+          stderr: "",
+          pid: 1,
+          output: [],
+          signal: null,
+        } as any)
+        .mockReturnValueOnce({
+          status: 1,
+          stdout: "",
+          stderr: "Execution failed with token github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111",
+          pid: 1,
+          output: [],
+          signal: null,
+        } as any);
 
       run();
 
