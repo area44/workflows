@@ -159,10 +159,8 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
   const pm = sanitizePackageManager(rawPm);
 
-  if (process.env.SKIP_JS_INSTALL !== "true") {
-    const plan = getJsInstallationPlan(jsEnv, pm);
-    runJsInstallationPlan(plan, cwd);
-  }
+  const plan = getJsInstallationPlan(jsEnv, pm);
+  runJsInstallationPlan(plan, cwd);
 
   const scripts = jsEnv.packageJson?.scripts || {};
   const selectedScripts = selectAutofixScripts(scripts);
@@ -214,7 +212,7 @@ export function executePythonWorkflow(
     });
   }
 
-  if (!pmInfo.isStandalone && process.env.SKIP_PYTHON_INSTALL !== "true") {
+  if (!pmInfo.isStandalone) {
     const installCmd = pmInfo.installCommand;
     if (installCmd) {
       core.info(`Installing Python dependencies: ${sanitizeCommandString(installCmd)}`);
