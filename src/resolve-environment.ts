@@ -10,10 +10,17 @@ import {
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   getDefaultJsPackageManagerVersion,
+  hasVitePlusDependency,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
+  resolveToolchain,
   type JsProjectEnvironment,
+  type Toolchain,
+  type ToolchainInput,
 } from "./javascript-env.js";
+
+export type { Toolchain, ToolchainInput };
+export { hasVitePlusDependency, resolveToolchain };
 import {
   detectPythonPackageManager,
   hasPythonSource,
@@ -110,6 +117,7 @@ export interface ResolvedEnvironment {
   bunVersion: string;
   pm: PackageManager;
   runtime: "node" | "bun";
+  toolchain: Toolchain;
 }
 
 /** Legacy type alias for ResolvedEnvironment */
@@ -486,12 +494,14 @@ export function writeOutput(
   pm: PackageManager,
   bunVersion?: string,
   runtime?: "bun" | "node",
+  toolchain?: Toolchain,
 ): void;
 export function writeOutput(
   nodeVersionOrEnv: string | ResolvedEnvironment,
   pm?: PackageManager,
   bunVersion: string = "",
   runtime: "bun" | "node" = "node",
+  toolchain: Toolchain = "vite",
 ): void {
   let env: ResolvedEnvironment;
   if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
@@ -507,6 +517,7 @@ export function writeOutput(
       pm,
       bunVersion,
       runtime,
+      toolchain,
     };
   }
 
@@ -519,6 +530,7 @@ export function writeOutput(
   core.setOutput("package-manager", env.pm.name);
   core.setOutput("package-manager-version", env.pm.version);
   core.setOutput("runtime", env.runtime);
+  core.setOutput("toolchain", env.toolchain);
   core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
   core.setOutput("setup-node", String(nodeSetup.shouldSetup));
@@ -551,18 +563,21 @@ export function writeOutput(
  */
 export function resolveEnvironment(
   runtimeInput: string = core.getInput("runtime"),
+  toolchainInput: string = core.getInput("toolchain"),
 ): ResolvedEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectProjectEnvironment();
   const pm = resolvePackageManager(project);
   const runtime = resolveRuntime(parsedInputs, pm);
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
+  const toolchain = resolveToolchain(toolchainInput, project);
 
   const env: ResolvedEnvironment = {
     nodeVersion: versions.nodeVersion,
     bunVersion: versions.bunVersion,
     pm,
     runtime,
+    toolchain,
   };
 
   return validateEnvironment(env);
@@ -574,8 +589,9 @@ export const detectEnv = resolveEnvironment;
 export function run(): void {
   try {
     const runtimeInput = core.getInput("runtime");
-    const env = resolveEnvironment(runtimeInput);
-    writeOutput(env.nodeVersion, env.pm, env.bunVersion, env.runtime);
+    const toolchainInput = core.getInput("toolchain");
+    const env = resolveEnvironment(runtimeInput, toolchainInput);
+    writeOutput(env);
   } catch (error) {
     if (error instanceof WorkflowError) {
       core.setFailed(error);

@@ -6,7 +6,7 @@ import { WorkflowError } from "./errors.js";
 export type SupportedRuntime = "node" | "bun";
 export type SupportedPackageManager = "npm" | "pnpm" | "bun";
 
-export const SUPPORTED_ACTIONS = ["astro", "vite", "vite-plus", "autofix"] as const;
+export const SUPPORTED_ACTIONS = ["astro", "vite", "autofix"] as const;
 export type SupportedAction = (typeof SUPPORTED_ACTIONS)[number];
 
 export const SUPPORTED_FIXTURE_TYPES = ["basic", "minimal"] as const;

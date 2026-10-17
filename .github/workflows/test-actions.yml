@@ -156,53 +156,6 @@ jobs:
             pm: pnpm
             type: basic
             verify_site: true
-
-          # Vite-Plus action
-          - action: vite-plus
-            runtime: node
-            pm: npm
-            type: basic
-            verify_site: true
-          - action: vite-plus
-            runtime: node
-            pm: npm
-            type: minimal
-            verify_site: true
-          - action: vite-plus
-            runtime: node
-            pm: pnpm
-            type: basic
-            verify_site: true
-          - action: vite-plus
-            runtime: node
-            pm: pnpm
-            type: minimal
-            verify_site: true
-          - action: vite-plus
-            runtime: node
-            pm: bun
-            type: basic
-            verify_site: true
-          - action: vite-plus
-            runtime: node
-            pm: bun
-            type: minimal
-            verify_site: true
-          - action: vite-plus
-            runtime: bun
-            pm: bun
-            type: basic
-            verify_site: true
-          - action: vite-plus
-            runtime: bun
-            pm: bun
-            type: minimal
-            verify_site: true
-          - action: vite-plus
-            runtime: bun
-            pm: pnpm
-            type: basic
-            verify_site: true
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -247,13 +200,6 @@ jobs:
         with:
           runtime: ${{ matrix.runtime }}
 
-      - name: Test Vite-Plus Action
-        if: matrix.action == 'vite-plus'
-        uses: ./vite-plus
-        id: vite-plus
-        with:
-          runtime: ${{ matrix.runtime }}
-
       - name: Verify outputs
         env:
           ACTION: ${{ matrix.action }}
@@ -263,17 +209,15 @@ jobs:
           ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
-          VITE_PLUS_PM: ${{ steps.vite-plus.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
           ASTRO_RUNTIME: ${{ steps.astro.outputs.runtime }}
           AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
           VITE_RUNTIME: ${{ steps.vite.outputs.runtime }}
-          VITE_PLUS_RUNTIME: ${{ steps.vite-plus.outputs.runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
           FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
-          DETECTED_PM="${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}${VITE_PLUS_PM}"
+          DETECTED_PM="${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
             echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
             echo "  Expected package manager: ${EXPECTED_PM}"
@@ -281,7 +225,7 @@ jobs:
             exit 1
           fi
 
-          DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"
+          DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}"
           if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
             echo "Error: [${ACTION}] Runtime mismatch stage failed for fixture '${FIXTURE_PATH}'."
             echo "  Expected runtime: ${EXPECTED_RUNTIME}"

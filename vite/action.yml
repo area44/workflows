@@ -1,5 +1,5 @@
 name: Build and Deploy Vite Site
-description: Optimized build and deployment for Vite projects on GitHub Pages
+description: Optimized build and deployment for Vite and Vite+ projects on GitHub Pages
 inputs:
   path:
     description: "Directory where the built site is located"
@@ -8,6 +8,10 @@ inputs:
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
     required: false
+  toolchain:
+    description: "Optional toolchain selection (auto, vite, or vite-plus)"
+    required: false
+    default: "auto"
   build-command:
     description: "Custom build command"
     required: false
@@ -28,6 +32,12 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  toolchain:
+    description: "The resolved toolchain (vite or vite-plus)"
+    value: ${{ steps.resolve_environment.outputs.toolchain }}
+  vp-version:
+    description: "The version of Vite+ installed"
+    value: ${{ steps.setup_vp.outputs.version }}
 
 runs:
   using: "composite"
@@ -38,6 +48,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_RUNTIME: ${{ inputs.runtime }}
+        INPUT_TOOLCHAIN: ${{ inputs.toolchain }}
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Set site variables
@@ -70,7 +81,17 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
+    - name: Setup Vite+
+      if: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
+      id: setup_vp
+      uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+      with:
+        node-version: ${{ steps.resolve_environment.outputs.node-version }}
+        cache: true
+        run-install: true
+
     - name: Install dependencies
+      if: ${{ steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -100,6 +121,7 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
+        DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |

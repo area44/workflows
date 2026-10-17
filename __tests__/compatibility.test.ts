@@ -138,18 +138,6 @@ describe("Compatibility Contract Validation", () => {
         ],
       },
       {
-        name: "vite-plus",
-        expectedInputs: ["path", "runtime", "build-command"],
-        expectedOutputs: [
-          "node-version",
-          "bun-version",
-          "package-manager",
-          "package-manager-version",
-          "runtime",
-          "vp-version",
-        ],
-      },
-      {
         name: "autofix",
         expectedInputs: ["runtime"],
         expectedOutputs: [
@@ -184,7 +172,7 @@ describe("Compatibility Contract Validation", () => {
 
     it("should validate all public action contracts via parseActionContract", () => {
       const contracts = validateAllPublicActionContracts(rootDir);
-      expect(Object.keys(contracts)).toEqual(["astro", "vite", "vite-plus", "autofix"]);
+      expect(Object.keys(contracts)).toEqual(["astro", "vite", "autofix"]);
     });
   });
 
@@ -436,7 +424,7 @@ describe("Compatibility Contract Validation", () => {
   describe("Compatibility Matrix Validation in CI Workflow", () => {
     const testActionsYmlPath = path.join(rootDir, ".github/workflows/test-actions.yml");
     const testActionsYml = fs.readFileSync(testActionsYmlPath, "utf8");
-    const actions = ["astro", "vite", "vite-plus", "autofix"];
+    const actions = ["astro", "vite", "autofix"];
 
     it("should parse test-actions.yml structurally and extract matrix entries", () => {
       const entries = extractWorkflowMatrixEntries(testActionsYml);
@@ -588,7 +576,7 @@ jobs:
     it("should verify runtime output against matrix.runtime in test-actions.yml", () => {
       expect(testActionsYml).toContain("EXPECTED_RUNTIME: ${{ matrix.runtime }}");
       expect(testActionsYml).toContain(
-        'DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}${VITE_PLUS_RUNTIME}"',
+        'DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}"',
       );
       expect(testActionsYml).toContain('if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then');
     });

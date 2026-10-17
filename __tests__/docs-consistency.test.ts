@@ -221,7 +221,7 @@ export function validateDocumentedCompatibility(
   }
 }
 
-const KNOWN_ACTIONS_SORTED = ["autofix", "vite-plus", "astro", "vite"];
+const KNOWN_ACTIONS_SORTED = ["autofix", "astro", "vite"];
 
 function detectActionHeaderMatch(line: string): string | null {
   if (!line.startsWith("#")) {
@@ -512,7 +512,6 @@ describe("Documentation Consistency Verification", () => {
         path.join(rootDir, "COMPATIBILITY.md"),
         path.join(rootDir, "astro/README.md"),
         path.join(rootDir, "vite/README.md"),
-        path.join(rootDir, "vite-plus/README.md"),
         path.join(rootDir, "autofix/README.md"),
         ...fs.readdirSync(docsDir).map((f) => path.join(docsDir, f)),
       ];
@@ -528,7 +527,7 @@ describe("Documentation Consistency Verification", () => {
   describe("Semantic Public Action API Contract Consistency", () => {
     validateAllPublicActionContracts(rootDir);
 
-    it.each(["astro", "vite", "vite-plus", "autofix"] as const)(
+    it.each(["astro", "vite", "autofix"] as const)(
       "action '%s' README.md and root README.md should match action.yml semantically",
       (actionName) => {
         const actionReadmePath = path.join(rootDir, actionName, "README.md");
