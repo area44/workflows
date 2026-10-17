@@ -15,14 +15,13 @@ describe("Public Action API Contract Specification", () => {
   const rootDir = path.resolve(process.cwd());
 
   describe("Public Action Identification", () => {
-    it("should list all 4 public actions", () => {
-      expect(PUBLIC_ACTIONS).toEqual(["astro", "vite", "vite-plus", "autofix"]);
+    it("should list all public actions", () => {
+      expect(PUBLIC_ACTIONS).toEqual(["astro", "vite", "autofix"]);
     });
 
     it("should correctly identify public actions via type guard", () => {
       expect(isPublicAction("astro")).toBe(true);
       expect(isPublicAction("vite")).toBe(true);
-      expect(isPublicAction("vite-plus")).toBe(true);
       expect(isPublicAction("autofix")).toBe(true);
       expect(isPublicAction("unknown-action")).toBe(false);
       expect(isPublicAction("")).toBe(false);

@@ -76,6 +76,48 @@ export interface JsInstallationPlan {
   args: string[];
 }
 
+function isVitePlusKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k === "vite-plus" ||
+    k === "@voidzero-dev/vite-plus" ||
+    k === "@voidzero-dev/vite-plus-core" ||
+    k.startsWith("@voidzero-dev/vite-plus-")
+  );
+}
+
+function isVitePlusVal(val: unknown): boolean {
+  if (typeof val !== "string") return false;
+  const v = val.toLowerCase();
+  return v.includes("@voidzero-dev/vite-plus") || v.includes("vite-plus-core");
+}
+
+function checkDepSectionForVitePlus(section?: Record<string, string>): boolean {
+  if (!section || typeof section !== "object") return false;
+  for (const [key, val] of Object.entries(section)) {
+    if (typeof key === "string" && (isVitePlusKey(key) || isVitePlusVal(val))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function checkCatalogForVitePlus(pkg: any): boolean {
+  const catalogObj = pkg.catalog || pkg.catalogs;
+  if (!catalogObj || typeof catalogObj !== "object") return false;
+
+  const catalogEntries = Array.isArray(catalogObj) ? catalogObj : Object.values(catalogObj);
+  for (const entry of catalogEntries) {
+    if (!entry || typeof entry !== "object") continue;
+    for (const key of Object.keys(entry as Record<string, unknown>)) {
+      if (typeof key === "string" && isVitePlusKey(key)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function hasVitePlusDependency(pkg?: JsPackageManifest): boolean {
   if (!pkg) return false;
 
@@ -87,49 +129,12 @@ export function hasVitePlusDependency(pkg?: JsPackageManifest): boolean {
   ];
 
   for (const section of depSections) {
-    if (!section || typeof section !== "object") continue;
-    for (const [key, val] of Object.entries(section)) {
-      if (typeof key !== "string") continue;
-      const k = key.toLowerCase();
-      if (
-        k === "vite-plus" ||
-        k === "@voidzero-dev/vite-plus" ||
-        k === "@voidzero-dev/vite-plus-core" ||
-        k.startsWith("@voidzero-dev/vite-plus-")
-      ) {
-        return true;
-      }
-      if (typeof val === "string") {
-        const v = val.toLowerCase();
-        if (v.includes("@voidzero-dev/vite-plus") || v.includes("vite-plus-core")) {
-          return true;
-        }
-      }
+    if (checkDepSectionForVitePlus(section)) {
+      return true;
     }
   }
 
-  const catalogObj = (pkg as any).catalog || (pkg as any).catalogs;
-  if (catalogObj && typeof catalogObj === "object") {
-    const catalogEntries = Array.isArray(catalogObj) ? catalogObj : Object.values(catalogObj);
-    for (const entry of catalogEntries) {
-      if (!entry || typeof entry !== "object") continue;
-      for (const [k] of Object.entries(entry as Record<string, unknown>)) {
-        if (typeof k === "string") {
-          const keyLower = k.toLowerCase();
-          if (
-            keyLower === "vite-plus" ||
-            keyLower === "@voidzero-dev/vite-plus" ||
-            keyLower === "@voidzero-dev/vite-plus-core" ||
-            keyLower.startsWith("@voidzero-dev/vite-plus-")
-          ) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-
-  return false;
+  return checkCatalogForVitePlus(pkg);
 }
 
 export function resolveToolchain(

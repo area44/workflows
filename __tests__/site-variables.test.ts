@@ -46,18 +46,7 @@ describe("site-variables", () => {
       expect(core.info).toHaveBeenCalledWith("Set BASE=/");
     });
 
-    it("should set SITE and BASE variables for the vite-plus action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite-plus";
-      process.env.GITHUB_REPOSITORY = "owner/some-other-project";
-      process.env.GITHUB_REPOSITORY_OWNER = "owner";
-
-      setSiteVariables();
-
-      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/some-other-project/");
-    });
-
-    it("should not set SITE and BASE variables for action paths not matching astro/vite/vite-plus", () => {
+    it("should not set SITE and BASE variables for action paths not matching astro/vite", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/autofix";
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";

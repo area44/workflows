@@ -348,6 +348,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "npm", version: DEFAULT_NPM_VERSION },
           runtime: "node",
+          toolchain: "vite",
         });
       });
     });
@@ -1040,16 +1041,6 @@ describe("resolve-environment", () => {
         expectedNode: "24.19.0",
         expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
-        expectedRuntime: "node",
-      },
-      {
-        action: "vite-plus",
-        runtime: "node",
-        pm: "pnpm",
-        type: "basic",
-        expectedNode: "24",
-        expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
         expectedRuntime: "node",
       },
     ];
