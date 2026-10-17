@@ -1,5 +1,5 @@
-name: Autofix (Lint and Format)
-description: Automatically lint and format code using project-defined scripts and autofix.ci
+name: Autofix
+description: Automatically update code using project-defined scripts and autofix.ci
 inputs:
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
@@ -37,7 +37,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Resolve project environments
+    - name: Resolve environments
       shell: bash
       id: resolve_environment
       env:
@@ -82,7 +82,7 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
-    - name: Run JavaScript/TypeScript/Markdown project scripts
+    - name: Update project with autofix
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -95,7 +95,7 @@ runs:
           node "$ACTION_PATH/../dist/autofix.mjs"
         fi
 
-    - name: Setup Ruff for Python
+    - name: Setup Ruff
       if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
