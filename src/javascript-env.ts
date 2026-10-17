@@ -45,17 +45,11 @@ export interface JsPackageManifest {
   workspaces?: string[] | { packages?: string[] };
 }
 
-export interface JsPackageJsonErrorInfo {
-  type: "read" | "parse" | "unknown";
-  message: string;
-  cause?: unknown;
-}
-
 export interface JsProjectEnvironment {
   hasPackageJson: boolean;
   packageJson?: JsPackageManifest;
   packageJsonError?: string;
-  packageJsonErrorInfo?: JsPackageJsonErrorInfo;
+  packageJsonErrorCause?: unknown;
   nvmRcVersion?: string;
   nvmRcError?: string;
   nodeFileVersion?: string;
@@ -65,7 +59,6 @@ export interface JsProjectEnvironment {
   hasPnpmLock: boolean;
   hasPackageLock: boolean;
   hasBunLock: boolean;
-  bunLockFileName?: string;
 }
 
 export interface JsPackageManagerInfo {
@@ -77,10 +70,6 @@ export interface JsInstallationPlan {
   packageManager: SupportedPackageManager;
   command: string;
   args: string[];
-  isFrozen: boolean;
-  hasLockfile: boolean;
-  lockfile?: string;
-  reason: string;
 }
 
 export function sanitizePackageManager(pm: string): string {
@@ -114,7 +103,7 @@ function inspectPackageJson(cwd: string): {
   hasPackageJson: boolean;
   packageJson?: JsPackageManifest;
   packageJsonError?: string;
-  packageJsonErrorInfo?: JsPackageJsonErrorInfo;
+  packageJsonErrorCause?: unknown;
 } {
   const packageJsonPath = resolveFilePath("package.json", cwd);
   const hasPackageJson = fs.existsSync(packageJsonPath);
@@ -129,12 +118,8 @@ function inspectPackageJson(cwd: string): {
     const msg = readErr instanceof Error ? readErr.message : String(readErr);
     return {
       hasPackageJson: true,
-      packageJsonError: msg,
-      packageJsonErrorInfo: {
-        type: "read",
-        message: `Failed to read package.json: ${msg}`,
-        cause: readErr,
-      },
+      packageJsonError: `Failed to read package.json: ${msg}`,
+      packageJsonErrorCause: readErr,
     };
   }
 
@@ -145,12 +130,8 @@ function inspectPackageJson(cwd: string): {
     const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
     return {
       hasPackageJson: true,
-      packageJsonError: msg,
-      packageJsonErrorInfo: {
-        type: "parse",
-        message: `Failed to parse package.json: ${msg}`,
-        cause: parseErr,
-      },
+      packageJsonError: `Failed to parse package.json: ${msg}`,
+      packageJsonErrorCause: parseErr,
     };
   }
 }
@@ -159,31 +140,20 @@ function detectLockfiles(cwd: string): {
   hasPnpmLock: boolean;
   hasPackageLock: boolean;
   hasBunLock: boolean;
-  bunLockFileName?: string;
 } {
   let hasPnpmLock = false;
   let hasPackageLock = false;
   let hasBunLock = false;
-  let bunLockFileName: string | undefined;
 
   try {
     hasPnpmLock = fs.existsSync(resolveFilePath("pnpm-lock.yaml", cwd));
     hasPackageLock = fs.existsSync(resolveFilePath("package-lock.json", cwd));
-
-    const bunLockPath = resolveFilePath("bun.lock", cwd);
-    const bunLockbPath = resolveFilePath("bun.lockb", cwd);
-    if (fs.existsSync(bunLockPath)) {
-      hasBunLock = true;
-      bunLockFileName = "bun.lock";
-    } else if (fs.existsSync(bunLockbPath)) {
-      hasBunLock = true;
-      bunLockFileName = "bun.lockb";
-    }
+    hasBunLock = fs.existsSync(resolveFilePath("bun.lock", cwd));
   } catch {
     // Ignore detection errors
   }
 
-  return { hasPnpmLock, hasPackageLock, hasBunLock, bunLockFileName };
+  return { hasPnpmLock, hasPackageLock, hasBunLock };
 }
 
 export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProjectEnvironment {
@@ -197,7 +167,7 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     hasPackageJson: pkgInfo.hasPackageJson,
     packageJson: pkgInfo.packageJson,
     packageJsonError: pkgInfo.packageJsonError,
-    packageJsonErrorInfo: pkgInfo.packageJsonErrorInfo,
+    packageJsonErrorCause: pkgInfo.packageJsonErrorCause,
     nvmRcVersion: nvmRc.version,
     nvmRcError: nvmRc.error,
     nodeFileVersion: nodeVersion.version,
@@ -207,7 +177,6 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     hasPnpmLock: lockfiles.hasPnpmLock,
     hasPackageLock: lockfiles.hasPackageLock,
     hasBunLock: lockfiles.hasBunLock,
-    bunLockFileName: lockfiles.bunLockFileName,
   };
 }
 
@@ -289,7 +258,7 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
 }
 
 export function getJsInstallationPlan(
-  project: JsProjectEnvironment,
+  _project: JsProjectEnvironment,
   pmInput: string | JsPackageManagerInfo,
 ): JsInstallationPlan {
   const pmNameRaw = typeof pmInput === "string" ? sanitizePackageManager(pmInput) : pmInput.name;
@@ -310,10 +279,6 @@ export function getJsInstallationPlan(
         packageManager: "npm",
         command: "npm",
         args: ["install"],
-        isFrozen: false,
-        hasLockfile: project.hasPackageLock,
-        lockfile: project.hasPackageLock ? "package-lock.json" : undefined,
-        reason: "Installing dependencies with npm install to allow lockfile updates.",
       };
     }
     case "pnpm": {
@@ -321,11 +286,6 @@ export function getJsInstallationPlan(
         packageManager: "pnpm",
         command: "pnpm",
         args: ["install", "--no-frozen-lockfile"],
-        isFrozen: false,
-        hasLockfile: project.hasPnpmLock,
-        lockfile: project.hasPnpmLock ? "pnpm-lock.yaml" : undefined,
-        reason:
-          "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
       };
     }
     case "bun": {
@@ -333,10 +293,6 @@ export function getJsInstallationPlan(
         packageManager: "bun",
         command: "bun",
         args: ["install"],
-        isFrozen: false,
-        hasLockfile: project.hasBunLock,
-        lockfile: project.bunLockFileName,
-        reason: "Installing dependencies with bun install to allow lockfile updates.",
       };
     }
   }

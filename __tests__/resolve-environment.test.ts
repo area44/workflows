@@ -683,7 +683,7 @@ describe("resolve-environment", () => {
 
       expect(detectNodeVersion("npm")).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect Node.js version: SyntaxError: Unexpected token",
+        "Failed to detect Node.js version: Failed to read package.json: SyntaxError: Unexpected token",
       );
       expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
@@ -696,7 +696,7 @@ describe("resolve-environment", () => {
 
       expect(detectNodeVersion()).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect Node.js version: Raw string error",
+        "Failed to detect Node.js version: Failed to read package.json: Raw string error",
       );
     });
 
@@ -856,7 +856,7 @@ describe("resolve-environment", () => {
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect package manager: Broken File System",
+        "Failed to detect package manager: Failed to read package.json: Broken File System",
       );
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
@@ -870,7 +870,7 @@ describe("resolve-environment", () => {
       const pm = detectPackageManager();
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
-        "Failed to detect package manager: Unexpected raw string error",
+        "Failed to detect package manager: Failed to read package.json: Unexpected raw string error",
       );
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
@@ -1178,12 +1178,6 @@ describe("resolve-environment", () => {
       expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
     });
 
-    it("lockfile precedence: bun.lockb alone resolves to bun", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lockb");
-
-      const pm = detectPackageManager();
-      expect(pm).toEqual({ name: "bun", version: DEFAULT_BUN_VERSION });
-    });
 
     it("handles package manager specified without an explicit version tag", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");

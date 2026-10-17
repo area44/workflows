@@ -113,22 +113,8 @@ function executeJsScripts(
   cwd: string = process.cwd(),
 ): void {
   const selected = selectAutofixScripts(scripts);
-
-  if (scripts.check) {
-    runScriptCommand(pm, "check", cwd);
-    core.info("Detected and executed script: check");
-  } else if (scripts.format && scripts.lint) {
-    core.info("Detected lint/format scripts: format, lint");
-    runScriptCommand(pm, "format", cwd);
-    runScriptCommand(pm, "lint", cwd);
-  } else if (scripts.fmt && scripts.lint) {
-    core.info("Detected lint/format scripts: fmt, lint");
-    runScriptCommand(pm, "fmt", cwd);
-    runScriptCommand(pm, "lint", cwd);
-  } else if (selected.length > 0) {
-    for (const scriptName of selected) {
-      runScriptCommand(pm, scriptName, cwd);
-    }
+  for (const scriptName of selected) {
+    runScriptCommand(pm, scriptName, cwd);
   }
 }
 
@@ -139,20 +125,12 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     return;
   }
 
-  if (jsEnv.packageJsonErrorInfo) {
-    const errorInfo = jsEnv.packageJsonErrorInfo;
-    const sanitizedMsg = sanitizeCommandString(errorInfo.message);
-    const code = errorInfo.type === "parse" ? "INVALID_INPUT" : "SETUP_FAILURE";
-    throw new WorkflowError(code, sanitizedMsg, {
-      stage: errorInfo.type === "parse" ? "js-project-parsing" : "js-project-inspection",
-      cwd,
-      cause: sanitizeCause(errorInfo.cause),
-    });
-  } else if (jsEnv.packageJsonError) {
+  if (jsEnv.packageJsonError) {
     const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
-    throw new WorkflowError("SETUP_FAILURE", `Failed to inspect package.json: ${sanitizedMsg}`, {
+    throw new WorkflowError("INVALID_INPUT", sanitizedMsg, {
       stage: "js-project-inspection",
       cwd,
+      cause: sanitizeCause(jsEnv.packageJsonErrorCause),
     });
   }
 
