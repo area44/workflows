@@ -44,6 +44,7 @@ export interface MatrixEntry {
   pm: SupportedPackageManager;
   type: SupportedFixtureType;
   verify_site?: boolean;
+  fixture?: string;
 }
 
 /**
@@ -202,7 +203,7 @@ function ensureMatrixObject(entry: unknown): Record<string, unknown> {
 }
 
 function validateAllowedKeys(record: Record<string, unknown>): void {
-  const allowedKeys = new Set(["action", "runtime", "pm", "type", "verify_site"]);
+  const allowedKeys = new Set(["action", "runtime", "pm", "type", "verify_site", "fixture"]);
   for (const key of Object.keys(record)) {
     if (!allowedKeys.has(key)) {
       throw new WorkflowError(
@@ -295,6 +296,13 @@ export function validateMatrixEntry(entry: unknown): MatrixEntry {
     );
   }
 
+  if (record.fixture !== undefined && typeof record.fixture !== "string") {
+    throw new WorkflowError("INVALID_INPUT", `CI matrix entry field "fixture" must be a string.`, {
+      stage: "matrix-validation",
+      field: "fixture",
+    });
+  }
+
   const comp = getCombinationCompatibility(runtime, pm);
   if (!comp.status.supported) {
     throw new WorkflowError(
@@ -310,6 +318,7 @@ export function validateMatrixEntry(entry: unknown): MatrixEntry {
     pm,
     type,
     ...(record.verify_site !== undefined ? { verify_site: record.verify_site as boolean } : {}),
+    ...(record.fixture !== undefined ? { fixture: record.fixture as string } : {}),
   };
 }
 
@@ -317,9 +326,12 @@ export function validateMatrixEntry(entry: unknown): MatrixEntry {
  * Derives the deterministic fixture path for a matrix entry.
  */
 export function getFixturePath(
-  entry: Pick<MatrixEntry, "action" | "runtime" | "pm" | "type">,
+  entry: Pick<MatrixEntry, "action" | "runtime" | "pm" | "type"> & { fixture?: string },
   rootDir: string = process.cwd(),
 ): string {
+  if (entry.fixture) {
+    return path.join(rootDir, "__tests__/fixtures", entry.fixture);
+  }
   return path.join(
     rootDir,
     "__tests__/fixtures",

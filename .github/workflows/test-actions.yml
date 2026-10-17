@@ -133,6 +133,12 @@ jobs:
             verify_site: true
           - action: vite
             runtime: node
+            pm: pnpm
+            type: minimal
+            fixture: vite-plus/node/pnpm/minimal
+            verify_site: true
+          - action: vite
+            runtime: node
             pm: bun
             type: basic
             verify_site: true
@@ -166,8 +172,13 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          FIXTURE: ${{ matrix.fixture }}
         run: |
-          FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
+          else
+            FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          fi
           if [ ! -d "$FIXTURE_DIR" ]; then
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
@@ -206,6 +217,7 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          FIXTURE: ${{ matrix.fixture }}
           ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
@@ -217,7 +229,11 @@ jobs:
           VITE_TOOLCHAIN: ${{ steps.vite.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
-          FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
+          else
+            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          fi
           DETECTED_PM="${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
             echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
@@ -236,7 +252,7 @@ jobs:
 
           if [[ "$ACTION" == "vite" ]]; then
             EXPECTED_TOOLCHAIN="vite"
-            if [[ "$PM" == "pnpm" && "$TYPE" == "minimal" ]]; then
+            if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
             fi
             if [[ "$VITE_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
