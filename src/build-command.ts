@@ -192,7 +192,26 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   const customCommand = process.env.BUILD_COMMAND;
   const defaultCommand = process.env.DEFAULT_BUILD_COMMAND;
 
-  const commandToParse = resolveBuildCommandToParse(customCommand, defaultCommand, pm);
+  let commandToParse: string;
+  try {
+    commandToParse = resolveBuildCommandToParse(customCommand, defaultCommand, pm);
+  } catch (err) {
+    if (err instanceof WorkflowError) {
+      core.setFailed(err);
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      const resErr = new WorkflowError(
+        "INVALID_INPUT",
+        `Failed to resolve build command: ${sanitizeCommandString(msg)}`,
+        { stage: "build-command-resolution" },
+      );
+      core.setFailed(resErr);
+    }
+    if (exitOnFailure) {
+      process.exit(1);
+    }
+    return 1;
+  }
 
   core.info(`Preparing build command: "${sanitizeCommandString(commandToParse)}"`);
 

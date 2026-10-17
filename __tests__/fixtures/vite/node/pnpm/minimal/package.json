@@ -1,10 +1,10 @@
 {
   "name": "vite-pnpm-minimal",
   "scripts": {
-    "build": "vite build"
+    "build": "vp build"
   },
   "dependencies": {
-    "vite": "^8.2.1"
+    "vite-plus": "^1.1.0"
   },
   "type": "module"
 }
