@@ -3,6 +3,7 @@ import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString } from "../src/build-command";
+import * as processUtils from "../src/process-utils";
 import * as pythonEnv from "../src/python-env";
 
 vi.mock("@actions/core");
@@ -357,7 +358,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
       vi.mocked(exec.exec).mockResolvedValue(0);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -371,7 +372,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
       vi.mocked(exec.exec).mockResolvedValue(2);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -391,7 +392,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vpr");
+      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vpr");
       vi.mocked(exec.exec).mockResolvedValue(0);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -407,7 +408,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
 
       // Test with exitOnFailure: false -> should return 1 and core.setFailed without rejecting Promise
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -431,7 +432,7 @@ describe("build-command", () => {
       process.env.BUILD_COMMAND = "custom-builder build";
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
       vi.mocked(exec.exec).mockResolvedValue(1);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });

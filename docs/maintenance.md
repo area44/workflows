@@ -22,7 +22,6 @@ To avoid duplication and configuration drift, specific files serve as authoritat
 | Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `autofix/action.yml`) |
 | Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                              |
 | Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                         |
-| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                     |
 
 ## Public Action Structure
 
@@ -32,7 +31,6 @@ Every public action provided by this repository must adhere to the following str
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
 - Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
-- No unexpected top-level action directories containing `action.yml` without explicit registration in `PUBLIC_ACTIONS`.
 
 ## Build Artifacts Pipeline
 
@@ -95,4 +93,4 @@ When making modifications, maintainers must update corresponding configuration, 
 | **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.                               |
 | **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `COMPATIBILITY.md`, `docs/compatibility.md`, and test fixtures. |
 | **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, `COMPATIBILITY.md`, and upgrade guardrails documentation.    |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation. Verify with `npm run verify:docs`.                                  |
+| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                      |
