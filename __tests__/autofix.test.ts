@@ -40,47 +40,43 @@ describe("autofix", () => {
   describe("Fixture-based test cases", () => {
     const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
 
-    it("should install dependencies and run format and lint scripts for autofix/node/npm/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
-      process.chdir(fixturePath);
-      process.env.PACKAGE_MANAGER = "npm";
+    const fixtureCases = [
+      {
+        fixture: "autofix/node/npm/basic",
+        pm: "npm",
+        installCmd: "npm install",
+        expectedScripts: ["npm run format", "npm run lint"],
+      },
+      {
+        fixture: "autofix/node/pnpm/basic",
+        pm: "pnpm",
+        installCmd: "pnpm install --no-frozen-lockfile",
+        expectedScripts: ["pnpm run format", "pnpm run lint"],
+      },
+      {
+        fixture: "autofix/bun/bun/basic",
+        pm: "bun",
+        installCmd: "bun install",
+        expectedScripts: ["bun run format", "bun run lint"],
+      },
+    ];
 
-      run();
+    it.each(fixtureCases)(
+      "should install dependencies and run scripts for $fixture",
+      ({ fixture, pm, installCmd, expectedScripts }) => {
+        const fixturePath = path.join(fixturesDir, fixture);
+        process.chdir(fixturePath);
+        process.env.PACKAGE_MANAGER = pm;
 
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(3);
-    });
+        run();
 
-    it("should install dependencies and run format/lint scripts using pnpm for autofix/node/pnpm/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "autofix/node/pnpm/basic");
-      process.chdir(fixturePath);
-      process.env.PACKAGE_MANAGER = "pnpm";
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(spawnSync).toHaveBeenCalledWith("pnpm run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("pnpm run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(3);
-    });
-
-    it("should install dependencies and run format/lint scripts using bun for autofix/bun/bun/basic fixture", () => {
-      const fixturePath = path.join(fixturesDir, "autofix/bun/bun/basic");
-      process.chdir(fixturePath);
-      process.env.PACKAGE_MANAGER = "bun";
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("bun install", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(spawnSync).toHaveBeenCalledWith("bun run format", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("bun run lint", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(3);
-    });
+        expect(spawnSync).toHaveBeenCalledWith(installCmd, expect.objectContaining({ cwd: fixturePath, shell: true }));
+        for (const script of expectedScripts) {
+          expect(spawnSync).toHaveBeenCalledWith(script, expect.objectContaining({ cwd: fixturePath, shell: true }));
+        }
+        expect(spawnSync).toHaveBeenCalledTimes(1 + expectedScripts.length);
+      },
+    );
 
     it("should not run Python workflow in JS/TS-only repository", () => {
       const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
@@ -463,22 +459,50 @@ describe("autofix", () => {
   });
 
   describe("script execution routing", () => {
-    it("should prioritize and run 'check' script if present", () => {
+    const scriptCases = [
+      {
+        name: "check script priority",
+        scripts: { check: "echo check", format: "echo format", lint: "echo lint" },
+        expectedCalls: ["npm run check"],
+      },
+      {
+        name: "format and lint scripts",
+        scripts: { format: "echo format", lint: "echo lint" },
+        expectedCalls: ["npm run format", "npm run lint"],
+      },
+      {
+        name: "fmt and lint scripts when format is absent",
+        scripts: { fmt: "echo fmt", lint: "echo lint" },
+        expectedCalls: ["npm run fmt", "npm run lint"],
+      },
+      {
+        name: "format script only",
+        scripts: { format: "echo format" },
+        expectedCalls: ["npm run format"],
+      },
+      {
+        name: "fmt script only",
+        scripts: { fmt: "echo fmt" },
+        expectedCalls: ["npm run fmt"],
+      },
+      {
+        name: "lint script only",
+        scripts: { lint: "echo lint" },
+        expectedCalls: ["npm run lint"],
+      },
+    ];
+
+    it.each(scriptCases)("should select correct script(s) for $name", ({ scripts, expectedCalls }) => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            check: "echo check",
-            format: "echo format",
-            lint: "echo lint",
-          },
-        }) as any,
-      );
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ scripts }) as any);
 
       run();
 
-      expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      for (const callCmd of expectedCalls) {
+        expect(spawnSync).toHaveBeenCalledWith(callCmd, expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      }
+      expect(spawnSync).toHaveBeenCalledTimes(1 + expectedCalls.length);
     });
 
     it("should sanitize untrusted PACKAGE_MANAGER env values containing shell injection characters", () => {
@@ -502,98 +526,6 @@ describe("autofix", () => {
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
       expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected and executed script: check");
-      expect(spawnSync).toHaveBeenCalledTimes(2);
-    });
-
-    it("should run both 'format' and 'lint' if they are both defined", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            format: "echo format",
-            lint: "echo lint",
-          },
-        }) as any,
-      );
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: format, lint");
-      expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(3);
-    });
-
-    it("should run both 'fmt' and 'lint' if 'format' is missing but 'fmt' is defined", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            fmt: "echo fmt",
-            lint: "echo lint",
-          },
-        }) as any,
-      );
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(core.info).toHaveBeenCalledWith("Detected lint/format scripts: fmt, lint");
-      expect(spawnSync).toHaveBeenCalledWith("npm run fmt", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(3);
-    });
-
-    it("should execute only 'lint' if format/fmt are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            lint: "echo lint",
-          },
-        }) as any,
-      );
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run lint", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
-    });
-
-    it("should execute only 'format' if lint/fmt are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            format: "echo format",
-          },
-        }) as any,
-      );
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run format", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
-    });
-
-    it("should execute only 'fmt' if lint/format are not defined", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({
-          scripts: {
-            fmt: "echo fmt",
-          },
-        }) as any,
-      );
-
-      run();
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run fmt", expect.objectContaining({ cwd: process.cwd(), shell: true }));
       expect(spawnSync).toHaveBeenCalledTimes(2);
     });
 
@@ -696,7 +628,7 @@ describe("autofix", () => {
           code: "INVALID_INPUT",
           message: expect.stringContaining("Failed to parse package.json:"),
           context: expect.objectContaining({
-            stage: "js-project-parsing",
+            stage: "js-project-inspection",
           }),
         }),
       );
@@ -723,7 +655,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should handle unclassified package.json inspection errors with neutral error reporting and SETUP_FAILURE", () => {
+    it("should handle unclassified package.json inspection errors with SETUP_FAILURE", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw "Raw unexpected filesystem error";

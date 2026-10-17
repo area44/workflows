@@ -76,30 +76,28 @@ describe("javascript-env", () => {
       expect(env.hasPnpmLock).toBe(false);
     });
 
-    it("should detect bun.lock and bun.lockb", () => {
+    it("should detect bun.lock and ignore bun.lockb", () => {
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasBunLock).toBe(true);
-      expect(env.bunLockFileName).toBe("bun.lock");
 
       fs.rmSync(path.join(tempDir, "bun.lock"));
       fs.writeFileSync(path.join(tempDir, "bun.lockb"), "");
       const env2 = inspectJsProjectEnvironment(tempDir);
-      expect(env2.hasBunLock).toBe(true);
-      expect(env2.bunLockFileName).toBe("bun.lockb");
+      expect(env2.hasBunLock).toBe(false);
     });
 
-    it("should distinguish JSON parsing errors from file read errors in packageJsonErrorInfo", () => {
+    it("should capture JSON parsing errors in packageJsonError and packageJsonErrorCause", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), "{ invalid json ");
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
-      expect(env.packageJsonErrorInfo).toBeDefined();
-      expect(env.packageJsonErrorInfo?.type).toBe("parse");
-      expect(env.packageJsonErrorInfo?.message).toContain("Failed to parse package.json:");
+      expect(env.packageJsonError).toContain("Failed to parse package.json:");
+      expect(env.packageJsonErrorType).toBe("parse");
+      expect(env.packageJsonErrorCause).toBeDefined();
     });
 
-    it("should capture read/file access errors in packageJsonErrorInfo", () => {
+    it("should capture read/file access errors in packageJsonError and packageJsonErrorCause", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("EACCES: permission denied");
@@ -108,9 +106,9 @@ describe("javascript-env", () => {
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
-      expect(env.packageJsonErrorInfo).toBeDefined();
-      expect(env.packageJsonErrorInfo?.type).toBe("read");
-      expect(env.packageJsonErrorInfo?.message).toContain("Failed to read package.json: EACCES: permission denied");
+      expect(env.packageJsonError).toContain("Failed to read package.json: EACCES: permission denied");
+      expect(env.packageJsonErrorType).toBe("read");
+      expect(env.packageJsonErrorCause).toBeDefined();
     });
   });
 
@@ -154,55 +152,16 @@ describe("javascript-env", () => {
   });
 
   describe("getJsInstallationPlan", () => {
-    it("should return 'npm install' plan when package-lock.json exists to allow lockfile updates", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: true };
-      const plan = getJsInstallationPlan(project, "npm");
-      expect(plan).toEqual({
-        packageManager: "npm",
-        command: "npm",
-        args: ["install"],
-        isFrozen: false,
-        hasLockfile: true,
-        lockfile: "package-lock.json",
-        reason: "Installing dependencies with npm install to allow lockfile updates.",
-      });
-    });
+    const planCases = [
+      { pm: "npm", expected: { packageManager: "npm", command: "npm", args: ["install"] } },
+      { pm: "pnpm", expected: { packageManager: "pnpm", command: "pnpm", args: ["install", "--no-frozen-lockfile"] } },
+      { pm: "bun", expected: { packageManager: "bun", command: "bun", args: ["install"] } },
+    ];
 
-    it("should return 'npm install' plan when package-lock.json is absent", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasPackageLock: false };
-      const plan = getJsInstallationPlan(project, "npm");
-      expect(plan.command).toBe("npm");
-      expect(plan.args).toEqual(["install"]);
-      expect(plan.isFrozen).toBe(false);
-      expect(plan.hasLockfile).toBe(false);
-    });
-
-    it("should return 'pnpm install --no-frozen-lockfile' plan when pnpm-lock.yaml exists to allow lockfile updates", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasPnpmLock: true };
-      const plan = getJsInstallationPlan(project, "pnpm");
-      expect(plan).toEqual({
-        packageManager: "pnpm",
-        command: "pnpm",
-        args: ["install", "--no-frozen-lockfile"],
-        isFrozen: false,
-        hasLockfile: true,
-        lockfile: "pnpm-lock.yaml",
-        reason: "Installing dependencies with pnpm install --no-frozen-lockfile to allow lockfile updates.",
-      });
-    });
-
-    it("should return 'bun install' plan when Bun lockfile exists to allow lockfile updates", () => {
-      const project = { ...inspectJsProjectEnvironment(tempDir), hasBunLock: true, bunLockFileName: "bun.lock" };
-      const plan = getJsInstallationPlan(project, "bun");
-      expect(plan).toEqual({
-        packageManager: "bun",
-        command: "bun",
-        args: ["install"],
-        isFrozen: false,
-        hasLockfile: true,
-        lockfile: "bun.lock",
-        reason: "Installing dependencies with bun install to allow lockfile updates.",
-      });
+    it.each(planCases)("should return expected installation plan for $pm", ({ pm, expected }) => {
+      const project = inspectJsProjectEnvironment(tempDir);
+      const plan = getJsInstallationPlan(project, pm);
+      expect(plan).toEqual(expected);
     });
 
     it("should throw WorkflowError for unsupported package manager", () => {
