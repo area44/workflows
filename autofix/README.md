@@ -5,6 +5,7 @@ Automatically lints and formats code using project-defined scripts and integrate
 ## Features
 
 - Auto-detection of Node.js, Bun, and Python project configurations and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`).
+- Automatic dependency installation and lockfile synchronization whenever a supported JavaScript or Python project is detected.
 - Automatic execution of project linting and formatting scripts (`check`, `format`, `fmt`, `lint`).
 - Python code formatting and linting powered by Ruff when Python source files exist.
 - Seamless integration with [autofix.ci](https://autofix.ci/) for automated pull request fixes.

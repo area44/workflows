@@ -156,20 +156,20 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     });
   }
 
-  const scripts = jsEnv.packageJson?.scripts || {};
-  const selectedScripts = selectAutofixScripts(scripts);
-
-  if (selectedScripts.length === 0) {
-    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
-    return;
-  }
-
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
   const pm = sanitizePackageManager(rawPm);
 
   if (process.env.SKIP_JS_INSTALL !== "true") {
     const plan = getJsInstallationPlan(jsEnv, pm);
     runJsInstallationPlan(plan, cwd);
+  }
+
+  const scripts = jsEnv.packageJson?.scripts || {};
+  const selectedScripts = selectAutofixScripts(scripts);
+
+  if (selectedScripts.length === 0) {
+    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
+    return;
   }
 
   executeJsScripts(scripts, pm, cwd);

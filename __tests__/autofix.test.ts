@@ -142,16 +142,17 @@ describe("autofix", () => {
       expect(spawnSync).toHaveBeenCalledWith("bun run check", expect.objectContaining({ cwd: tempDir, shell: true }));
     });
 
-    it("should skip JS installation when package.json has no applicable scripts", () => {
+    it("should install JS dependencies even when package.json has no applicable scripts", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       run(tempDir);
 
+      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
-      expect(spawnSync).not.toHaveBeenCalledWith("npm install", expect.anything());
     });
 
     it("should skip JS installation when SKIP_JS_INSTALL=true but still run matching scripts", () => {
