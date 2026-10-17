@@ -110,9 +110,7 @@ export function hasVitePlusDependency(pkg?: JsPackageManifest): boolean {
 
   const catalogObj = (pkg as any).catalog || (pkg as any).catalogs;
   if (catalogObj && typeof catalogObj === "object") {
-    const catalogEntries = Array.isArray(catalogObj)
-      ? catalogObj
-      : Object.values(catalogObj);
+    const catalogEntries = Array.isArray(catalogObj) ? catalogObj : Object.values(catalogObj);
     for (const entry of catalogEntries) {
       if (!entry || typeof entry !== "object") continue;
       for (const [k] of Object.entries(entry as Record<string, unknown>)) {
