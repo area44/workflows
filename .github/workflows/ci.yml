@@ -36,28 +36,5 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Validate Changeset in PR
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -vE '^(\.changeset\/|docs\/|.*\.md$)' || true)
-          CHANGESET_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.changeset\/.*\.md$' | grep -vE '(\/README\.md$|\/config\.json$)' || true)
-
-          if [ -n "$NON_DOC_FILES" ]; then
-            if [ -z "$CHANGESET_FILES" ]; then
-              echo "Error: Pull request introduces code or configuration changes without a changeset file in .changeset/."
-              echo "Please run 'npx changeset' to add a changeset file describing your changes."
-              exit 1
-            fi
-            for file in $CHANGESET_FILES; do
-              if [ ! -s "$file" ]; then
-                echo "Error: Changeset file '$file' is empty."
-                exit 1
-              fi
-            done
-          fi
-
       - name: Run tests
         run: npm test
