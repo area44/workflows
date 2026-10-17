@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
+import * as processUtils from "../src/process-utils";
 import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
@@ -339,7 +340,7 @@ describe("autofix", () => {
     });
 
     it("should throw WorkflowError if required package manager binary is not available in PATH without fallback attempt", () => {
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
 
       expect(() =>
         executePythonWorkflow({
@@ -414,7 +415,7 @@ describe("autofix", () => {
     });
 
     it("should handle failure in Python commands gracefully throwing WorkflowError", () => {
-      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(true);
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       vi.mocked(spawnSync).mockReturnValueOnce({
         status: 1,
         stdout: "",

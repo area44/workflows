@@ -55,25 +55,20 @@ When running Python linting and formatting workflows, the Python package manager
 
 ## Public Action API Contract & Source of Truth
 
-The public API contract of all composite actions (`astro`, `vite`, `vite-plus`, `autofix`) is explicitly defined in and derived from each action's `action.yml` file, which serves as the single source of truth:
+The public API contract of all composite actions (`astro`, `vite`, `autofix`) is explicitly defined in each action's `action.yml` file, which serves as the single source of truth:
 
 ```
 action.yml
-   ↓
-contract parser / validator (src/action-contract.ts)
-   ↓
-automated tests (__tests__/action-contract.test.ts)
    ↓
 documentation
 ```
 
 ### Public API Action Contract Governance
 
-- **Public Actions**: `astro`, `vite`, `vite-plus`, `autofix`.
+- **Public Actions**: `astro`, `vite`, `autofix`.
 - **Source of Truth**: `action.yml` in each action's directory. No external or redundant source of truth is created.
-- **Contract Verification**: Validated programmatically by `parseActionContract` and `validateAllPublicActionContracts` in `src/action-contract.ts`, and enforced in CI via `npm run test:actions`.
 - **Breaking API Changes**:
-  The following contract changes are strictly classified as breaking API changes and will be flagged by `detectBreakingChanges()`:
+  The following contract changes are strictly classified as breaking API changes:
   1. Removal of a public input parameter.
   2. Changing an input from optional (`required: false`) to required (`required: true`).
   3. Modifying the default value of an input parameter.
@@ -106,34 +101,27 @@ Every composite action in this repository shares a common environment resolution
   - Executes build command via `dist/build-command.mjs` (defaults to `<package-manager> run build`).
   - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
 
-#### `vite` (Vite Site Build and Deploy)
+#### `vite` (Vite and Vite+ Site Build and Deploy)
 
 - **Supported Runtimes**: `node` (default), `bun`
 - **Supported Package Managers**: `npm`, `pnpm`, `bun`
 - **Public Inputs**:
   - `path` (optional, default: `"dist"`): Directory where the built site is located.
-  - `runtime` (optional): Runtime override string.
+  - `runtime` (optional): Runtime override string (e.g., `"node@24"`, `"bun@1.4"`).
+  - `toolchain` (optional, default: `"auto"`): Toolchain selection (`"auto"`, `"vite"`, or `"vite-plus"`).
   - `build-command` (optional): Custom build command string.
 - **Public Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
+  - `node-version`: The resolved Node.js version used.
+  - `bun-version`: The resolved Bun version used.
+  - `package-manager`: The package manager used (`npm`, `pnpm`, `bun`).
+  - `package-manager-version`: The version string of the package manager used.
+  - `runtime`: The resolved runtime mode (`node` or `bun`).
+  - `toolchain`: The resolved toolchain (`vite` or `vite-plus`).
+  - `vp-version`: The version of Vite+ installed by `voidzero-dev/setup-vp` (when using Vite+).
 - **Behavior & Constraints**:
-  - Installs dependencies and builds site via `dist/build-command.mjs` (defaults to `<package-manager> run build`).
-  - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
-
-#### `vite-plus` (Vite+ Site Build and Deploy)
-
-- **Supported Runtimes**: `node` (default), `bun`
-- **Supported Package Managers**: `npm`, `pnpm`, `bun`
-- **Public Inputs**:
-  - `path` (optional, default: `"dist"`): Directory where the built site is located.
-  - `runtime` (optional): Runtime override string.
-  - `build-command` (optional): Custom build command string.
-- **Public Outputs**:
-  - `node-version`, `bun-version`, `package-manager`, `package-manager-version`, `runtime`.
-  - `vp-version`: The version of Vite+ installed by `voidzero-dev/setup-vp`.
-- **Behavior & Constraints**:
-  - Uses `voidzero-dev/setup-vp` for Vite+ toolchain setup and package installation.
-  - Defaults build command to `vpr build`.
+  - Automatically detects whether the target project uses standard Vite or Vite+, or respects explicit `toolchain` inputs.
+  - For standard Vite projects, installs dependencies via package manager and executes build command via `dist/build-command.mjs` (defaults to `<package-manager> run build`).
+  - For Vite+ projects, uses `voidzero-dev/setup-vp` for setup and package installation, preferring `vp build` with fallback to `vpr build` if `vp` is unavailable.
   - Sets GitHub Pages site variables and uploads artifact via `actions/upload-pages-artifact`.
 
 #### `autofix` (Lint and Format Verification)
@@ -238,19 +226,12 @@ To prevent silent compatibility regressions and manage toolchain upgrades predic
 
 ## Versioning Model
 
-The versioning model formalizes how repository versions are determined and what constitutes a version-impacting change. See **[Versioning Model Guide](./docs/versioning.md)**.
+The versioning model formalizes how repository versions are determined and what constitutes a version-impacting change.
 
 ### Authoritative Version Source
 
 - **Single Source of Truth**: The `version` property in `package.json` is the single authoritative source of truth for the repository version.
 - **Lockfile Synchronization**: `package-lock.json` (`version` property) must remain in exact synchronization with `package.json`.
-- **Programmatic Validation**: Machine-verifiable version retrieval and validation are implemented in `src/versioning.ts` (`getRepositoryVersion`, `validateRepositoryVersion`, `runVersionVerification`) and enforced in CI via `npm run verify:version`.
-
----
-
-## Upgrade Guardrails
-
-To prevent accidental breaking changes and compatibility regressions when modifying repository contracts or upgrading dependencies, machine-verifiable upgrade guardrails are enforced via `src/upgrade-guardrails.ts` and `npm run verify:upgrade`. See **[Upgrade Guardrails Guide](./docs/upgrade-guardrails.md)**.
 
 ---
 

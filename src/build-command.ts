@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { WorkflowError } from "./errors.js";
-import { isExecutableAvailable } from "./python-env.js";
+import { isExecutableAvailable } from "./process-utils.js";
 import { sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizeCommandString };

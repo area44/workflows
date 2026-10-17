@@ -40,7 +40,7 @@ jobs:
 
 ## Public Action API Summary
 
-Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status), validated automatically via `npm run test:actions`.
+Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status).
 
 ### `astro` (Astro Site Build and Deploy)
 

@@ -1,6 +1,9 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+
+import { isExecutableAvailable } from "./process-utils.js";
+
+export { isExecutableAvailable };
 
 export type PythonPackageManager = "uv" | "pip";
 
@@ -150,19 +153,6 @@ export function hasPythonSource(
   }
 
   return false;
-}
-
-export function isExecutableAvailable(binName: string): boolean {
-  if (!binName || !/^[a-z0-9_.-]+$/i.test(binName)) {
-    return false;
-  }
-  try {
-    const cmd = process.platform === "win32" ? `where ${binName}` : `command -v ${binName}`;
-    execSync(cmd, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function hasTomlTable(content: string, tableName: string): boolean {

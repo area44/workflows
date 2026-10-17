@@ -20,7 +20,6 @@ import {
   SUPPORTED_FIXTURE_TYPES,
   validateFixtureForMatrixEntry,
   validateMatrixEntry,
-  validateAllPublicActionContracts,
   validateNoUnusedFixtures,
   validateRuntimePackageManagerCompatibility,
   validateWorkflowMatrix,
@@ -170,10 +169,6 @@ describe("Compatibility Contract Validation", () => {
       },
     );
 
-    it("should validate all public action contracts via parseActionContract", () => {
-      const contracts = validateAllPublicActionContracts(rootDir);
-      expect(Object.keys(contracts)).toEqual(["astro", "vite", "autofix"]);
-    });
   });
 
   describe("Runtime & Package Manager Compatibility Contract", () => {

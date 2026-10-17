@@ -48,22 +48,6 @@ export {
 } from "./setup-adapters.js";
 
 export type {
-  ActionInputContract,
-  ActionOutputContract,
-  BreakingChange,
-  PublicActionContract,
-  PublicActionName,
-} from "./action-contract.js";
-export {
-  detectBreakingChanges,
-  isPublicAction,
-  parseActionContract,
-  parseActionContractYaml,
-  PUBLIC_ACTIONS,
-  validateAllPublicActionContracts,
-} from "./action-contract.js";
-
-export type {
   CanonicalCompatibilityModel,
   CompatibilityStatus,
   MatrixCombinationEntry,
@@ -94,12 +78,9 @@ export {
   validateWorkflowMatrix,
 } from "./compatibility.js";
 
+export { isExecutableAvailable } from "./process-utils.js";
 export type { PythonPackageManager, PythonPackageManagerInfo };
-export {
-  detectPythonPackageManager,
-  isExecutableAvailable,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
-} from "./python-env.js";
+export { detectPythonPackageManager, PYTHON_PACKAGE_MANAGER_PRIORITY } from "./python-env.js";
 
 export { DEFAULT_BUN_VERSION, DEFAULT_NODE_VERSION, DEFAULT_NPM_VERSION, DEFAULT_PNPM_VERSION };
 
@@ -119,9 +100,6 @@ export interface ResolvedEnvironment {
   runtime: "node" | "bun";
   toolchain: Toolchain;
 }
-
-/** Legacy type alias for ResolvedEnvironment */
-export type DetectedEnv = ResolvedEnvironment;
 
 export interface ParsedInputs {
   specifiedRuntime?: "node" | "bun";

@@ -14,7 +14,6 @@
     "lint": "vp lint",
     "build": "vp pack",
     "test": "vp test",
-    "test:actions": "vp test __tests__/action-contract.test.ts __tests__/compatibility.test.ts",
     "changeset": "changeset",
     "version": "changeset version && npm install --package-lock-only && npm run build",
     "release": "changeset tag"
