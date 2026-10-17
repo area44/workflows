@@ -4,26 +4,58 @@
 export function sanitizeCommandString(cmdStr: string): string {
   return (
     cmdStr
-      // Mask URLs containing authentication credentials (e.g. https://user:pass@host)
-      .replace(/(https?:\/\/)[^:@\s]+:[^@\s]+@/gi, "$1***:***@")
-      // Mask sensitive CLI flag values (e.g. --token=secret, --key secret, -t secret)
+      // Mask URLs containing authentication credentials (e.g. https://user:pass@host, http://token@host)
+      .replace(/(https?:\/\/)[^\s/@:]+(?::[^\s/@]+)?@/gi, "$1***:***@")
+      // Mask Bearer credentials (e.g. Bearer secret, Authorization: Bearer "secret with spaces")
+      .replace(/\b(Bearer\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi, "$1***")
+      // Mask sensitive environment variable assignments (e.g. NPM_TOKEN=xyz, GITHUB_TOKEN="my token")
       .replace(
-        /(--(?:token|auth|password|secret|key|api-key|access-token|pat)(?:=|\s+))([^\s]+)/gi,
+        /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASS|AUTH|KEY|PAT)[A-Za-z0-9_]*=)(?:"[^"]*"|'[^']*'|[^\s]+)/gi,
         "$1***",
       )
-      // Mask common token formats (GitHub PATs, npm tokens, Slack tokens)
+      // Mask sensitive CLI flag values (e.g. --token=secret, --secret "my secret", -t secret)
       .replace(
-        /(ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{60,}|npm_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9_-]{20,})/g,
+        /((?:^|\s))(--(?:token|auth|password|pass|secret|key|api-key|access-token|pat)|-[tSpP])(=|\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi,
+        "$1$2$3***",
+      )
+      // Mask common token formats (GitHub PATs, npm tokens, Slack tokens, GitLab PATs)
+      .replace(
+        /(ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{60,}|npm_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,})/g,
         "***",
       )
   );
 }
 
-function sanitizeErrorCause(err: Error): { name: string; message: string } {
-  return {
+function sanitizeErrorCause(err: Error, seen: WeakSet<object>): Record<string, unknown> {
+  if (seen.has(err)) {
+    return { name: err.name, message: "[Circular]" };
+  }
+  seen.add(err);
+
+  const result: Record<string, unknown> = {
     name: err.name,
     message: sanitizeCommandString(err.message),
   };
+
+  if ("cause" in err && (err as { cause?: unknown }).cause !== undefined) {
+    result.cause = sanitizeCause((err as { cause?: unknown }).cause, seen);
+  }
+
+  for (const [key, val] of Object.entries(err)) {
+    if (key !== "name" && key !== "message" && key !== "cause") {
+      if (typeof val === "string") {
+        result[key] = sanitizeCommandString(val);
+      } else if (val instanceof Error) {
+        result[key] = sanitizeErrorCause(val, seen);
+      } else if (typeof val === "object" && val !== null) {
+        result[key] = sanitizeCause(val, seen);
+      } else {
+        result[key] = val;
+      }
+    }
+  }
+
+  return result;
 }
 
 function sanitizeObjectCause(causeObj: object, seen: WeakSet<object>): unknown {
@@ -38,7 +70,7 @@ function sanitizeObjectCause(causeObj: object, seen: WeakSet<object>): unknown {
       if (typeof val === "string") {
         sanitizedObj[key] = sanitizeCommandString(val);
       } else if (val instanceof Error) {
-        sanitizedObj[key] = sanitizeErrorCause(val);
+        sanitizedObj[key] = sanitizeErrorCause(val, seen);
       } else if (typeof val === "object" && val !== null) {
         sanitizedObj[key] = sanitizeCause(val, seen);
       } else {
@@ -68,7 +100,7 @@ export function sanitizeCause(cause: unknown, seen = new WeakSet<object>()): unk
   }
 
   if (cause instanceof Error) {
-    return sanitizeErrorCause(cause);
+    return sanitizeErrorCause(cause, seen);
   }
 
   if (typeof cause === "object") {
