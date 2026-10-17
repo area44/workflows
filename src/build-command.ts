@@ -200,11 +200,10 @@ function wrapBuildError(
 
   if (stage === "build-command-parsing" && commandToParse) {
     const cleanCmd = sanitizeCommandString(commandToParse);
-    return new WorkflowError(
-      code,
-      `Failed to parse build command "${cleanCmd}": ${sanitizedMsg}`,
-      { stage, command: cleanCmd },
-    );
+    return new WorkflowError(code, `Failed to parse build command "${cleanCmd}": ${sanitizedMsg}`, {
+      stage,
+      command: cleanCmd,
+    });
   }
 
   if (stage === "build-command-execution" && commandToParse) {
@@ -231,9 +230,10 @@ function safelyResolveBuildCommand(
   }
 }
 
-function safelyParseBuildCommand(
-  commandToParse: string,
-): { parsed?: ParsedCommand; error?: WorkflowError } {
+function safelyParseBuildCommand(commandToParse: string): {
+  parsed?: ParsedCommand;
+  error?: WorkflowError;
+} {
   try {
     return { parsed: parseCommand(commandToParse) };
   } catch (err) {
