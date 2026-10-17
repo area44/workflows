@@ -6,7 +6,7 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 
 - **[Astro](./astro/README.md)** (`area44/workflows/astro@main`): Build and deploy Astro sites to GitHub Pages.
 - **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite and Vite+ sites to GitHub Pages with automatic toolchain detection.
-- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically run linting and formatting scripts.
+- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically update code.
 
 ## Quick Usage
 
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build Vite site
         uses: area44/workflows/vite@main
