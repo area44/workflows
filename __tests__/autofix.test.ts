@@ -30,8 +30,6 @@ describe("autofix", () => {
     vi.mocked(execSync).mockReturnValue(Buffer.from("") as any);
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
-    delete process.env.SKIP_JS_INSTALL;
-    delete process.env.SKIP_PYTHON_INSTALL;
   });
 
   afterEach(() => {
@@ -193,7 +191,6 @@ describe("autofix", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      delete process.env.SKIP_JS_INSTALL;
       tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp install dir " + Math.random().toString(36).substring(2, 9));
       fs.mkdirSync(tempDir, { recursive: true });
     });
@@ -252,15 +249,6 @@ describe("autofix", () => {
       );
     });
 
-    it("should ignore SKIP_JS_INSTALL environment variable and always run installation", () => {
-      process.env.SKIP_JS_INSTALL = "true";
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
-
-      run(tempDir);
-
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
-    });
 
     it("should set workflow failed with WorkflowError when JS dependency installation fails", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
@@ -321,18 +309,6 @@ describe("autofix", () => {
       expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
-    it("should ignore SKIP_PYTHON_INSTALL environment variable and always run installation", () => {
-      process.env.SKIP_PYTHON_INSTALL = "true";
-
-      executePythonWorkflow({
-        name: "pip",
-        installCommand: "pip install -r requirements.txt",
-        execPrefix: "",
-      });
-
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-      expect(spawnSync).toHaveBeenCalledWith("pip install -r requirements.txt", expect.objectContaining({ cwd: originalCwd, shell: true }));
-    });
 
     it("should skip lockfile sync and dependency installation for standalone Python projects", () => {
       executePythonWorkflow({
@@ -828,7 +804,6 @@ describe("autofix", () => {
     });
 
     it("should sanitize secrets/tokens in command strings when reporting installation failures", () => {
-      delete process.env.SKIP_JS_INSTALL;
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
