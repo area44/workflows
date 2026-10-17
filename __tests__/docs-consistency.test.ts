@@ -19,23 +19,6 @@ export interface DocumentedMatrixEntry {
   reason?: string;
 }
 
-export interface DocumentedInput {
-  name: string;
-  description?: string;
-  required: boolean;
-  default?: string;
-}
-
-export interface DocumentedOutput {
-  name: string;
-  description?: string;
-}
-
-export interface DocumentedActionApi {
-  inputs: DocumentedInput[];
-  outputs: DocumentedOutput[];
-}
-
 interface MatrixHeaderIndices {
   runtimeIdx: number;
   pmIdx: number;
@@ -216,147 +199,6 @@ export function validateDocumentedCompatibility(
   }
 }
 
-const KNOWN_ACTIONS_SORTED = ["autofix", "astro", "vite"];
-
-function detectActionHeaderMatch(line: string): string | null {
-  if (!line.startsWith("#")) {
-    return null;
-  }
-  const normalizedLine = line.toLowerCase().replace(/`/g, "");
-  const matched = KNOWN_ACTIONS_SORTED.find((a) => {
-    const headerPattern = new RegExp(`(?:^#{1,4}\\s+|area44/)${a}(?:\\b|\\s|\\()`, "i");
-    return headerPattern.test(normalizedLine);
-  });
-  return matched || null;
-}
-
-function parseInputTableRow(cells: string[]): DocumentedInput | null {
-  if (cells.length < 1) {
-    return null;
-  }
-  const name = cells[0].replace(/`/g, "").trim();
-  if (!name || name.toLowerCase() === "name") {
-    return null;
-  }
-
-  const description = cells.length >= 2 ? cells[1] : undefined;
-  const defaultValue = cells.length >= 3 ? cells[2].replace(/`/g, "").trim() : undefined;
-  const requiredText = cells.length >= 4 ? cells[3].trim().toLowerCase() : "optional";
-  const required = requiredText === "required" || requiredText === "yes" || requiredText === "true";
-
-  return {
-    name,
-    description,
-    required,
-    default: defaultValue || undefined,
-  };
-}
-
-function parseOutputTableRow(cells: string[]): DocumentedOutput | null {
-  if (cells.length < 1) {
-    return null;
-  }
-  const name = cells[0].replace(/`/g, "").trim();
-  if (!name || name.toLowerCase() === "name") {
-    return null;
-  }
-
-  const description = cells.length >= 2 ? cells[1] : undefined;
-  return {
-    name,
-    description,
-  };
-}
-
-function checkHasMultipleActionHeaders(lines: string[]): boolean {
-  return lines.some((l) => {
-    const norm = l.toLowerCase().replace(/`/g, "");
-    return KNOWN_ACTIONS_SORTED.some(
-      (a) => norm.includes(`### ${a}`) || norm.includes(`## ${a}`) || norm.includes(`area44/${a}`),
-    );
-  });
-}
-
-function detectApiSectionType(
-  line: string,
-  targetKey: string,
-  currentSection: "none" | "inputs" | "outputs",
-): "none" | "inputs" | "outputs" {
-  if (/^#{2,4}\s+Inputs/i.test(line)) {
-    return "inputs";
-  }
-  if (/^#{2,4}\s+Outputs/i.test(line)) {
-    return "outputs";
-  }
-  if (/^#{1,3}\s+/i.test(line) && !/Inputs|Outputs/i.test(line) && !line.toLowerCase().includes(targetKey)) {
-    return "none";
-  }
-  return currentSection;
-}
-
-function parseApiTableRowLine(
-  line: string,
-  currentSection: "inputs" | "outputs",
-  inputs: DocumentedInput[],
-  outputs: DocumentedOutput[],
-): void {
-  if (!line.startsWith("|") || !line.endsWith("|")) {
-    return;
-  }
-  const cells = line.split("|").map((c) => c.trim()).slice(1, -1);
-  if (cells.every((c) => /^:?-+:?$/.test(c))) {
-    return;
-  }
-
-  if (currentSection === "inputs") {
-    const entry = parseInputTableRow(cells);
-    if (entry) inputs.push(entry);
-  } else if (currentSection === "outputs") {
-    const entry = parseOutputTableRow(cells);
-    if (entry) outputs.push(entry);
-  }
-}
-
-export function parseDocumentedActionApi(markdownContent: string, actionKey: string): DocumentedActionApi {
-  const inputs: DocumentedInput[] = [];
-  const outputs: DocumentedOutput[] = [];
-
-  const lines = markdownContent.split("\n");
-  const normalizedTargetKey = actionKey.toLowerCase().trim();
-
-  let activeActionMatch = !checkHasMultipleActionHeaders(lines);
-  let currentSection: "none" | "inputs" | "outputs" = "none";
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    const matchedAction = detectActionHeaderMatch(trimmed);
-    if (matchedAction) {
-      activeActionMatch = matchedAction === normalizedTargetKey;
-      if (!activeActionMatch) {
-        currentSection = "none";
-      }
-    }
-
-    if (!activeActionMatch) {
-      continue;
-    }
-
-    const nextSection = detectApiSectionType(trimmed, normalizedTargetKey, currentSection);
-    if (nextSection !== currentSection) {
-      currentSection = nextSection;
-      continue;
-    }
-
-    if (currentSection === "inputs" || currentSection === "outputs") {
-      parseApiTableRowLine(trimmed, currentSection, inputs, outputs);
-    }
-  }
-
-  return { inputs, outputs };
-}
-
-
 describe("Documentation Consistency Verification", () => {
   const rootDir = path.resolve(process.cwd());
   const readmeContent = fs.readFileSync(path.join(rootDir, "README.md"), "utf8");
@@ -410,7 +252,6 @@ describe("Documentation Consistency Verification", () => {
       }
     });
   });
-
 
   describe("Semantic Compatibility Documentation Consistency", () => {
     const docCompatContent = fs.readFileSync(path.join(docsDir, "compatibility.md"), "utf8");
@@ -559,6 +400,5 @@ describe("Documentation Consistency Verification", () => {
         );
       });
     });
-
   });
 });
