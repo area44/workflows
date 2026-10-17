@@ -126,8 +126,9 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
   }
 
   if (jsEnv.packageJsonError) {
+    const code = jsEnv.packageJsonErrorType === "parse" ? "INVALID_INPUT" : "SETUP_FAILURE";
     const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
-    throw new WorkflowError("INVALID_INPUT", sanitizedMsg, {
+    throw new WorkflowError(code, sanitizedMsg, {
       stage: "js-project-inspection",
       cwd,
       cause: sanitizeCause(jsEnv.packageJsonErrorCause),

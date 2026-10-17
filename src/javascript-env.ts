@@ -49,6 +49,7 @@ export interface JsProjectEnvironment {
   hasPackageJson: boolean;
   packageJson?: JsPackageManifest;
   packageJsonError?: string;
+  packageJsonErrorType?: "read" | "parse";
   packageJsonErrorCause?: unknown;
   nvmRcVersion?: string;
   nvmRcError?: string;
@@ -103,6 +104,7 @@ function inspectPackageJson(cwd: string): {
   hasPackageJson: boolean;
   packageJson?: JsPackageManifest;
   packageJsonError?: string;
+  packageJsonErrorType?: "read" | "parse";
   packageJsonErrorCause?: unknown;
 } {
   const packageJsonPath = resolveFilePath("package.json", cwd);
@@ -119,6 +121,7 @@ function inspectPackageJson(cwd: string): {
     return {
       hasPackageJson: true,
       packageJsonError: `Failed to read package.json: ${msg}`,
+      packageJsonErrorType: "read",
       packageJsonErrorCause: readErr,
     };
   }
@@ -131,6 +134,7 @@ function inspectPackageJson(cwd: string): {
     return {
       hasPackageJson: true,
       packageJsonError: `Failed to parse package.json: ${msg}`,
+      packageJsonErrorType: "parse",
       packageJsonErrorCause: parseErr,
     };
   }
@@ -167,6 +171,7 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     hasPackageJson: pkgInfo.hasPackageJson,
     packageJson: pkgInfo.packageJson,
     packageJsonError: pkgInfo.packageJsonError,
+    packageJsonErrorType: pkgInfo.packageJsonErrorType,
     packageJsonErrorCause: pkgInfo.packageJsonErrorCause,
     nvmRcVersion: nvmRc.version,
     nvmRcError: nvmRc.error,

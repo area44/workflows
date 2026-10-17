@@ -635,7 +635,7 @@ describe("autofix", () => {
       expect(spawnSync).not.toHaveBeenCalled();
     });
 
-    it("should set INVALID_INPUT when package.json encounters a read/file access error", () => {
+    it("should set SETUP_FAILURE when package.json encounters a read/file access error", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("EACCES: permission denied, open 'package.json'");
@@ -646,7 +646,7 @@ describe("autofix", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "WorkflowError",
-          code: "INVALID_INPUT",
+          code: "SETUP_FAILURE",
           message: expect.stringContaining("Failed to read package.json: EACCES: permission denied"),
           context: expect.objectContaining({
             stage: "js-project-inspection",
@@ -655,7 +655,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should handle unclassified package.json inspection errors with INVALID_INPUT", () => {
+    it("should handle unclassified package.json inspection errors with SETUP_FAILURE", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw "Raw unexpected filesystem error";
@@ -666,7 +666,7 @@ describe("autofix", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "WorkflowError",
-          code: "INVALID_INPUT",
+          code: "SETUP_FAILURE",
           message: "Failed to read package.json: Raw unexpected filesystem error",
           context: expect.objectContaining({
             stage: "js-project-inspection",

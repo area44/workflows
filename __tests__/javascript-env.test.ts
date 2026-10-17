@@ -93,6 +93,7 @@ describe("javascript-env", () => {
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
       expect(env.packageJsonError).toContain("Failed to parse package.json:");
+      expect(env.packageJsonErrorType).toBe("parse");
       expect(env.packageJsonErrorCause).toBeDefined();
     });
 
@@ -106,6 +107,7 @@ describe("javascript-env", () => {
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
       expect(env.packageJsonError).toContain("Failed to read package.json: EACCES: permission denied");
+      expect(env.packageJsonErrorType).toBe("read");
       expect(env.packageJsonErrorCause).toBeDefined();
     });
   });
