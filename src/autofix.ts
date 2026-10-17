@@ -12,11 +12,8 @@ import {
   selectAutofixScripts,
   type JsInstallationPlan,
 } from "./javascript-env.js";
-import {
-  detectPythonPackageManager,
-  isExecutableAvailable,
-  type PythonPackageManagerInfo,
-} from "./python-env.js";
+import { isExecutableAvailable } from "./process-utils.js";
+import { detectPythonPackageManager, type PythonPackageManagerInfo } from "./python-env.js";
 import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };

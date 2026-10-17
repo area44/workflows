@@ -7,10 +7,9 @@ This document outlines the maintenance policies, repository invariants, sources 
 The `@area44/workflows` repository enforces machine-verifiable operational invariants:
 
 - **Single Source of Truth**: Metadata, compatibility models, API contracts, and version declarations originate from single designated canonical source files.
-- **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files and validated programmatically.
+- **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files.
 - **Reproducible Artifacts**: Code in `dist/` is generated deterministically from `src/` via `npm run build` and verified for zero drift.
 - **Machine-Verifiable Compatibility**: Compatibility between runtimes and package managers is governed by a canonical compatibility matrix and verified across CI matrix runs and test fixtures.
-- **Strict Guardrails**: Public API contracts and upgrade rules prevent unintentional breaking changes across releases.
 
 ## Sources of Truth
 
@@ -22,7 +21,6 @@ To avoid duplication and configuration drift, specific files serve as authoritat
 | Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `autofix/action.yml`) |
 | Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                              |
 | Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                         |
-| Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                     |
 
 ## Public Action Structure
 
@@ -32,7 +30,6 @@ Every public action provided by this repository must adhere to the following str
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
 - Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
-- No unexpected top-level action directories containing `action.yml` without explicit registration in `PUBLIC_ACTIONS`.
 
 ## Build Artifacts Pipeline
 
@@ -94,5 +91,5 @@ When making modifications, maintainers must update corresponding configuration, 
 | **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                                                |
 | **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.                               |
 | **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `COMPATIBILITY.md`, `docs/compatibility.md`, and test fixtures. |
-| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, `COMPATIBILITY.md`, and upgrade guardrails documentation.    |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation. Verify with `npm run verify:docs`.                                  |
+| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, and `COMPATIBILITY.md`.                                      |
+| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                     |

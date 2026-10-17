@@ -37,7 +37,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Resolve environment
+    - name: Resolve project environments
       shell: bash
       id: resolve_environment
       env:
@@ -82,7 +82,7 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
-    - name: Run autofix
+    - name: Run JavaScript/TypeScript/Markdown project scripts
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -95,19 +95,19 @@ runs:
           node "$ACTION_PATH/../dist/autofix.mjs"
         fi
 
-    - name: Format Python code with Ruff
+    - name: Setup Ruff for Python
       if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
         version: ${{ steps.resolve_environment.outputs.ruff-version }}
-        args: "format ."
+        args: "--version"
 
-    - name: Lint and fix Python code with Ruff
+    - name: Lint and format Python with Ruff
       if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
-      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
-      with:
-        version: ${{ steps.resolve_environment.outputs.ruff-version }}
-        args: "check --fix ."
+      shell: bash
+      run: |
+        ruff check --fix .
+        ruff format .
 
     - name: Run autofix.ci
       if: ${{ github.workflow == 'autofix.ci' }}
