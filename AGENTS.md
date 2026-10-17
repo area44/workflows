@@ -1,6 +1,6 @@
 # Project Overview
 
-This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Vite-Plus, Autofix) for the AREA44 ecosystem.
+This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Autofix) for the AREA44 ecosystem.
 
 <!--VITE PLUS START-->
 
