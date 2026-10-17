@@ -1,6 +1,6 @@
 # area44/autofix
 
-Automatically lints and formats code using project-defined scripts and integrates with [autofix.ci](https://autofix.ci/).
+Automatically update code with [autofix.ci](https://autofix.ci/).
 
 ## Features
 
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run autofix
         uses: area44/workflows/autofix@main
