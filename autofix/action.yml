@@ -1,5 +1,5 @@
 name: Autofix
-description: Automatically update code using project-defined scripts and autofix.ci
+description: Automatically update code using autofix.ci
 inputs:
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"
