@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { WorkflowError } from "./errors.js";
+import { isExecutableAvailable } from "./python-env.js";
 import { sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizeCommandString };
@@ -11,6 +12,43 @@ export { sanitizeCommandString };
 export interface ParsedCommand {
   command: string;
   args: string[];
+}
+
+export function resolveBuildCommandToParse(
+  customCommand?: string,
+  defaultCommand?: string,
+  pm: string = "npm",
+  isExecutableCheckAvailable: (cmd: string) => boolean = isExecutableAvailable,
+): string {
+  const custom = customCommand?.trim();
+  if (custom) {
+    return custom;
+  }
+
+  const defaultCmd = defaultCommand?.trim();
+  if (defaultCmd) {
+    if (defaultCmd.startsWith("vp ")) {
+      const preferredExec = "vp";
+      const fallbackExec = "vpr";
+      if (!isExecutableCheckAvailable(preferredExec)) {
+        if (isExecutableCheckAvailable(fallbackExec)) {
+          core.info(
+            `Primary Vite+ executable "${preferredExec}" unavailable. Falling back to "${fallbackExec}".`,
+          );
+          return defaultCmd.replace(/^vp\b/, fallbackExec);
+        } else {
+          throw new WorkflowError(
+            "MISSING_CONFIGURATION",
+            `Primary Vite+ executable "${preferredExec}" and fallback executable "${fallbackExec}" are both unavailable in PATH.`,
+            { stage: "build-command-resolution", preferredExec, fallbackExec },
+          );
+        }
+      }
+    }
+    return defaultCmd;
+  }
+
+  return `${pm} run build`;
 }
 
 interface TokenizerState {
@@ -151,10 +189,10 @@ export interface RunBuildCommandOptions {
 export async function runBuildCommand(options?: RunBuildCommandOptions): Promise<number> {
   const exitOnFailure = options?.exitOnFailure ?? true;
   const pm = process.env.PACKAGE_MANAGER || "npm";
-  const customCommand = process.env.BUILD_COMMAND?.trim();
-  const defaultCommand = process.env.DEFAULT_BUILD_COMMAND?.trim() || `${pm} run build`;
+  const customCommand = process.env.BUILD_COMMAND;
+  const defaultCommand = process.env.DEFAULT_BUILD_COMMAND;
 
-  const commandToParse = customCommand || defaultCommand;
+  const commandToParse = resolveBuildCommandToParse(customCommand, defaultCommand, pm);
 
   core.info(`Preparing build command: "${sanitizeCommandString(commandToParse)}"`);
 

@@ -67,10 +67,96 @@ export interface JsPackageManagerInfo {
   version: string;
 }
 
+export type Toolchain = "vite" | "vite-plus";
+export type ToolchainInput = "auto" | "vite" | "vite-plus";
+
 export interface JsInstallationPlan {
   packageManager: SupportedPackageManager;
   command: string;
   args: string[];
+}
+
+export function hasVitePlusDependency(pkg?: JsPackageManifest): boolean {
+  if (!pkg) return false;
+
+  const depSections = [
+    pkg.dependencies,
+    pkg.devDependencies,
+    pkg.optionalDependencies,
+    pkg.peerDependencies,
+  ];
+
+  for (const section of depSections) {
+    if (!section || typeof section !== "object") continue;
+    for (const [key, val] of Object.entries(section)) {
+      if (typeof key !== "string") continue;
+      const k = key.toLowerCase();
+      if (
+        k === "vite-plus" ||
+        k === "@voidzero-dev/vite-plus" ||
+        k === "@voidzero-dev/vite-plus-core" ||
+        k.startsWith("@voidzero-dev/vite-plus-")
+      ) {
+        return true;
+      }
+      if (typeof val === "string") {
+        const v = val.toLowerCase();
+        if (v.includes("@voidzero-dev/vite-plus") || v.includes("vite-plus-core")) {
+          return true;
+        }
+      }
+    }
+  }
+
+  const catalogObj = (pkg as any).catalog || (pkg as any).catalogs;
+  if (catalogObj && typeof catalogObj === "object") {
+    const catalogEntries = Array.isArray(catalogObj)
+      ? catalogObj
+      : Object.values(catalogObj);
+    for (const entry of catalogEntries) {
+      if (!entry || typeof entry !== "object") continue;
+      for (const [k] of Object.entries(entry as Record<string, unknown>)) {
+        if (typeof k === "string") {
+          const keyLower = k.toLowerCase();
+          if (
+            keyLower === "vite-plus" ||
+            keyLower === "@voidzero-dev/vite-plus" ||
+            keyLower === "@voidzero-dev/vite-plus-core" ||
+            keyLower.startsWith("@voidzero-dev/vite-plus-")
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+export function resolveToolchain(
+  toolchainInput?: string,
+  project?: JsProjectEnvironment,
+): Toolchain {
+  if (toolchainInput) {
+    const trimmed = toolchainInput.trim().toLowerCase();
+    if (trimmed && trimmed !== "auto") {
+      if (trimmed === "vite" || trimmed === "vite-plus") {
+        return trimmed;
+      }
+      throw new WorkflowError(
+        "INVALID_INPUT",
+        `Invalid toolchain input "${toolchainInput}". Supported values are "auto", "vite", or "vite-plus".`,
+        { stage: "toolchain-resolution", input: toolchainInput },
+      );
+    }
+  }
+
+  if (project?.packageJson && hasVitePlusDependency(project.packageJson)) {
+    return "vite-plus";
+  }
+
+  return "vite";
 }
 
 export function sanitizePackageManager(pm: string): string {

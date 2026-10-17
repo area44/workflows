@@ -5,8 +5,7 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 ## Composite Actions
 
 - **[Astro](./astro/README.md)** (`area44/workflows/astro@main`): Build and deploy Astro sites to GitHub Pages.
-- **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite sites to GitHub Pages.
-- **[Vite+](./vite-plus/README.md)** (`area44/workflows/vite-plus@main`): Build and deploy Vite+ sites to GitHub Pages.
+- **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite and Vite+ sites to GitHub Pages with automatic toolchain detection.
 - **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically run linting and formatting scripts.
 
 ## Quick Usage
@@ -31,10 +30,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Astro site
-        uses: area44/workflows/astro@main
+      - name: Build Vite site
+        uses: area44/workflows/vite@main
         with:
           # Optional: runtime: 'node@24'
+          # Optional: toolchain: 'auto' (or 'vite', 'vite-plus')
           # Optional: path: 'dist'
 ```
 
@@ -70,7 +70,8 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | --------------- | ------------------------------------------------------------- | ----------------------------- | -------- |
 | `path`          | Directory where the built site is located                     | `dist`                        | Optional |
 | `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |                               | Optional |
-| `build-command` | Custom build command                                          | `<package-manager> run build` | Optional |
+| `toolchain`     | Optional toolchain selection (auto, vite, or vite-plus)       | `auto`                        | Optional |
+| `build-command` | Custom build command                                          |                               | Optional |
 
 #### Outputs
 
@@ -81,26 +82,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `package-manager`         | The package manager used                |
 | `package-manager-version` | The version of the package manager used |
 | `runtime`                 | The runtime used (node or bun)          |
-
-### `vite-plus` (Vite+ Site Build and Deploy)
-
-#### Inputs
-
-| Name            | Description                                                   | Default     | Required |
-| --------------- | ------------------------------------------------------------- | ----------- | -------- |
-| `path`          | Directory where the built site is located                     | `dist`      | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |             | Optional |
-| `build-command` | Custom build command                                          | `vpr build` | Optional |
-
-#### Outputs
-
-| Name                      | Description                             |
-| ------------------------- | --------------------------------------- |
-| `node-version`            | The Node.js version used                |
-| `bun-version`             | The Bun version used                    |
-| `package-manager`         | The package manager used                |
-| `package-manager-version` | The version of the package manager used |
-| `runtime`                 | The runtime used (node or bun)          |
+| `toolchain`               | The resolved toolchain (vite or vite-plus) |
 | `vp-version`              | The version of Vite+ installed          |
 
 ### `autofix` (Lint and Format Verification)

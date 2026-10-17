@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseDocument } from "yaml";
 
-export const PUBLIC_ACTIONS = ["astro", "vite", "vite-plus", "autofix"] as const;
+export const PUBLIC_ACTIONS = ["astro", "vite", "autofix"] as const;
 export type PublicActionName = (typeof PUBLIC_ACTIONS)[number];
 
 export interface ActionInputContract {

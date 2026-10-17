@@ -19,7 +19,7 @@ To avoid duplication and configuration drift, specific files serve as authoritat
 | Domain              | Authoritative Source of Truth File                                                                            |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Package Versioning  | `package.json` (`version` property)                                                                           |
-| Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `vite-plus/action.yml`, `autofix/action.yml`) |
+| Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `autofix/action.yml`)                          |
 | Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                                                      |
 | Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                                                 |
 | Action List         | `src/action-contract.ts` (`PUBLIC_ACTIONS` array)                                                             |
@@ -28,7 +28,7 @@ To avoid duplication and configuration drift, specific files serve as authoritat
 
 Every public action provided by this repository must adhere to the following structure:
 
-- A dedicated directory at the repository root matching its declared action name (e.g., `astro/`, `vite/`, `vite-plus/`, `autofix/`).
+- A dedicated directory at the repository root matching its declared action name (e.g., `astro/`, `vite/`, `autofix/`).
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
 - Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
