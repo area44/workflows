@@ -133,6 +133,12 @@ jobs:
             verify_site: true
           - action: vite
             runtime: node
+            pm: pnpm
+            type: minimal
+            fixture: vite-plus/node/pnpm/minimal
+            verify_site: true
+          - action: vite
+            runtime: node
             pm: bun
             type: basic
             verify_site: true
@@ -166,8 +172,13 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          FIXTURE: ${{ matrix.fixture }}
         run: |
-          FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
+          else
+            FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          fi
           if [ ! -d "$FIXTURE_DIR" ]; then
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
@@ -206,6 +217,7 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          FIXTURE: ${{ matrix.fixture }}
           ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
@@ -214,9 +226,14 @@ jobs:
           AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
           VITE_RUNTIME: ${{ steps.vite.outputs.runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
+          VITE_TOOLCHAIN: ${{ steps.vite.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
-          FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
+          else
+            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+          fi
           DETECTED_PM="${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
             echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
@@ -231,6 +248,19 @@ jobs:
             echo "  Expected runtime: ${EXPECTED_RUNTIME}"
             echo "  Detected runtime: ${DETECTED_RUNTIME}"
             exit 1
+          fi
+
+          if [[ "$ACTION" == "vite" ]]; then
+            EXPECTED_TOOLCHAIN="vite"
+            if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" ]]; then
+              EXPECTED_TOOLCHAIN="vite-plus"
+            fi
+            if [[ "$VITE_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
+              echo "Error: [${ACTION}] Toolchain mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected toolchain: ${EXPECTED_TOOLCHAIN}"
+              echo "  Detected toolchain: ${VITE_TOOLCHAIN}"
+              exit 1
+            fi
           fi
 
           if [[ "$VERIFY_SITE" == "true" ]]; then

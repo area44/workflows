@@ -2,7 +2,8 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { parseCommand, runBuildCommand, sanitizeCommandString } from "../src/build-command";
+import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString } from "../src/build-command";
+import * as pythonEnv from "../src/python-env";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -311,6 +312,133 @@ describe("build-command", () => {
           message: "Unterminated quote in build command string.",
         }),
       );
+    });
+  });
+
+  describe("resolveBuildCommandToParse", () => {
+    it("should return custom command when supplied", () => {
+      const res = resolveBuildCommandToParse("npm run custom", "vp build", "npm");
+      expect(res).toBe("npm run custom");
+    });
+
+    it("should return package manager build command when custom and default commands are empty", () => {
+      const res = resolveBuildCommandToParse("", "", "pnpm");
+      expect(res).toBe("pnpm run build");
+    });
+
+    it("should resolve vp build directly when vp executable is available", () => {
+      const mockCheck = (cmd: string) => cmd === "vp";
+      const res = resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
+      expect(res).toBe("vp build");
+    });
+
+    it("should fall back to vpr build when vp is unavailable and vpr is available", () => {
+      const mockCheck = (cmd: string) => cmd === "vpr";
+      const res = resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
+      expect(res).toBe("vpr build");
+      expect(core.info).toHaveBeenCalledWith(
+        'Primary Vite+ executable "vp" unavailable. Falling back to "vpr".',
+      );
+    });
+
+    it("should throw WorkflowError MISSING_CONFIGURATION when neither vp nor vpr is available", () => {
+      const mockCheck = () => false;
+      expect(() => resolveBuildCommandToParse("", "vp build", "npm", mockCheck)).toThrow(
+        expect.objectContaining({
+          code: "MISSING_CONFIGURATION",
+          message: 'Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
+        }),
+      );
+    });
+  });
+
+  describe("Vite+ build fallback and error handling scenarios", () => {
+    it("Scenario 1: vp is available and vp build succeeds -> Success; do not invoke vpr", async () => {
+      delete process.env.BUILD_COMMAND;
+      process.env.DEFAULT_BUILD_COMMAND = "vp build";
+
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(0);
+      expect(exec.exec).toHaveBeenCalledWith("vp", ["build"], { ignoreReturnCode: true });
+      expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
+    });
+
+    it("Scenario 2: vp is available but vp build exits non-zero -> Fail; do not invoke vpr", async () => {
+      delete process.env.BUILD_COMMAND;
+      process.env.DEFAULT_BUILD_COMMAND = "vp build";
+
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.mocked(exec.exec).mockResolvedValue(2);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(2);
+      expect(exec.exec).toHaveBeenCalledWith("vp", ["build"], { ignoreReturnCode: true });
+      expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "COMMAND_EXECUTION_FAILURE",
+          message: "Build command failed with exit code 2: vp build",
+        }),
+      );
+    });
+
+    it("Scenario 3: vp is unavailable and vpr is available -> Run vpr build", async () => {
+      delete process.env.BUILD_COMMAND;
+      process.env.DEFAULT_BUILD_COMMAND = "vp build";
+
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockImplementation((bin) => bin === "vpr");
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(0);
+      expect(core.info).toHaveBeenCalledWith(
+        'Primary Vite+ executable "vp" unavailable. Falling back to "vpr".',
+      );
+      expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
+    });
+
+    it("Scenario 4: Neither executable is available -> Fail with actionable WorkflowError and exitOnFailure handling", async () => {
+      delete process.env.BUILD_COMMAND;
+      process.env.DEFAULT_BUILD_COMMAND = "vp build";
+
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+
+      // Test with exitOnFailure: false -> should return 1 and core.setFailed without rejecting Promise
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "MISSING_CONFIGURATION",
+          message: 'Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
+        }),
+      );
+
+      // Test with default failure mode (exitOnFailure: true) -> should call process.exit(1)
+      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
+      await runBuildCommand({ exitOnFailure: true });
+      expect(mockExit).toHaveBeenCalledWith(1);
+      mockExit.mockRestore();
+    });
+
+    it("Scenario 5: A custom build-command is supplied -> Run custom command without automatic fallback", async () => {
+      process.env.BUILD_COMMAND = "custom-builder build";
+      process.env.DEFAULT_BUILD_COMMAND = "vp build";
+
+      vi.spyOn(pythonEnv, "isExecutableAvailable").mockReturnValue(false);
+      vi.mocked(exec.exec).mockResolvedValue(1);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(exec.exec).toHaveBeenCalledWith("custom-builder", ["build"], { ignoreReturnCode: true });
+      expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
     });
   });
 });
