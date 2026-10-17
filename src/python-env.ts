@@ -155,7 +155,6 @@ export function hasPythonSource(
   return false;
 }
 
-
 function hasTomlTable(content: string, tableName: string): boolean {
   const escaped = tableName.replace(/\./g, "\\.");
   const pattern = new RegExp(`^\\s*\\[\\s*tool\\.${escaped}(?:\\.|\\s*\\])`, "m");

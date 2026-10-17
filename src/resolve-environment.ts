@@ -47,7 +47,6 @@ export {
   setupPackageManager,
 } from "./setup-adapters.js";
 
-
 export type {
   CanonicalCompatibilityModel,
   CompatibilityStatus,
@@ -81,10 +80,7 @@ export {
 
 export { isExecutableAvailable } from "./process-utils.js";
 export type { PythonPackageManager, PythonPackageManagerInfo };
-export {
-  detectPythonPackageManager,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
-} from "./python-env.js";
+export { detectPythonPackageManager, PYTHON_PACKAGE_MANAGER_PRIORITY } from "./python-env.js";
 
 export { DEFAULT_BUN_VERSION, DEFAULT_NODE_VERSION, DEFAULT_NPM_VERSION, DEFAULT_PNPM_VERSION };
 

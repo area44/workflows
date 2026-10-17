@@ -93,4 +93,4 @@ When making modifications, maintainers must update corresponding configuration, 
 | **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.                               |
 | **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `COMPATIBILITY.md`, `docs/compatibility.md`, and test fixtures. |
 | **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, `COMPATIBILITY.md`, and upgrade guardrails documentation.    |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                      |
+| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                     |
