@@ -226,19 +226,12 @@ To prevent silent compatibility regressions and manage toolchain upgrades predic
 
 ## Versioning Model
 
-The versioning model formalizes how repository versions are determined and what constitutes a version-impacting change. See **[Versioning Model Guide](./docs/versioning.md)**.
+The versioning model formalizes how repository versions are determined and what constitutes a version-impacting change.
 
 ### Authoritative Version Source
 
 - **Single Source of Truth**: The `version` property in `package.json` is the single authoritative source of truth for the repository version.
 - **Lockfile Synchronization**: `package-lock.json` (`version` property) must remain in exact synchronization with `package.json`.
-- **Programmatic Validation**: Machine-verifiable version retrieval and validation are implemented in `src/versioning.ts` (`getRepositoryVersion`, `validateRepositoryVersion`, `runVersionVerification`) and enforced in CI via `npm run verify:version`.
-
----
-
-## Upgrade Guardrails
-
-To prevent accidental breaking changes and compatibility regressions when modifying repository contracts or upgrading dependencies, machine-verifiable upgrade guardrails are enforced via `src/upgrade-guardrails.ts` and `npm run verify:upgrade`. See **[Upgrade Guardrails Guide](./docs/upgrade-guardrails.md)**.
 
 ---
 

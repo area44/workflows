@@ -7,10 +7,9 @@ This document outlines the maintenance policies, repository invariants, sources 
 The `@area44/workflows` repository enforces machine-verifiable operational invariants:
 
 - **Single Source of Truth**: Metadata, compatibility models, API contracts, and version declarations originate from single designated canonical source files.
-- **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files and validated programmatically.
+- **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files.
 - **Reproducible Artifacts**: Code in `dist/` is generated deterministically from `src/` via `npm run build` and verified for zero drift.
 - **Machine-Verifiable Compatibility**: Compatibility between runtimes and package managers is governed by a canonical compatibility matrix and verified across CI matrix runs and test fixtures.
-- **Strict Guardrails**: Public API contracts and upgrade rules prevent unintentional breaking changes across releases.
 
 ## Sources of Truth
 
@@ -92,5 +91,5 @@ When making modifications, maintainers must update corresponding configuration, 
 | **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                                                |
 | **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.                               |
 | **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `COMPATIBILITY.md`, `docs/compatibility.md`, and test fixtures. |
-| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, `COMPATIBILITY.md`, and upgrade guardrails documentation.    |
+| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`, and `COMPATIBILITY.md`.                                      |
 | **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                     |
