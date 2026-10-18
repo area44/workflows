@@ -54,9 +54,7 @@ The repository's compatibility contract is governed by `CANONICAL_COMPATIBILITY_
 Python package managers are automatically detected using deterministic priority resolution:
 
 1. `uv`: Highest priority. Detected via `uv.lock` or `[tool.uv]` in `pyproject.toml`.
-2. `poetry`: Second priority. Detected via `poetry.lock` or `[tool.poetry]` in `pyproject.toml`.
-3. `pdm`: Third priority. Detected via `pdm.lock` or `[tool.pdm]` in `pyproject.toml`.
-4. `pip`: Fallback manager. Detected via `requirements.txt`, `Pipfile.lock`, `Pipfile`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`.
+2. `pip`: Fallback manager. Detected via `requirements.txt`, `Pipfile.lock`, `Pipfile`, `setup.py`, `setup.cfg`, or standard `pyproject.toml`.
 
 ## Runtime Resolution Precedence
 
