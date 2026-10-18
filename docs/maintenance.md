@@ -79,10 +79,10 @@ Before merging pull requests or cutting a new release, maintainers must complete
 
 When making modifications, maintainers must update corresponding configuration, documentation, or version numbers based on the change type:
 
-| Change Type                              | Required Action / Updates                                                                                                            |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                                                |
-| **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.                               |
+| Change Type                              | Required Action / Updates                                                                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                            |
+| **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.           |
 | **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `docs/compatibility.md`, and test fixtures. |
-| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`.                                      |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                                     |
+| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`.                                          |
+| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                 |
