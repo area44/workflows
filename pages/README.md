@@ -4,7 +4,7 @@ Build static sites and upload GitHub Pages artifacts with automatic JavaScript e
 
 ## Features
 
-- **Unified Build Pipeline:** Standardized environment resolution, dependency installation, build execution, output validation, and Pages artifact upload for Astro, Vite, Next.js, Nuxt, SvelteKit, and other static site generators.
+- **Unified Build Pipeline:** Standardized environment resolution, dependency installation, build execution, output validation, and Pages artifact upload for static site generators.
 - **Automatic Vite+ Detection:** Automatically detects Vite+ projects from `package.json` dependencies and uses `voidzero-dev/setup-vp` for setup and dependency installation.
 - **Output Validation:** Ensures the configured build output directory exists and is non-empty before uploading the GitHub Pages artifact.
 - **Flexible Runtimes:** Supports Node.js and Bun runtimes with automatic version detection or explicit overrides.
@@ -64,15 +64,3 @@ jobs:
 ## Static Site Requirement
 
 This action publishes static output artifacts for GitHub Pages. It does not automatically convert server-rendered or SSR applications into static sites. Ensure your framework project is configured to generate static output (e.g., `output: 'static'` in Astro or static export mode in Next.js).
-
-## Migration from Astro / Vite Actions
-
-If you are using `area44/workflows/astro` or `area44/workflows/vite`, update your workflow step to use `area44/workflows/pages`:
-
-```yaml
-# Before:
-- uses: area44/workflows/astro@main
-
-# After:
-- uses: area44/workflows/pages@main
-```

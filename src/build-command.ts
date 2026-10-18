@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { WorkflowError } from "./errors.js";
@@ -274,6 +275,29 @@ async function safelyExecuteBuildCommand(
   }
 }
 
+export function validateBuildOutput(
+  outputPath: string = process.env.BUILD_PATH || "dist",
+  cwd: string = process.cwd(),
+): void {
+  const targetPath = outputPath || "dist";
+  const targetDir = path.resolve(cwd, targetPath);
+  if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Configured build output directory '${targetPath}' does not exist.`,
+      { stage: "build-output-validation", path: targetPath },
+    );
+  }
+  const files = fs.readdirSync(targetDir);
+  if (files.length === 0) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Configured build output directory '${targetPath}' is empty.`,
+      { stage: "build-output-validation", path: targetPath },
+    );
+  }
+}
+
 export async function runBuildCommand(options?: RunBuildCommandOptions): Promise<number> {
   const exitOnFailure = options?.exitOnFailure ?? true;
   const pm = process.env.PACKAGE_MANAGER || "npm";
@@ -322,8 +346,22 @@ function isMainModule(metaUrl: string): boolean {
 }
 
 if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
-  runBuildCommand().catch((err) => {
-    core.setFailed(`Unhandled error during build command execution: ${err}`);
-    process.exit(1);
-  });
+  if (process.argv.includes("--validate-only")) {
+    try {
+      validateBuildOutput();
+      core.info("Build output directory validation succeeded.");
+    } catch (err) {
+      if (err instanceof WorkflowError) {
+        core.setFailed(err);
+      } else {
+        core.setFailed(String(err));
+      }
+      process.exit(1);
+    }
+  } else {
+    runBuildCommand().catch((err) => {
+      core.setFailed(`Unhandled error during build command execution: ${err}`);
+      process.exit(1);
+    });
+  }
 }

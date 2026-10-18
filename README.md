@@ -6,8 +6,6 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 
 - **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Unified action to build static sites and upload GitHub Pages artifacts with automatic environment setup and Vite+ detection.
 - **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically update code.
-- **[Astro (Deprecated)](./astro/README.md)** (`area44/workflows/astro@main`): Compatibility wrapper for `pages`.
-- **[Vite (Deprecated)](./vite/README.md)** (`area44/workflows/vite@main`): Compatibility wrapper for `pages`.
 
 ## Quick Usage
 

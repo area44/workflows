@@ -944,7 +944,7 @@ describe("resolve-environment", () => {
   describe("Fixture-based tests", () => {
     const cases = [
       {
-        action: "astro",
+        action: "pages",
         runtime: "node",
         pm: "npm",
         type: "basic",
@@ -954,7 +954,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "node",
         pm: "npm",
         type: "minimal",
@@ -964,7 +964,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "node",
         pm: "pnpm",
         type: "basic",
@@ -974,7 +974,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "node",
         pm: "pnpm",
         type: "minimal",
@@ -984,7 +984,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "bun",
         pm: "bun",
         type: "basic",
@@ -994,7 +994,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "bun",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "bun",
         pm: "pnpm",
         type: "basic",
@@ -1004,7 +1004,7 @@ describe("resolve-environment", () => {
         expectedRuntime: "node",
       },
       {
-        action: "astro",
+        action: "pages",
         runtime: "bun",
         pm: "bun",
         type: "minimal",
@@ -1031,16 +1031,6 @@ describe("resolve-environment", () => {
         expectedNode: "24",
         expectedBun: "",
         expectedPm: { name: "pnpm", version: "11.21.0" },
-        expectedRuntime: "node",
-      },
-      {
-        action: "vite",
-        runtime: "node",
-        pm: "npm",
-        type: "basic",
-        expectedNode: "24.19.0",
-        expectedBun: "",
-        expectedPm: { name: "npm", version: "11.19.0" },
         expectedRuntime: "node",
       },
     ];
@@ -1452,10 +1442,10 @@ describe("resolve-environment", () => {
 
   describe("run", () => {
     it("should coordinate environment resolution, execute adapters, and write action output on fixture project", () => {
-      const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
+      const fixturePath = path.join(fixturesDir, "pages/node/npm/basic");
       process.chdir(fixturePath);
 
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
@@ -1472,10 +1462,10 @@ describe("resolve-environment", () => {
     });
 
     it("should resolve bun and set adapter outputs for bun project fixture", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/bun/basic");
+      const fixturePath = path.join(fixturesDir, "pages/bun/bun/basic");
       process.chdir(fixturePath);
 
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-bun-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
@@ -1492,10 +1482,10 @@ describe("resolve-environment", () => {
     });
 
     it("should resolve pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
-      const fixturePath = path.join(fixturesDir, "astro/bun/pnpm/basic");
+      const fixturePath = path.join(fixturesDir, "pages/bun/pnpm/basic");
       process.chdir(fixturePath);
 
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-pnpm-bun-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
@@ -1514,7 +1504,7 @@ describe("resolve-environment", () => {
 
   describe("toolchain resolution inputs", () => {
     it("should resolve toolchain to 'vite-plus' when toolchainInput is 'vite-plus'", () => {
-      const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
+      const fixturePath = path.join(fixturesDir, "pages/node/npm/basic");
       process.chdir(fixturePath);
 
       const resolved = resolveEnvironment("node", "vite-plus");
@@ -1535,7 +1525,7 @@ describe("resolve-environment", () => {
       const resolvedVp = resolveEnvironment("node", "auto");
       expect(resolvedVp.toolchain).toBe("vite-plus");
 
-      const stdFixture = path.join(fixturesDir, "astro/node/npm/basic");
+      const stdFixture = path.join(fixturesDir, "pages/node/npm/basic");
       process.chdir(stdFixture);
       const resolvedStd = resolveEnvironment("node", "");
       expect(resolvedStd.toolchain).toBe("vite");
