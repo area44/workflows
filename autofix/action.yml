@@ -82,6 +82,13 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
+    - name: Setup Ruff
+      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
+      with:
+        version: ${{ steps.resolve_environment.outputs.ruff-version }}
+        args: "--version"
+
     - name: Update project with autofix
       shell: bash
       env:
@@ -94,20 +101,6 @@ runs:
         else
           node "$ACTION_PATH/../dist/autofix.mjs"
         fi
-
-    - name: Setup Ruff
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
-      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
-      with:
-        version: ${{ steps.resolve_environment.outputs.ruff-version }}
-        args: "--version"
-
-    - name: Lint and format Python with Ruff
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
-      shell: bash
-      run: |
-        ruff check --fix .
-        ruff format .
 
     - name: Run autofix.ci
       if: ${{ github.workflow == 'autofix.ci' }}

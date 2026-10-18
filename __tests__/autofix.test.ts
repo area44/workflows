@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { executePythonWorkflow, run, sanitizePackageManager } from "../src/autofix";
+import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix";
 import * as processUtils from "../src/process-utils";
 import * as pythonEnv from "../src/python-env";
 
@@ -281,14 +281,16 @@ describe("autofix", () => {
   describe("Python Integration", () => {
     const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
 
-    it("should execute Python workflow for uv fixture when Python source exists", () => {
+    it("should execute Python workflow and Ruff autofix for uv fixture when Python source exists", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const fixturePath = path.join(pythonFixturesDir, "uv");
 
       run(fixturePath);
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
       expect(spawnSync).toHaveBeenCalledWith("uv sync", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
+      expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: fixturePath, shell: true }));
+      expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: fixturePath, shell: true }));
     });
 
     it("should install Python dependencies when executing Python workflow", () => {
@@ -303,7 +305,6 @@ describe("autofix", () => {
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
       expect(spawnSync).toHaveBeenCalledWith("pip install -r requirements.txt", expect.objectContaining({ cwd: originalCwd, shell: true }));
-      expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
     });
 
 
@@ -319,7 +320,8 @@ describe("autofix", () => {
       expect(spawnSync).not.toHaveBeenCalledWith("pip install", expect.anything());
     });
 
-    it("should execute both JS scripts and Python dependency setup in mixed-language projects", () => {
+    it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/mixed-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "npm run check" } }));
@@ -333,10 +335,135 @@ describe("autofix", () => {
         expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
         expect(spawnSync).toHaveBeenCalledWith("pip install -r requirements.txt", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: tempDir, shell: true }));
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should run Ruff lint before Ruff format in Python repository", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-order-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      const executedCommands: string[] = [];
+      vi.mocked(spawnSync).mockImplementation((cmd) => {
+        if (typeof cmd === "string") {
+          executedCommands.push(cmd);
+        }
+        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      });
+
+      try {
+        executeRuffAutofix(tempDir);
+
+        expect(executedCommands).toEqual(["ruff check --fix .", "ruff format ."]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not execute Ruff commands in a non-Python repository", () => {
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/non-py-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "README.md"), "# Hello");
+
+      try {
+        executeRuffAutofix(tempDir);
+
         expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("should throw WorkflowError when ruff executable is not available in PATH", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/no-ruff-bin-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      try {
+        expect(() => executeRuffAutofix(tempDir)).toThrow(
+          expect.objectContaining({
+            name: "WorkflowError",
+            code: "MISSING_CONFIGURATION",
+            message: "Required Python binary 'ruff' is not available in PATH.",
+            context: expect.objectContaining({
+              stage: "python-environment-check",
+              requiredBinary: "ruff",
+              cwd: tempDir,
+            }),
+          }),
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should propagate non-zero ruff exit code as WorkflowError with COMMAND_EXECUTION_FAILURE", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-fail-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      vi.mocked(spawnSync).mockReturnValueOnce({
+        status: 1,
+        stdout: "",
+        stderr: "Ruff syntax error in file",
+        pid: 1,
+        output: [],
+        signal: null,
+      } as any);
+
+      try {
+        expect(() => executeRuffAutofix(tempDir)).toThrow(
+          expect.objectContaining({
+            name: "WorkflowError",
+            code: "COMMAND_EXECUTION_FAILURE",
+            message: 'Ruff command "ruff check --fix ." failed. Check Python and Ruff configuration.',
+            context: expect.objectContaining({
+              stage: "ruff-autofix-execution",
+              command: "ruff check --fix .",
+              cwd: tempDir,
+            }),
+          }),
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should execute Ruff in specified working directory", () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-cwd-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      try {
+        executeRuffAutofix(tempDir);
+
+        expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: tempDir, shell: true }));
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should confirm action.yml has Setup Ruff before autofix mjs step and no duplicate ruff execution", () => {
+      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      const setupRuffIdx = actionYmlContent.indexOf("- name: Setup Ruff");
+      const updateProjectIdx = actionYmlContent.indexOf("- name: Update project with autofix");
+
+      expect(setupRuffIdx).toBeGreaterThan(-1);
+      expect(updateProjectIdx).toBeGreaterThan(-1);
+      expect(setupRuffIdx).toBeLessThan(updateProjectIdx);
+      expect(actionYmlContent).not.toContain("ruff check --fix .");
+      expect(actionYmlContent).not.toContain("ruff format .");
     });
 
     it("should throw WorkflowError if required package manager binary is not available in PATH without fallback attempt", () => {
