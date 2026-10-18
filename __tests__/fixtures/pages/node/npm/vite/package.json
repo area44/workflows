@@ -1,0 +1,12 @@
+{
+  "name": "standard-vite-npm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "packageManager": "npm@10.2.0"
+}

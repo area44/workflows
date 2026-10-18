@@ -1,6 +1,6 @@
 # Repository Maintenance & Health
 
-This document outlines the maintenance policies, repository invariants, sources of truth, build pipelines, verification commands, and pre-merge procedures for `@area44/workflows`.
+This document outlines the maintenance policies, repository invariants, sources of truth, build pipelines, and release procedures for `@area44/workflows`.
 
 ## Repository Invariants
 
@@ -69,24 +69,3 @@ This repository uses `@changesets/cli` to automate package versioning, changelog
 1. **Creating Changesets**: Every PR making code changes must include a changeset file (`.changeset/*.md`) added via `npx changeset`.
 2. **Version PR**: When PRs are merged into `main`, GitHub Actions triggers Changesets to automatically open or update a Version PR.
 3. **Tagging and Release**: Merging the Version PR executes `changeset git-tag`, creating release git tags (e.g. `v8.0.1`) and GitHub Releases. No publication to npm occurs as the workspace is private.
-
-## Pre-Merge & Pre-Release Checklist
-
-Before merging pull requests or cutting a new release, maintainers must complete the following steps:
-
-- Ensure all source changes are compiled to `dist/` by executing `npm run build`.
-- Verify code formatting and linting pass with `npm run format` and `npm run lint`.
-- Execute the full test suite locally via `npm test`.
-- For code modifications, ensure a changeset file is present (`npx changeset`).
-- Check git status using `git status --short` and `git diff --check` to ensure no untracked files or whitespace errors exist.
-
-## Change Classification Guidelines
-
-When making modifications, maintainers must update corresponding configuration, documentation, or version numbers based on the change type:
-
-| Change Type                              | Required Action / Updates                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                  |
-| **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`. |
-| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml` and `README.md`.                             |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                       |
