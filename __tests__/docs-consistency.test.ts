@@ -19,12 +19,14 @@ describe("Documentation Consistency Verification", () => {
     it("README.md should link to all specialized docs files", () => {
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
+      expect(readmeContent).toContain("./docs/maintenance.md");
     });
 
     it("all documentation files in docs/ should exist", () => {
       const expectedFiles = [
         "errors.md",
         "security.md",
+        "maintenance.md",
       ];
       for (const file of expectedFiles) {
         expect(fs.existsSync(path.join(docsDir, file))).toBe(true);
@@ -46,6 +48,63 @@ describe("Documentation Consistency Verification", () => {
         expect(content).not.toMatch(numericalHeadingRegex);
       }
     });
+  });
+
+  describe("Composite Action Public Interfaces", () => {
+    const actions = [
+      {
+        name: "astro",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+      {
+        name: "vite",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+      {
+        name: "autofix",
+        expectedInputs: ["runtime"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+    ];
+
+    it.each(actions)(
+      "action '$name' should retain all expected public inputs and outputs",
+      ({ name, expectedInputs, expectedOutputs }) => {
+        const actionYml = fs.readFileSync(path.join(rootDir, name, "action.yml"), "utf8");
+
+        for (const inputKey of expectedInputs) {
+          expect(actionYml).toMatch(new RegExp(`inputs:\\s*[\\s\\S]*?\\b${inputKey}:`));
+        }
+
+        for (const outputKey of expectedOutputs) {
+          expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
+        }
+
+        expect(actionYml).toMatch(
+          /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+        );
+      },
+    );
   });
 
   describe("Error & Security Documentation Consistency", () => {
