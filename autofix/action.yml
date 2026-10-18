@@ -89,7 +89,7 @@ runs:
         version: ${{ steps.resolve_environment.outputs.ruff-version }}
         args: "--version"
 
-    - name: Update project with autofix
+    - name: Run autofix
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}

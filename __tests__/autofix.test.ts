@@ -457,7 +457,7 @@ describe("autofix", () => {
       const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
 
       const setupRuffIdx = actionYmlContent.indexOf("- name: Setup Ruff");
-      const updateProjectIdx = actionYmlContent.indexOf("- name: Update project with autofix");
+      const updateProjectIdx = actionYmlContent.indexOf("- name: Run autofix");
 
       expect(setupRuffIdx).toBeGreaterThan(-1);
       expect(updateProjectIdx).toBeGreaterThan(-1);
