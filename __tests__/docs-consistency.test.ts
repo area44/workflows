@@ -36,6 +36,7 @@ describe("Documentation Consistency Verification", () => {
     it("documentation section headings across all markdown files should not use numerical prefixes", () => {
       const docFiles = [
         path.join(rootDir, "README.md"),
+        path.join(rootDir, "pages/README.md"),
         path.join(rootDir, "astro/README.md"),
         path.join(rootDir, "vite/README.md"),
         path.join(rootDir, "autofix/README.md"),
@@ -53,6 +54,19 @@ describe("Documentation Consistency Verification", () => {
   describe("Composite Action Public Interfaces", () => {
     const actions = [
       {
+        name: "pages",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+          "toolchain",
+          "vp-version",
+        ],
+      },
+      {
         name: "astro",
         expectedInputs: ["path", "runtime", "build-command"],
         expectedOutputs: [
@@ -65,13 +79,15 @@ describe("Documentation Consistency Verification", () => {
       },
       {
         name: "vite",
-        expectedInputs: ["path", "runtime", "build-command"],
+        expectedInputs: ["path", "runtime", "toolchain", "build-command"],
         expectedOutputs: [
           "node-version",
           "bun-version",
           "package-manager",
           "package-manager-version",
           "runtime",
+          "toolchain",
+          "vp-version",
         ],
       },
       {
@@ -103,6 +119,12 @@ describe("Documentation Consistency Verification", () => {
         expect(actionYml).toMatch(
           /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
         );
+
+        if (name === "vite") {
+          expect(actionYml).toMatch(
+            /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_TOOLCHAIN:\s*\$\{\{\s*inputs\.toolchain\s*\}\}/,
+          );
+        }
       },
     );
   });

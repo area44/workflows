@@ -16,6 +16,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pages action
+          - action: pages
+            runtime: node
+            pm: npm
+            type: basic
+            fixture: astro/node/npm/basic
+            verify_site: true
+          - action: pages
+            runtime: node
+            pm: pnpm
+            type: basic
+            fixture: vite/node/pnpm/basic
+            verify_site: true
+          - action: pages
+            runtime: node
+            pm: pnpm
+            type: minimal
+            fixture: vite-plus/node/pnpm/minimal
+            verify_site: true
+          - action: pages
+            runtime: bun
+            pm: bun
+            type: basic
+            fixture: astro/bun/bun/basic
+            verify_site: true
+
           # Astro action
           - action: astro
             runtime: node
@@ -188,7 +214,17 @@ jobs:
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
+          if [ "$ACTION" != "pages" ]; then
+            [ -d pages ] && mv pages pages.bak || true
+          fi
           cp -r "$FIXTURE_DIR"/* .
+
+      - name: Test Pages Action
+        if: matrix.action == 'pages'
+        uses: ./pages
+        id: pages
+        with:
+          runtime: ${{ matrix.runtime }}
 
       - name: Test Astro Action
         if: matrix.action == 'astro'
@@ -218,14 +254,17 @@ jobs:
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
           FIXTURE: ${{ matrix.fixture }}
+          PAGES_PM: ${{ steps.pages.outputs.package-manager }}
           ASTRO_PM: ${{ steps.astro.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           VITE_PM: ${{ steps.vite.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
+          PAGES_RUNTIME: ${{ steps.pages.outputs.runtime }}
           ASTRO_RUNTIME: ${{ steps.astro.outputs.runtime }}
           AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
           VITE_RUNTIME: ${{ steps.vite.outputs.runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
+          PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
           VITE_TOOLCHAIN: ${{ steps.vite.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
@@ -234,7 +273,7 @@ jobs:
           else
             FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
-          DETECTED_PM="${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}"
+          DETECTED_PM="${PAGES_PM}${ASTRO_PM}${AUTOFIX_PM}${VITE_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
             echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
             echo "  Expected package manager: ${EXPECTED_PM}"
@@ -242,7 +281,7 @@ jobs:
             exit 1
           fi
 
-          DETECTED_RUNTIME="${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}"
+          DETECTED_RUNTIME="${PAGES_RUNTIME}${ASTRO_RUNTIME}${AUTOFIX_RUNTIME}${VITE_RUNTIME}"
           if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
             echo "Error: [${ACTION}] Runtime mismatch stage failed for fixture '${FIXTURE_PATH}'."
             echo "  Expected runtime: ${EXPECTED_RUNTIME}"
@@ -250,15 +289,16 @@ jobs:
             exit 1
           fi
 
-          if [[ "$ACTION" == "vite" ]]; then
+          if [[ "$ACTION" == "vite" || "$ACTION" == "pages" ]]; then
             EXPECTED_TOOLCHAIN="vite"
             if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
             fi
-            if [[ "$VITE_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
+            DETECTED_TOOLCHAIN="${PAGES_TOOLCHAIN}${VITE_TOOLCHAIN}"
+            if [[ "$DETECTED_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
               echo "Error: [${ACTION}] Toolchain mismatch stage failed for fixture '${FIXTURE_PATH}'."
               echo "  Expected toolchain: ${EXPECTED_TOOLCHAIN}"
-              echo "  Detected toolchain: ${VITE_TOOLCHAIN}"
+              echo "  Detected toolchain: ${DETECTED_TOOLCHAIN}"
               exit 1
             fi
           fi
@@ -295,6 +335,9 @@ jobs:
         if: always()
         run: |
           rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
+          if [ -d pages.bak ]; then
+            mv pages.bak pages
+          fi
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
           fi

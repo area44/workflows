@@ -1,36 +1,18 @@
 # area44/astro
 
+> **Deprecated:** This action is deprecated in favor of [`area44/workflows/pages`](../pages/README.md).
+
 Build and deploy your Astro site to GitHub Pages with ease.
 
 ## Usage
 
-Add the following workflow to your repository:
+Recommended migration:
 
 ```yaml
-name: GitHub Pages
-
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Build Astro site
-        uses: area44/workflows/astro@main
-        with:
-          # Optional: runtime: 'node@24'
-          # Optional: path: 'dist'
+- name: Build Astro site
+  uses: area44/workflows/pages@main
+  with:
+    path: "dist"
 ```
 
 ## Inputs

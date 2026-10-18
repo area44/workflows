@@ -4,9 +4,10 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 
 ## Composite Actions
 
-- **[Astro](./astro/README.md)** (`area44/workflows/astro@main`): Build and deploy Astro sites to GitHub Pages.
-- **[Vite](./vite/README.md)** (`area44/workflows/vite@main`): Build and deploy Vite and Vite+ sites to GitHub Pages with automatic toolchain detection.
+- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Unified action to build static sites and upload GitHub Pages artifacts with automatic environment setup and Vite+ detection.
 - **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically update code.
+- **[Astro (Deprecated)](./astro/README.md)** (`area44/workflows/astro@main`): Compatibility wrapper for `pages`.
+- **[Vite (Deprecated)](./vite/README.md)** (`area44/workflows/vite@main`): Compatibility wrapper for `pages`.
 
 ## Quick Usage
 
@@ -30,19 +31,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Build Vite site
-        uses: area44/workflows/vite@main
+      - name: Build site artifact
+        uses: area44/workflows/pages@main
         with:
           # Optional: runtime: 'node@24'
-          # Optional: toolchain: 'auto' (or 'vite', 'vite-plus')
           # Optional: path: 'dist'
+          # Optional: build-command: 'npm run build'
 ```
 
 ## Public Action API Summary
 
 Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status).
 
-### `astro` (Astro Site Build and Deploy)
+### `pages` (GitHub Pages Build and Upload)
 
 #### Inputs
 
@@ -51,27 +52,6 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `path`          | Directory where the built site is located                     | `dist`                        | Optional |
 | `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |                               | Optional |
 | `build-command` | Custom build command                                          | `<package-manager> run build` | Optional |
-
-#### Outputs
-
-| Name                      | Description                             |
-| ------------------------- | --------------------------------------- |
-| `node-version`            | The Node.js version used                |
-| `bun-version`             | The Bun version used                    |
-| `package-manager`         | The package manager used                |
-| `package-manager-version` | The version of the package manager used |
-| `runtime`                 | The runtime used (node or bun)          |
-
-### `vite` (Vite Site Build and Deploy)
-
-#### Inputs
-
-| Name            | Description                                                   | Default | Required |
-| --------------- | ------------------------------------------------------------- | ------- | -------- |
-| `path`          | Directory where the built site is located                     | `dist`  | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
-| `toolchain`     | Optional toolchain selection (auto, vite, or vite-plus)       | `auto`  | Optional |
-| `build-command` | Custom build command                                          |         | Optional |
 
 #### Outputs
 

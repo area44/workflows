@@ -1,5 +1,5 @@
 name: Build and Deploy Astro Site
-description: Optimized build and deployment for Astro projects on GitHub Pages
+description: "Optimized build and deployment for Astro projects on GitHub Pages (deprecated: use area44/workflows/pages instead)"
 inputs:
   path:
     description: "Directory where the built site is located"
@@ -70,7 +70,17 @@ runs:
         cache-dependency-path: |
           **/package-lock.json
 
+    - name: Setup Vite+
+      if: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
+      id: setup_vp
+      uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+      with:
+        node-version: ${{ steps.resolve_environment.outputs.node-version }}
+        cache: true
+        run-install: true
+
     - name: Install dependencies
+      if: ${{ steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -100,6 +110,7 @@ runs:
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
+        DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -107,6 +118,21 @@ runs:
           bun "$ACTION_PATH/../dist/build-command.mjs"
         else
           node "$ACTION_PATH/../dist/build-command.mjs"
+        fi
+
+    - name: Validate build output
+      shell: bash
+      env:
+        BUILD_PATH: ${{ inputs.path }}
+      run: |
+        OUTPUT_DIR="${BUILD_PATH:-dist}"
+        if [ ! -d "$OUTPUT_DIR" ]; then
+          echo "Error: Configured build output directory '$OUTPUT_DIR' does not exist." >&2
+          exit 1
+        fi
+        if [ -z "$(ls -A "$OUTPUT_DIR" 2>/dev/null)" ]; then
+          echo "Error: Configured build output directory '$OUTPUT_DIR' is empty." >&2
+          exit 1
         fi
 
     - name: Upload site artifact
