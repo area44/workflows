@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  getCombinationCompatibility,
-  validateFixtureForMatrixEntry,
-  validateMatrixEntry,
-  validateRuntimePackageManagerCompatibility,
-  validateWorkflowMatrix,
-} from "../src/compatibility";
 import { isWorkflowError, WorkflowError } from "../src/errors";
-import { parseEnvironmentInputs } from "../src/resolve-environment";
+import {
+  parseEnvironmentInputs,
+  validateRuntimePackageManagerCompatibility,
+} from "../src/resolve-environment";
 import { parseCommand } from "../src/build-command";
 
 describe("Error Contract Tests", () => {
@@ -105,32 +101,28 @@ describe("Error Contract Tests", () => {
   });
 
   describe("Category B: Unsupported runtime / package manager", () => {
-    it("should return unsupported status for unknown runtime name in getCombinationCompatibility", () => {
-      const result = getCombinationCompatibility("deno", "npm");
-      expect(result.status.supported).toBe(false);
-      expect(result.status.reason).toContain('Unsupported runtime "deno"');
-    });
-
-    it("should return unsupported status for unknown package manager name in getCombinationCompatibility", () => {
-      const result = getCombinationCompatibility("node", "yarn");
-      expect(result.status.supported).toBe(false);
-      expect(result.status.reason).toContain('Unsupported package manager "yarn"');
-    });
-
-    it("should throw UNSUPPORTED_RUNTIME_OR_PM in validateMatrixEntry for invalid runtime", () => {
+    it("should throw UNSUPPORTED_RUNTIME_OR_PM in validateRuntimePackageManagerCompatibility for invalid runtime", () => {
       try {
-        validateMatrixEntry({
-          action: "astro",
-          runtime: "deno",
-          pm: "npm",
-          type: "basic",
-        });
+        validateRuntimePackageManagerCompatibility("deno", "npm");
         expect.unreachable("Should have thrown error");
       } catch (err) {
         expect(isWorkflowError(err)).toBe(true);
         if (isWorkflowError(err)) {
           expect(err.code).toBe("UNSUPPORTED_RUNTIME_OR_PM");
-          expect(err.message).toContain("unsupported runtime");
+          expect(err.message).toContain('Unsupported runtime "deno"');
+        }
+      }
+    });
+
+    it("should throw UNSUPPORTED_RUNTIME_OR_PM in validateRuntimePackageManagerCompatibility for invalid package manager", () => {
+      try {
+        validateRuntimePackageManagerCompatibility("node", "yarn");
+        expect.unreachable("Should have thrown error");
+      } catch (err) {
+        expect(isWorkflowError(err)).toBe(true);
+        if (isWorkflowError(err)) {
+          expect(err.code).toBe("UNSUPPORTED_RUNTIME_OR_PM");
+          expect(err.message).toContain('Unsupported package manager "yarn"');
         }
       }
     });
@@ -149,68 +141,5 @@ describe("Error Contract Tests", () => {
         }
       }
     });
-
-    it("should report unsupported combination status for bun + npm without throwing in getCombinationCompatibility", () => {
-      const comp = getCombinationCompatibility("bun", "npm");
-      expect(combIsUnsupported(comp)).toBe(true);
-      expect(comp.status.reason).toContain("Bun runtime does not support npm package manager");
-    });
-
-    it("should throw UNSUPPORTED_COMBINATION in validateMatrixEntry for bun + npm", () => {
-      try {
-        validateMatrixEntry({
-          action: "astro",
-          runtime: "bun",
-          pm: "npm",
-          type: "basic",
-        });
-        expect.unreachable("Should have thrown error");
-      } catch (err) {
-        expect(isWorkflowError(err)).toBe(true);
-        if (isWorkflowError(err)) {
-          expect(err.code).toBe("UNSUPPORTED_COMBINATION");
-          expect(err.message).toContain("unsupported combination");
-        }
-      }
-    });
-  });
-
-  describe("Category D: Missing configuration / project metadata", () => {
-    it("should throw MISSING_CONFIGURATION when validating a non-existent fixture path", () => {
-      try {
-        validateFixtureForMatrixEntry({
-          action: "astro",
-          runtime: "node",
-          pm: "npm",
-          type: "basic",
-        }, "/non/existent/path");
-        expect.unreachable("Should have thrown error");
-      } catch (err) {
-        expect(isWorkflowError(err)).toBe(true);
-        if (isWorkflowError(err)) {
-          expect(err.code).toBe("MISSING_CONFIGURATION");
-          expect(err.message).toContain("Missing fixture directory");
-        }
-      }
-    });
-  });
-
-  describe("Category E & F: Workflow Matrix validation", () => {
-    it("should throw INVALID_INPUT when matrix entries parameter is not an array", () => {
-      try {
-        validateWorkflowMatrix("not-an-array" as any);
-        expect.unreachable("Should have thrown error");
-      } catch (err) {
-        expect(isWorkflowError(err)).toBe(true);
-        if (isWorkflowError(err)) {
-          expect(err.code).toBe("INVALID_INPUT");
-          expect(err.message).toContain("Workflow matrix entries must be an array");
-        }
-      }
-    });
   });
 });
-
-function combIsUnsupported(comp: { status: { supported: boolean } }): boolean {
-  return !comp.status.supported;
-}

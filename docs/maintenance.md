@@ -6,21 +6,19 @@ This document outlines the maintenance policies, repository invariants, sources 
 
 The `@area44/workflows` repository enforces machine-verifiable operational invariants:
 
-- **Single Source of Truth**: Metadata, compatibility models, API contracts, and version declarations originate from single designated canonical source files.
+- **Single Source of Truth**: Metadata, API contracts, and version declarations originate from single designated canonical source files.
 - **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files.
 - **Reproducible Artifacts**: Code in `dist/` is generated deterministically from `src/` via `npm run build` and verified for zero drift.
-- **Machine-Verifiable Compatibility**: Compatibility between runtimes and package managers is governed by a canonical compatibility matrix and verified across CI matrix runs and test fixtures.
 
 ## Sources of Truth
 
 To avoid duplication and configuration drift, specific files serve as authoritative sources of truth:
 
-| Domain              | Authoritative Source of Truth File                                                    |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| Package Versioning  | `package.json` (`version` property)                                                   |
-| Public Action APIs  | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `autofix/action.yml`) |
-| Compatibility Model | `src/compatibility.ts` (`CANONICAL_COMPATIBILITY_MODEL`)                              |
-| Build Pack Entries  | `vite.config.ts` (`pack` configuration array)                                         |
+| Domain             | Authoritative Source of Truth File                                                    |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| Package Versioning | `package.json` (`version` property)                                                   |
+| Public Action APIs | Per-action `action.yml` (`astro/action.yml`, `vite/action.yml`, `autofix/action.yml`) |
+| Build Pack Entries | `vite.config.ts` (`pack` configuration array)                                         |
 
 ## Public Action Structure
 
@@ -43,7 +41,14 @@ dist/
 
 ### Generated Files
 
-The following generated files are produced from source code. Build artifacts must never be edited directly. Modifications must be made in `src/`, followed by re-running `npm run build` to update `dist/`.
+The following generated files are produced from source code and checked into git:
+
+- `dist/resolve-environment.mjs` (generated from `src/resolve-environment.ts` and imports)
+- `dist/autofix.mjs` (generated from `src/autofix.ts`)
+- `dist/site-variables.mjs` (generated from `src/site-variables.ts`)
+- `dist/build-command.mjs` (generated from `src/build-command.ts`)
+
+Build artifacts must never be edited directly. Modifications must be made in `src/`, followed by re-running `npm run build` to update `dist/`.
 
 ## Quality Gates and Test Commands
 
@@ -63,7 +68,7 @@ This repository uses `@changesets/cli` to automate package versioning, changelog
 
 1. **Creating Changesets**: Every PR making code changes must include a changeset file (`.changeset/*.md`) added via `npx changeset`.
 2. **Version PR**: When PRs are merged into `main`, GitHub Actions triggers Changesets to automatically open or update a Version PR.
-3. **Tagging and Release**: Merging the Version PR executes `changeset git-tag`, creating release git tags (e.g. `v8.0.0`) and GitHub Releases. No publication to npm occurs as the workspace is private.
+3. **Tagging and Release**: Merging the Version PR executes `changeset git-tag`, creating release git tags (e.g. `v8.0.1`) and GitHub Releases. No publication to npm occurs as the workspace is private.
 
 ## Pre-Merge & Pre-Release Checklist
 
@@ -79,10 +84,9 @@ Before merging pull requests or cutting a new release, maintainers must complete
 
 When making modifications, maintainers must update corresponding configuration, documentation, or version numbers based on the change type:
 
-| Change Type                              | Required Action / Updates                                                                                        |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                            |
-| **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`.           |
-| **Compatibility Matrix Expansion**       | Minor version bump in `package.json`. Update `src/compatibility.ts`, `docs/compatibility.md`, and test fixtures. |
-| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml`, `README.md`.                                          |
-| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                                 |
+| Change Type                              | Required Action / Updates                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Bug Fix / Internal Refactoring**       | Patch version bump in `package.json` and `package-lock.json`. Re-run `npm run build`.                  |
+| **New Action Input / Output (Optional)** | Minor version bump in `package.json`. Update action's `action.yml`, `README.md`, and root `README.md`. |
+| **Breaking Action API Change**           | Major version bump in `package.json`. Update `action.yml` and `README.md`.                             |
+| **Documentation / Comments**             | Patch version bump or no version change if purely documentation.                                       |

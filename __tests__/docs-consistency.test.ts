@@ -2,207 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  CANONICAL_COMPATIBILITY_MODEL,
-  CanonicalCompatibilityModel,
-  DEFAULT_BUN_VERSION,
-  DEFAULT_NODE_VERSION,
-  DEFAULT_NPM_VERSION,
-  DEFAULT_PNPM_VERSION,
-} from "../src/resolve-environment";
-
-export interface DocumentedMatrixEntry {
-  runtime: string;
-  packageManager: string;
-  supported: boolean;
-  isDefault?: boolean;
-  reason?: string;
-}
-
-interface MatrixHeaderIndices {
-  runtimeIdx: number;
-  pmIdx: number;
-  statusIdx: number;
-  defaultIdx: number;
-  reasonIdx: number;
-}
-
-function parseMatrixHeaderIndices(headers: string[]): MatrixHeaderIndices {
-  return {
-    runtimeIdx: headers.findIndex((h) => h.includes("runtime")),
-    pmIdx: headers.findIndex((h) => h.includes("package manager") || h === "pm"),
-    statusIdx: headers.findIndex((h) => h.includes("status") || h.includes("astro") || h.includes("vite")),
-    defaultIdx: headers.findIndex((h) => h.includes("default")),
-    reasonIdx: headers.findIndex((h) => h.includes("reason") || h.includes("notes") || h.includes("coverage")),
-  };
-}
-
-function parseMatrixTableRow(
-  cells: string[],
-  indices: MatrixHeaderIndices,
-): DocumentedMatrixEntry | null {
-  const { runtimeIdx, pmIdx, statusIdx, defaultIdx, reasonIdx } = indices;
-  if (runtimeIdx === -1 || pmIdx === -1) {
-    return null;
-  }
-
-  const runtime = cells[runtimeIdx]?.replace(/`/g, "").trim().toLowerCase();
-  const packageManager = cells[pmIdx]?.replace(/`/g, "").trim().toLowerCase();
-  if (!runtime || !packageManager) {
-    return null;
-  }
-
-  const rawStatus = statusIdx !== -1 ? cells[statusIdx] : "";
-  const supported = !/unsupported|not supported/i.test(rawStatus) && /supported/i.test(rawStatus);
-
-  const rawDefault = defaultIdx !== -1 ? cells[defaultIdx] : "";
-  const isDefault = /yes|true|default/i.test(rawDefault);
-
-  const reason = reasonIdx !== -1 ? cells[reasonIdx] : undefined;
-
-  return {
-    runtime,
-    packageManager,
-    supported,
-    isDefault,
-    reason: reason || undefined,
-  };
-}
-
-function parseMatrixBulletLine(line: string): DocumentedMatrixEntry | null {
-  const bulletMatch = line.match(/^[-*]\s*`([^`]+)`\s*\+\s*`([^`]+)`\s*\(([^)]+)\)/);
-  if (!bulletMatch) {
-    return null;
-  }
-
-  const runtime = bulletMatch[1].trim().toLowerCase();
-  const packageManager = bulletMatch[2].trim().toLowerCase();
-  const details = bulletMatch[3].trim().toLowerCase();
-
-  const supported = details.includes("supported") && !details.includes("unsupported");
-  const isDefault = details.includes("default");
-  const reasonColon = bulletMatch[3].indexOf(":");
-  const reason = reasonColon !== -1 ? bulletMatch[3].slice(reasonColon + 1).trim() : undefined;
-
-  return {
-    runtime,
-    packageManager,
-    supported,
-    isDefault,
-    reason,
-  };
-}
-
-export function parseDocumentedCompatibilityMatrix(markdownContent: string): DocumentedMatrixEntry[] {
-  const entries: DocumentedMatrixEntry[] = [];
-  const lines = markdownContent.split("\n");
-
-  let inMatrixTable = false;
-  let indices: MatrixHeaderIndices = {
-    runtimeIdx: -1,
-    pmIdx: -1,
-    statusIdx: -1,
-    defaultIdx: -1,
-    reasonIdx: -1,
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-      const cells = trimmed.split("|").map((c) => c.trim()).slice(1, -1);
-      if (!inMatrixTable) {
-        const cleaned = cells.map((c) => c.replace(/`/g, "").trim().toLowerCase());
-        const hasRuntimeHeader = cleaned.some((c) => /^runtime(?:\s*\(runtime\))?$/i.test(c));
-        const hasPmHeader = cleaned.some((c) => /^package manager(?:\s*\(pm\))?$/i.test(c) || /^pm$/i.test(c));
-        if (hasRuntimeHeader && hasPmHeader) {
-          inMatrixTable = true;
-          indices = parseMatrixHeaderIndices(cleaned);
-          continue;
-        }
-      } else {
-        if (cells.every((c) => /^:?-+:?$/.test(c))) {
-          continue;
-        }
-        const entry = parseMatrixTableRow(cells, indices);
-        if (entry) {
-          entries.push(entry);
-        }
-      }
-    } else {
-      inMatrixTable = false;
-    }
-
-    const bulletEntry = parseMatrixBulletLine(trimmed);
-    if (bulletEntry) {
-      entries.push(bulletEntry);
-    }
-  }
-
-  return entries;
-}
-
-export function validateDocumentedCompatibility(
-  markdownContent: string,
-  model: CanonicalCompatibilityModel = CANONICAL_COMPATIBILITY_MODEL,
-): void {
-  const entries = parseDocumentedCompatibilityMatrix(markdownContent);
-  if (entries.length === 0) {
-    throw new Error("No compatibility matrix entries found in documentation.");
-  }
-
-  for (const canonical of model.combinations) {
-    const matched = entries.find(
-      (e) => e.runtime === canonical.runtime && e.packageManager === canonical.packageManager,
-    );
-    if (!matched) {
-      throw new Error(
-        `Documentation is missing matrix entry for combination (${canonical.runtime}, ${canonical.packageManager}).`,
-      );
-    }
-
-    if (matched.supported !== canonical.supported) {
-      throw new Error(
-        `Documented compatibility mismatch for combination (${canonical.runtime}, ${canonical.packageManager}): expected supported=${canonical.supported}, but documentation states supported=${matched.supported}.`,
-      );
-    }
-
-    const expectedDefault = Boolean(canonical.isDefault);
-    const documentedDefault = Boolean(matched.isDefault);
-    if (documentedDefault !== expectedDefault) {
-      throw new Error(
-        `Documented default mismatch for combination (${canonical.runtime}, ${canonical.packageManager}): expected default=${expectedDefault}, but documentation states default=${documentedDefault}.`,
-      );
-    }
-
-    if (!canonical.supported && canonical.reason && matched.reason) {
-      const normalizedReason = matched.reason.toLowerCase();
-      if (
-        !normalizedReason.includes("not supported") &&
-        !normalizedReason.includes("unsupported") &&
-        !normalizedReason.includes("requires bun or pnpm")
-      ) {
-        throw new Error(
-          `Documented reason mismatch for unsupported combination (${canonical.runtime}, ${canonical.packageManager}): expected reason to describe unsupported status, but documentation states "${matched.reason}".`,
-        );
-      }
-    }
-  }
-
-  for (const entry of entries) {
-    const isKnownRuntime = model.runtimes.includes(entry.runtime as any);
-    const isKnownPm = model.packageManagers.includes(entry.packageManager as any);
-    if (!isKnownRuntime || !isKnownPm) {
-      throw new Error(
-        `Documentation contains unknown matrix entry (${entry.runtime}, ${entry.packageManager}) not defined in canonical compatibility model.`,
-      );
-    }
-  }
-}
-
 describe("Documentation Consistency Verification", () => {
   const rootDir = path.resolve(process.cwd());
   const readmeContent = fs.readFileSync(path.join(rootDir, "README.md"), "utf8");
-  const compatibilityContent = fs.readFileSync(path.join(rootDir, "COMPATIBILITY.md"), "utf8");
   const docsDir = path.join(rootDir, "docs");
 
   describe("Documentation Architecture & Navigation", () => {
@@ -211,13 +13,10 @@ describe("Documentation Consistency Verification", () => {
       expect(readmeContent).toContain("Composite Actions");
       expect(readmeContent).toContain("Quick Usage");
       expect(readmeContent).toContain("Public Action API Summary");
-      expect(readmeContent).toContain("Compatibility Overview");
       expect(readmeContent).toContain("Documentation Architecture");
     });
 
-    it("README.md should link to COMPATIBILITY.md and all specialized docs files", () => {
-      expect(readmeContent).toContain("./COMPATIBILITY.md");
-      expect(readmeContent).toContain("./docs/compatibility.md");
+    it("README.md should link to all specialized docs files", () => {
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
       expect(readmeContent).toContain("./docs/maintenance.md");
@@ -225,7 +24,6 @@ describe("Documentation Consistency Verification", () => {
 
     it("all documentation files in docs/ should exist", () => {
       const expectedFiles = [
-        "compatibility.md",
         "errors.md",
         "security.md",
         "maintenance.md",
@@ -238,7 +36,6 @@ describe("Documentation Consistency Verification", () => {
     it("documentation section headings across all markdown files should not use numerical prefixes", () => {
       const docFiles = [
         path.join(rootDir, "README.md"),
-        path.join(rootDir, "COMPATIBILITY.md"),
         path.join(rootDir, "astro/README.md"),
         path.join(rootDir, "vite/README.md"),
         path.join(rootDir, "autofix/README.md"),
@@ -253,25 +50,61 @@ describe("Documentation Consistency Verification", () => {
     });
   });
 
-  describe("Semantic Compatibility Documentation Consistency", () => {
-    const docCompatContent = fs.readFileSync(path.join(docsDir, "compatibility.md"), "utf8");
+  describe("Composite Action Public Interfaces", () => {
+    const actions = [
+      {
+        name: "astro",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+      {
+        name: "vite",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+      {
+        name: "autofix",
+        expectedInputs: ["runtime"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+        ],
+      },
+    ];
 
-    it("COMPATIBILITY.md and docs/compatibility.md should semantically match CANONICAL_COMPATIBILITY_MODEL", () => {
-      validateDocumentedCompatibility(compatibilityContent, CANONICAL_COMPATIBILITY_MODEL);
-      validateDocumentedCompatibility(docCompatContent, CANONICAL_COMPATIBILITY_MODEL);
-    });
+    it.each(actions)(
+      "action '$name' should retain all expected public inputs and outputs",
+      ({ name, expectedInputs, expectedOutputs }) => {
+        const actionYml = fs.readFileSync(path.join(rootDir, name, "action.yml"), "utf8");
 
-    it("should accurately document canonical default versions", () => {
-      expect(docCompatContent).toContain(DEFAULT_NODE_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_BUN_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_NPM_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_PNPM_VERSION);
+        for (const inputKey of expectedInputs) {
+          expect(actionYml).toMatch(new RegExp(`inputs:\\s*[\\s\\S]*?\\b${inputKey}:`));
+        }
 
-      expect(compatibilityContent).toContain(DEFAULT_NODE_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_BUN_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_NPM_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_PNPM_VERSION);
-    });
+        for (const outputKey of expectedOutputs) {
+          expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
+        }
+
+        expect(actionYml).toMatch(
+          /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+        );
+      },
+    );
   });
 
   describe("Error & Security Documentation Consistency", () => {
@@ -294,111 +127,6 @@ describe("Documentation Consistency Verification", () => {
       const docSecurityContent = fs.readFileSync(path.join(docsDir, "security.md"), "utf8");
       expect(docSecurityContent).toContain("sanitizeCommandString");
       expect(docSecurityContent.toLowerCase()).toContain("subshell");
-    });
-  });
-
-  describe("Negative Regression Verification (Fails on Contradictory Documentation)", () => {
-    describe("Compatibility Validation Regressions", () => {
-      it("should fail when a supported combination is documented as unsupported", () => {
-        const badDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Unsupported | Yes |
-| \`node\` | \`pnpm\` | Supported | No |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Unsupported | No |
-`;
-        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
-          /expected supported=true, but documentation states supported=false/,
-        );
-      });
-
-      it("should fail when an unsupported combination (bun + npm) is documented as supported", () => {
-        const badDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Supported | Yes |
-| \`node\` | \`pnpm\` | Supported | No |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Supported | No |
-`;
-        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
-          /expected supported=false, but documentation states supported=true/,
-        );
-      });
-
-      it("should fail when default combination is documented without default status", () => {
-        const badDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Supported | No |
-| \`node\` | \`pnpm\` | Supported | No |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Unsupported | No |
-`;
-        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
-          /expected default=true, but documentation states default=false/,
-        );
-      });
-
-      it("should fail when a non-default combination (node + pnpm) is documented as default", () => {
-        const badDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Supported | Yes |
-| \`node\` | \`pnpm\` | Supported | Yes |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Unsupported | No |
-`;
-        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
-          /expected default=false, but documentation states default=true/,
-        );
-      });
-
-      it("should fail when documentation contains unknown/extra matrix combination", () => {
-        const badDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Supported | Yes |
-| \`node\` | \`pnpm\` | Supported | No |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Unsupported | No |
-| \`deno\` | \`npm\` | Supported | No |
-`;
-        expect(() => validateDocumentedCompatibility(badDoc)).toThrow(
-          /Documentation contains unknown matrix entry \(deno, npm\)/,
-        );
-      });
-
-      it("should fail when canonical compatibility model changes and documentation drifts", () => {
-        const driftedModel: CanonicalCompatibilityModel = {
-          ...CANONICAL_COMPATIBILITY_MODEL,
-          combinations: CANONICAL_COMPATIBILITY_MODEL.combinations.map((c) =>
-            c.runtime === "bun" && c.packageManager === "npm"
-              ? { ...c, supported: true }
-              : c,
-          ),
-        };
-
-        const currentValidDoc = `
-| Runtime | Package Manager | Status | Default |
-| \`node\` | \`npm\` | Supported | Yes |
-| \`node\` | \`pnpm\` | Supported | No |
-| \`node\` | \`bun\` | Supported | No |
-| \`bun\` | \`bun\` | Supported | No |
-| \`bun\` | \`pnpm\` | Supported | No |
-| \`bun\` | \`npm\` | Unsupported | No |
-`;
-
-        expect(() => validateDocumentedCompatibility(currentValidDoc, driftedModel)).toThrow(
-          /expected supported=true, but documentation states supported=false/,
-        );
-      });
     });
   });
 });

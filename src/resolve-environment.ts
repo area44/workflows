@@ -2,7 +2,6 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { isSupportedRuntime, validateRuntimePackageManagerCompatibility } from "./compatibility.js";
 import { WorkflowError } from "./errors.js";
 import {
   DEFAULT_BUN_VERSION,
@@ -12,15 +11,49 @@ import {
   getDefaultJsPackageManagerVersion,
   hasVitePlusDependency,
   inspectJsProjectEnvironment,
+  isSupportedPackageManager,
   resolveJsPackageManager,
   resolveToolchain,
   type JsProjectEnvironment,
+  type SupportedPackageManager,
   type Toolchain,
   type ToolchainInput,
 } from "./javascript-env.js";
 
-export type { Toolchain, ToolchainInput };
-export { hasVitePlusDependency, resolveToolchain };
+export type SupportedRuntime = "node" | "bun";
+export type { SupportedPackageManager, Toolchain, ToolchainInput };
+export { hasVitePlusDependency, isSupportedPackageManager, resolveToolchain };
+
+export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
+  return runtime === "node" || runtime === "bun";
+}
+
+export function validateRuntimePackageManagerCompatibility(runtime: string, pmName: string): void {
+  if (!isSupportedRuntime(runtime)) {
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `Unsupported runtime "${runtime}". Supported runtimes are: node, bun.`,
+      { resource: "runtime", value: runtime },
+    );
+  }
+
+  if (!isSupportedPackageManager(pmName)) {
+    throw new WorkflowError(
+      "UNSUPPORTED_RUNTIME_OR_PM",
+      `Unsupported package manager "${pmName}". Supported package managers are: npm, pnpm, bun.`,
+      { resource: "packageManager", value: pmName },
+    );
+  }
+
+  if (runtime === "bun" && pmName === "npm") {
+    throw new WorkflowError(
+      "UNSUPPORTED_COMBINATION",
+      `Unsupported runtime and package manager combination: Bun runtime does not support npm package manager. Bun runtime requires Bun or pnpm package manager.`,
+      { resource: "compatibility", runtime, packageManager: pmName },
+    );
+  }
+}
+
 import {
   detectPythonPackageManager,
   hasPythonSource,
@@ -46,37 +79,6 @@ export {
   setupNode,
   setupPackageManager,
 } from "./setup-adapters.js";
-
-export type {
-  CanonicalCompatibilityModel,
-  CompatibilityStatus,
-  MatrixCombinationEntry,
-  MatrixEntry,
-  RuntimePackageManagerCompatibility,
-  SupportedAction,
-  SupportedFixtureType,
-  SupportedPackageManager,
-  SupportedRuntime,
-} from "./compatibility.js";
-export {
-  CANONICAL_COMPATIBILITY_MODEL,
-  getCombinationCompatibility,
-  getFixturePath,
-  getOrphanFixturePaths,
-  isSupportedAction,
-  isSupportedFixtureType,
-  isSupportedPackageManager,
-  isSupportedRuntime,
-  SUPPORTED_ACTIONS,
-  SUPPORTED_FIXTURE_TYPES,
-  SUPPORTED_PACKAGE_MANAGERS,
-  SUPPORTED_RUNTIMES,
-  validateFixtureForMatrixEntry,
-  validateMatrixEntry,
-  validateNoUnusedFixtures,
-  validateRuntimePackageManagerCompatibility,
-  validateWorkflowMatrix,
-} from "./compatibility.js";
 
 export { isExecutableAvailable } from "./process-utils.js";
 export type { PythonPackageManager, PythonPackageManagerInfo };

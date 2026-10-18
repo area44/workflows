@@ -41,10 +41,6 @@ jobs:
           # Optional: path: 'dist'
 ```
 
-## Compatibility
-
-See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.md)** for supported toolchain versions, package managers, and matrix coverage.
-
 ## Inputs
 
 | Name            | Description                                                   | Default | Required |
