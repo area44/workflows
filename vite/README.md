@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build Vite site
         uses: area44/workflows/vite@main
@@ -40,10 +40,6 @@ jobs:
           # Optional: toolchain: 'auto' (or 'vite', 'vite-plus')
           # Optional: path: 'dist'
 ```
-
-## Compatibility
-
-See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.md)** for supported toolchain versions, package managers, and matrix coverage.
 
 ## Inputs
 

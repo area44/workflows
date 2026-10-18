@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build Astro site
         uses: area44/workflows/astro@main
@@ -32,10 +32,6 @@ jobs:
           # Optional: runtime: 'node@24'
           # Optional: path: 'dist'
 ```
-
-## Compatibility
-
-See the repository **[Compatibility Contract & Release Policy](../COMPATIBILITY.md)** for supported toolchain versions, package managers, and matrix coverage.
 
 ## Inputs
 

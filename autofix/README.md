@@ -16,9 +16,9 @@ Automatically update code with [autofix.ci](https://autofix.ci/).
 name: autofix.ci
 
 on:
-  pull_request:
   push:
     branches: ["main"]
+  pull_request:
 
 permissions:
   contents: read

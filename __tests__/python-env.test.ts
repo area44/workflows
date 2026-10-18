@@ -116,6 +116,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
     });
+
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {
