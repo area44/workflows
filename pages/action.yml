@@ -130,13 +130,15 @@ runs:
       shell: bash
       env:
         BUILD_PATH: ${{ inputs.path }}
-        RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
-        ACTION_PATH: ${{ github.action_path }}
       run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/build-command.mjs" --validate-only
-        else
-          node "$ACTION_PATH/../dist/build-command.mjs" --validate-only
+        OUTPUT_DIR="${BUILD_PATH:-dist}"
+        if [ ! -d "$OUTPUT_DIR" ]; then
+          echo "Error: Configured build output directory '$OUTPUT_DIR' does not exist." >&2
+          exit 1
+        fi
+        if [ -z "$(ls -A "$OUTPUT_DIR" 2>/dev/null)" ]; then
+          echo "Error: Configured build output directory '$OUTPUT_DIR' is empty." >&2
+          exit 1
         fi
 
     - name: Upload site artifact
