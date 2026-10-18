@@ -107,22 +107,10 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `python-package-manager`  | The Python package manager detected (uv or pip)                       |
 | `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
-## Compatibility Overview
-
-Environment resolution (`src/resolve-environment.ts`) automatically discovers workspace configuration or falls back to canonical default versions:
-
-- **Supported Runtimes**: `node`, `bun`
-- **Supported Package Managers**: `npm`, `pnpm`, `bun`
-- **Canonical Default Versions**: Node.js 24, Bun 1.4, npm 12, pnpm 12
-- **Supported Combinations**: Node+npm (default), Node+pnpm, Node+bun, Bun+bun, Bun+pnpm. (Bun+npm is explicitly unsupported).
-
-For complete toolchain guarantees and combination matrices, see the **[Detailed Toolchain Matrix](./docs/compatibility.md)**.
-
 ## Documentation Architecture
 
 Specialized documentation guides explain specific contracts and operational guarantees:
 
-- **[Detailed Toolchain Matrix](./docs/compatibility.md)**: Toolchain baselines, compatibility matrix, and setup adapters.
 - **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
 - **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
 - **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, release process, and pre-merge checklist.

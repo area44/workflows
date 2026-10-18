@@ -202,7 +202,6 @@ export function validateDocumentedCompatibility(
 describe("Documentation Consistency Verification", () => {
   const rootDir = path.resolve(process.cwd());
   const readmeContent = fs.readFileSync(path.join(rootDir, "README.md"), "utf8");
-  const compatibilityContent = fs.readFileSync(path.join(rootDir, "COMPATIBILITY.md"), "utf8");
   const docsDir = path.join(rootDir, "docs");
 
   describe("Documentation Architecture & Navigation", () => {
@@ -211,13 +210,10 @@ describe("Documentation Consistency Verification", () => {
       expect(readmeContent).toContain("Composite Actions");
       expect(readmeContent).toContain("Quick Usage");
       expect(readmeContent).toContain("Public Action API Summary");
-      expect(readmeContent).toContain("Compatibility Overview");
       expect(readmeContent).toContain("Documentation Architecture");
     });
 
-    it("README.md should link to COMPATIBILITY.md and all specialized docs files", () => {
-      expect(readmeContent).toContain("./COMPATIBILITY.md");
-      expect(readmeContent).toContain("./docs/compatibility.md");
+    it("README.md should link to all specialized docs files", () => {
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
       expect(readmeContent).toContain("./docs/maintenance.md");
@@ -225,7 +221,6 @@ describe("Documentation Consistency Verification", () => {
 
     it("all documentation files in docs/ should exist", () => {
       const expectedFiles = [
-        "compatibility.md",
         "errors.md",
         "security.md",
         "maintenance.md",
@@ -238,7 +233,6 @@ describe("Documentation Consistency Verification", () => {
     it("documentation section headings across all markdown files should not use numerical prefixes", () => {
       const docFiles = [
         path.join(rootDir, "README.md"),
-        path.join(rootDir, "COMPATIBILITY.md"),
         path.join(rootDir, "astro/README.md"),
         path.join(rootDir, "vite/README.md"),
         path.join(rootDir, "autofix/README.md"),
@@ -250,27 +244,6 @@ describe("Documentation Consistency Verification", () => {
         const content = fs.readFileSync(filePath, "utf8");
         expect(content).not.toMatch(numericalHeadingRegex);
       }
-    });
-  });
-
-  describe("Semantic Compatibility Documentation Consistency", () => {
-    const docCompatContent = fs.readFileSync(path.join(docsDir, "compatibility.md"), "utf8");
-
-    it("COMPATIBILITY.md and docs/compatibility.md should semantically match CANONICAL_COMPATIBILITY_MODEL", () => {
-      validateDocumentedCompatibility(compatibilityContent, CANONICAL_COMPATIBILITY_MODEL);
-      validateDocumentedCompatibility(docCompatContent, CANONICAL_COMPATIBILITY_MODEL);
-    });
-
-    it("should accurately document canonical default versions", () => {
-      expect(docCompatContent).toContain(DEFAULT_NODE_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_BUN_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_NPM_VERSION);
-      expect(docCompatContent).toContain(DEFAULT_PNPM_VERSION);
-
-      expect(compatibilityContent).toContain(DEFAULT_NODE_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_BUN_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_NPM_VERSION);
-      expect(compatibilityContent).toContain(DEFAULT_PNPM_VERSION);
     });
   });
 

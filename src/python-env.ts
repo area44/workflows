@@ -102,13 +102,20 @@ function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
 
 /**
  * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
+ * pyproject.toml, runtime.txt), process.env.PYTHON_DEFAULT environment variable, or
+ * falls back to DEFAULT_PYTHON_VERSION.
  */
 export function resolvePythonVersion(cwd: string = process.cwd()): string {
+  const envDefaultRaw = process.env.PYTHON_DEFAULT;
+  const envDefaultParsed = envDefaultRaw
+    ? parsePythonVersionFromConstraint(envDefaultRaw)
+    : undefined;
+
   return (
     readPythonVersionFile(cwd) ||
     readPyprojectPythonVersion(cwd) ||
     readRuntimeTxtPythonVersion(cwd) ||
+    envDefaultParsed ||
     DEFAULT_PYTHON_VERSION
   );
 }

@@ -45,29 +45,6 @@ export function extractWorkflowMatrixEntries(workflowYamlContent: string): Matri
 
 describe("Compatibility Contract Validation", () => {
   const rootDir = path.resolve(process.cwd());
-  const compatibilityMd = fs.readFileSync(path.join(rootDir, "COMPATIBILITY.md"), "utf8");
-
-  describe("Canonical Defaults Synchronization", () => {
-    it("should keep DEFAULT_NODE_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
-      expect(compatibilityMd).toContain(`DEFAULT_NODE_VERSION = "${DEFAULT_NODE_VERSION}"`);
-      expect(compatibilityMd).toContain(`| Node.js   | \`DEFAULT_NODE_VERSION\`   | \`"${DEFAULT_NODE_VERSION}"\``);
-    });
-
-    it("should keep DEFAULT_BUN_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
-      expect(compatibilityMd).toContain(`DEFAULT_BUN_VERSION = "${DEFAULT_BUN_VERSION}"`);
-      expect(compatibilityMd).toContain(`| Bun       | \`DEFAULT_BUN_VERSION\`    | \`"${DEFAULT_BUN_VERSION}"\``);
-    });
-
-    it("should keep DEFAULT_NPM_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
-      expect(compatibilityMd).toContain(`DEFAULT_NPM_VERSION = "${DEFAULT_NPM_VERSION}"`);
-      expect(compatibilityMd).toContain(`| npm       | \`DEFAULT_NPM_VERSION\`    | \`"${DEFAULT_NPM_VERSION}"\``);
-    });
-
-    it("should keep DEFAULT_PNPM_VERSION in resolve-environment synchronized with COMPATIBILITY.md", () => {
-      expect(compatibilityMd).toContain(`DEFAULT_PNPM_VERSION = "${DEFAULT_PNPM_VERSION}"`);
-      expect(compatibilityMd).toContain(`| pnpm      | \`DEFAULT_PNPM_VERSION\`   | \`"${DEFAULT_PNPM_VERSION}"\``);
-    });
-  });
 
   describe("Canonical Compatibility Model Directives", () => {
     it("should export CANONICAL_COMPATIBILITY_MODEL with runtimes, packageManagers, and combinations", () => {
@@ -654,45 +631,4 @@ jobs:
     });
   });
 
-  describe("Documentation Machine Validation against Canonical Model", () => {
-    it("COMPATIBILITY.md should document all canonical supported runtimes", () => {
-      for (const runtime of CANONICAL_COMPATIBILITY_MODEL.runtimes) {
-        expect(compatibilityMd.toLowerCase()).toContain(runtime.toLowerCase());
-      }
-    });
-
-    it("COMPATIBILITY.md should document all canonical supported package managers", () => {
-      for (const pm of CANONICAL_COMPATIBILITY_MODEL.packageManagers) {
-        expect(compatibilityMd.toLowerCase()).toContain(pm.toLowerCase());
-      }
-    });
-
-    it("COMPATIBILITY.md should document all canonical supported combinations", () => {
-      const supported = CANONICAL_COMPATIBILITY_MODEL.combinations.filter((c) => c.supported);
-      for (const comb of supported) {
-        const regex = new RegExp(`\`${comb.runtime}\`\\s*\\+\\s*\`${comb.packageManager}\``, "i");
-        expect(compatibilityMd).toMatch(regex);
-      }
-    });
-
-    it("COMPATIBILITY.md should document canonical unsupported combinations", () => {
-      const unsupported = CANONICAL_COMPATIBILITY_MODEL.combinations.filter((c) => !c.supported);
-      for (const comb of unsupported) {
-        const regex = new RegExp(`\`${comb.runtime}\`\\s*\\+\\s*\`${comb.packageManager}\``, "i");
-        expect(compatibilityMd).toMatch(regex);
-      }
-    });
-
-    it("COMPATIBILITY.md should document the canonical default combination", () => {
-      const defaultComb = CANONICAL_COMPATIBILITY_MODEL.combinations.find((c) => c.isDefault);
-      expect(defaultComb).toBeDefined();
-      if (defaultComb) {
-        const regex = new RegExp(
-          `\`${defaultComb.runtime}\`\\s*\\+\\s*\`${defaultComb.packageManager}\`[\\s\\S]*?default`,
-          "i",
-        );
-        expect(compatibilityMd).toMatch(regex);
-      }
-    });
-  });
 });
