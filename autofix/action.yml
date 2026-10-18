@@ -37,7 +37,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Resolve environments
+    - name: Resolve environment
       shell: bash
       id: resolve_environment
       env:
