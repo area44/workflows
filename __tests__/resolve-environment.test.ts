@@ -1511,4 +1511,38 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
     });
   });
+
+  describe("toolchain resolution inputs", () => {
+    it("should resolve toolchain to 'vite-plus' when toolchainInput is 'vite-plus'", () => {
+      const fixturePath = path.join(fixturesDir, "astro/node/npm/basic");
+      process.chdir(fixturePath);
+
+      const resolved = resolveEnvironment("node", "vite-plus");
+      expect(resolved.toolchain).toBe("vite-plus");
+    });
+
+    it("should resolve toolchain to 'vite' when toolchainInput is 'vite'", () => {
+      const fixturePath = path.join(fixturesDir, "vite-plus/node/pnpm/minimal");
+      process.chdir(fixturePath);
+
+      const resolved = resolveEnvironment("node", "vite");
+      expect(resolved.toolchain).toBe("vite");
+    });
+
+    it("should auto-detect toolchain when toolchainInput is 'auto' or empty", () => {
+      const vpFixture = path.join(fixturesDir, "vite-plus/node/pnpm/minimal");
+      process.chdir(vpFixture);
+      const resolvedVp = resolveEnvironment("node", "auto");
+      expect(resolvedVp.toolchain).toBe("vite-plus");
+
+      const stdFixture = path.join(fixturesDir, "astro/node/npm/basic");
+      process.chdir(stdFixture);
+      const resolvedStd = resolveEnvironment("node", "");
+      expect(resolvedStd.toolchain).toBe("vite");
+    });
+
+    it("should throw INVALID_INPUT when toolchainInput is unsupported", () => {
+      expect(() => resolveEnvironment("node", "invalid-toolchain")).toThrow();
+    });
+  });
 });

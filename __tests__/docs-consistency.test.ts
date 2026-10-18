@@ -65,7 +65,6 @@ describe("Documentation Consistency Verification", () => {
           "toolchain",
           "vp-version",
         ],
-        checkResolveEnv: true,
       },
       {
         name: "astro",
@@ -77,19 +76,19 @@ describe("Documentation Consistency Verification", () => {
           "package-manager-version",
           "runtime",
         ],
-        checkResolveEnv: false,
       },
       {
         name: "vite",
-        expectedInputs: ["path", "runtime", "build-command"],
+        expectedInputs: ["path", "runtime", "toolchain", "build-command"],
         expectedOutputs: [
           "node-version",
           "bun-version",
           "package-manager",
           "package-manager-version",
           "runtime",
+          "toolchain",
+          "vp-version",
         ],
-        checkResolveEnv: false,
       },
       {
         name: "autofix",
@@ -101,13 +100,12 @@ describe("Documentation Consistency Verification", () => {
           "package-manager-version",
           "runtime",
         ],
-        checkResolveEnv: true,
       },
     ];
 
     it.each(actions)(
       "action '$name' should retain all expected public inputs and outputs",
-      ({ name, expectedInputs, expectedOutputs, checkResolveEnv }) => {
+      ({ name, expectedInputs, expectedOutputs }) => {
         const actionYml = fs.readFileSync(path.join(rootDir, name, "action.yml"), "utf8");
 
         for (const inputKey of expectedInputs) {
@@ -118,9 +116,13 @@ describe("Documentation Consistency Verification", () => {
           expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
         }
 
-        if (checkResolveEnv) {
+        expect(actionYml).toMatch(
+          /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+        );
+
+        if (name === "vite") {
           expect(actionYml).toMatch(
-            /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+            /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_TOOLCHAIN:\s*\$\{\{\s*inputs\.toolchain\s*\}\}/,
           );
         }
       },

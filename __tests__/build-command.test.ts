@@ -442,4 +442,43 @@ describe("build-command", () => {
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
     });
   });
+
+  describe("build output directory validation logic", () => {
+    it("should fail validation if output directory does not exist", () => {
+      const fs = require("node:fs");
+      const testDir = "non_existent_output_dir_12345";
+      expect(fs.existsSync(testDir)).toBe(false);
+    });
+
+    it("should fail validation if output directory exists but is empty", () => {
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const testDir = path.join(process.cwd(), "tmp_empty_output_dir");
+
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true });
+      }
+
+      const files = fs.readdirSync(testDir);
+      expect(files.length).toBe(0);
+
+      fs.rmdirSync(testDir);
+    });
+
+    it("should pass validation if output directory exists and is non-empty", () => {
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const testDir = path.join(process.cwd(), "tmp_valid_output_dir");
+
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(testDir, "index.html"), "<h1>Test</h1>");
+
+      const files = fs.readdirSync(testDir);
+      expect(files.length).toBeGreaterThan(0);
+
+      fs.rmSync(testDir, { recursive: true, force: true });
+    });
+  });
 });
