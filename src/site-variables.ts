@@ -18,7 +18,7 @@ export function setSiteVariables(): void {
   const isPrimary = repo === `${owner}.github.io`;
   const base = isPrimary ? "/" : `/${repo}/`;
 
-  if (actionName === "astro" || actionName === "vite") {
+  if (actionName === "astro" || actionName === "vite" || actionName === "pages") {
     core.exportVariable("SITE", site);
     core.exportVariable("BASE", base);
     core.info(`Set SITE=${site}`);

@@ -36,6 +36,7 @@ describe("Documentation Consistency Verification", () => {
     it("documentation section headings across all markdown files should not use numerical prefixes", () => {
       const docFiles = [
         path.join(rootDir, "README.md"),
+        path.join(rootDir, "pages/README.md"),
         path.join(rootDir, "astro/README.md"),
         path.join(rootDir, "vite/README.md"),
         path.join(rootDir, "autofix/README.md"),
@@ -53,6 +54,20 @@ describe("Documentation Consistency Verification", () => {
   describe("Composite Action Public Interfaces", () => {
     const actions = [
       {
+        name: "pages",
+        expectedInputs: ["path", "runtime", "build-command"],
+        expectedOutputs: [
+          "node-version",
+          "bun-version",
+          "package-manager",
+          "package-manager-version",
+          "runtime",
+          "toolchain",
+          "vp-version",
+        ],
+        checkResolveEnv: true,
+      },
+      {
         name: "astro",
         expectedInputs: ["path", "runtime", "build-command"],
         expectedOutputs: [
@@ -62,6 +77,7 @@ describe("Documentation Consistency Verification", () => {
           "package-manager-version",
           "runtime",
         ],
+        checkResolveEnv: false,
       },
       {
         name: "vite",
@@ -73,6 +89,7 @@ describe("Documentation Consistency Verification", () => {
           "package-manager-version",
           "runtime",
         ],
+        checkResolveEnv: false,
       },
       {
         name: "autofix",
@@ -84,12 +101,13 @@ describe("Documentation Consistency Verification", () => {
           "package-manager-version",
           "runtime",
         ],
+        checkResolveEnv: true,
       },
     ];
 
     it.each(actions)(
       "action '$name' should retain all expected public inputs and outputs",
-      ({ name, expectedInputs, expectedOutputs }) => {
+      ({ name, expectedInputs, expectedOutputs, checkResolveEnv }) => {
         const actionYml = fs.readFileSync(path.join(rootDir, name, "action.yml"), "utf8");
 
         for (const inputKey of expectedInputs) {
@@ -100,9 +118,11 @@ describe("Documentation Consistency Verification", () => {
           expect(actionYml).toMatch(new RegExp(`outputs:\\s*[\\s\\S]*?\\b${outputKey}:`));
         }
 
-        expect(actionYml).toMatch(
-          /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
-        );
+        if (checkResolveEnv) {
+          expect(actionYml).toMatch(
+            /id:\s*resolve_environment[\s\S]*?env:[\s\S]*?INPUT_RUNTIME:\s*\$\{\{\s*inputs\.runtime\s*\}\}/,
+          );
+        }
       },
     );
   });

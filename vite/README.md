@@ -1,44 +1,18 @@
 # area44/vite
 
+> **Deprecated:** This action is deprecated in favor of [`area44/workflows/pages`](../pages/README.md).
+
 Build and deploy your Vite or Vite+ site to GitHub Pages with ease.
-
-## Features
-
-- **Automatic Toolchain Detection:** Automatically detects whether the target project uses standard Vite or Vite+ (by inspecting `package.json` dependencies, devDependencies, optionalDependencies, and catalog declarations).
-- **Explicit Toolchain Override:** Optionally specify `toolchain: "vite"` or `toolchain: "vite-plus"` to override automatic detection.
-- **Vite+ Setup & Fallback:** When Vite+ is detected, uses `voidzero-dev/setup-vp` to set up Vite+ and run dependency installation once. Prefers `vp build` for Vite+ builds, automatically falling back to `vpr build` if the `vp` executable is unavailable in `PATH`.
-- **Custom Build Command:** Easily override the build command using `build-command`.
 
 ## Usage
 
-Add the following workflow to your repository:
+Recommended migration:
 
 ```yaml
-name: GitHub Pages
-
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Build Vite site
-        uses: area44/workflows/vite@main
-        with:
-          # Optional: runtime: 'node@24'
-          # Optional: toolchain: 'auto' (or 'vite', 'vite-plus')
-          # Optional: path: 'dist'
+- name: Build Vite site
+  uses: area44/workflows/pages@main
+  with:
+    path: "dist"
 ```
 
 ## Inputs
@@ -47,7 +21,7 @@ jobs:
 | --------------- | ------------------------------------------------------------- | ------- | -------- |
 | `path`          | Directory where the built site is located                     | `dist`  | Optional |
 | `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
-| `toolchain`     | Optional toolchain selection (auto, vite, or vite-plus)       | `auto`  | Optional |
+| `toolchain`     | Deprecated input (Vite+ is automatically detected)            | `auto`  | Optional |
 | `build-command` | Custom build command                                          |         | Optional |
 
 ## Outputs
