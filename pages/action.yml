@@ -117,6 +117,7 @@ runs:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
         DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
+        BUILD_PATH: ${{ inputs.path }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -124,19 +125,6 @@ runs:
           bun "$ACTION_PATH/../dist/build-command.mjs"
         else
           node "$ACTION_PATH/../dist/build-command.mjs"
-        fi
-
-    - name: Validate build output
-      shell: bash
-      env:
-        BUILD_PATH: ${{ inputs.path }}
-        RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/build-command.mjs" --validate-only
-        else
-          node "$ACTION_PATH/../dist/build-command.mjs" --validate-only
         fi
 
     - name: Upload site artifact
