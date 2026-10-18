@@ -19,14 +19,12 @@ describe("Documentation Consistency Verification", () => {
     it("README.md should link to all specialized docs files", () => {
       expect(readmeContent).toContain("./docs/errors.md");
       expect(readmeContent).toContain("./docs/security.md");
-      expect(readmeContent).toContain("./docs/maintenance.md");
     });
 
     it("all documentation files in docs/ should exist", () => {
       const expectedFiles = [
         "errors.md",
         "security.md",
-        "maintenance.md",
       ];
       for (const file of expectedFiles) {
         expect(fs.existsSync(path.join(docsDir, file))).toBe(true);
