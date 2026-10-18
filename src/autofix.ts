@@ -13,7 +13,11 @@ import {
   type JsInstallationPlan,
 } from "./javascript-env.js";
 import { isExecutableAvailable } from "./process-utils.js";
-import { detectPythonPackageManager, type PythonPackageManagerInfo } from "./python-env.js";
+import {
+  detectPythonPackageManager,
+  hasPythonSource,
+  type PythonPackageManagerInfo,
+} from "./python-env.js";
 import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
 
 export { sanitizePackageManager };
@@ -197,6 +201,42 @@ export function executePythonWorkflow(
   }
 }
 
+export function executeRuffAutofix(cwd: string = process.cwd()): void {
+  if (!hasPythonSource(cwd)) {
+    return;
+  }
+
+  if (!isExecutableAvailable("ruff")) {
+    const message = "Required Python binary 'ruff' is not available in PATH.";
+    core.error(message);
+    throw new WorkflowError("MISSING_CONFIGURATION", message, {
+      stage: "python-environment-check",
+      requiredBinary: "ruff",
+      cwd,
+    });
+  }
+
+  const ruffCommands = ["ruff check --fix .", "ruff format ."];
+  for (const cmd of ruffCommands) {
+    const displayCmd = sanitizeCommandString(cmd);
+    core.info(`Executing: ${displayCmd}`);
+    const result = execSanitized(cmd, { cwd });
+    if (result.status !== 0 || result.error) {
+      core.error(`Ruff command "${displayCmd}" failed`);
+      const message = `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`;
+      const causeObj =
+        result.error ||
+        new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
+      throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
+        stage: "ruff-autofix-execution",
+        command: displayCmd,
+        cwd,
+        cause: sanitizeCause(causeObj),
+      });
+    }
+  }
+}
+
 export function run(cwd: string = process.cwd()): void {
   try {
     executeJsWorkflow(cwd);
@@ -205,6 +245,8 @@ export function run(cwd: string = process.cwd()): void {
     if (pythonPmInfo) {
       executePythonWorkflow(pythonPmInfo, cwd);
     }
+
+    executeRuffAutofix(cwd);
   } catch (error) {
     if (isWorkflowError(error)) {
       core.setFailed(error);
