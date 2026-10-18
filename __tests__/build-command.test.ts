@@ -2,7 +2,9 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString } from "../src/build-command";
+import fs from "node:fs";
+import path from "node:path";
+import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString, validateBuildOutput } from "../src/build-command";
 import * as processUtils from "../src/process-utils";
 import * as pythonEnv from "../src/python-env";
 
@@ -443,42 +445,37 @@ describe("build-command", () => {
     });
   });
 
-  describe("build output directory validation logic", () => {
-    it("should fail validation if output directory does not exist", () => {
-      const fs = require("node:fs");
+  describe("validateBuildOutput", () => {
+    it("should throw WorkflowError if output directory does not exist", () => {
       const testDir = "non_existent_output_dir_12345";
-      expect(fs.existsSync(testDir)).toBe(false);
+      expect(() => validateBuildOutput(testDir)).toThrow("Configured build output directory 'non_existent_output_dir_12345' does not exist.");
     });
 
-    it("should fail validation if output directory exists but is empty", () => {
-      const fs = require("node:fs");
-      const path = require("node:path");
+    it("should throw WorkflowError if output directory exists but is empty", () => {
       const testDir = path.join(process.cwd(), "tmp_empty_output_dir");
-
       if (!fs.existsSync(testDir)) {
         fs.mkdirSync(testDir, { recursive: true });
       }
 
-      const files = fs.readdirSync(testDir);
-      expect(files.length).toBe(0);
-
-      fs.rmdirSync(testDir);
+      try {
+        expect(() => validateBuildOutput("tmp_empty_output_dir")).toThrow("Configured build output directory 'tmp_empty_output_dir' is empty.");
+      } finally {
+        fs.rmdirSync(testDir);
+      }
     });
 
-    it("should pass validation if output directory exists and is non-empty", () => {
-      const fs = require("node:fs");
-      const path = require("node:path");
+    it("should succeed if output directory exists and is non-empty", () => {
       const testDir = path.join(process.cwd(), "tmp_valid_output_dir");
-
       if (!fs.existsSync(testDir)) {
         fs.mkdirSync(testDir, { recursive: true });
       }
       fs.writeFileSync(path.join(testDir, "index.html"), "<h1>Test</h1>");
 
-      const files = fs.readdirSync(testDir);
-      expect(files.length).toBeGreaterThan(0);
-
-      fs.rmSync(testDir, { recursive: true, force: true });
+      try {
+        expect(() => validateBuildOutput("tmp_valid_output_dir")).not.toThrow();
+      } finally {
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
     });
   });
 });

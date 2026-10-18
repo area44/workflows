@@ -20,33 +20,7 @@ describe("site-variables", () => {
   });
 
   describe("setSiteVariables", () => {
-    it("should set SITE and BASE variables for a standard repository in the astro action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
-      process.env.GITHUB_REPOSITORY = "owner/project-repo";
-      process.env.GITHUB_REPOSITORY_OWNER = "owner";
-
-      setSiteVariables();
-
-      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/project-repo/");
-      expect(core.info).toHaveBeenCalledWith("Set SITE=https://owner.github.io");
-      expect(core.info).toHaveBeenCalledWith("Set BASE=/project-repo/");
-    });
-
-    it("should set SITE and BASE variables for a primary repository in the vite action", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/vite";
-      process.env.GITHUB_REPOSITORY = "owner/owner.github.io";
-      process.env.GITHUB_REPOSITORY_OWNER = "owner";
-
-      setSiteVariables();
-
-      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
-      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/");
-      expect(core.info).toHaveBeenCalledWith("Set SITE=https://owner.github.io");
-      expect(core.info).toHaveBeenCalledWith("Set BASE=/");
-    });
-
-    it("should set SITE and BASE variables for the pages action", () => {
+    it("should set SITE and BASE variables for a standard repository in the pages action", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
@@ -59,7 +33,20 @@ describe("site-variables", () => {
       expect(core.info).toHaveBeenCalledWith("Set BASE=/project-repo/");
     });
 
-    it("should not set SITE and BASE variables for action paths not matching astro/vite/pages", () => {
+    it("should set SITE and BASE variables for a primary repository in the pages action", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
+      process.env.GITHUB_REPOSITORY = "owner/owner.github.io";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/");
+      expect(core.info).toHaveBeenCalledWith("Set SITE=https://owner.github.io");
+      expect(core.info).toHaveBeenCalledWith("Set BASE=/");
+    });
+
+    it("should not set SITE and BASE variables for action paths not matching pages", () => {
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/autofix";
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
@@ -70,7 +57,7 @@ describe("site-variables", () => {
     });
 
     it("should skip setting variables and log warning if GITHUB_REPOSITORY is missing", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
       delete process.env.GITHUB_REPOSITORY;
 
@@ -83,7 +70,7 @@ describe("site-variables", () => {
     });
 
     it("should skip setting variables and log warning if GITHUB_REPOSITORY_OWNER is missing", () => {
-      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/astro";
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       delete process.env.GITHUB_REPOSITORY_OWNER;
 

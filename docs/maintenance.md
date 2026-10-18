@@ -14,17 +14,17 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 
 To avoid duplication and configuration drift, specific files serve as authoritative sources of truth:
 
-| Domain             | Authoritative Source of Truth File                                                                        |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| Package Versioning | `package.json` (`version` property)                                                                       |
-| Public Action APIs | Per-action `action.yml` (`pages/action.yml`, `astro/action.yml`, `vite/action.yml`, `autofix/action.yml`) |
-| Build Pack Entries | `vite.config.ts` (`pack` configuration array)                                                             |
+| Domain             | Authoritative Source of Truth File                                 |
+| ------------------ | ------------------------------------------------------------------ |
+| Package Versioning | `package.json` (`version` property)                                |
+| Public Action APIs | Per-action `action.yml` (`pages/action.yml`, `autofix/action.yml`) |
+| Build Pack Entries | `vite.config.ts` (`pack` configuration array)                      |
 
 ## Public Action Structure
 
 Every public action provided by this repository must adhere to the following structure:
 
-- A dedicated directory at the repository root matching its declared action name (e.g., `pages/`, `astro/`, `vite/`, `autofix/`).
+- A dedicated directory at the repository root matching its declared action name (e.g., `pages/`, `autofix/`).
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
 - Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
