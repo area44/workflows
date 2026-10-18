@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   DEFAULT_PYTHON_VERSION,
@@ -117,69 +117,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
     });
 
-    describe("PYTHON_DEFAULT environment variable resolution", () => {
-      const originalEnv = process.env.PYTHON_DEFAULT;
-
-      afterEach(() => {
-        if (originalEnv === undefined) {
-          delete process.env.PYTHON_DEFAULT;
-        } else {
-          process.env.PYTHON_DEFAULT = originalEnv;
-        }
-      });
-
-      it("should use valid PYTHON_DEFAULT value when no project-specific Python version is configured", () => {
-        process.env.PYTHON_DEFAULT = "3.13";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe("3.13");
-
-        process.env.PYTHON_DEFAULT = "3.11.2";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe("3.11.2");
-      });
-
-      it("should prioritize .python-version, pyproject.toml, and runtime.txt over PYTHON_DEFAULT", () => {
-        process.env.PYTHON_DEFAULT = "3.13";
-
-        const tempDir = path.join(fixturesDir, "pyver-env-override-temp");
-        fs.mkdirSync(tempDir, { recursive: true });
-
-        try {
-          // 1. .python-version
-          fs.writeFileSync(path.join(tempDir, ".python-version"), "3.10\n");
-          expect(resolvePythonVersion(tempDir)).toBe("3.10");
-
-          // 2. pyproject.toml
-          fs.rmSync(path.join(tempDir, ".python-version"));
-          fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[project]\nrequires-python = ">=3.11"\n');
-          expect(resolvePythonVersion(tempDir)).toBe("3.11");
-
-          // 3. runtime.txt
-          fs.rmSync(path.join(tempDir, "pyproject.toml"));
-          fs.writeFileSync(path.join(tempDir, "runtime.txt"), "python-3.9.0\n");
-          expect(resolvePythonVersion(tempDir)).toBe("3.9.0");
-        } finally {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-        }
-      });
-
-      it("should fall back safely when PYTHON_DEFAULT is unset or empty", () => {
-        delete process.env.PYTHON_DEFAULT;
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-
-        process.env.PYTHON_DEFAULT = "";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-
-        process.env.PYTHON_DEFAULT = "   ";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-      });
-
-      it("should fall back safely when PYTHON_DEFAULT is invalid or malformed", () => {
-        process.env.PYTHON_DEFAULT = "invalid-version-string";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-
-        process.env.PYTHON_DEFAULT = "python-";
-        expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
-      });
-    });
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {

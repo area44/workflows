@@ -2,8 +2,13 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isSupportedPackageManager, type SupportedPackageManager } from "./compatibility.js";
 import { WorkflowError } from "./errors.js";
+
+export type SupportedPackageManager = "npm" | "pnpm" | "bun";
+
+export function isSupportedPackageManager(pmName: string): pmName is SupportedPackageManager {
+  return pmName === "npm" || pmName === "pnpm" || pmName === "bun";
+}
 
 /** Default npm fallback version */
 // renovate: datasource=npm depName=npm
