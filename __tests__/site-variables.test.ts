@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { setSiteVariables } from "../src/site-variables";
+import { setSiteVariables } from "../src/pages/site-variables";
 
 vi.mock("@actions/core");
 

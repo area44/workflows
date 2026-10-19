@@ -9,14 +9,14 @@ This document formalizes the security architecture, input trust model, shell com
 
 ## Command Execution & Subshell Avoidance
 
-- **Custom Build Commands**: `src/build-command.ts` parses custom `build-command` strings using a custom tokenizer that respects single quotes, double quotes, and backslash escapes.
+- **Custom Build Commands**: `src/pages/build-command.ts` parses custom `build-command` strings using a custom tokenizer that respects single quotes, double quotes, and backslash escapes.
 - **No Subshell Invocation**: Commands are executed directly as binary names and argument arrays without subshell expansion (avoiding `sh -c` or `bash -c`).
 - **Injection Prevention**: Shell metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values, preventing shell command injection.
 - **Script Runner Sanitization**: `src/autofix.ts` sanitizes package manager names via `sanitizePackageManager()` (restricting names to alphanumeric and hyphen characters) before running script hooks.
 
 ## Credential & Token Sanitization
 
-- **Automatic Masking**: `sanitizeCommandString()` in `src/build-command.ts` masks sensitive tokens before logging or attaching to error contexts:
+- **Automatic Masking**: `sanitizeCommandString()` in `src/pages/build-command.ts` masks sensitive tokens before logging or attaching to error contexts:
   - URLs containing inline authentication credentials (`https://user:pass@host` → `https://***:***@host`).
   - Sensitive CLI option flags (`--token`, `--key`, `--api-key`, `--pat`).
   - Common access token patterns (GitHub PATs `ghp_...`, `github_pat_...`, npm tokens `npm_...`, Slack tokens `xox...`).

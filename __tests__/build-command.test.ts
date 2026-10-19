@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString, validateBuildOutput } from "../src/build-command";
+import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString, validateBuildOutput } from "../src/pages/build-command";
 import * as processUtils from "../src/process-utils";
 
 vi.mock("@actions/core");
