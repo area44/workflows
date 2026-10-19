@@ -158,6 +158,7 @@ describe("autofix", () => {
     });
 
     it("should preserve updated uv.lock when uv sync synchronizes Python dependencies", async () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
