@@ -273,8 +273,8 @@ jobs:
           if [ "${{ matrix.working_directory }}" != "" ]; then
             rm -rf "${{ matrix.working_directory }}/dist" "${{ matrix.working_directory }}/node_modules"
           fi
-          if [ "${{ matrix.type }}" == "consumer" ]; then
-            rm -rf __tests__/fixtures/pages/node/npm/consumer/dist __tests__/fixtures/pages/node/npm/consumer/node_modules
+          if [[ "${{ matrix.type }}" == *"consumer"* ]]; then
+            :
           else
             rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
             if [ -d pages.bak ]; then
