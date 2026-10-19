@@ -16,6 +16,7 @@ import { isExecutableAvailable } from "../process-utils.js";
 import {
   detectPythonPackageManager,
   hasPythonSource,
+  type PythonInstallCommand,
   type PythonPackageManagerInfo,
 } from "../python-env.js";
 import { sanitizeCause, sanitizeCommandString } from "../sanitize.js";
@@ -175,33 +176,39 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   await executeJsScripts(scripts, pm, cwd);
 }
 
-function resolvePythonInstallCommands(
-  installCommand: string,
-): Array<{ executable: string; args: string[] }> {
-  const trimmed = installCommand.trim();
-  if (!trimmed) return [];
+function resolvePythonInstallCommands(pmInfo: PythonPackageManagerInfo): PythonInstallCommand[] {
+  if (pmInfo.installCommands && pmInfo.installCommands.length > 0) {
+    return pmInfo.installCommands;
+  }
 
-  if (trimmed === "pip install -r requirements.txt && pip install -e .") {
+  const rawCmd = (pmInfo.installCommand || "").trim();
+  if (!rawCmd) return [];
+
+  if (rawCmd === "pip install -r requirements.txt && pip install -e .") {
     return [
       { executable: "pip", args: ["install", "-r", "requirements.txt"] },
       { executable: "pip", args: ["install", "-e", "."] },
     ];
   }
-  if (trimmed === "pip install -r requirements.txt") {
+  if (rawCmd === "pip install -r requirements.txt") {
     return [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
   }
-  if (trimmed === "pip install -e .") {
+  if (rawCmd === "pip install -e .") {
     return [{ executable: "pip", args: ["install", "-e", "."] }];
   }
-  if (trimmed === "uv sync") {
+  if (rawCmd === "uv sync") {
     return [{ executable: "uv", args: ["sync"] }];
   }
-  if (trimmed === "uv pip install -r requirements.txt") {
+  if (rawCmd === "uv pip install -r requirements.txt") {
     return [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }];
   }
 
-  const parts = trimmed.split(/\s+/);
-  return [{ executable: parts[0], args: parts.slice(1) }];
+  const displayCmd = sanitizeCommandString(rawCmd);
+  throw new WorkflowError(
+    "INVALID_INPUT",
+    `Unsupported or malformed Python install command configuration: "${displayCmd}".`,
+    { stage: "python-dependency-installation", packageManager: pmInfo.name, command: displayCmd },
+  );
 }
 
 async function runPythonCommand(
@@ -250,11 +257,14 @@ export async function executePythonWorkflow(
   }
 
   if (!pmInfo.isStandalone) {
-    const installCmd = pmInfo.installCommand;
-    if (installCmd) {
-      core.info(`Installing Python dependencies: ${sanitizeCommandString(installCmd)}`);
-      const subCmds = resolvePythonInstallCommands(installCmd);
-      for (const { executable, args } of subCmds) {
+    const installCmds = resolvePythonInstallCommands(pmInfo);
+    if (installCmds.length > 0) {
+      const displayCmd = sanitizeCommandString(
+        pmInfo.installCommand ||
+          installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && "),
+      );
+      core.info(`Installing Python dependencies: ${displayCmd}`);
+      for (const { executable, args } of installCmds) {
         await runPythonCommand(executable, args, pmInfo.name, cwd);
       }
     }

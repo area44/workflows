@@ -560,6 +560,43 @@ describe("autofix", () => {
       }
     });
 
+    it("should throw WorkflowError with INVALID_INPUT for unsupported or malformed Python install command string", async () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommand: "pip install --invalid-flag-syntax && rm -rf /",
+          execPrefix: "",
+        }),
+      ).rejects.toThrow(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "INVALID_INPUT",
+          message: expect.stringContaining("Unsupported or malformed Python install command configuration"),
+        }),
+      );
+    });
+
+    it("should pass arguments containing spaces unchanged when structured PythonInstallCommand is used", async () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+
+      await executePythonWorkflow({
+        name: "pip",
+        installCommand: "pip install -r requirements.txt",
+        installCommands: [
+          { executable: "pip", args: ["install", "-r", "path with spaces/requirements.txt"] },
+        ],
+        execPrefix: "",
+      });
+
+      expect(exec.exec).toHaveBeenCalledWith(
+        "pip",
+        ["install", "-r", "path with spaces/requirements.txt"],
+        expect.anything(),
+      );
+    });
+
     it("should handle failure in Python commands gracefully throwing WorkflowError", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       vi.mocked(exec.exec).mockImplementationOnce(async (_cmd, _args, opts) => {
