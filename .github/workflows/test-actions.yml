@@ -156,6 +156,7 @@ jobs:
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
+          [ -d src ] && mv src src.bak || true
           if [ "$ACTION" != "pages" ]; then
             [ -d pages ] && mv pages pages.bak || true
           fi
@@ -260,6 +261,9 @@ jobs:
           rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
           if [ -d pages.bak ]; then
             mv pages.bak pages
+          fi
+          if [ -d src.bak ]; then
+            mv src.bak src
           fi
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
