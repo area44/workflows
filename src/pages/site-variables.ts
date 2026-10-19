@@ -2,9 +2,68 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+export interface SiteVariables {
+  site: string;
+  base: string;
+}
+
+/**
+ * Resolves SITE and BASE configuration values according to precedence and normalization rules:
+ * - SITE: explicit env.SITE (validated as HTTP/HTTPS URL and normalized without trailing slash) > default https://${owner}.github.io
+ * - BASE: explicit env.BASE (normalized with leading/trailing slashes) > default ('/' for primary repository, otherwise /${repo}/)
+ */
+export function resolveSiteVariables(
+  env: Record<string, string | undefined> = process.env,
+): SiteVariables | null {
+  const repoFull = env.GITHUB_REPOSITORY || "";
+  const owner = env.GITHUB_REPOSITORY_OWNER || "";
+  const repo = repoFull.split("/")[1] || "";
+
+  if (!owner || !repo) {
+    return null;
+  }
+
+  let site = env.SITE?.trim();
+  if (site) {
+    try {
+      const parsed = new URL(site);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error(
+          `Invalid SITE URL scheme '${parsed.protocol}'. Expected 'http:' or 'https:'.`,
+        );
+      }
+      site = parsed.origin + (parsed.pathname !== "/" ? parsed.pathname.replace(/\/+$/, "") : "");
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Invalid SITE URL scheme")) {
+        throw err;
+      }
+      throw new Error(`Invalid SITE URL '${site}': must be a valid http or https URL.`);
+    }
+  } else {
+    site = `https://${owner}.github.io`;
+  }
+
+  let base = env.BASE?.trim();
+  if (base) {
+    const leading = base.startsWith("/") ? "" : "/";
+    const trailing = base.endsWith("/") ? "" : "/";
+    base = `${leading}${base}${trailing}`.replace(/\/+/g, "/");
+  } else {
+    const isPrimary = repo === `${owner}.github.io`;
+    base = isPrimary ? "/" : `/${repo}/`;
+  }
+
+  return { site, base };
+}
+
 export function setSiteVariables(): void {
-  const actionPath = process.env.GITHUB_ACTION_PATH || "";
+  const actionPath = process.env.GITHUB_ACTION_PATH || process.env.ACTION_PATH || "";
   const actionName = actionPath.split("/").pop() || "";
+
+  if (actionName !== "pages") {
+    return;
+  }
+
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
   const repo = repoFull.split("/")[1] || "";
@@ -14,15 +73,17 @@ export function setSiteVariables(): void {
     return;
   }
 
-  const site = `https://${owner}.github.io`;
-  const isPrimary = repo === `${owner}.github.io`;
-  const base = isPrimary ? "/" : `/${repo}/`;
-
-  if (actionName === "pages") {
-    core.exportVariable("SITE", site);
-    core.exportVariable("BASE", base);
-    core.info(`Set SITE=${site}`);
-    core.info(`Set BASE=${base}`);
+  try {
+    const vars = resolveSiteVariables(process.env);
+    if (vars) {
+      core.exportVariable("SITE", vars.site);
+      core.exportVariable("BASE", vars.base);
+      core.info(`Set SITE=${vars.site}`);
+      core.info(`Set BASE=${vars.base}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    core.setFailed(`Failed to resolve site variables: ${msg}`);
   }
 }
 

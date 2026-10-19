@@ -8,6 +8,7 @@ Build static sites and upload GitHub Pages artifacts with automatic JavaScript e
 - **Automatic Vite+ Detection:** Automatically detects Vite+ projects from `package.json` dependencies and uses `voidzero-dev/setup-vp` for setup and dependency installation.
 - **Output Validation:** Ensures the configured build output directory exists and is non-empty before uploading the GitHub Pages artifact.
 - **Flexible Runtimes:** Supports Node.js and Bun runtimes with automatic version detection or explicit overrides.
+- **Site and Base Variable Resolution:** Automatically exports `SITE` and `BASE` environment variables derived from repository metadata (`https://<owner>.github.io` and `/<repo>/`), with support for custom `SITE` and `BASE` environment overrides.
 
 ## Usage
 
@@ -48,6 +49,13 @@ jobs:
 | `path`          | Directory where the built site is located                     | `dist`                        | Optional |
 | `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |                               | Optional |
 | `build-command` | Custom build command                                          | `<package-manager> run build` | Optional |
+
+## Environment Variables
+
+| Name   | Description                                                                                                        | Default                                                    |
+| ------ | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `SITE` | The base origin URL for the GitHub Pages deployment (e.g. `https://owner.github.io`). Validated as HTTP/HTTPS.     | Derived from `GITHUB_REPOSITORY_OWNER` or explicit `SITE`. |
+| `BASE` | The path prefix for site assets (e.g. `/my-repo/` or `/`). Automatically normalized with leading/trailing slashes. | Derived from `GITHUB_REPOSITORY` or explicit `BASE`.       |
 
 ## Outputs
 

@@ -234,6 +234,43 @@ describe("build-command", () => {
         'Failed to parse build command "npm run \'unclosed quote": Unterminated quote in build command string.',
       );
     });
+
+    it("should fail when build command succeeds but configured output directory does not exist", async () => {
+      process.env.BUILD_COMMAND = "pnpm run build";
+      process.env.BUILD_PATH = "non_existent_output_folder_99";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Configured build output directory 'non_existent_output_folder_99' does not exist.",
+      );
+    });
+
+    it("should fail when build command succeeds but configured output directory is empty", async () => {
+      const emptyDir = path.join(process.cwd(), "tmp_empty_dist_test");
+      if (!fs.existsSync(emptyDir)) {
+        fs.mkdirSync(emptyDir, { recursive: true });
+      }
+
+      try {
+        process.env.BUILD_COMMAND = "npm run build";
+        process.env.BUILD_PATH = "tmp_empty_dist_test";
+
+        vi.mocked(exec.exec).mockResolvedValue(0);
+
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(1);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          "Configured build output directory 'tmp_empty_dist_test' is empty.",
+        );
+      } finally {
+        fs.rmdirSync(emptyDir);
+      }
+    });
   });
 
   describe("resolveBuildCommandToParse", () => {
