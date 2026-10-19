@@ -7,7 +7,6 @@ import {
   detectPythonPackageManager,
   extractRuffVersionSpecifier,
   hasPythonSource,
-  isExecutableAvailable,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
@@ -260,20 +259,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
     it("should define priority order as uv > pip", () => {
       expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
-    });
-  });
-
-  describe("isExecutableAvailable()", () => {
-    it("should return true for common system binary like node", () => {
-      expect(isExecutableAvailable("node")).toBe(true);
-    });
-
-    it("should return false for non-existent binary", () => {
-      expect(isExecutableAvailable("non_existent_binary_xyz_123")).toBe(false);
-    });
-
-    it("should return false for invalid binary names with dangerous characters", () => {
-      expect(isExecutableAvailable("node; rm -rf /")).toBe(false);
     });
   });
 

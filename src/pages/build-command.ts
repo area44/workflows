@@ -1,26 +1,22 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { WorkflowError } from "../errors.js";
-import { isExecutableAvailable } from "../process-utils.js";
-import { sanitizeCommandString } from "../sanitize.js";
-
-export { sanitizeCommandString };
 
 export interface ParsedCommand {
   command: string;
   args: string[];
 }
 
-export function resolveBuildCommandToParse(
+export async function resolveBuildCommandToParse(
   customCommand?: string,
   defaultCommand?: string,
   pm: string = "npm",
-  isExecutableCheckAvailable: (cmd: string) => boolean = isExecutableAvailable,
-): string {
+  isExecutableCheckAvailable: (cmd: string) => Promise<boolean> = async (cmd) =>
+    Boolean(await io.which(cmd, false)),
+): Promise<string> {
   const custom = customCommand?.trim();
   if (custom) {
     return custom;
@@ -31,17 +27,15 @@ export function resolveBuildCommandToParse(
     if (defaultCmd.startsWith("vp ")) {
       const preferredExec = "vp";
       const fallbackExec = "vpr";
-      if (!isExecutableCheckAvailable(preferredExec)) {
-        if (isExecutableCheckAvailable(fallbackExec)) {
+      if (!(await isExecutableCheckAvailable(preferredExec))) {
+        if (await isExecutableCheckAvailable(fallbackExec)) {
           core.info(
             `Primary Vite+ executable "${preferredExec}" unavailable. Falling back to "${fallbackExec}".`,
           );
           return defaultCmd.replace(/^vp\b/, fallbackExec);
         } else {
-          throw new WorkflowError(
-            "MISSING_CONFIGURATION",
+          throw new Error(
             `Primary Vite+ executable "${preferredExec}" and fallback executable "${fallbackExec}" are both unavailable in PATH.`,
-            { stage: "build-command-resolution", preferredExec, fallbackExec },
           );
         }
       }
@@ -143,9 +137,7 @@ function tokenizeCommand(trimmed: string): string[] {
   }
 
   if (state.inDoubleQuote || state.inSingleQuote) {
-    throw new WorkflowError("INVALID_INPUT", "Unterminated quote in build command string.", {
-      stage: "build-command-parsing",
-    });
+    throw new Error("Unterminated quote in build command string.");
   }
 
   if (state.currentToken.length > 0 || state.wasQuoted) {
@@ -162,19 +154,13 @@ function tokenizeCommand(trimmed: string): string[] {
 export function parseCommand(cmdStr: string): ParsedCommand {
   const trimmed = cmdStr.trim();
   if (!trimmed) {
-    throw new WorkflowError("INVALID_INPUT", "Build command string is empty.", {
-      stage: "build-command-parsing",
-    });
+    throw new Error("Build command string is empty.");
   }
 
   const tokens = tokenizeCommand(trimmed);
 
   if (tokens.length === 0 || !tokens[0]) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      "Failed to parse build command: no valid executable found.",
-      { stage: "build-command-parsing" },
-    );
+    throw new Error("Failed to parse build command: no valid executable found.");
   }
 
   return {
@@ -187,91 +173,54 @@ export interface RunBuildCommandOptions {
   exitOnFailure?: boolean;
 }
 
-function wrapBuildError(
-  err: unknown,
-  stage: "build-command-resolution" | "build-command-parsing" | "build-command-execution",
-  code: "INVALID_INPUT" | "COMMAND_EXECUTION_FAILURE",
-  commandToParse?: string,
-): WorkflowError {
-  if (err instanceof WorkflowError) {
-    return err;
-  }
-  const msg = err instanceof Error ? err.message : String(err);
-  const sanitizedMsg = sanitizeCommandString(msg);
-
-  if (stage === "build-command-parsing" && commandToParse) {
-    const cleanCmd = sanitizeCommandString(commandToParse);
-    return new WorkflowError(code, `Failed to parse build command "${cleanCmd}": ${sanitizedMsg}`, {
-      stage,
-      command: cleanCmd,
-    });
-  }
-
-  if (stage === "build-command-execution" && commandToParse) {
-    const cleanCmd = sanitizeCommandString(commandToParse);
-    return new WorkflowError(
-      code,
-      `Failed to execute build command "${cleanCmd}": ${sanitizedMsg}`,
-      { stage, command: cleanCmd },
-    );
-  }
-
-  return new WorkflowError(code, `Failed to resolve build command: ${sanitizedMsg}`, { stage });
-}
-
-function safelyResolveBuildCommand(
+async function safelyResolveBuildCommand(
   customCommand?: string,
   defaultCommand?: string,
   pm?: string,
-): { commandToParse?: string; error?: WorkflowError } {
+): Promise<{ commandToParse?: string; error?: Error }> {
   try {
-    return { commandToParse: resolveBuildCommandToParse(customCommand, defaultCommand, pm) };
+    const cmd = await resolveBuildCommandToParse(customCommand, defaultCommand, pm);
+    return { commandToParse: cmd };
   } catch (err) {
-    return { error: wrapBuildError(err, "build-command-resolution", "INVALID_INPUT") };
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: new Error(`Failed to resolve build command: ${msg}`) };
   }
 }
 
 function safelyParseBuildCommand(commandToParse: string): {
   parsed?: ParsedCommand;
-  error?: WorkflowError;
+  error?: Error;
 } {
   try {
     return { parsed: parseCommand(commandToParse) };
   } catch (err) {
-    return { error: wrapBuildError(err, "build-command-parsing", "INVALID_INPUT", commandToParse) };
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: new Error(`Failed to parse build command "${commandToParse}": ${msg}`) };
   }
 }
 
 async function safelyExecuteBuildCommand(
   parsed: ParsedCommand,
   commandToParse: string,
-): Promise<{ exitCode: number; error?: WorkflowError }> {
+): Promise<{ exitCode: number; error?: Error }> {
   try {
     const exitCode = await exec.exec(parsed.command, parsed.args, {
       ignoreReturnCode: true,
     });
 
     if (exitCode !== 0) {
-      const err = new WorkflowError(
-        "COMMAND_EXECUTION_FAILURE",
-        `Build command failed with exit code ${exitCode}: ${sanitizeCommandString(commandToParse)}`,
-        {
-          stage: "build-command-execution",
-          exitCode,
-          command: sanitizeCommandString(commandToParse),
-        },
-      );
-      return { exitCode, error: err };
+      return {
+        exitCode,
+        error: new Error(`Build command failed with exit code ${exitCode}: ${commandToParse}`),
+      };
     }
     return { exitCode: 0 };
   } catch (err) {
-    const execErr = wrapBuildError(
-      err,
-      "build-command-execution",
-      "COMMAND_EXECUTION_FAILURE",
-      commandToParse,
-    );
-    return { exitCode: 1, error: execErr };
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      exitCode: 1,
+      error: new Error(`Failed to execute build command "${commandToParse}": ${msg}`),
+    };
   }
 }
 
@@ -282,29 +231,17 @@ export function validateBuildOutput(
   const targetPath = outputPath || "dist";
   const targetDir = path.resolve(cwd, targetPath);
   if (!fs.existsSync(targetDir)) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Configured build output directory '${targetPath}' does not exist.`,
-      { stage: "build-output-validation", path: targetPath },
-    );
+    throw new Error(`Configured build output directory '${targetPath}' does not exist.`);
   }
 
   const stat = fs.statSync(targetDir);
   if (!stat.isDirectory()) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Configured build output path '${targetPath}' is not a directory.`,
-      { stage: "build-output-validation", path: targetPath },
-    );
+    throw new Error(`Configured build output path '${targetPath}' is not a directory.`);
   }
 
   const files = fs.readdirSync(targetDir);
   if (files.length === 0) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Configured build output directory '${targetPath}' is empty.`,
-      { stage: "build-output-validation", path: targetPath },
-    );
+    throw new Error(`Configured build output directory '${targetPath}' is empty.`);
   }
 }
 
@@ -312,23 +249,23 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   const exitOnFailure = options?.exitOnFailure ?? true;
   const pm = process.env.PACKAGE_MANAGER || "npm";
 
-  const resolved = safelyResolveBuildCommand(
+  const resolved = await safelyResolveBuildCommand(
     process.env.BUILD_COMMAND,
     process.env.DEFAULT_BUILD_COMMAND,
     pm,
   );
   if (resolved.error) {
-    core.setFailed(resolved.error);
+    core.setFailed(resolved.error.message);
     if (exitOnFailure) process.exit(1);
     return 1;
   }
   const commandToParse = resolved.commandToParse!;
 
-  core.info(`Preparing build command: "${sanitizeCommandString(commandToParse)}"`);
+  core.info(`Preparing build command: "${commandToParse}"`);
 
   const parsedResult = safelyParseBuildCommand(commandToParse);
   if (parsedResult.error) {
-    core.setFailed(parsedResult.error);
+    core.setFailed(parsedResult.error.message);
     if (exitOnFailure) process.exit(1);
     return 1;
   }
@@ -336,11 +273,11 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
 
   const sanitizedArgs = parsed.args.map((a) => (a.includes(" ") ? `"${a}"` : a));
   const sanitizedDisplay = `${parsed.command} ${sanitizedArgs.join(" ")}`.trim();
-  core.info(`Executing build command: ${sanitizeCommandString(sanitizedDisplay)}`);
+  core.info(`Executing build command: ${sanitizedDisplay}`);
 
   const execResult = await safelyExecuteBuildCommand(parsed, commandToParse);
   if (execResult.error) {
-    core.setFailed(execResult.error);
+    core.setFailed(execResult.error.message);
     if (exitOnFailure) process.exit(execResult.exitCode);
     return execResult.exitCode;
   }
@@ -349,11 +286,8 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
     validateBuildOutput();
     core.info("Build output directory validation succeeded.");
   } catch (err) {
-    if (err instanceof WorkflowError) {
-      core.setFailed(err);
-    } else {
-      core.setFailed(String(err));
-    }
+    const msg = err instanceof Error ? err.message : String(err);
+    core.setFailed(msg);
     if (exitOnFailure) process.exit(1);
     return 1;
   }
@@ -376,16 +310,14 @@ if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
       validateBuildOutput();
       core.info("Build output directory validation succeeded.");
     } catch (err) {
-      if (err instanceof WorkflowError) {
-        core.setFailed(err);
-      } else {
-        core.setFailed(String(err));
-      }
+      const msg = err instanceof Error ? err.message : String(err);
+      core.setFailed(msg);
       process.exit(1);
     }
   } else {
     runBuildCommand().catch((err) => {
-      core.setFailed(`Unhandled error during build command execution: ${err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      core.setFailed(`Unhandled error during build command execution: ${msg}`);
       process.exit(1);
     });
   }

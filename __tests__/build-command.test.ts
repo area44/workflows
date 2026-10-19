@@ -1,11 +1,11 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as io from "@actions/io";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString, validateBuildOutput } from "../src/pages/build-command";
-import * as processUtils from "../src/process-utils";
+import { parseCommand, resolveBuildCommandToParse, runBuildCommand, validateBuildOutput } from "../src/pages/build-command";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -20,38 +20,6 @@ describe("build-command", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
-  });
-
-  describe("sanitizeCommandString", () => {
-    it("should mask URLs containing auth credentials", () => {
-      expect(sanitizeCommandString("git clone https://user:secret-token@github.com/repo.git")).toBe(
-        "git clone https://***:***@github.com/repo.git",
-      );
-    });
-
-    it("should mask sensitive CLI flag values", () => {
-      expect(sanitizeCommandString("npm run build --token=secret-value")).toBe(
-        "npm run build --token=***",
-      );
-
-      expect(sanitizeCommandString("pnpm deploy --api-key my-secret-key")).toBe(
-        "pnpm deploy --api-key ***",
-      );
-
-      expect(sanitizeCommandString("tool --auth my-pass")).toBe("tool --auth ***");
-    });
-
-    it("should mask common secret tokens like GitHub PATs", () => {
-      expect(
-        sanitizeCommandString("npm run build --token ghp_123456789012345678901234567890123456"),
-      ).toBe("npm run build --token ***");
-    });
-
-    it("should leave non-sensitive commands unchanged", () => {
-      expect(sanitizeCommandString("npm run build --outDir dist")).toBe(
-        "npm run build --outDir dist",
-      );
-    });
   });
 
   describe("parseCommand", () => {
@@ -209,7 +177,7 @@ describe("build-command", () => {
       expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
     });
 
-    it("should execute custom BUILD_COMMAND when provided and sanitize logs", async () => {
+    it("should execute custom BUILD_COMMAND when provided", async () => {
       process.env.BUILD_COMMAND = "npm run build --token ghp_secret1234567890123456789012345";
       process.env.DEFAULT_BUILD_COMMAND = "vpr build";
 
@@ -218,7 +186,9 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(0);
-      expect(core.info).toHaveBeenCalledWith('Preparing build command: "npm run build --token ***"');
+      expect(core.info).toHaveBeenCalledWith(
+        'Preparing build command: "npm run build --token ghp_secret1234567890123456789012345"',
+      );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
         ["run", "build", "--token", "ghp_secret1234567890123456789012345"],
@@ -226,8 +196,8 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code and sanitize command in WorkflowError message and context", async () => {
-      process.env.BUILD_COMMAND = "npm run build --token=ghp_secret1234567890123456789012345";
+    it("should handle failing build command with non-zero exit code and report message", async () => {
+      process.env.BUILD_COMMAND = "npm run build";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
 
@@ -235,56 +205,11 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(2);
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "COMMAND_EXECUTION_FAILURE",
-          message: 'Build command failed with exit code 2: npm run build --token=***',
-          context: expect.objectContaining({
-            command: 'npm run build --token=***',
-          }),
-        }),
+        'Build command failed with exit code 2: npm run build',
       );
     });
 
-    it("should sanitize secrets in WorkflowError message and context when exec throws an error containing sensitive tokens or URLs", async () => {
-      const secretToken = "ghp_123456789012345678901234567890123456";
-      const secretPass = "super_secret_pass";
-      process.env.BUILD_COMMAND = `npm run build --token=${secretToken} https://user:${secretPass}@github.com/repo.git`;
-
-      vi.mocked(exec.exec).mockRejectedValue(
-        new Error(`Failed to fetch from https://user:${secretPass}@github.com/repo.git using token ${secretToken}`),
-      );
-
-      const exitCode = await runBuildCommand({ exitOnFailure: false });
-
-      expect(exitCode).toBe(1);
-      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0];
-      const serialized = JSON.stringify(setFailedArg);
-
-      expect(serialized).not.toContain(secretToken);
-      expect(serialized).not.toContain(secretPass);
-      expect(serialized).toContain("https://***:***@github.com/repo.git");
-      expect(serialized).toContain("--token=***");
-    });
-
-    it("should sanitize secrets in WorkflowError message and context for malformed commands containing sensitive flags and credential URLs", async () => {
-      const secretVal = "my_secret_token_value_999";
-      const secretPass = "my_secret_password_777";
-      process.env.BUILD_COMMAND = `npm run build --token=${secretVal} https://admin:${secretPass}@example.com 'unclosed quote`;
-
-      const exitCode = await runBuildCommand({ exitOnFailure: false });
-
-      expect(exitCode).toBe(1);
-      const setFailedArg = vi.mocked(core.setFailed).mock.calls[0][0] as any;
-
-      expect(setFailedArg.code).toBe("INVALID_INPUT");
-      expect(setFailedArg.message).toBe("Unterminated quote in build command string.");
-
-      const serialized = JSON.stringify(setFailedArg);
-      expect(serialized).not.toContain(secretVal);
-      expect(serialized).not.toContain(secretPass);
-    });
-
-    it("should handle exec throwing an exception and report actionable error message with COMMAND_EXECUTION_FAILURE WorkflowError", async () => {
+    it("should handle exec throwing an exception and report actionable error message", async () => {
       process.env.BUILD_COMMAND = "nonexistent-cmd arg";
 
       vi.mocked(exec.exec).mockRejectedValue(
@@ -295,61 +220,52 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "COMMAND_EXECUTION_FAILURE",
-          message: 'Failed to execute build command "nonexistent-cmd arg": Unable to locate executable file: nonexistent-cmd',
-        }),
+        'Failed to execute build command "nonexistent-cmd arg": Unable to locate executable file: nonexistent-cmd',
       );
     });
 
-    it("should handle command parse error and report actionable error message preserving WorkflowError INVALID_INPUT", async () => {
+    it("should handle command parse error and report actionable error message", async () => {
       process.env.BUILD_COMMAND = "npm run 'unclosed quote";
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "INVALID_INPUT",
-          message: "Unterminated quote in build command string.",
-        }),
+        'Failed to parse build command "npm run \'unclosed quote": Unterminated quote in build command string.',
       );
     });
   });
 
   describe("resolveBuildCommandToParse", () => {
-    it("should return custom command when supplied", () => {
-      const res = resolveBuildCommandToParse("npm run custom", "vp build", "npm");
+    it("should return custom command when supplied", async () => {
+      const res = await resolveBuildCommandToParse("npm run custom", "vp build", "npm");
       expect(res).toBe("npm run custom");
     });
 
-    it("should return package manager build command when custom and default commands are empty", () => {
-      const res = resolveBuildCommandToParse("", "", "pnpm");
+    it("should return package manager build command when custom and default commands are empty", async () => {
+      const res = await resolveBuildCommandToParse("", "", "pnpm");
       expect(res).toBe("pnpm run build");
     });
 
-    it("should resolve vp build directly when vp executable is available", () => {
-      const mockCheck = (cmd: string) => cmd === "vp";
-      const res = resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
+    it("should resolve vp build directly when vp executable is available", async () => {
+      const mockCheck = async (cmd: string) => cmd === "vp";
+      const res = await resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
       expect(res).toBe("vp build");
     });
 
-    it("should fall back to vpr build when vp is unavailable and vpr is available", () => {
-      const mockCheck = (cmd: string) => cmd === "vpr";
-      const res = resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
+    it("should fall back to vpr build when vp is unavailable and vpr is available", async () => {
+      const mockCheck = async (cmd: string) => cmd === "vpr";
+      const res = await resolveBuildCommandToParse("", "vp build", "npm", mockCheck);
       expect(res).toBe("vpr build");
       expect(core.info).toHaveBeenCalledWith(
         'Primary Vite+ executable "vp" unavailable. Falling back to "vpr".',
       );
     });
 
-    it("should throw WorkflowError MISSING_CONFIGURATION when neither vp nor vpr is available", () => {
-      const mockCheck = () => false;
-      expect(() => resolveBuildCommandToParse("", "vp build", "npm", mockCheck)).toThrow(
-        expect.objectContaining({
-          code: "MISSING_CONFIGURATION",
-          message: 'Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
-        }),
+    it("should throw error when neither vp nor vpr is available", async () => {
+      const mockCheck = async () => false;
+      await expect(resolveBuildCommandToParse("", "vp build", "npm", mockCheck)).rejects.toThrow(
+        'Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
       );
     });
   });
@@ -359,7 +275,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.spyOn(io, "which").mockImplementation(async (bin) => (bin === "vp" ? "/usr/bin/vp" : ""));
       vi.mocked(exec.exec).mockResolvedValue(0);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -373,7 +289,7 @@ describe("build-command", () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vp");
+      vi.spyOn(io, "which").mockImplementation(async (bin) => (bin === "vp" ? "/usr/bin/vp" : ""));
       vi.mocked(exec.exec).mockResolvedValue(2);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -381,19 +297,14 @@ describe("build-command", () => {
       expect(exitCode).toBe(2);
       expect(exec.exec).toHaveBeenCalledWith("vp", ["build"], { ignoreReturnCode: true });
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "COMMAND_EXECUTION_FAILURE",
-          message: "Build command failed with exit code 2: vp build",
-        }),
-      );
+      expect(core.setFailed).toHaveBeenCalledWith("Build command failed with exit code 2: vp build");
     });
 
     it("vp is unavailable and vpr is available -> Run vpr build", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(processUtils, "isExecutableAvailable").mockImplementation((bin) => bin === "vpr");
+      vi.spyOn(io, "which").mockImplementation(async (bin) => (bin === "vpr" ? "/usr/bin/vpr" : ""));
       vi.mocked(exec.exec).mockResolvedValue(0);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -405,21 +316,18 @@ describe("build-command", () => {
       expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
     });
 
-    it("Neither executable is available -> Fail with actionable WorkflowError and exitOnFailure handling", async () => {
+    it("Neither executable is available -> Fail with actionable Error and exitOnFailure handling", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
+      vi.spyOn(io, "which").mockResolvedValue("");
 
       // Test with exitOnFailure: false -> should return 1 and core.setFailed without rejecting Promise
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "MISSING_CONFIGURATION",
-          message: 'Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
-        }),
+        'Failed to resolve build command: Primary Vite+ executable "vp" and fallback executable "vpr" are both unavailable in PATH.',
       );
 
       // Test with default failure mode (exitOnFailure: true) -> should call process.exit(1)
@@ -433,7 +341,7 @@ describe("build-command", () => {
       process.env.BUILD_COMMAND = "custom-builder build";
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
+      vi.spyOn(io, "which").mockResolvedValue("");
       vi.mocked(exec.exec).mockResolvedValue(1);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -445,12 +353,12 @@ describe("build-command", () => {
   });
 
   describe("validateBuildOutput", () => {
-    it("should throw WorkflowError if output directory does not exist", () => {
+    it("should throw error if output directory does not exist", () => {
       const testDir = "non_existent_output_dir_12345";
       expect(() => validateBuildOutput(testDir)).toThrow("Configured build output directory 'non_existent_output_dir_12345' does not exist.");
     });
 
-    it("should throw WorkflowError if output path is a file rather than a directory", () => {
+    it("should throw error if output path is a file rather than a directory", () => {
       const testFile = path.join(process.cwd(), "tmp_file_not_dir.txt");
       fs.writeFileSync(testFile, "hello");
 
@@ -461,7 +369,7 @@ describe("build-command", () => {
       }
     });
 
-    it("should throw WorkflowError if output directory exists but is empty", () => {
+    it("should throw error if output directory exists but is empty", () => {
       const testDir = path.join(process.cwd(), "tmp_empty_output_dir");
       if (!fs.existsSync(testDir)) {
         fs.mkdirSync(testDir, { recursive: true });

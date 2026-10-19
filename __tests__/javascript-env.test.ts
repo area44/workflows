@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { WorkflowError } from "../src/errors";
 import {
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
@@ -160,10 +159,10 @@ describe("javascript-env", () => {
       expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
     });
 
-    it("should throw a WorkflowError if an unsupported package manager is specified in packageManager field", () => {
+    it("should throw an Error if an unsupported package manager is specified in packageManager field", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "yarn@3.0.0" }));
       const project = inspectJsProjectEnvironment(tempDir);
-      expect(() => resolveJsPackageManager(project)).toThrow(WorkflowError);
+      expect(() => resolveJsPackageManager(project)).toThrow(Error);
       expect(() => resolveJsPackageManager(project)).toThrow(/Unsupported package manager 'yarn'/);
     });
   });
@@ -181,9 +180,9 @@ describe("javascript-env", () => {
       expect(plan).toEqual(expected);
     });
 
-    it("should throw WorkflowError for unsupported package manager", () => {
+    it("should throw Error for unsupported package manager", () => {
       const project = inspectJsProjectEnvironment(tempDir);
-      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(WorkflowError);
+      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(Error);
       expect(() => getJsInstallationPlan(project, "yarn")).toThrow(/Unsupported package manager 'yarn'/);
     });
   });
