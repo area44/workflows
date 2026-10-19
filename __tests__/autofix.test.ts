@@ -1,13 +1,14 @@
 import * as core from "@actions/core";
-import { execSync, spawnSync } from "node:child_process";
+import * as exec from "@actions/exec";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
+import { WorkflowError } from "../src/errors";
 import * as processUtils from "../src/process-utils";
 
-vi.mock("node:child_process");
+vi.mock("@actions/exec");
 vi.mock("@actions/core");
 
 describe("autofix", () => {
@@ -17,17 +18,8 @@ describe("autofix", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
-    vi.mocked(spawnSync).mockReset();
-    vi.mocked(spawnSync).mockReturnValue({
-      status: 0,
-      stdout: "",
-      stderr: "",
-      pid: 1,
-      output: [],
-      signal: null,
-    } as any);
-    vi.mocked(execSync).mockReset();
-    vi.mocked(execSync).mockReturnValue(Buffer.from("") as any);
+    vi.mocked(exec.exec).mockReset();
+    vi.mocked(exec.exec).mockResolvedValue(0);
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
   });
@@ -44,48 +36,51 @@ describe("autofix", () => {
       {
         fixture: "autofix/node/npm/basic",
         pm: "npm",
-        installCmd: "npm install",
-        expectedScripts: ["npm run format", "npm run lint"],
+        executable: "npm",
+        installArgs: ["install"],
+        expectedScriptNames: ["format", "lint"],
       },
       {
         fixture: "autofix/node/pnpm/basic",
         pm: "pnpm",
-        installCmd: "pnpm install --no-frozen-lockfile",
-        expectedScripts: ["pnpm run format", "pnpm run lint"],
+        executable: "pnpm",
+        installArgs: ["install", "--no-frozen-lockfile"],
+        expectedScriptNames: ["format", "lint"],
       },
       {
         fixture: "autofix/bun/bun/basic",
         pm: "bun",
-        installCmd: "bun install",
-        expectedScripts: ["bun run format", "bun run lint"],
+        executable: "bun",
+        installArgs: ["install"],
+        expectedScriptNames: ["format", "lint"],
       },
     ];
 
     it.each(fixtureCases)(
-      "should install dependencies and run scripts for $fixture",
-      ({ fixture, pm, installCmd, expectedScripts }) => {
+      "should install dependencies and run scripts for $fixture using @actions/exec",
+      async ({ fixture, pm, executable, installArgs, expectedScriptNames }) => {
         const fixturePath = path.join(fixturesDir, fixture);
         process.chdir(fixturePath);
         process.env.PACKAGE_MANAGER = pm;
 
-        run();
+        await run();
 
-        expect(spawnSync).toHaveBeenCalledWith(installCmd, expect.objectContaining({ cwd: fixturePath, shell: true }));
-        for (const script of expectedScripts) {
-          expect(spawnSync).toHaveBeenCalledWith(script, expect.objectContaining({ cwd: fixturePath, shell: true }));
+        expect(exec.exec).toHaveBeenCalledWith(executable, installArgs, expect.objectContaining({ cwd: fixturePath }));
+        for (const scriptName of expectedScriptNames) {
+          expect(exec.exec).toHaveBeenCalledWith(executable, ["run", scriptName], expect.objectContaining({ cwd: fixturePath }));
         }
-        expect(spawnSync).toHaveBeenCalledTimes(1 + expectedScripts.length);
+        expect(exec.exec).toHaveBeenCalledTimes(1 + expectedScriptNames.length);
       },
     );
 
-    it("should not run Python workflow in JS/TS-only repository", () => {
+    it("should not run Python workflow in JS/TS-only repository", async () => {
       const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
       process.chdir(fixturePath);
 
-      run();
+      await run();
 
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
-      expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/pip install|uv sync/), expect.anything());
+      expect(exec.exec).not.toHaveBeenCalledWith(expect.stringMatching(/pip|uv/), expect.anything(), expect.anything());
     });
   });
 
@@ -103,80 +98,80 @@ describe("autofix", () => {
       }
     });
 
-    it("should preserve updated package-lock.json when npm install synchronizes dependencies", () => {
+    it("should preserve updated package-lock.json when npm install synchronizes dependencies", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), JSON.stringify({ lockfileVersion: 2 }));
 
-      vi.mocked(spawnSync).mockImplementation((cmd, opts) => {
-        if (typeof cmd === "string" && cmd.startsWith("npm install")) {
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        if (executable === "npm" && args?.[0] === "install") {
           fs.writeFileSync(path.join(tempDir, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, updated: true }));
         }
-        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+        return 0;
       });
 
-      run(tempDir);
+      await run(tempDir);
 
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
       const updatedLock = JSON.parse(fs.readFileSync(path.join(tempDir, "package-lock.json"), "utf8"));
       expect(updatedLock).toEqual({ lockfileVersion: 3, updated: true });
       expect(core.setFailed).not.toHaveBeenCalled();
     });
 
-    it("should preserve updated pnpm-lock.yaml when pnpm install --no-frozen-lockfile updates lockfile", () => {
+    it("should preserve updated pnpm-lock.yaml when pnpm install --no-frozen-lockfile updates lockfile", async () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '6.0'");
 
-      vi.mocked(spawnSync).mockImplementation((cmd) => {
-        if (typeof cmd === "string" && cmd.startsWith("pnpm install")) {
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        if (executable === "pnpm" && args?.[0] === "install") {
           fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\npackages:\n  foo: 1.0.0");
         }
-        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+        return 0;
       });
 
-      run(tempDir);
+      await run(tempDir);
 
-      expect(spawnSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("pnpm", ["install", "--no-frozen-lockfile"], expect.objectContaining({ cwd: tempDir }));
       const updatedLock = fs.readFileSync(path.join(tempDir, "pnpm-lock.yaml"), "utf8");
       expect(updatedLock).toContain("lockfileVersion: '9.0'");
       expect(core.setFailed).not.toHaveBeenCalled();
     });
 
-    it("should preserve updated bun.lock when bun install synchronizes dependencies", () => {
+    it("should preserve updated bun.lock when bun install synchronizes dependencies", async () => {
       process.env.PACKAGE_MANAGER = "bun";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "old bun lock content");
 
-      vi.mocked(spawnSync).mockImplementation((cmd) => {
-        if (typeof cmd === "string" && cmd.startsWith("bun install")) {
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        if (executable === "bun" && args?.[0] === "install") {
           fs.writeFileSync(path.join(tempDir, "bun.lock"), "new bun lock content with resolved hashes");
         }
-        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+        return 0;
       });
 
-      run(tempDir);
+      await run(tempDir);
 
-      expect(spawnSync).toHaveBeenCalledWith("bun install", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("bun", ["install"], expect.objectContaining({ cwd: tempDir }));
       expect(fs.readFileSync(path.join(tempDir, "bun.lock"), "utf8")).toBe("new bun lock content with resolved hashes");
       expect(core.setFailed).not.toHaveBeenCalled();
     });
 
-    it("should preserve updated uv.lock when uv sync synchronizes Python dependencies", () => {
+    it("should preserve updated uv.lock when uv sync synchronizes Python dependencies", async () => {
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
 
-      vi.mocked(spawnSync).mockImplementation((cmd) => {
-        if (typeof cmd === "string" && cmd.startsWith("uv sync")) {
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        if (executable === "uv" && args?.[0] === "sync") {
           fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n[[package]]\nname = 'requests'\nversion = '2.31.0'\n");
         }
-        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+        return 0;
       });
 
-      run(tempDir);
+      await run(tempDir);
 
-      expect(spawnSync).toHaveBeenCalledWith("uv sync", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: tempDir }));
       const updatedLock = fs.readFileSync(path.join(tempDir, "uv.lock"), "utf8");
       expect(updatedLock).toContain("name = 'requests'");
       expect(core.setFailed).not.toHaveBeenCalled();
@@ -197,76 +192,73 @@ describe("autofix", () => {
       }
     });
 
-    it("should execute commands with explicit custom working directory and support paths with spaces", () => {
+    it("should execute commands with explicit custom working directory and support paths with spaces", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
     });
 
-    it("should run 'pnpm install --no-frozen-lockfile' when pnpm-lock.yaml exists", () => {
+    it("should run 'pnpm install --no-frozen-lockfile' when pnpm-lock.yaml exists", async () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: pnpm install --no-frozen-lockfile");
-      expect(spawnSync).toHaveBeenCalledWith("pnpm install --no-frozen-lockfile", expect.objectContaining({ cwd: tempDir, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("pnpm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("pnpm", ["install", "--no-frozen-lockfile"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("pnpm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
     });
 
-    it("should run 'bun install' when bun.lock exists", () => {
+    it("should run 'bun install' when bun.lock exists", async () => {
       process.env.PACKAGE_MANAGER = "bun";
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install");
-      expect(spawnSync).toHaveBeenCalledWith("bun install", expect.objectContaining({ cwd: tempDir, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("bun run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("bun", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("bun", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
     });
 
-    it("should install JS dependencies even when package.json has no applicable scripts", () => {
+    it("should install JS dependencies even when package.json has no applicable scripts", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: tempDir, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
     });
 
-
-    it("should set workflow failed with WorkflowError when JS dependency installation fails", () => {
+    it("should set workflow failed with WorkflowError when JS dependency installation fails", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "npm install failed",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(exec.exec).mockImplementationOnce(async (_cmd, _args, opts) => {
+        if (opts?.listeners?.stderr) {
+          opts.listeners.stderr(Buffer.from("npm install failed"));
+        }
+        return 1;
+      });
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm install");
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "WorkflowError",
           code: "SETUP_FAILURE",
-          message: expect.stringContaining("JS dependency installation failed executing \"npm install\""),
+          message: expect.stringContaining('JS dependency installation failed executing "npm install"'),
           context: expect.objectContaining({
             stage: "js-dependency-installation",
             packageManager: "npm",
@@ -280,20 +272,20 @@ describe("autofix", () => {
   describe("Python Integration", () => {
     const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
 
-    it("should execute Python workflow and Ruff autofix for uv fixture when Python source exists", () => {
+    it("should execute Python workflow and Ruff autofix for uv fixture when Python source exists", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const fixturePath = path.join(pythonFixturesDir, "uv");
 
-      run(fixturePath);
+      await run(fixturePath);
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
-      expect(spawnSync).toHaveBeenCalledWith("uv sync", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: fixturePath, shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: fixturePath, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: fixturePath }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: fixturePath }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: fixturePath }));
     });
 
-    it("should install Python dependencies when executing Python workflow", () => {
-      executePythonWorkflow(
+    it("should install Python dependencies when executing Python workflow", async () => {
+      await executePythonWorkflow(
         {
           name: "pip",
           installCommand: "pip install -r requirements.txt",
@@ -303,12 +295,43 @@ describe("autofix", () => {
       );
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-      expect(spawnSync).toHaveBeenCalledWith("pip install -r requirements.txt", expect.objectContaining({ cwd: originalCwd, shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: originalCwd }));
     });
 
+    it("should execute compound pip installation commands sequentially and stop on failure", async () => {
+      await executePythonWorkflow(
+        {
+          name: "pip",
+          installCommand: "pip install -r requirements.txt && pip install -e .",
+          execPrefix: "",
+        },
+        originalCwd,
+      );
 
-    it("should skip lockfile sync and dependency installation for standalone Python projects", () => {
-      executePythonWorkflow({
+      expect(exec.exec).toHaveBeenNthCalledWith(1, "pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: originalCwd }));
+      expect(exec.exec).toHaveBeenNthCalledWith(2, "pip", ["install", "-e", "."], expect.objectContaining({ cwd: originalCwd }));
+    });
+
+    it("should stop execution of compound pip command if first command fails", async () => {
+      vi.mocked(exec.exec).mockResolvedValueOnce(1);
+
+      await expect(
+        executePythonWorkflow(
+          {
+            name: "pip",
+            installCommand: "pip install -r requirements.txt && pip install -e .",
+            execPrefix: "",
+          },
+          originalCwd,
+        ),
+      ).rejects.toThrow(WorkflowError);
+
+      expect(exec.exec).toHaveBeenCalledTimes(1);
+      expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.anything());
+    });
+
+    it("should skip lockfile sync and dependency installation for standalone Python projects", async () => {
+      await executePythonWorkflow({
         name: "pip",
         installCommand: "",
         execPrefix: "",
@@ -316,10 +339,10 @@ describe("autofix", () => {
       });
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-      expect(spawnSync).not.toHaveBeenCalledWith("pip install", expect.anything());
+      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
-    it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", () => {
+    it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/mixed-temp");
       fs.mkdirSync(tempDir, { recursive: true });
@@ -328,35 +351,33 @@ describe("autofix", () => {
       fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
 
       try {
-        run(tempDir);
+        await run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-        expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-        expect(spawnSync).toHaveBeenCalledWith("pip install -r requirements.txt", expect.objectContaining({ cwd: tempDir, shell: true }));
-        expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: tempDir, shell: true }));
-        expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should run Ruff lint before Ruff format in Python repository", () => {
+    it("should run Ruff lint before Ruff format in Python repository", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-order-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       const executedCommands: string[] = [];
-      vi.mocked(spawnSync).mockImplementation((cmd) => {
-        if (typeof cmd === "string") {
-          executedCommands.push(cmd);
-        }
-        return { status: 0, stdout: "", stderr: "", pid: 1, output: [], signal: null } as any;
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        executedCommands.push(`${executable} ${(args || []).join(" ")}`.trim());
+        return 0;
       });
 
       try {
-        executeRuffAutofix(tempDir);
+        await executeRuffAutofix(tempDir);
 
         expect(executedCommands).toEqual(["ruff check --fix .", "ruff format ."]);
       } finally {
@@ -364,28 +385,28 @@ describe("autofix", () => {
       }
     });
 
-    it("should not execute Ruff commands in a non-Python repository", () => {
+    it("should not execute Ruff commands in a non-Python repository", async () => {
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/non-py-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "README.md"), "# Hello");
 
       try {
-        executeRuffAutofix(tempDir);
+        await executeRuffAutofix(tempDir);
 
-        expect(spawnSync).not.toHaveBeenCalledWith(expect.stringMatching(/ruff/), expect.anything());
+        expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should throw WorkflowError when ruff executable is not available in PATH", () => {
+    it("should throw WorkflowError when ruff executable is not available in PATH", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/no-ruff-bin-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       try {
-        expect(() => executeRuffAutofix(tempDir)).toThrow(
+        await expect(executeRuffAutofix(tempDir)).rejects.toThrow(
           expect.objectContaining({
             name: "WorkflowError",
             code: "MISSING_CONFIGURATION",
@@ -402,23 +423,21 @@ describe("autofix", () => {
       }
     });
 
-    it("should propagate non-zero ruff exit code as WorkflowError with COMMAND_EXECUTION_FAILURE", () => {
+    it("should propagate non-zero ruff exit code as WorkflowError with COMMAND_EXECUTION_FAILURE", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-fail-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Ruff syntax error in file",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(exec.exec).mockImplementationOnce(async (_cmd, _args, opts) => {
+        if (opts?.listeners?.stderr) {
+          opts.listeners.stderr(Buffer.from("Ruff syntax error in file"));
+        }
+        return 1;
+      });
 
       try {
-        expect(() => executeRuffAutofix(tempDir)).toThrow(
+        await expect(executeRuffAutofix(tempDir)).rejects.toThrow(
           expect.objectContaining({
             name: "WorkflowError",
             code: "COMMAND_EXECUTION_FAILURE",
@@ -435,17 +454,17 @@ describe("autofix", () => {
       }
     });
 
-    it("should execute Ruff in specified working directory", () => {
+    it("should execute Ruff in specified working directory", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-cwd-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       try {
-        executeRuffAutofix(tempDir);
+        await executeRuffAutofix(tempDir);
 
-        expect(spawnSync).toHaveBeenCalledWith("ruff check --fix .", expect.objectContaining({ cwd: tempDir, shell: true }));
-        expect(spawnSync).toHaveBeenCalledWith("ruff format .", expect.objectContaining({ cwd: tempDir, shell: true }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -465,16 +484,16 @@ describe("autofix", () => {
       expect(actionYmlContent).not.toContain("ruff format .");
     });
 
-    it("should throw WorkflowError if required package manager binary is not available in PATH without fallback attempt", () => {
+    it("should throw WorkflowError if required package manager binary is not available in PATH without fallback attempt", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(false);
 
-      expect(() =>
+      await expect(
         executePythonWorkflow({
           name: "uv",
           installCommand: "uv sync",
           execPrefix: "uv run",
         }),
-      ).toThrow(
+      ).rejects.toThrow(
         expect.objectContaining({
           name: "WorkflowError",
           code: "MISSING_CONFIGURATION",
@@ -490,16 +509,16 @@ describe("autofix", () => {
       expect(core.error).toHaveBeenCalledWith(
         "Required Python package manager 'uv' is not available in PATH.",
       );
-      expect(spawnSync).not.toHaveBeenCalledWith("pip install uv", expect.anything());
+      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
-    it("should run Python workflow in Python-only repository without package.json when Python source exists", () => {
+    it("should run Python workflow in Python-only repository without package.json when Python source exists", async () => {
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/py-only-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('py-only')\n");
 
       try {
-        run(tempDir);
+        await run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
@@ -508,56 +527,54 @@ describe("autofix", () => {
       }
     });
 
-    it("should not run Python workflow for repository with only pyproject.toml and no .py files", () => {
+    it("should not run Python workflow for repository with only pyproject.toml and no .py files", async () => {
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/pyproject-only-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
       try {
-        run(tempDir);
+        await run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
-        expect(spawnSync).not.toHaveBeenCalled();
+        expect(exec.exec).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should not run Python workflow for repository with only [tool.ruff] configuration and no .py files", () => {
+    it("should not run Python workflow for repository with only [tool.ruff] configuration and no .py files", async () => {
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tool-ruff-only-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
 
       try {
-        run(tempDir);
+        await run(tempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
-        expect(spawnSync).not.toHaveBeenCalled();
+        expect(exec.exec).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should handle failure in Python commands gracefully throwing WorkflowError", () => {
+    it("should handle failure in Python commands gracefully throwing WorkflowError", async () => {
       vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Install failed",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(exec.exec).mockImplementationOnce(async (_cmd, _args, opts) => {
+        if (opts?.listeners?.stderr) {
+          opts.listeners.stderr(Buffer.from("Install failed"));
+        }
+        return 1;
+      });
 
-      expect(() =>
+      await expect(
         executePythonWorkflow({
           name: "pip",
           installCommand: "pip install -r requirements.txt",
           execPrefix: "",
         }),
-      ).toThrow(
+      ).rejects.toThrow(
         expect.objectContaining({
           name: "WorkflowError",
           code: "SETUP_FAILURE",
@@ -572,16 +589,40 @@ describe("autofix", () => {
 
       expect(core.error).toHaveBeenCalledWith('Python command "pip install -r requirements.txt" failed');
     });
+
+    it("should handle process launch errors gracefully when exec.exec rejects", async () => {
+      vi.spyOn(processUtils, "isExecutableAvailable").mockReturnValue(true);
+      vi.mocked(exec.exec).mockRejectedValueOnce(new Error("Unable to locate executable file: pip"));
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommand: "pip install -r requirements.txt",
+          execPrefix: "",
+        }),
+      ).rejects.toThrow(
+        expect.objectContaining({
+          name: "WorkflowError",
+          code: "SETUP_FAILURE",
+          message: expect.stringContaining('Python command "pip install -r requirements.txt" failed'),
+          context: expect.objectContaining({
+            cause: expect.objectContaining({
+              message: expect.stringContaining("Unable to locate executable file: pip"),
+            }),
+          }),
+        }),
+      );
+    });
   });
 
   describe("package.json existence checks", () => {
-    it("should skip and log when package.json does not exist", () => {
+    it("should skip and log when package.json does not exist", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      run();
+      await run();
 
       expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
-      expect(spawnSync).not.toHaveBeenCalled();
+      expect(exec.exec).not.toHaveBeenCalled();
     });
   });
 
@@ -590,49 +631,49 @@ describe("autofix", () => {
       {
         name: "check script priority",
         scripts: { check: "echo check", format: "echo format", lint: "echo lint" },
-        expectedCalls: ["npm run check"],
+        expectedCalls: [["npm", ["run", "check"]]],
       },
       {
         name: "format and lint scripts",
         scripts: { format: "echo format", lint: "echo lint" },
-        expectedCalls: ["npm run format", "npm run lint"],
+        expectedCalls: [["npm", ["run", "format"]], ["npm", ["run", "lint"]]],
       },
       {
         name: "fmt and lint scripts when format is absent",
         scripts: { fmt: "echo fmt", lint: "echo lint" },
-        expectedCalls: ["npm run fmt", "npm run lint"],
+        expectedCalls: [["npm", ["run", "fmt"]], ["npm", ["run", "lint"]]],
       },
       {
         name: "format script only",
         scripts: { format: "echo format" },
-        expectedCalls: ["npm run format"],
+        expectedCalls: [["npm", ["run", "format"]]],
       },
       {
         name: "fmt script only",
         scripts: { fmt: "echo fmt" },
-        expectedCalls: ["npm run fmt"],
+        expectedCalls: [["npm", ["run", "fmt"]]],
       },
       {
         name: "lint script only",
         scripts: { lint: "echo lint" },
-        expectedCalls: ["npm run lint"],
+        expectedCalls: [["npm", ["run", "lint"]]],
       },
     ];
 
-    it.each(scriptCases)("should select correct script(s) for $name", ({ scripts, expectedCalls }) => {
+    it.each(scriptCases)("should select correct script(s) for $name", async ({ scripts, expectedCalls }) => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ scripts }) as any);
 
-      run();
+      await run();
 
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      for (const callCmd of expectedCalls) {
-        expect(spawnSync).toHaveBeenCalledWith(callCmd, expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
+      for (const [cmd, args] of expectedCalls) {
+        expect(exec.exec).toHaveBeenCalledWith(cmd, args, expect.objectContaining({ cwd: process.cwd() }));
       }
-      expect(spawnSync).toHaveBeenCalledTimes(1 + expectedCalls.length);
+      expect(exec.exec).toHaveBeenCalledTimes(1 + expectedCalls.length);
     });
 
-    it("should sanitize untrusted PACKAGE_MANAGER env values containing shell injection characters", () => {
+    it("should sanitize untrusted PACKAGE_MANAGER env values containing shell injection characters", async () => {
       expect(sanitizePackageManager("npm; echo hack")).toBe("npm");
       expect(sanitizePackageManager("pnpm && calc")).toBe("npm");
       expect(sanitizePackageManager("bun")).toBe("bun");
@@ -648,15 +689,15 @@ describe("autofix", () => {
         }) as any,
       );
 
-      run();
+      await run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(2);
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: process.cwd() }));
+      expect(exec.exec).toHaveBeenCalledTimes(2);
     });
 
-    it("should log info and skip script execution when scripts are empty or no matched script exists", () => {
+    it("should log info and skip script execution when scripts are empty or no matched script exists", async () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
@@ -666,23 +707,23 @@ describe("autofix", () => {
         }) as any,
       );
 
-      run();
+      await run();
 
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
+      expect(exec.exec).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
     });
 
-    it("should log info and skip script execution when scripts block is missing entirely in package.json", () => {
+    it("should log info and skip script execution when scripts block is missing entirely in package.json", async () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ name: "my-package" }) as any);
 
-      run();
+      await run();
 
-      expect(spawnSync).toHaveBeenCalledWith("npm install", expect.objectContaining({ cwd: process.cwd(), shell: true }));
-      expect(spawnSync).toHaveBeenCalledTimes(1);
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
+      expect(exec.exec).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (check, format, lint, etc.) found in package.json.",
       );
@@ -690,7 +731,7 @@ describe("autofix", () => {
   });
 
   describe("package manager environmental options", () => {
-    it("should respect custom PACKAGE_MANAGER env variable values such as pnpm", () => {
+    it("should respect custom PACKAGE_MANAGER env variable values such as pnpm", async () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
@@ -701,13 +742,13 @@ describe("autofix", () => {
         }) as any,
       );
 
-      run();
+      await run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: pnpm run check");
-      expect(spawnSync).toHaveBeenCalledWith("pnpm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("pnpm", ["run", "check"], expect.objectContaining({ cwd: process.cwd() }));
     });
 
-    it("should respect custom PACKAGE_MANAGER env variable values such as bun", () => {
+    it("should respect custom PACKAGE_MANAGER env variable values such as bun", async () => {
       process.env.PACKAGE_MANAGER = "bun";
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
@@ -718,13 +759,13 @@ describe("autofix", () => {
         }) as any,
       );
 
-      run();
+      await run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: bun run check");
-      expect(spawnSync).toHaveBeenCalledWith("bun run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("bun", ["run", "check"], expect.objectContaining({ cwd: process.cwd() }));
     });
 
-    it("should fall back to npm if PACKAGE_MANAGER environment variable is undefined or blank", () => {
+    it("should fall back to npm if PACKAGE_MANAGER environment variable is undefined or blank", async () => {
       delete process.env.PACKAGE_MANAGER;
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
@@ -735,19 +776,19 @@ describe("autofix", () => {
         }) as any,
       );
 
-      run();
+      await run();
 
       expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-      expect(spawnSync).toHaveBeenCalledWith("npm run check", expect.objectContaining({ cwd: process.cwd(), shell: true }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: process.cwd() }));
     });
   });
 
   describe("error and exception handling", () => {
-    it("should set INVALID_INPUT when package.json contains malformed JSON syntax", () => {
+    it("should set INVALID_INPUT when package.json contains malformed JSON syntax", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockReturnValue("{ invalid json syntax }" as any);
 
-      run();
+      await run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -759,16 +800,16 @@ describe("autofix", () => {
           }),
         }),
       );
-      expect(spawnSync).not.toHaveBeenCalled();
+      expect(exec.exec).not.toHaveBeenCalled();
     });
 
-    it("should set SETUP_FAILURE when package.json encounters a read/file access error", () => {
+    it("should set SETUP_FAILURE when package.json encounters a read/file access error", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("EACCES: permission denied, open 'package.json'");
       });
 
-      run();
+      await run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -782,13 +823,13 @@ describe("autofix", () => {
       );
     });
 
-    it("should handle unclassified package.json inspection errors with SETUP_FAILURE", () => {
+    it("should handle unclassified package.json inspection errors with SETUP_FAILURE", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw "Raw unexpected filesystem error";
       });
 
-      run();
+      await run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -802,7 +843,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should log an error and set workflow as failed if a script fails during execution", () => {
+    it("should log an error and set workflow as failed if a script fails during execution", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
@@ -811,25 +852,16 @@ describe("autofix", () => {
           },
         }) as any,
       );
-      vi.mocked(spawnSync)
-        .mockReturnValueOnce({
-          status: 0,
-          stdout: "",
-          stderr: "",
-          pid: 1,
-          output: [],
-          signal: null,
-        } as any)
-        .mockReturnValueOnce({
-          status: 1,
-          stdout: "",
-          stderr: "Command failed: npm run check",
-          pid: 1,
-          output: [],
-          signal: null,
-        } as any);
+      vi.mocked(exec.exec)
+        .mockResolvedValueOnce(0)
+        .mockImplementationOnce(async (_cmd, _args, opts) => {
+          if (opts?.listeners?.stderr) {
+            opts.listeners.stderr(Buffer.from("Command failed: npm run check"));
+          }
+          return 1;
+        });
 
-      run();
+      await run();
 
       expect(core.error).toHaveBeenCalledWith('Script "check" failed');
       expect(core.setFailed).toHaveBeenCalledWith(
@@ -862,21 +894,19 @@ describe("autofix", () => {
       }
     });
 
-    it("should sanitize secrets/tokens in command strings when reporting installation failures", () => {
+    it("should sanitize secrets/tokens in command strings when reporting installation failures", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       process.env.PACKAGE_MANAGER = "npm";
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Failed to connect with token ghp_123456789012345678901234567890123456",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(exec.exec).mockImplementationOnce(async (_cmd, _args, opts) => {
+        if (opts?.listeners?.stderr) {
+          opts.listeners.stderr(Buffer.from("Failed to connect with token ghp_123456789012345678901234567890123456"));
+        }
+        return 1;
+      });
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -891,7 +921,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should sanitize tokens and secrets in nested error causes for generic script execution failures", () => {
+    it("should sanitize tokens and secrets in nested error causes for generic script execution failures", async () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(true);
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
@@ -901,25 +931,16 @@ describe("autofix", () => {
         }) as any,
       );
 
-      vi.mocked(spawnSync)
-        .mockReturnValueOnce({
-          status: 0,
-          stdout: "",
-          stderr: "",
-          pid: 1,
-          output: [],
-          signal: null,
-        } as any)
-        .mockReturnValueOnce({
-          status: 1,
-          stdout: "",
-          stderr: "Execution failed with token github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111",
-          pid: 1,
-          output: [],
-          signal: null,
-        } as any);
+      vi.mocked(exec.exec)
+        .mockResolvedValueOnce(0)
+        .mockImplementationOnce(async (_cmd, _args, opts) => {
+          if (opts?.listeners?.stderr) {
+            opts.listeners.stderr(Buffer.from("Execution failed with token github_pat_11AAAAAA1111111111111111111111111111111111111111111111111111111111111111111111"));
+          }
+          return 1;
+        });
 
-      run();
+      await run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -934,21 +955,14 @@ describe("autofix", () => {
       );
     });
 
-    it("should preserve existing user files and not perform destructive cleanups on failure", () => {
+    it("should preserve existing user files and not perform destructive cleanups on failure", async () => {
       const userFile = path.join(tempDir, "unrelated-user-file.txt");
       fs.writeFileSync(userFile, "important user content");
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "exit 1" } }));
 
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Script failed",
-        pid: 1,
-        output: [],
-        signal: null,
-      } as any);
+      vi.mocked(exec.exec).mockResolvedValueOnce(1);
 
-      run(tempDir);
+      await run(tempDir);
 
       expect(core.setFailed).toHaveBeenCalled();
       expect(fs.existsSync(userFile)).toBe(true);
