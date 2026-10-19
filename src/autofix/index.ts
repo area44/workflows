@@ -77,7 +77,11 @@ async function execSanitized(
   };
 }
 
-async function runScriptCommand(pm: string, name: string, cwd: string = process.cwd()): Promise<void> {
+async function runScriptCommand(
+  pm: string,
+  name: string,
+  cwd: string = process.cwd(),
+): Promise<void> {
   const safePm = sanitizePackageManager(pm);
   const rawCmd = `${safePm} run ${name}`;
   const displayCmd = sanitizeCommandString(rawCmd);
@@ -101,7 +105,10 @@ async function runScriptCommand(pm: string, name: string, cwd: string = process.
   }
 }
 
-async function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.cwd()): Promise<void> {
+async function runJsInstallationPlan(
+  plan: JsInstallationPlan,
+  cwd: string = process.cwd(),
+): Promise<void> {
   const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
   const displayCmd = sanitizeCommandString(fullCmd);
   core.info(`Installing JS dependencies: ${displayCmd}`);
