@@ -426,6 +426,24 @@ describe("build-command", () => {
       }
     });
 
+    it("should default to 'dist' when given a whitespace-only path", () => {
+      expect(() => validateBuildOutput("   ")).not.toThrow();
+    });
+
+    it("should handle filesystem read errors gracefully", () => {
+      const spy = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+        throw new Error("EACCES: permission denied");
+      });
+
+      try {
+        expect(() => validateBuildOutput("dist")).toThrow(
+          "Unable to read configured build output directory 'dist': EACCES: permission denied",
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it("should succeed if output directory exists and is non-empty", () => {
       const testDir = path.join(process.cwd(), "tmp_valid_output_dir");
       if (!fs.existsSync(testDir)) {

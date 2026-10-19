@@ -29,8 +29,10 @@ function resolveSiteUrl(rawSite: string | undefined, owner: string): string {
         `Invalid SITE URL scheme '${parsed.protocol}'. Expected 'http:' or 'https:'.`,
       );
     }
-    const cleanPath = parsed.pathname !== "/" ? parsed.pathname.replace(/\/+$/, "") : "";
-    return `${parsed.origin}${cleanPath}`;
+    if (parsed.pathname !== "/" && parsed.pathname !== "") {
+      throw new Error("Invalid SITE URL: path components are not supported for SITE origin.");
+    }
+    return parsed.origin;
   } catch (err) {
     if (
       err instanceof Error &&
@@ -54,7 +56,14 @@ export function validateAndNormalizeBasePath(rawVal: string): string {
   }
 
   // eslint-disable-next-line no-control-regex
-  if (val.includes("?") || val.includes("#") || /[\x00-\x1F\x7F]/.test(val)) {
+  if (
+    val.includes("?") ||
+    val.includes("#") ||
+    val.includes("\\") ||
+    // eslint-disable-next-line no-control-regex
+    /[\x00-\x1F\x7F]/.test(val) ||
+    val.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
     throw new Error("Invalid base/base_url: expected a valid path prefix.");
   }
 

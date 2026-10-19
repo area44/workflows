@@ -52,11 +52,11 @@ jobs:
 
 ## Environment Variables
 
-| Name       | Description                                                                                                    | Default                                                    |
-| ---------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `SITE`     | The base origin URL for the GitHub Pages deployment (e.g. `https://owner.github.io`). Validated as HTTP/HTTPS. | Derived from `GITHUB_REPOSITORY_OWNER` or explicit `SITE`. |
-| `BASE`     | Path prefix for site assets (e.g. `/my-repo/` or `/`). Normalized with leading/trailing slashes.               | Derived from `GITHUB_REPOSITORY` or explicit `BASE`.       |
-| `BASE_URL` | Equivalent alias to `BASE`. Normalized with leading/trailing slashes.                                          | Equivalent to `BASE`.                                      |
+| Name       | Description                                                                                                                                                  | Default                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `SITE`     | The origin URL for the GitHub Pages deployment (e.g. `https://owner.github.io`). Must be an origin URL without path components, query strings, or fragments. | Derived from `GITHUB_REPOSITORY_OWNER` or explicit `SITE`. |
+| `BASE`     | Path prefix for site assets (e.g. `/my-repo/` or `/`). Normalized with leading/trailing slashes.                                                             | Derived from `GITHUB_REPOSITORY` or explicit `BASE`.       |
+| `BASE_URL` | Equivalent alias to `BASE`. Normalized with leading/trailing slashes.                                                                                        | Equivalent to `BASE`.                                      |
 
 ### Base Path Normalization & Precedence Rules
 
@@ -79,6 +79,7 @@ jobs:
 - **Invalid Configuration:**
   - `BASE="https://example.com"` -> Fails validation (`absolute URLs are not supported`).
   - `SITE="https://owner.github.io?foo=bar"` -> Fails validation (`query strings and fragments are not supported`).
+  - `SITE="https://owner.github.io/subpath"` -> Fails validation (`path components are not supported for SITE origin`).
 
 ## Outputs
 

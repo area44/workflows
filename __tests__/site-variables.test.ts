@@ -110,6 +110,20 @@ describe("site-variables", () => {
 
       expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://customdomain.com");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/custom-base/");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE_URL", "/custom-base/");
+    });
+
+    it("should report failure when explicit SITE URL contains path components", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
+      process.env.GITHUB_REPOSITORY = "owner/project-repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+      process.env.SITE = "https://customdomain.com/subpath";
+
+      setSiteVariables();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Failed to resolve site variables: Invalid SITE URL: path components are not supported for SITE origin.",
+      );
     });
 
     it("should report failure when explicit SITE URL is malformed", () => {
@@ -178,7 +192,7 @@ describe("site-variables", () => {
       );
     });
 
-    it("should reject query strings, fragments, or control characters in base paths", () => {
+    it("should reject query strings, fragments, control characters, backslashes, or dot segments in base paths", () => {
       expect(() => validateAndNormalizeBasePath("/path?foo=bar")).toThrow(
         "Invalid base/base_url: expected a valid path prefix.",
       );
@@ -186,6 +200,15 @@ describe("site-variables", () => {
         "Invalid base/base_url: expected a valid path prefix.",
       );
       expect(() => validateAndNormalizeBasePath("/path\x00bad")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+      expect(() => validateAndNormalizeBasePath("C:\\path\\sub")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+      expect(() => validateAndNormalizeBasePath("/docs/../secret")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+      expect(() => validateAndNormalizeBasePath("/./docs")).toThrow(
         "Invalid base/base_url: expected a valid path prefix.",
       );
     });
