@@ -291,7 +291,9 @@ function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
       return { name, version };
     }
   } else if (typeof pm === "object" && pm !== null && (pm as any).name) {
-    const name = String((pm as any).name).trim().toLowerCase();
+    const name = String((pm as any).name)
+      .trim()
+      .toLowerCase();
     if (isSupportedPackageManager(name)) {
       const version = (pm as any).version
         ? String((pm as any).version).trim()
