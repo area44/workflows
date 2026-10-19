@@ -285,6 +285,9 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.lockfile).toBe("uv.lock");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
       expect(pmInfo?.installCommand).toBe("uv sync");
+      expect(pmInfo?.installCommands).toEqual([
+        { executable: "uv", args: ["sync"] },
+      ]);
       expect(pmInfo?.execPrefix).toBe("uv run");
     });
 
@@ -295,6 +298,10 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.lockfile).toBe("requirements.txt");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
       expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
+      expect(pmInfo?.installCommands).toEqual([
+        { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+        { executable: "pip", args: ["install", "-e", "."] },
+      ]);
       expect(pmInfo?.execPrefix).toBe("");
     });
 
@@ -330,6 +337,9 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
         expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

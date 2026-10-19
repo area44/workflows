@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
+    "@actions/exec": "^3.0.0",
     "@changesets/cli": "^3.0.3",
     "@types/node": "^24.19.2",
     "typescript": "^7.0.2",

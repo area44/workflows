@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { spawnSync } from "node:child_process";
+import * as exec from "@actions/exec";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,7 @@ import { isExecutableAvailable } from "../process-utils.js";
 import {
   detectPythonPackageManager,
   hasPythonSource,
+  type PythonInstallCommand,
   type PythonPackageManagerInfo,
 } from "../python-env.js";
 import { sanitizeCause, sanitizeCommandString } from "../sanitize.js";
@@ -29,20 +30,35 @@ export { sanitizePackageManager };
  * Limitation note: Binary or non-UTF8 output chunks without newline boundaries might be partially sanitized per line,
  * but line-buffered UTF-8 text (standard for log output) is fully sanitized.
  */
-function execSanitized(
-  cmd: string,
+async function execSanitized(
+  executable: string,
+  args: string[] = [],
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): { status: number | null; stdout: string; stderr: string; error?: Error } {
+): Promise<{ status: number | null; stdout: string; stderr: string; error?: Error }> {
   const cwd = options.cwd || process.cwd();
-  const res = spawnSync(cmd, {
-    cwd,
-    env: options.env || process.env,
-    shell: true,
-    encoding: "utf8",
-  });
+  let stdout = "";
+  let stderr = "";
+  let status: number | null = null;
+  let error: Error | undefined;
 
-  const stdout = res.stdout || "";
-  const stderr = res.stderr || "";
+  try {
+    status = await exec.exec(executable, args, {
+      cwd,
+      env: (options.env || process.env) as Record<string, string>,
+      silent: true,
+      ignoreReturnCode: true,
+      listeners: {
+        stdout: (data: Buffer) => {
+          stdout += data.toString("utf8");
+        },
+        stderr: (data: Buffer) => {
+          stderr += data.toString("utf8");
+        },
+      },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err : new Error(String(err));
+  }
 
   if (stdout) {
     const sanitizedStdout = sanitizeCommandString(stdout);
@@ -55,20 +71,24 @@ function execSanitized(
   }
 
   return {
-    status: res.status,
+    status,
     stdout,
     stderr,
-    error: res.error,
+    error,
   };
 }
 
-function runScriptCommand(pm: string, name: string, cwd: string = process.cwd()): void {
+async function runScriptCommand(
+  pm: string,
+  name: string,
+  cwd: string = process.cwd(),
+): Promise<void> {
   const safePm = sanitizePackageManager(pm);
   const rawCmd = `${safePm} run ${name}`;
   const displayCmd = sanitizeCommandString(rawCmd);
   core.info(`Executing: ${displayCmd}`);
 
-  const result = execSanitized(rawCmd, { cwd });
+  const result = await execSanitized(safePm, ["run", name], { cwd });
   if (result.status !== 0 || result.error) {
     core.error(`Script "${name}" failed`);
     const message = `Script "${name}" failed while executing "${displayCmd}".`;
@@ -86,12 +106,15 @@ function runScriptCommand(pm: string, name: string, cwd: string = process.cwd())
   }
 }
 
-function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.cwd()): void {
+async function runJsInstallationPlan(
+  plan: JsInstallationPlan,
+  cwd: string = process.cwd(),
+): Promise<void> {
   const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
   const displayCmd = sanitizeCommandString(fullCmd);
   core.info(`Installing JS dependencies: ${displayCmd}`);
 
-  const result = execSanitized(fullCmd, { cwd });
+  const result = await execSanitized(plan.command, plan.args, { cwd });
   if (result.status !== 0 || result.error) {
     core.error(`JS dependency installation failed: ${displayCmd}`);
     const message = `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`;
@@ -108,18 +131,18 @@ function runJsInstallationPlan(plan: JsInstallationPlan, cwd: string = process.c
   }
 }
 
-function executeJsScripts(
+async function executeJsScripts(
   scripts: Record<string, string>,
   pm: string,
   cwd: string = process.cwd(),
-): void {
+): Promise<void> {
   const selected = selectAutofixScripts(scripts);
   for (const scriptName of selected) {
-    runScriptCommand(pm, scriptName, cwd);
+    await runScriptCommand(pm, scriptName, cwd);
   }
 }
 
-export function executeJsWorkflow(cwd: string = process.cwd()): void {
+export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<void> {
   const jsEnv = inspectJsProjectEnvironment(cwd);
   if (!jsEnv.hasPackageJson) {
     core.info("No package.json found. Skipping scripts.");
@@ -140,7 +163,7 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
   const pm = sanitizePackageManager(rawPm);
 
   const plan = getJsInstallationPlan(jsEnv, pm);
-  runJsInstallationPlan(plan, cwd);
+  await runJsInstallationPlan(plan, cwd);
 
   const scripts = jsEnv.packageJson?.scripts || {};
   const selectedScripts = selectAutofixScripts(scripts);
@@ -150,13 +173,54 @@ export function executeJsWorkflow(cwd: string = process.cwd()): void {
     return;
   }
 
-  executeJsScripts(scripts, pm, cwd);
+  await executeJsScripts(scripts, pm, cwd);
 }
 
-function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd()): void {
-  const displayCmd = sanitizeCommandString(cmd);
+function resolvePythonInstallCommands(pmInfo: PythonPackageManagerInfo): PythonInstallCommand[] {
+  if (pmInfo.installCommands && pmInfo.installCommands.length > 0) {
+    return pmInfo.installCommands;
+  }
+
+  const rawCmd = (pmInfo.installCommand || "").trim();
+  if (!rawCmd) return [];
+
+  if (rawCmd === "pip install -r requirements.txt && pip install -e .") {
+    return [
+      { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+      { executable: "pip", args: ["install", "-e", "."] },
+    ];
+  }
+  if (rawCmd === "pip install -r requirements.txt") {
+    return [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
+  }
+  if (rawCmd === "pip install -e .") {
+    return [{ executable: "pip", args: ["install", "-e", "."] }];
+  }
+  if (rawCmd === "uv sync") {
+    return [{ executable: "uv", args: ["sync"] }];
+  }
+  if (rawCmd === "uv pip install -r requirements.txt") {
+    return [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }];
+  }
+
+  const displayCmd = sanitizeCommandString(rawCmd);
+  throw new WorkflowError(
+    "INVALID_INPUT",
+    `Unsupported or malformed Python install command configuration: "${displayCmd}".`,
+    { stage: "python-dependency-installation", packageManager: pmInfo.name, command: displayCmd },
+  );
+}
+
+async function runPythonCommand(
+  executable: string,
+  args: string[],
+  pmName: string,
+  cwd: string = process.cwd(),
+): Promise<void> {
+  const rawCmd = `${executable} ${args.join(" ")}`.trim();
+  const displayCmd = sanitizeCommandString(rawCmd);
   core.info(`Executing: ${displayCmd}`);
-  const result = execSanitized(cmd, { cwd });
+  const result = await execSanitized(executable, args, { cwd });
   if (result.status !== 0 || result.error) {
     core.error(`Python command "${displayCmd}" failed`);
     const message = `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`;
@@ -173,10 +237,10 @@ function runPythonCommand(cmd: string, pmName: string, cwd: string = process.cwd
   }
 }
 
-export function executePythonWorkflow(
+export async function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
-): void {
+): Promise<void> {
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
@@ -193,15 +257,21 @@ export function executePythonWorkflow(
   }
 
   if (!pmInfo.isStandalone) {
-    const installCmd = pmInfo.installCommand;
-    if (installCmd) {
-      core.info(`Installing Python dependencies: ${sanitizeCommandString(installCmd)}`);
-      runPythonCommand(installCmd, pmInfo.name, cwd);
+    const installCmds = resolvePythonInstallCommands(pmInfo);
+    if (installCmds.length > 0) {
+      const displayCmd = sanitizeCommandString(
+        pmInfo.installCommand ||
+          installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && "),
+      );
+      core.info(`Installing Python dependencies: ${displayCmd}`);
+      for (const { executable, args } of installCmds) {
+        await runPythonCommand(executable, args, pmInfo.name, cwd);
+      }
     }
   }
 }
 
-export function executeRuffAutofix(cwd: string = process.cwd()): void {
+export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<void> {
   if (!hasPythonSource(cwd)) {
     return;
   }
@@ -216,11 +286,15 @@ export function executeRuffAutofix(cwd: string = process.cwd()): void {
     });
   }
 
-  const ruffCommands = ["ruff check --fix .", "ruff format ."];
-  for (const cmd of ruffCommands) {
-    const displayCmd = sanitizeCommandString(cmd);
+  const ruffCommandSpecs = [
+    { executable: "ruff", args: ["check", "--fix", "."] },
+    { executable: "ruff", args: ["format", "."] },
+  ];
+
+  for (const { executable, args } of ruffCommandSpecs) {
+    const displayCmd = sanitizeCommandString(`${executable} ${args.join(" ")}`);
     core.info(`Executing: ${displayCmd}`);
-    const result = execSanitized(cmd, { cwd });
+    const result = await execSanitized(executable, args, { cwd });
     if (result.status !== 0 || result.error) {
       core.error(`Ruff command "${displayCmd}" failed`);
       const message = `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`;
@@ -237,16 +311,16 @@ export function executeRuffAutofix(cwd: string = process.cwd()): void {
   }
 }
 
-export function run(cwd: string = process.cwd()): void {
+export async function run(cwd: string = process.cwd()): Promise<void> {
   try {
-    executeJsWorkflow(cwd);
+    await executeJsWorkflow(cwd);
 
     const pythonPmInfo = detectPythonPackageManager(cwd);
     if (pythonPmInfo) {
-      executePythonWorkflow(pythonPmInfo, cwd);
+      await executePythonWorkflow(pythonPmInfo, cwd);
     }
 
-    executeRuffAutofix(cwd);
+    await executeRuffAutofix(cwd);
   } catch (error) {
     if (isWorkflowError(error)) {
       core.setFailed(error);
@@ -275,5 +349,5 @@ function isMainModule(metaUrl: string): boolean {
 }
 
 if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
-  run();
+  void run();
 }
