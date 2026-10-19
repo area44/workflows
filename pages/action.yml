@@ -88,6 +88,7 @@ runs:
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
+        working-directory: ${{ inputs.working-directory }}
         cache: true
         run-install: true
 

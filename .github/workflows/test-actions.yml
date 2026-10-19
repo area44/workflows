@@ -44,6 +44,13 @@ jobs:
             working_directory: __tests__/fixtures/pages/node/npm/consumer
           - action: pages
             runtime: node
+            pm: npm
+            type: vite-plus-consumer
+            fixture: pages/node/npm/vite-plus-consumer
+            verify_site: true
+            working_directory: __tests__/fixtures/pages/node/npm/vite-plus-consumer
+          - action: pages
+            runtime: node
             pm: pnpm
             type: basic
             fixture: pages/node/pnpm/basic
@@ -152,7 +159,7 @@ jobs:
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
-          if [ "$TYPE" != "consumer" ]; then
+          if [[ "$TYPE" != *"consumer"* ]]; then
             [ -f package.json ] && mv package.json package.json.bak || true
             [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
             [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
@@ -219,7 +226,7 @@ jobs:
 
           if [[ "$ACTION" == "pages" ]]; then
             EXPECTED_TOOLCHAIN="vite"
-            if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" ]]; then
+            if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" || "$TYPE" == "vite-plus-consumer" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
             fi
             DETECTED_TOOLCHAIN="${PAGES_TOOLCHAIN}"
@@ -263,6 +270,9 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
+          if [ "${{ matrix.working_directory }}" != "" ]; then
+            rm -rf "${{ matrix.working_directory }}/dist" "${{ matrix.working_directory }}/node_modules"
+          fi
           if [ "${{ matrix.type }}" == "consumer" ]; then
             rm -rf __tests__/fixtures/pages/node/npm/consumer/dist __tests__/fixtures/pages/node/npm/consumer/node_modules
           else
