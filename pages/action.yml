@@ -11,6 +11,10 @@ inputs:
   build-command:
     description: "Custom build command"
     required: false
+  working-directory:
+    description: "Directory where the project is located"
+    required: false
+    default: "."
 
 outputs:
   node-version:
@@ -41,6 +45,7 @@ runs:
     - name: Resolve environment
       shell: bash
       id: resolve_environment
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_RUNTIME: ${{ inputs.runtime }}
@@ -48,6 +53,7 @@ runs:
 
     - name: Set site variables
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: node "$ACTION_PATH/../dist/site-variables.mjs"
@@ -74,7 +80,7 @@ runs:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
         cache: ${{ steps.resolve_environment.outputs.setup-node-cache }}
         cache-dependency-path: |
-          **/package-lock.json
+          ${{ inputs.working-directory }}/**/package-lock.json
 
     - name: Setup Vite+
       if: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
@@ -88,6 +94,7 @@ runs:
     - name: Install dependencies
       if: ${{ steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
       run: |
@@ -113,6 +120,7 @@ runs:
 
     - name: Build site
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
@@ -130,4 +138,4 @@ runs:
     - name: Upload site artifact
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
-        path: ${{ inputs.path }}
+        path: ${{ inputs.working-directory != '.' && format('{0}/{1}', inputs.working-directory, inputs.path) || inputs.path }}

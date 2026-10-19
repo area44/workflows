@@ -12,9 +12,6 @@ jobs:
   test-action:
     name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ matrix.working_directory || '.' }}
     strategy:
       fail-fast: false
       matrix:
@@ -147,9 +144,9 @@ jobs:
           FIXTURE: ${{ matrix.fixture }}
         run: |
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_DIR="$GITHUB_WORKSPACE/__tests__/fixtures/${FIXTURE}"
+            FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
           else
-            FIXTURE_DIR="$GITHUB_WORKSPACE/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           if [ ! -d "$FIXTURE_DIR" ]; then
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
@@ -173,6 +170,7 @@ jobs:
         id: pages
         with:
           runtime: ${{ matrix.runtime }}
+          working-directory: ${{ matrix.working_directory || '.' }}
 
       - name: Test Autofix Action
         if: matrix.action == 'autofix'
@@ -196,11 +194,12 @@ jobs:
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
+          WORKING_DIR: ${{ matrix.working_directory || '.' }}
         run: |
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="$GITHUB_WORKSPACE/__tests__/fixtures/${FIXTURE}"
+            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
           else
-            FIXTURE_PATH="$GITHUB_WORKSPACE/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
@@ -253,9 +252,10 @@ jobs:
               exit 1
             fi
 
-            if [[ ! -f "dist/index.html" ]]; then
+            EXPECTED_INDEX="${WORKING_DIR}/dist/index.html"
+            if [[ ! -f "$EXPECTED_INDEX" ]]; then
               echo "Error: [${ACTION}] Artifact verification stage failed for fixture '${FIXTURE_PATH}'."
-              echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
+              echo "  Expected build artifact '$EXPECTED_INDEX' was not produced by action execution."
               exit 1
             fi
           fi
@@ -263,9 +263,10 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules dist
-          if [ "${{ matrix.type }}" != "consumer" ]; then
-            rm -rf package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock astro.config.mjs vite.config.ts index.html src .node-version
+          if [ "${{ matrix.type }}" == "consumer" ]; then
+            rm -rf __tests__/fixtures/pages/node/npm/consumer/dist __tests__/fixtures/pages/node/npm/consumer/node_modules
+          else
+            rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
             if [ -d pages.bak ]; then
               mv pages.bak pages
             fi
