@@ -147,9 +147,9 @@ jobs:
           FIXTURE: ${{ matrix.fixture }}
         run: |
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
+            FIXTURE_DIR="$GITHUB_WORKSPACE/__tests__/fixtures/${FIXTURE}"
           else
-            FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            FIXTURE_DIR="$GITHUB_WORKSPACE/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           if [ ! -d "$FIXTURE_DIR" ]; then
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
@@ -198,9 +198,9 @@ jobs:
           VERIFY_SITE: ${{ matrix.verify_site }}
         run: |
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
+            FIXTURE_PATH="$GITHUB_WORKSPACE/__tests__/fixtures/${FIXTURE}"
           else
-            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            FIXTURE_PATH="$GITHUB_WORKSPACE/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
