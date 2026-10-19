@@ -117,6 +117,7 @@ runs:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
         DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
+        BUILD_PATH: ${{ inputs.path }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -124,21 +125,6 @@ runs:
           bun "$ACTION_PATH/../dist/build-command.mjs"
         else
           node "$ACTION_PATH/../dist/build-command.mjs"
-        fi
-
-    - name: Validate build output
-      shell: bash
-      env:
-        BUILD_PATH: ${{ inputs.path }}
-      run: |
-        OUTPUT_DIR="${BUILD_PATH:-dist}"
-        if [ ! -d "$OUTPUT_DIR" ]; then
-          echo "Error: Configured build output directory '$OUTPUT_DIR' does not exist." >&2
-          exit 1
-        fi
-        if [ -z "$(ls -A "$OUTPUT_DIR" 2>/dev/null)" ]; then
-          echo "Error: Configured build output directory '$OUTPUT_DIR' is empty." >&2
-          exit 1
         fi
 
     - name: Upload site artifact

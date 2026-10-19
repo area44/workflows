@@ -281,13 +281,23 @@ export function validateBuildOutput(
 ): void {
   const targetPath = outputPath || "dist";
   const targetDir = path.resolve(cwd, targetPath);
-  if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+  if (!fs.existsSync(targetDir)) {
     throw new WorkflowError(
       "INVALID_INPUT",
       `Configured build output directory '${targetPath}' does not exist.`,
       { stage: "build-output-validation", path: targetPath },
     );
   }
+
+  const stat = fs.statSync(targetDir);
+  if (!stat.isDirectory()) {
+    throw new WorkflowError(
+      "INVALID_INPUT",
+      `Configured build output path '${targetPath}' is not a directory.`,
+      { stage: "build-output-validation", path: targetPath },
+    );
+  }
+
   const files = fs.readdirSync(targetDir);
   if (files.length === 0) {
     throw new WorkflowError(
@@ -332,8 +342,23 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   if (execResult.error) {
     core.setFailed(execResult.error);
     if (exitOnFailure) process.exit(execResult.exitCode);
+    return execResult.exitCode;
   }
-  return execResult.exitCode;
+
+  try {
+    validateBuildOutput();
+    core.info("Build output directory validation succeeded.");
+  } catch (err) {
+    if (err instanceof WorkflowError) {
+      core.setFailed(err);
+    } else {
+      core.setFailed(String(err));
+    }
+    if (exitOnFailure) process.exit(1);
+    return 1;
+  }
+
+  return 0;
 }
 
 function isMainModule(metaUrl: string): boolean {

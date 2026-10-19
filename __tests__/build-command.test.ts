@@ -451,6 +451,17 @@ describe("build-command", () => {
       expect(() => validateBuildOutput(testDir)).toThrow("Configured build output directory 'non_existent_output_dir_12345' does not exist.");
     });
 
+    it("should throw WorkflowError if output path is a file rather than a directory", () => {
+      const testFile = path.join(process.cwd(), "tmp_file_not_dir.txt");
+      fs.writeFileSync(testFile, "hello");
+
+      try {
+        expect(() => validateBuildOutput("tmp_file_not_dir.txt")).toThrow("Configured build output path 'tmp_file_not_dir.txt' is not a directory.");
+      } finally {
+        fs.rmSync(testFile, { force: true });
+      }
+    });
+
     it("should throw WorkflowError if output directory exists but is empty", () => {
       const testDir = path.join(process.cwd(), "tmp_empty_output_dir");
       if (!fs.existsSync(testDir)) {
@@ -473,6 +484,19 @@ describe("build-command", () => {
 
       try {
         expect(() => validateBuildOutput("tmp_valid_output_dir")).not.toThrow();
+      } finally {
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should succeed if output directory contains nested files and subdirectories", () => {
+      const testDir = path.join(process.cwd(), "tmp_nested_output_dir");
+      const nestedSubDir = path.join(testDir, "assets");
+      fs.mkdirSync(nestedSubDir, { recursive: true });
+      fs.writeFileSync(path.join(nestedSubDir, "app.js"), "console.log('test')");
+
+      try {
+        expect(() => validateBuildOutput("tmp_nested_output_dir")).not.toThrow();
       } finally {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
