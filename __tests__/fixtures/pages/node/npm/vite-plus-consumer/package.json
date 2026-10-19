@@ -5,7 +5,7 @@
   "scripts": {
     "build": "mkdir -p dist && echo '<html><body>Vite+ Consumer App</body></html>' > dist/index.html"
   },
-  "dependencies": {
+  "devDependencies": {
     "vite-plus": "^1.3.0"
   },
   "packageManager": "npm@10.2.0"
