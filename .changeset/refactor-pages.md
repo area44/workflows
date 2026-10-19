@@ -2,9 +2,10 @@
 "@area44/workflows": patch
 ---
 
-refactor(pages): streamline build command resolution, output validation, and SITE/BASE semantics
+refactor(pages): streamline build command execution, BASE/BASE_URL support, and build output validation
 
-- Streamlined build command resolution, parsing, execution, and output directory validation in `src/pages/build-command.ts`.
-- Refactored `SITE` and `BASE` resolution in `src/pages/site-variables.ts` to support explicit environment overrides with scheme validation for `SITE` and slash normalization for `BASE`.
-- Expanded test coverage for build output validation failure modes and site variable resolution.
-- Updated Pages action documentation for environment variables.
+- Prevented raw user-configured build commands and parameter vectors from being logged or embedded in action error messages.
+- Added independent support for `BASE` and `BASE_URL` environment variables with shared normalization rules, absolute URL rejection, and conflict detection.
+- Enforced strict origin validation for `SITE`, rejecting query parameters and fragments.
+- Hardened build output directory validation and expanded unit test coverage across build command execution and site variables.
+- Updated Pages action documentation with base path normalization rules and examples.

@@ -18,6 +18,10 @@ function resolveSiteUrl(rawSite: string | undefined, owner: string): string {
     return `https://${owner}.github.io`;
   }
 
+  if (site.includes("?") || site.includes("#")) {
+    throw new Error("Invalid SITE URL: query strings and fragments are not supported.");
+  }
+
   try {
     const parsed = new URL(site);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -28,23 +32,35 @@ function resolveSiteUrl(rawSite: string | undefined, owner: string): string {
     const cleanPath = parsed.pathname !== "/" ? parsed.pathname.replace(/\/+$/, "") : "";
     return `${parsed.origin}${cleanPath}`;
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith("Invalid SITE URL scheme")) {
+    if (
+      err instanceof Error &&
+      (err.message.startsWith("Invalid SITE URL") ||
+        err.message.startsWith("Invalid SITE URL scheme"))
+    ) {
       throw err;
     }
     throw new Error(`Invalid SITE URL '${site}': must be a valid http or https URL.`);
   }
 }
 
-function resolveBasePath(rawBase: string | undefined, repo: string, owner: string): string {
-  const base = rawBase?.trim();
-  if (!base) {
-    const isPrimary = repo === `${owner}.github.io`;
-    return isPrimary ? "/" : `/${repo}/`;
+export function validateAndNormalizeBasePath(rawVal: string): string {
+  const val = rawVal.trim();
+  if (!val) {
+    return "";
   }
 
-  const leading = base.startsWith("/") ? "" : "/";
-  const trailing = base.endsWith("/") ? "" : "/";
-  return `${leading}${base}${trailing}`.replace(/\/+/g, "/");
+  if (/^[a-zA-Z][a-zA-Z0-9+-.]*:\/\//.test(val) || /^\/\/[^/]/.test(val)) {
+    throw new Error("Invalid base/base_url: absolute URLs are not supported.");
+  }
+
+  // eslint-disable-next-line no-control-regex
+  if (val.includes("?") || val.includes("#") || /[\x00-\x1F\x7F]/.test(val)) {
+    throw new Error("Invalid base/base_url: expected a valid path prefix.");
+  }
+
+  const leading = val.startsWith("/") ? "" : "/";
+  const trailing = val.endsWith("/") ? "" : "/";
+  return `${leading}${val}${trailing}`.replace(/\/+/g, "/");
 }
 
 export function resolveSiteVariables(
@@ -59,7 +75,29 @@ export function resolveSiteVariables(
   }
 
   const site = resolveSiteUrl(env.SITE, owner);
-  const base = resolveBasePath(env.BASE, repo, owner);
+
+  const rawBase = env.BASE?.trim();
+  const rawBaseUrl = env.BASE_URL?.trim();
+
+  const normBase = rawBase ? validateAndNormalizeBasePath(rawBase) : "";
+  const normBaseUrl = rawBaseUrl ? validateAndNormalizeBasePath(rawBaseUrl) : "";
+
+  let base = "";
+  if (normBase && normBaseUrl) {
+    if (normBase !== normBaseUrl) {
+      throw new Error(
+        "Conflicting base/base_url configuration: BASE and BASE_URL specify different paths.",
+      );
+    }
+    base = normBase;
+  } else if (normBase) {
+    base = normBase;
+  } else if (normBaseUrl) {
+    base = normBaseUrl;
+  } else {
+    const isPrimary = repo === `${owner}.github.io`;
+    base = isPrimary ? "/" : `/${repo}/`;
+  }
 
   return { site, base };
 }
@@ -86,8 +124,10 @@ export function setSiteVariables(): void {
     if (vars) {
       core.exportVariable("SITE", vars.site);
       core.exportVariable("BASE", vars.base);
+      core.exportVariable("BASE_URL", vars.base);
       core.info(`Set SITE=${vars.site}`);
       core.info(`Set BASE=${vars.base}`);
+      core.info(`Set BASE_URL=${vars.base}`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

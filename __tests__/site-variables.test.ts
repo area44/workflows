@@ -1,7 +1,11 @@
 import * as core from "@actions/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { resolveSiteVariables, setSiteVariables } from "../src/pages/site-variables";
+import {
+  resolveSiteVariables,
+  setSiteVariables,
+  validateAndNormalizeBasePath,
+} from "../src/pages/site-variables";
 
 vi.mock("@actions/core");
 
@@ -12,6 +16,9 @@ describe("site-variables", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     process.env = { ...originalEnv };
+    delete process.env.SITE;
+    delete process.env.BASE;
+    delete process.env.BASE_URL;
   });
 
   afterEach(() => {
@@ -130,6 +137,58 @@ describe("site-variables", () => {
         "Failed to resolve site variables: Invalid SITE URL scheme 'ftp:'. Expected 'http:' or 'https:'.",
       );
     });
+
+    it("should report failure when explicit SITE URL includes query parameters or fragments", () => {
+      process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
+      process.env.GITHUB_REPOSITORY = "owner/project-repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+      process.env.SITE = "https://customdomain.com?param=value";
+
+      setSiteVariables();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Failed to resolve site variables: Invalid SITE URL: query strings and fragments are not supported.",
+      );
+    });
+  });
+
+  describe("validateAndNormalizeBasePath", () => {
+    it("should return empty string for missing or whitespace-only input", () => {
+      expect(validateAndNormalizeBasePath("")).toBe("");
+      expect(validateAndNormalizeBasePath("   ")).toBe("");
+    });
+
+    it("should normalize path prefixes with leading/trailing slashes and collapse duplicate slashes", () => {
+      expect(validateAndNormalizeBasePath("docs")).toBe("/docs/");
+      expect(validateAndNormalizeBasePath("/docs")).toBe("/docs/");
+      expect(validateAndNormalizeBasePath("docs/")).toBe("/docs/");
+      expect(validateAndNormalizeBasePath("///docs///subpath///")).toBe("/docs/subpath/");
+      expect(validateAndNormalizeBasePath("/")).toBe("/");
+    });
+
+    it("should reject absolute URLs as base paths", () => {
+      expect(() => validateAndNormalizeBasePath("https://example.com")).toThrow(
+        "Invalid base/base_url: absolute URLs are not supported.",
+      );
+      expect(() => validateAndNormalizeBasePath("http://example.com/subpath")).toThrow(
+        "Invalid base/base_url: absolute URLs are not supported.",
+      );
+      expect(() => validateAndNormalizeBasePath("//example.com/subpath")).toThrow(
+        "Invalid base/base_url: absolute URLs are not supported.",
+      );
+    });
+
+    it("should reject query strings, fragments, or control characters in base paths", () => {
+      expect(() => validateAndNormalizeBasePath("/path?foo=bar")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+      expect(() => validateAndNormalizeBasePath("/path#hash")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+      expect(() => validateAndNormalizeBasePath("/path\x00bad")).toThrow(
+        "Invalid base/base_url: expected a valid path prefix.",
+      );
+    });
   });
 
   describe("resolveSiteVariables", () => {
@@ -163,6 +222,44 @@ describe("site-variables", () => {
         site: "https://owner.github.io",
         base: "/",
       });
+    });
+
+    it("should support BASE_URL independently when BASE is not set", () => {
+      const result = resolveSiteVariables({
+        GITHUB_REPOSITORY: "owner/repo",
+        GITHUB_REPOSITORY_OWNER: "owner",
+        BASE_URL: "my-app",
+      });
+
+      expect(result).toEqual({
+        site: "https://owner.github.io",
+        base: "/my-app/",
+      });
+    });
+
+    it("should accept matching BASE and BASE_URL configurations", () => {
+      const result = resolveSiteVariables({
+        GITHUB_REPOSITORY: "owner/repo",
+        GITHUB_REPOSITORY_OWNER: "owner",
+        BASE: "my-app",
+        BASE_URL: "/my-app/",
+      });
+
+      expect(result).toEqual({
+        site: "https://owner.github.io",
+        base: "/my-app/",
+      });
+    });
+
+    it("should throw error when BASE and BASE_URL conflict", () => {
+      expect(() =>
+        resolveSiteVariables({
+          GITHUB_REPOSITORY: "owner/repo",
+          GITHUB_REPOSITORY_OWNER: "owner",
+          BASE: "docs",
+          BASE_URL: "app",
+        }),
+      ).toThrow("Conflicting base/base_url configuration: BASE and BASE_URL specify different paths.");
     });
   });
 });
