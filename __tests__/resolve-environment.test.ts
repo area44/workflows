@@ -207,6 +207,12 @@ describe("resolve-environment", () => {
           expect(() => parseEnvironmentInputs("node@24, deno")).toThrow("unrecognized or malformed");
           expect(() => parseEnvironmentInputs("bun@1.4, invalid")).toThrow("unrecognized or malformed");
         });
+
+        it("should sanitize sensitive values in malformed or unrecognized runtime input error messages", () => {
+          expect(() => parseEnvironmentInputs("node@24, invalid_specifier?token=ghp_1234567890abcdefghijklmnopqrstuv")).toThrow(
+            'Invalid runtime input "node@24, invalid_specifier?token=***"',
+          );
+        });
       });
     });
 
@@ -1266,6 +1272,32 @@ describe("resolve-environment", () => {
       );
       expect(detectNodeVersion("npm")).toBe("24.1.0");
       expect(detectBunVersion(pm)).toBe("1.4.2");
+    });
+
+    it("does not match false-positive prefix names like bunyan or nodedev in devEngines.runtime", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: ["bunyan@1.0.0", "nodedev@2.0.0"] } }) as any,
+      );
+
+      const pm = { name: "npm", version: "12" };
+      expect(detectNodeVersion("npm")).toBe(DEFAULT_NODE_VERSION);
+      expect(detectBunVersion(pm)).toBe("");
+    });
+
+    it("parses valid runtime specifiers with various delimiters (at-symbol, colon, space) in devEngines.runtime", () => {
+      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
+
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: "bun:1.3.5" } }) as any,
+      );
+      const pm = { name: "npm", version: "12" };
+      expect(detectBunVersion(pm)).toBe("1.3.5");
+
+      vi.spyOn(fs, "readFileSync").mockReturnValue(
+        JSON.stringify({ devEngines: { runtime: "node 22.2.0" } }) as any,
+      );
+      expect(detectNodeVersion("npm")).toBe("22.2.0");
     });
 
     it("devEngines.[pm] precedence: devEngines.pnpm beats devEngines.npm and devEngines.bun when all are present", () => {

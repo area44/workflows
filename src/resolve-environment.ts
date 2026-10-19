@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { WorkflowError } from "./errors.js";
+import { isWorkflowError, WorkflowError } from "./errors.js";
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
@@ -19,6 +19,7 @@ import {
   type Toolchain,
   type ToolchainInput,
 } from "./javascript-env.js";
+import { sanitizeCommandString } from "./sanitize.js";
 
 export type SupportedRuntime = "node" | "bun";
 export type { SupportedPackageManager, Toolchain, ToolchainInput };
@@ -119,17 +120,33 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
         ? pkg.devEngines.runtime
         : [pkg.devEngines.runtime];
       for (const r of runtimes) {
-        if (typeof r === "string" && r.toLowerCase().startsWith(runtimeName)) {
-          const atIdx = r.indexOf("@");
-          return atIdx !== -1 ? r.slice(atIdx + 1) : defaultVersion;
+        if (typeof r === "string") {
+          const trimmed = r.trim();
+          const lower = trimmed.toLowerCase();
+          if (lower === runtimeName) {
+            return defaultVersion;
+          }
+          if (
+            lower.startsWith(`${runtimeName}@`) ||
+            lower.startsWith(`${runtimeName}:`) ||
+            lower.startsWith(`${runtimeName} `)
+          ) {
+            const ver = trimmed.slice(runtimeName.length + 1).trim();
+            return ver || defaultVersion;
+          }
         } else if (typeof r === "object" && r !== null && r.name === runtimeName) {
-          return r.version || defaultVersion;
+          return r.version ? String(r.version).trim() : defaultVersion;
         }
       }
     }
     if (pkg.devEngines[runtimeName]) {
       const val = pkg.devEngines[runtimeName];
-      return typeof val === "string" ? val : val.version || defaultVersion;
+      if (typeof val === "string") {
+        return val.trim() || defaultVersion;
+      }
+      if (typeof val === "object" && val !== null) {
+        return val.version ? String(val.version).trim() : defaultVersion;
+      }
     }
   }
   return undefined;
@@ -137,10 +154,11 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
 
 function validateCommaStructure(trimmed: string, runtimeInput: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
+    const sanitizedInput = sanitizeCommandString(runtimeInput);
     throw new WorkflowError(
       "INVALID_INPUT",
-      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-      { input: runtimeInput, reason: "malformed_comma_placement" },
+      `Invalid runtime input "${sanitizedInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+      { input: sanitizedInput, reason: "malformed_comma_placement" },
     );
   }
 }
@@ -170,19 +188,23 @@ function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPa
     const prefixLen = isNodeSpec ? 5 : 4;
     const ver = part.slice(prefixLen);
     if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
+      const sanitizedInput = sanitizeCommandString(runtimeInput);
+      const sanitizedRawPart = sanitizeCommandString(rawPart);
       throw new WorkflowError(
         "INVALID_INPUT",
-        `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-        { input: runtimeInput, rawPart, reason: "malformed_version_specifier" },
+        `Invalid runtime input "${sanitizedInput}": malformed version specifier in "${sanitizedRawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+        { input: sanitizedInput, rawPart: sanitizedRawPart, reason: "malformed_version_specifier" },
       );
     }
     return { type: isNodeSpec ? "node" : "bun", version: ver };
   }
 
+  const sanitizedInput = sanitizeCommandString(runtimeInput);
+  const sanitizedRawPart = sanitizeCommandString(rawPart);
   throw new WorkflowError(
     "INVALID_INPUT",
-    `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-    { input: runtimeInput, rawPart, reason: "unrecognized_runtime_specifier" },
+    `Invalid runtime input "${sanitizedInput}": unrecognized or malformed runtime specifier "${sanitizedRawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+    { input: sanitizedInput, rawPart: sanitizedRawPart, reason: "unrecognized_runtime_specifier" },
   );
 }
 
@@ -573,7 +595,7 @@ export function run(): void {
     const env = resolveEnvironment(runtimeInput, toolchainInput);
     writeOutput(env);
   } catch (error) {
-    if (error instanceof WorkflowError) {
+    if (isWorkflowError(error)) {
       core.setFailed(error);
     } else {
       const msg = error instanceof Error ? error.message : String(error);

@@ -120,6 +120,13 @@ describe("javascript-env", () => {
       expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
     });
 
+    it("should trim whitespace and normalize uppercase in packageManager field", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "  PNPM@9.5.0  " }));
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
+    });
+
     it("should resolve packageManager from devEngines if packageManager field is missing", () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -128,6 +135,16 @@ describe("javascript-env", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "bun", version: "1.2.0" });
+    });
+
+    it("should trim whitespace and normalize uppercase in devEngines.packageManager", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ devEngines: { packageManager: [" Yarn@3.0 ", "  PNPM@9.1.0  "] } }),
+      );
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: "9.1.0" });
     });
 
     it("should resolve fallback package manager from lockfile when package.json does not specify packageManager", () => {
