@@ -12,6 +12,41 @@ export interface SiteVariables {
  * - SITE: explicit env.SITE (validated as HTTP/HTTPS URL and normalized without trailing slash) > default https://${owner}.github.io
  * - BASE: explicit env.BASE (normalized with leading/trailing slashes) > default ('/' for primary repository, otherwise /${repo}/)
  */
+function resolveSiteUrl(rawSite: string | undefined, owner: string): string {
+  const site = rawSite?.trim();
+  if (!site) {
+    return `https://${owner}.github.io`;
+  }
+
+  try {
+    const parsed = new URL(site);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(
+        `Invalid SITE URL scheme '${parsed.protocol}'. Expected 'http:' or 'https:'.`,
+      );
+    }
+    const cleanPath = parsed.pathname !== "/" ? parsed.pathname.replace(/\/+$/, "") : "";
+    return `${parsed.origin}${cleanPath}`;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Invalid SITE URL scheme")) {
+      throw err;
+    }
+    throw new Error(`Invalid SITE URL '${site}': must be a valid http or https URL.`);
+  }
+}
+
+function resolveBasePath(rawBase: string | undefined, repo: string, owner: string): string {
+  const base = rawBase?.trim();
+  if (!base) {
+    const isPrimary = repo === `${owner}.github.io`;
+    return isPrimary ? "/" : `/${repo}/`;
+  }
+
+  const leading = base.startsWith("/") ? "" : "/";
+  const trailing = base.endsWith("/") ? "" : "/";
+  return `${leading}${base}${trailing}`.replace(/\/+/g, "/");
+}
+
 export function resolveSiteVariables(
   env: Record<string, string | undefined> = process.env,
 ): SiteVariables | null {
@@ -23,35 +58,8 @@ export function resolveSiteVariables(
     return null;
   }
 
-  let site = env.SITE?.trim();
-  if (site) {
-    try {
-      const parsed = new URL(site);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error(
-          `Invalid SITE URL scheme '${parsed.protocol}'. Expected 'http:' or 'https:'.`,
-        );
-      }
-      site = parsed.origin + (parsed.pathname !== "/" ? parsed.pathname.replace(/\/+$/, "") : "");
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith("Invalid SITE URL scheme")) {
-        throw err;
-      }
-      throw new Error(`Invalid SITE URL '${site}': must be a valid http or https URL.`);
-    }
-  } else {
-    site = `https://${owner}.github.io`;
-  }
-
-  let base = env.BASE?.trim();
-  if (base) {
-    const leading = base.startsWith("/") ? "" : "/";
-    const trailing = base.endsWith("/") ? "" : "/";
-    base = `${leading}${base}${trailing}`.replace(/\/+/g, "/");
-  } else {
-    const isPrimary = repo === `${owner}.github.io`;
-    base = isPrimary ? "/" : `/${repo}/`;
-  }
+  const site = resolveSiteUrl(env.SITE, owner);
+  const base = resolveBasePath(env.BASE, repo, owner);
 
   return { site, base };
 }
