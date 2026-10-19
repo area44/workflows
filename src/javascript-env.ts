@@ -279,37 +279,63 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
   };
 }
 
+function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
+  if (typeof pm === "string") {
+    const trimmed = pm.trim();
+    const atIdx = trimmed.indexOf("@");
+    const rawName = atIdx !== -1 ? trimmed.slice(0, atIdx) : trimmed;
+    const rawVer = atIdx !== -1 ? trimmed.slice(atIdx + 1) : "";
+    const name = rawName.trim().toLowerCase();
+    if (isSupportedPackageManager(name)) {
+      const version = rawVer.trim() || getDefaultJsPackageManagerVersion(name);
+      return { name, version };
+    }
+  } else if (typeof pm === "object" && pm !== null && (pm as any).name) {
+    const name = String((pm as any).name)
+      .trim()
+      .toLowerCase();
+    if (isSupportedPackageManager(name)) {
+      const version = (pm as any).version
+        ? String((pm as any).version).trim()
+        : getDefaultJsPackageManagerVersion(name);
+      return { name, version };
+    }
+  }
+  return undefined;
+}
+
+function parseDevEnginePmNamedSection(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
+  for (const pm of ["pnpm", "npm", "bun"] as const) {
+    if (pkg.devEngines[pm]) {
+      const val = pkg.devEngines[pm];
+      const defaultVer = getDefaultJsPackageManagerVersion(pm);
+      const version =
+        typeof val === "string"
+          ? val.trim() || defaultVer
+          : typeof val === "object" && val !== null && val.version
+            ? String(val.version).trim() || defaultVer
+            : defaultVer;
+      return { name: pm, version };
+    }
+  }
+  return undefined;
+}
+
 function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
   if (!pkg.devEngines) return undefined;
 
   if (pkg.devEngines.packageManager) {
-    const pm = Array.isArray(pkg.devEngines.packageManager)
-      ? pkg.devEngines.packageManager[0]
-      : pkg.devEngines.packageManager;
+    const pmList = Array.isArray(pkg.devEngines.packageManager)
+      ? pkg.devEngines.packageManager
+      : [pkg.devEngines.packageManager];
 
-    if (typeof pm === "string") {
-      const [name, version] = pm.split("@");
-      if (isSupportedPackageManager(name)) {
-        return { name, version: version || getDefaultJsPackageManagerVersion(name) };
-      }
-    } else if (typeof pm === "object" && pm !== null && pm.name) {
-      if (isSupportedPackageManager(pm.name)) {
-        return { name: pm.name, version: pm.version || getDefaultJsPackageManagerVersion(pm.name) };
-      }
+    for (const pm of pmList) {
+      const parsed = parseDevEnginePmItem(pm);
+      if (parsed) return parsed;
     }
   }
 
-  for (const pm of ["pnpm", "npm", "bun"]) {
-    if (pkg.devEngines[pm]) {
-      if (!isSupportedPackageManager(pm)) continue;
-      const val = pkg.devEngines[pm];
-      const defaultVer = getDefaultJsPackageManagerVersion(pm);
-      const version = typeof val === "string" ? val : val.version || defaultVer;
-      return { name: pm, version };
-    }
-  }
-
-  return undefined;
+  return parseDevEnginePmNamedSection(pkg);
 }
 
 export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
@@ -318,7 +344,10 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   } else if (project.packageJson) {
     const pkg = project.packageJson;
     if (pkg.packageManager && typeof pkg.packageManager === "string") {
-      const [rawName, version] = pkg.packageManager.split("@");
+      const trimmed = pkg.packageManager.trim();
+      const atIdx = trimmed.indexOf("@");
+      const rawName = (atIdx !== -1 ? trimmed.slice(0, atIdx) : trimmed).trim();
+      const rawVersion = (atIdx !== -1 ? trimmed.slice(atIdx + 1) : "").trim();
       const name = rawName.toLowerCase();
       if (!isSupportedPackageManager(name)) {
         throw new WorkflowError(
@@ -327,7 +356,7 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
           { resource: "packageManager", value: rawName },
         );
       }
-      const pmVersion = version || getDefaultJsPackageManagerVersion(name);
+      const pmVersion = rawVersion || getDefaultJsPackageManagerVersion(name);
       core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
       return { name, version: pmVersion };
     }
