@@ -502,4 +502,95 @@ describe("build-command", () => {
       }
     });
   });
+
+  describe("runBuildCommand output validation integration scenarios (Scenarios A-D)", () => {
+    it("Scenario A: Build succeeds but output directory is missing -> runBuildCommand sets failed and returns non-zero", async () => {
+      process.env.BUILD_COMMAND = "node -e 'process.exit(0)'";
+      process.env.BUILD_PATH = "non_existent_dist_scenario_a";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "INVALID_INPUT",
+          message: "Configured build output directory 'non_existent_dist_scenario_a' does not exist.",
+        }),
+      );
+    });
+
+    it("Scenario B: Build output path is a file -> runBuildCommand sets failed and returns non-zero", async () => {
+      const testFile = path.join(process.cwd(), "tmp_scenario_b_file.txt");
+      fs.writeFileSync(testFile, "regular file");
+
+      process.env.BUILD_COMMAND = "node -e 'process.exit(0)'";
+      process.env.BUILD_PATH = "tmp_scenario_b_file.txt";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      try {
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(1);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: "INVALID_INPUT",
+            message: "Configured build output path 'tmp_scenario_b_file.txt' is not a directory.",
+          }),
+        );
+      } finally {
+        fs.rmSync(testFile, { force: true });
+      }
+    });
+
+    it("Scenario C: Build output directory is empty -> runBuildCommand sets failed and returns non-zero", async () => {
+      const testDir = path.join(process.cwd(), "tmp_scenario_c_empty");
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true });
+      }
+
+      process.env.BUILD_COMMAND = "node -e 'process.exit(0)'";
+      process.env.BUILD_PATH = "tmp_scenario_c_empty";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      try {
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(1);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: "INVALID_INPUT",
+            message: "Configured build output directory 'tmp_scenario_c_empty' is empty.",
+          }),
+        );
+      } finally {
+        fs.rmdirSync(testDir);
+      }
+    });
+
+    it("Scenario D: Valid output directory containing nested assets -> runBuildCommand succeeds and returns 0", async () => {
+      const testDir = path.join(process.cwd(), "tmp_scenario_d_valid");
+      const assetsDir = path.join(testDir, "assets");
+      fs.mkdirSync(assetsDir, { recursive: true });
+      fs.writeFileSync(path.join(testDir, "index.html"), "<h1>Valid</h1>");
+      fs.writeFileSync(path.join(assetsDir, "main.js"), "console.log(1)");
+
+      process.env.BUILD_COMMAND = "node -e 'process.exit(0)'";
+      process.env.BUILD_PATH = "tmp_scenario_d_valid";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      try {
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(0);
+        expect(core.info).toHaveBeenCalledWith("Build output directory validation succeeded.");
+      } finally {
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

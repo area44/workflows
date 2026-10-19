@@ -12,6 +12,9 @@ jobs:
   test-action:
     name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ matrix.working_directory || '.' }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +44,7 @@ jobs:
             type: consumer
             fixture: pages/node/npm/consumer
             verify_site: true
+            working_directory: __tests__/fixtures/pages/node/npm/consumer
           - action: pages
             runtime: node
             pm: pnpm
@@ -151,15 +155,17 @@ jobs:
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
-          [ -f package.json ] && mv package.json package.json.bak || true
-          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
-          [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
-          [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
-          [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          if [ "$ACTION" != "pages" ]; then
-            [ -d pages ] && mv pages pages.bak || true
+          if [ "$TYPE" != "consumer" ]; then
+            [ -f package.json ] && mv package.json package.json.bak || true
+            [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
+            [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
+            [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
+            [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
+            if [ "$ACTION" != "pages" ]; then
+              [ -d pages ] && mv pages pages.bak || true
+            fi
+            cp -r "$FIXTURE_DIR"/* .
           fi
-          cp -r "$FIXTURE_DIR"/* .
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -257,22 +263,104 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
-          if [ -d pages.bak ]; then
-            mv pages.bak pages
+          rm -rf node_modules dist
+          if [ "${{ matrix.type }}" != "consumer" ]; then
+            rm -rf package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock astro.config.mjs vite.config.ts index.html src .node-version
+            if [ -d pages.bak ]; then
+              mv pages.bak pages
+            fi
+            if [ -f package.json.bak ]; then
+              mv package.json.bak package.json
+            fi
+            if [ -f package-lock.json.bak ]; then
+              mv package-lock.json.bak package-lock.json
+            fi
+            if [ -f pnpm-lock.yaml.bak ]; then
+              mv pnpm-lock.yaml.bak pnpm-lock.yaml
+            fi
+            if [ -f pnpm-workspace.yaml.bak ]; then
+              mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
+            fi
+            if [ -f bun.lock.bak ]; then
+              mv bun.lock.bak bun.lock
+            fi
           fi
-          if [ -f package.json.bak ]; then
-            mv package.json.bak package.json
+
+  test-build-output-validation:
+    name: Test Build Output Validation Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Scenario A: Build succeeds but output is missing
+      - name: "Scenario A: Missing output directory"
+        id: scenario_a
+        uses: ./pages
+        continue-on-error: true
+        with:
+          build-command: "node -e 'process.exit(0)'"
+          path: "missing-dist"
+
+      - name: "Verify Scenario A failed before upload"
+        run: |
+          if [ "${{ steps.scenario_a.outcome }}" != "failure" ]; then
+            echo "Error: Expected action to fail when build output directory is missing, but outcome was '${{ steps.scenario_a.outcome }}'."
+            exit 1
           fi
-          if [ -f package-lock.json.bak ]; then
-            mv package-lock.json.bak package-lock.json
+
+      # Scenario B: Output path is a file
+      - name: "Scenario B: Output path is a file"
+        id: scenario_b_prep
+        run: |
+          echo "not a directory" > output-is-a-file.txt
+
+      - name: "Run Action for Scenario B"
+        id: scenario_b
+        uses: ./pages
+        continue-on-error: true
+        with:
+          build-command: "node -e 'process.exit(0)'"
+          path: "output-is-a-file.txt"
+
+      - name: "Verify Scenario B failed before upload"
+        run: |
+          if [ "${{ steps.scenario_b.outcome }}" != "failure" ]; then
+            echo "Error: Expected action to fail when build output path is a file, but outcome was '${{ steps.scenario_b.outcome }}'."
+            exit 1
           fi
-          if [ -f pnpm-lock.yaml.bak ]; then
-            mv pnpm-lock.yaml.bak pnpm-lock.yaml
+
+      # Scenario C: Output directory is empty
+      - name: "Scenario C: Empty output directory"
+        id: scenario_c
+        uses: ./pages
+        continue-on-error: true
+        with:
+          build-command: "node -e 'require(\"fs\").mkdirSync(\"empty-dist\", { recursive: true })'"
+          path: "empty-dist"
+
+      - name: "Verify Scenario C failed before upload"
+        run: |
+          if [ "${{ steps.scenario_c.outcome }}" != "failure" ]; then
+            echo "Error: Expected action to fail when build output directory is empty, but outcome was '${{ steps.scenario_c.outcome }}'."
+            exit 1
           fi
-          if [ -f pnpm-workspace.yaml.bak ]; then
-            mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
+
+      # Scenario D: Valid output directory
+      - name: "Scenario D: Valid output directory"
+        id: scenario_d
+        uses: ./pages
+        with:
+          build-command: "node -e 'const fs = require(\"fs\"); fs.mkdirSync(\"valid-dist/assets\", { recursive: true }); fs.writeFileSync(\"valid-dist/index.html\", \"<h1>OK</h1>\"); fs.writeFileSync(\"valid-dist/assets/app.js\", \"console.log(1)\");'"
+          path: "valid-dist"
+
+      - name: "Verify Scenario D succeeded"
+        run: |
+          if [ "${{ steps.scenario_d.outcome }}" != "success" ]; then
+            echo "Error: Expected action to succeed when build output is valid, but outcome was '${{ steps.scenario_d.outcome }}'."
+            exit 1
           fi
-          if [ -f bun.lock.bak ]; then
-            mv bun.lock.bak bun.lock
+          if [ ! -f "valid-dist/index.html" ]; then
+            echo "Error: Expected 'valid-dist/index.html' to exist."
+            exit 1
           fi
