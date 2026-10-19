@@ -2,7 +2,6 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { isWorkflowError, WorkflowError } from "./errors.js";
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
@@ -19,7 +18,6 @@ import {
   type Toolchain,
   type ToolchainInput,
 } from "./javascript-env.js";
-import { sanitizeCommandString } from "./sanitize.js";
 
 export type SupportedRuntime = "node" | "bun";
 export type { SupportedPackageManager, Toolchain, ToolchainInput };
@@ -31,26 +29,18 @@ export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime
 
 export function validateRuntimePackageManagerCompatibility(runtime: string, pmName: string): void {
   if (!isSupportedRuntime(runtime)) {
-    throw new WorkflowError(
-      "UNSUPPORTED_RUNTIME_OR_PM",
-      `Unsupported runtime "${runtime}". Supported runtimes are: node, bun.`,
-      { resource: "runtime", value: runtime },
-    );
+    throw new Error(`Unsupported runtime "${runtime}". Supported runtimes are: node, bun.`);
   }
 
   if (!isSupportedPackageManager(pmName)) {
-    throw new WorkflowError(
-      "UNSUPPORTED_RUNTIME_OR_PM",
+    throw new Error(
       `Unsupported package manager "${pmName}". Supported package managers are: npm, pnpm, bun.`,
-      { resource: "packageManager", value: pmName },
     );
   }
 
   if (runtime === "bun" && pmName === "npm") {
-    throw new WorkflowError(
-      "UNSUPPORTED_COMBINATION",
+    throw new Error(
       `Unsupported runtime and package manager combination: Bun runtime does not support npm package manager. Bun runtime requires Bun or pnpm package manager.`,
-      { resource: "compatibility", runtime, packageManager: pmName },
     );
   }
 }
@@ -65,9 +55,6 @@ import {
 } from "./python-env.js";
 import { setupBun, setupNode, setupPackageManager } from "./setup-adapters.js";
 
-export type { WorkflowErrorCode, WorkflowErrorContext } from "./errors.js";
-export { isWorkflowError, WorkflowError } from "./errors.js";
-
 export type {
   BunSetupConfig,
   NodeSetupConfig,
@@ -81,7 +68,6 @@ export {
   setupPackageManager,
 } from "./setup-adapters.js";
 
-export { isExecutableAvailable } from "./process-utils.js";
 export type { PythonPackageManager, PythonPackageManagerInfo };
 export { detectPythonPackageManager, PYTHON_PACKAGE_MANAGER_PRIORITY } from "./python-env.js";
 
@@ -174,11 +160,8 @@ function getDevEngineRuntimeVersion(pkg: any, runtimeName: "node" | "bun"): stri
 
 function validateCommaStructure(trimmed: string, runtimeInput: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
-    const sanitizedInput = sanitizeCommandString(runtimeInput);
-    throw new WorkflowError(
-      "INVALID_INPUT",
-      `Invalid runtime input "${sanitizedInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-      { input: sanitizedInput, reason: "malformed_comma_placement" },
+    throw new Error(
+      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
     );
   }
 }
@@ -208,23 +191,15 @@ function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPa
     const prefixLen = isNodeSpec ? 5 : 4;
     const ver = part.slice(prefixLen);
     if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
-      const sanitizedInput = sanitizeCommandString(runtimeInput);
-      const sanitizedRawPart = sanitizeCommandString(rawPart);
-      throw new WorkflowError(
-        "INVALID_INPUT",
-        `Invalid runtime input "${sanitizedInput}": malformed version specifier in "${sanitizedRawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-        { input: sanitizedInput, rawPart: sanitizedRawPart, reason: "malformed_version_specifier" },
+      throw new Error(
+        `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
       );
     }
     return { type: isNodeSpec ? "node" : "bun", version: ver };
   }
 
-  const sanitizedInput = sanitizeCommandString(runtimeInput);
-  const sanitizedRawPart = sanitizeCommandString(rawPart);
-  throw new WorkflowError(
-    "INVALID_INPUT",
-    `Invalid runtime input "${sanitizedInput}": unrecognized or malformed runtime specifier "${sanitizedRawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-    { input: sanitizedInput, rawPart: sanitizedRawPart, reason: "unrecognized_runtime_specifier" },
+  throw new Error(
+    `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
   );
 }
 
@@ -267,24 +242,18 @@ export function parseEnvironmentInputs(
   }
 
   if (counts.node > 1) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
+    throw new Error(
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
-      { input: runtimeInput, specifier: "node", reason: "duplicate_specifier" },
     );
   }
   if (counts.bun > 1) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
+    throw new Error(
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
-      { input: runtimeInput, specifier: "bun", reason: "duplicate_specifier" },
     );
   }
   if (counts.both > 1) {
-    throw new WorkflowError(
-      "INVALID_INPUT",
+    throw new Error(
       `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
-      { input: runtimeInput, specifier: "both", reason: "duplicate_specifier" },
     );
   }
 
@@ -484,23 +453,14 @@ export function detectBunVersion(pm: PackageManager): string {
 export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
   const rt = env.runtime as string;
   if (!isSupportedRuntime(rt)) {
-    throw new WorkflowError("SETUP_FAILURE", `Invalid resolved runtime: "${rt}"`, {
-      stage: "environment-validation",
-      runtime: rt,
-    });
+    throw new Error(`Invalid resolved runtime: "${rt}"`);
   }
   if (!env.pm || !env.pm.name || !env.pm.version) {
-    throw new WorkflowError(
-      "SETUP_FAILURE",
-      `Invalid resolved package manager: ${JSON.stringify(env.pm)}`,
-      { stage: "environment-validation", pm: env.pm },
-    );
+    throw new Error(`Invalid resolved package manager: ${JSON.stringify(env.pm)}`);
   }
   if (typeof env.nodeVersion !== "string" || typeof env.bunVersion !== "string") {
-    throw new WorkflowError(
-      "SETUP_FAILURE",
+    throw new Error(
       `Invalid resolved versions: node="${env.nodeVersion}", bun="${env.bunVersion}"`,
-      { stage: "environment-validation", nodeVersion: env.nodeVersion, bunVersion: env.bunVersion },
     );
   }
   validateRuntimePackageManagerCompatibility(env.runtime, env.pm.name);
@@ -530,9 +490,7 @@ export function writeOutput(
     env = nodeVersionOrEnv;
   } else {
     if (!pm) {
-      throw new WorkflowError("SETUP_FAILURE", "Missing package manager parameter in writeOutput", {
-        stage: "write-output",
-      });
+      throw new Error("Missing package manager parameter in writeOutput");
     }
     env = {
       nodeVersion: nodeVersionOrEnv,
@@ -615,16 +573,8 @@ export function run(): void {
     const env = resolveEnvironment(runtimeInput, toolchainInput);
     writeOutput(env);
   } catch (error) {
-    if (isWorkflowError(error)) {
-      core.setFailed(error);
-    } else {
-      const msg = error instanceof Error ? error.message : String(error);
-      const setupErr = new WorkflowError("SETUP_FAILURE", `Environment setup failed: ${msg}`, {
-        stage: "environment-resolution",
-        cause: error,
-      });
-      core.setFailed(setupErr);
-    }
+    const msg = error instanceof Error ? error.message : String(error);
+    core.setFailed(`Environment setup failed: ${msg}`);
   }
 }
 

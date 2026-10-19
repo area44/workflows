@@ -2,8 +2,6 @@ import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
 
-import { WorkflowError } from "./errors.js";
-
 export type SupportedPackageManager = "npm" | "pnpm" | "bun";
 
 export function isSupportedPackageManager(pmName: string): pmName is SupportedPackageManager {
@@ -152,10 +150,8 @@ export function resolveToolchain(
       if (trimmed === "vite" || trimmed === "vite-plus") {
         return trimmed;
       }
-      throw new WorkflowError(
-        "INVALID_INPUT",
+      throw new Error(
         `Invalid toolchain input "${toolchainInput}". Supported values are "auto", "vite", or "vite-plus".`,
-        { stage: "toolchain-resolution", input: toolchainInput },
       );
     }
   }
@@ -350,10 +346,8 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
       const rawVersion = (atIdx !== -1 ? trimmed.slice(atIdx + 1) : "").trim();
       const name = rawName.toLowerCase();
       if (!isSupportedPackageManager(name)) {
-        throw new WorkflowError(
-          "UNSUPPORTED_RUNTIME_OR_PM",
+        throw new Error(
           `Unsupported package manager '${rawName}'. Supported package managers are npm, pnpm, and bun.`,
-          { resource: "packageManager", value: rawName },
         );
       }
       const pmVersion = rawVersion || getDefaultJsPackageManagerVersion(name);
@@ -392,10 +386,8 @@ export function getJsInstallationPlan(
   const pmNameRaw = typeof pmInput === "string" ? sanitizePackageManager(pmInput) : pmInput.name;
 
   if (!isSupportedPackageManager(pmNameRaw)) {
-    throw new WorkflowError(
-      "UNSUPPORTED_RUNTIME_OR_PM",
+    throw new Error(
       `Unsupported package manager '${pmNameRaw}'. Supported package managers are npm, pnpm, and bun.`,
-      { resource: "packageManager", value: pmNameRaw },
     );
   }
 

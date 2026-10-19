@@ -1,10 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { isExecutableAvailable } from "./process-utils.js";
-
-export { isExecutableAvailable };
-
 export type PythonPackageManager = "uv" | "pip";
 
 export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = [

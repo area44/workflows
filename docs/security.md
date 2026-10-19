@@ -1,26 +1,24 @@
 # Security Boundaries
 
-This document formalizes the security architecture, input trust model, shell command tokenization, credential sanitization, and filesystem boundaries enforced across `@area44/workflows`.
+This document formalizes the security architecture, input trust model, shell command tokenization, and filesystem boundaries enforced across `@area44/workflows`.
 
 ## Trust Boundaries & Input Validation
 
 - **Untrusted Inputs**: Composite action inputs (`runtime`, `build-command`, `path` in `action.yml`) and workspace configuration files (`package.json`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) are treated as untrusted user input.
-- **Fail-Fast Parsing**: Custom `runtime` inputs are parsed and validated by `parseEnvironmentInputs()` in `src/resolve-environment.ts` before environment resolution or toolchain setup takes place. Malformed inputs fail fast with `INVALID_INPUT` or `UNSUPPORTED_RUNTIME_OR_PM`.
+- **Fail-Fast Parsing**: Custom `runtime` inputs are parsed and validated by `parseEnvironmentInputs()` in `src/resolve-environment.ts` before environment resolution or toolchain setup takes place. Malformed inputs fail fast with descriptive native errors.
 
 ## Command Execution & Subshell Avoidance
 
 - **Custom Build Commands**: `src/pages/build-command.ts` parses custom `build-command` strings using a custom tokenizer that respects single quotes, double quotes, and backslash escapes.
 - **No Subshell Invocation**: Commands are executed directly as binary names and argument arrays without subshell expansion (avoiding `sh -c` or `bash -c`).
 - **Injection Prevention**: Shell metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values, preventing shell command injection.
-- **Script Runner Sanitization**: `src/autofix.ts` sanitizes package manager names via `sanitizePackageManager()` (restricting names to alphanumeric and hyphen characters) before running script hooks.
+- **Script Runner Validation**: Package manager names are sanitized via `sanitizePackageManager()` (restricting names to alphanumeric and hyphen characters) before running script hooks.
 
-## Credential & Token Sanitization
+## Secret Masking & Error Reporting
 
-- **Automatic Masking**: `sanitizeCommandString()` in `src/pages/build-command.ts` masks sensitive tokens before logging or attaching to error contexts:
-  - URLs containing inline authentication credentials (`https://user:pass@host` → `https://***:***@host`).
-  - Sensitive CLI option flags (`--token`, `--key`, `--api-key`, `--pat`).
-  - Common access token patterns (GitHub PATs `ghp_...`, `github_pat_...`, npm tokens `npm_...`, Slack tokens `xox...`).
-- **Error Context Leak Prevention**: Raw `cause` objects attached to exceptions are excluded from attached error contexts to prevent unintentional token or secret exposure.
+- **Native Error Reporting**: Rather than relying on custom regex-based token masking, action steps throw concise native `Error` instances and report failures via `@actions/core.setFailed()`.
+- **GitHub Actions Secret Masking**: Credentials and secrets registered with GitHub Actions or passed via secret environment variables are automatically masked by the GitHub Actions runner.
+- **Minimal Verbosity**: Error messages avoid dumping raw environment blocks or unrestricted process outputs.
 
 ## Source vs Generated Artifact Trust Boundary
 

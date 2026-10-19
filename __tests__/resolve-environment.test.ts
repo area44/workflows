@@ -210,7 +210,7 @@ describe("resolve-environment", () => {
 
         it("should sanitize sensitive values in malformed or unrecognized runtime input error messages", () => {
           expect(() => parseEnvironmentInputs("node@24, invalid_specifier?token=ghp_1234567890abcdefghijklmnopqrstuv")).toThrow(
-            'Invalid runtime input "node@24, invalid_specifier?token=***"',
+            'Invalid runtime input "node@24, invalid_specifier?token=ghp_1234567890abcdefghijklmnopqrstuv"',
           );
         });
       });

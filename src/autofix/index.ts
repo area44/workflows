@@ -1,9 +1,9 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as io from "@actions/io";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { isWorkflowError, WorkflowError } from "../errors.js";
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
@@ -12,71 +12,14 @@ import {
   selectAutofixScripts,
   type JsInstallationPlan,
 } from "../javascript-env.js";
-import { isExecutableAvailable } from "../process-utils.js";
 import {
   detectPythonPackageManager,
   hasPythonSource,
   type PythonInstallCommand,
   type PythonPackageManagerInfo,
 } from "../python-env.js";
-import { sanitizeCause, sanitizeCommandString } from "../sanitize.js";
 
 export { sanitizePackageManager };
-
-/**
- * Executes a shell command synchronously while capturing and sanitizing stdout and stderr.
- * Output lines are passed through `sanitizeCommandString()` before writing to `process.stdout`/`process.stderr`.
- *
- * Limitation note: Binary or non-UTF8 output chunks without newline boundaries might be partially sanitized per line,
- * but line-buffered UTF-8 text (standard for log output) is fully sanitized.
- */
-async function execSanitized(
-  executable: string,
-  args: string[] = [],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): Promise<{ status: number | null; stdout: string; stderr: string; error?: Error }> {
-  const cwd = options.cwd || process.cwd();
-  let stdout = "";
-  let stderr = "";
-  let status: number | null = null;
-  let error: Error | undefined;
-
-  try {
-    status = await exec.exec(executable, args, {
-      cwd,
-      env: (options.env || process.env) as Record<string, string>,
-      silent: true,
-      ignoreReturnCode: true,
-      listeners: {
-        stdout: (data: Buffer) => {
-          stdout += data.toString("utf8");
-        },
-        stderr: (data: Buffer) => {
-          stderr += data.toString("utf8");
-        },
-      },
-    });
-  } catch (err) {
-    error = err instanceof Error ? err : new Error(String(err));
-  }
-
-  if (stdout) {
-    const sanitizedStdout = sanitizeCommandString(stdout);
-    process.stdout.write(sanitizedStdout);
-  }
-
-  if (stderr) {
-    const sanitizedStderr = sanitizeCommandString(stderr);
-    process.stderr.write(sanitizedStderr);
-  }
-
-  return {
-    status,
-    stdout,
-    stderr,
-    error,
-  };
-}
 
 async function runScriptCommand(
   pm: string,
@@ -84,25 +27,13 @@ async function runScriptCommand(
   cwd: string = process.cwd(),
 ): Promise<void> {
   const safePm = sanitizePackageManager(pm);
-  const rawCmd = `${safePm} run ${name}`;
-  const displayCmd = sanitizeCommandString(rawCmd);
+  const displayCmd = `${safePm} run ${name}`;
   core.info(`Executing: ${displayCmd}`);
 
-  const result = await execSanitized(safePm, ["run", name], { cwd });
-  if (result.status !== 0 || result.error) {
+  const exitCode = await exec.exec(safePm, ["run", name], { cwd, ignoreReturnCode: true });
+  if (exitCode !== 0) {
     core.error(`Script "${name}" failed`);
-    const message = `Script "${name}" failed while executing "${displayCmd}".`;
-    const causeObj =
-      result.error ||
-      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
-    throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
-      stage: "js-script-execution",
-      script: name,
-      packageManager: safePm,
-      command: displayCmd,
-      cwd,
-      cause: sanitizeCause(causeObj),
-    });
+    throw new Error(`Script "${name}" failed while executing "${displayCmd}".`);
   }
 }
 
@@ -110,24 +41,15 @@ async function runJsInstallationPlan(
   plan: JsInstallationPlan,
   cwd: string = process.cwd(),
 ): Promise<void> {
-  const fullCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
-  const displayCmd = sanitizeCommandString(fullCmd);
+  const displayCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
   core.info(`Installing JS dependencies: ${displayCmd}`);
 
-  const result = await execSanitized(plan.command, plan.args, { cwd });
-  if (result.status !== 0 || result.error) {
+  const exitCode = await exec.exec(plan.command, plan.args, { cwd, ignoreReturnCode: true });
+  if (exitCode !== 0) {
     core.error(`JS dependency installation failed: ${displayCmd}`);
-    const message = `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`;
-    const causeObj =
-      result.error ||
-      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
-    throw new WorkflowError("SETUP_FAILURE", message, {
-      stage: "js-dependency-installation",
-      packageManager: plan.packageManager,
-      command: displayCmd,
-      cwd,
-      cause: sanitizeCause(causeObj),
-    });
+    throw new Error(
+      `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`,
+    );
   }
 }
 
@@ -150,13 +72,7 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   }
 
   if (jsEnv.packageJsonError) {
-    const code = jsEnv.packageJsonErrorType === "parse" ? "INVALID_INPUT" : "SETUP_FAILURE";
-    const sanitizedMsg = sanitizeCommandString(jsEnv.packageJsonError);
-    throw new WorkflowError(code, sanitizedMsg, {
-      stage: "js-project-inspection",
-      cwd,
-      cause: sanitizeCause(jsEnv.packageJsonErrorCause),
-    });
+    throw new Error(jsEnv.packageJsonError);
   }
 
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
@@ -203,37 +119,23 @@ function resolvePythonInstallCommands(pmInfo: PythonPackageManagerInfo): PythonI
     return [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }];
   }
 
-  const displayCmd = sanitizeCommandString(rawCmd);
-  throw new WorkflowError(
-    "INVALID_INPUT",
-    `Unsupported or malformed Python install command configuration: "${displayCmd}".`,
-    { stage: "python-dependency-installation", packageManager: pmInfo.name, command: displayCmd },
-  );
+  throw new Error(`Unsupported or malformed Python install command configuration: "${rawCmd}".`);
 }
 
 async function runPythonCommand(
   executable: string,
   args: string[],
-  pmName: string,
+  _pmName: string,
   cwd: string = process.cwd(),
 ): Promise<void> {
-  const rawCmd = `${executable} ${args.join(" ")}`.trim();
-  const displayCmd = sanitizeCommandString(rawCmd);
+  const displayCmd = `${executable} ${args.join(" ")}`.trim();
   core.info(`Executing: ${displayCmd}`);
-  const result = await execSanitized(executable, args, { cwd });
-  if (result.status !== 0 || result.error) {
+  const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
+  if (exitCode !== 0) {
     core.error(`Python command "${displayCmd}" failed`);
-    const message = `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`;
-    const causeObj =
-      result.error ||
-      new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
-    throw new WorkflowError("SETUP_FAILURE", message, {
-      stage: "python-dependency-installation",
-      packageManager: pmName,
-      command: displayCmd,
-      cwd,
-      cause: sanitizeCause(causeObj),
-    });
+    throw new Error(
+      `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`,
+    );
   }
 }
 
@@ -244,25 +146,20 @@ export async function executePythonWorkflow(
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
-  const hasPmBin = isExecutableAvailable(requiredBin);
+  const hasPmBin = Boolean(await io.which(requiredBin, false));
 
   if (!hasPmBin && !pmInfo.isStandalone) {
     const message = `Required Python package manager '${requiredBin}' is not available in PATH.`;
     core.error(message);
-    throw new WorkflowError("MISSING_CONFIGURATION", message, {
-      stage: "python-environment-check",
-      packageManager: pmInfo.name,
-      requiredBinary: requiredBin,
-    });
+    throw new Error(message);
   }
 
   if (!pmInfo.isStandalone) {
     const installCmds = resolvePythonInstallCommands(pmInfo);
     if (installCmds.length > 0) {
-      const displayCmd = sanitizeCommandString(
+      const displayCmd =
         pmInfo.installCommand ||
-          installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && "),
-      );
+        installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
       core.info(`Installing Python dependencies: ${displayCmd}`);
       for (const { executable, args } of installCmds) {
         await runPythonCommand(executable, args, pmInfo.name, cwd);
@@ -276,14 +173,11 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
     return;
   }
 
-  if (!isExecutableAvailable("ruff")) {
+  const hasRuff = Boolean(await io.which("ruff", false));
+  if (!hasRuff) {
     const message = "Required Python binary 'ruff' is not available in PATH.";
     core.error(message);
-    throw new WorkflowError("MISSING_CONFIGURATION", message, {
-      stage: "python-environment-check",
-      requiredBinary: "ruff",
-      cwd,
-    });
+    throw new Error(message);
   }
 
   const ruffCommandSpecs = [
@@ -292,21 +186,12 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
   ];
 
   for (const { executable, args } of ruffCommandSpecs) {
-    const displayCmd = sanitizeCommandString(`${executable} ${args.join(" ")}`);
+    const displayCmd = `${executable} ${args.join(" ")}`;
     core.info(`Executing: ${displayCmd}`);
-    const result = await execSanitized(executable, args, { cwd });
-    if (result.status !== 0 || result.error) {
+    const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
+    if (exitCode !== 0) {
       core.error(`Ruff command "${displayCmd}" failed`);
-      const message = `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`;
-      const causeObj =
-        result.error ||
-        new Error(sanitizeCommandString(result.stderr || `Exit code ${result.status}`));
-      throw new WorkflowError("COMMAND_EXECUTION_FAILURE", message, {
-        stage: "ruff-autofix-execution",
-        command: displayCmd,
-        cwd,
-        cause: sanitizeCause(causeObj),
-      });
+      throw new Error(`Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`);
     }
   }
 }
@@ -322,17 +207,8 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
 
     await executeRuffAutofix(cwd);
   } catch (error) {
-    if (isWorkflowError(error)) {
-      core.setFailed(error);
-    } else {
-      const message = error instanceof Error ? error.message : String(error);
-      const wfError = new WorkflowError(
-        "COMMAND_EXECUTION_FAILURE",
-        `Failed to run scripts: ${sanitizeCommandString(message)}`,
-        { stage: "autofix-execution", cwd, cause: sanitizeCause(error) },
-      );
-      core.setFailed(wfError);
-    }
+    const message = error instanceof Error ? error.message : String(error);
+    core.setFailed(`Failed to run scripts: ${message}`);
     if (process.env.NODE_ENV !== "test") {
       process.exit(1);
     }
