@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix";
+import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
 import * as processUtils from "../src/process-utils";
 
 vi.mock("node:child_process");

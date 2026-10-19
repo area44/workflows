@@ -66,7 +66,7 @@ export default defineConfig({
       platform: "node",
     },
     {
-      entry: { autofix: "src/autofix.ts" },
+      entry: { autofix: "src/autofix/index.ts" },
       outDir: "dist",
       format: "esm",
       minify: true,
