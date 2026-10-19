@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { isWorkflowError, WorkflowError } from "./errors.js";
+import { isWorkflowError, WorkflowError } from "../errors.js";
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
@@ -11,14 +11,14 @@ import {
   sanitizePackageManager,
   selectAutofixScripts,
   type JsInstallationPlan,
-} from "./javascript-env.js";
-import { isExecutableAvailable } from "./process-utils.js";
+} from "../javascript-env.js";
+import { isExecutableAvailable } from "../process-utils.js";
 import {
   detectPythonPackageManager,
   hasPythonSource,
   type PythonPackageManagerInfo,
-} from "./python-env.js";
-import { sanitizeCause, sanitizeCommandString } from "./sanitize.js";
+} from "../python-env.js";
+import { sanitizeCause, sanitizeCommandString } from "../sanitize.js";
 
 export { sanitizePackageManager };
 
