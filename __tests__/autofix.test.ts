@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix";
 import * as processUtils from "../src/process-utils";
-import * as pythonEnv from "../src/python-env";
 
 vi.mock("node:child_process");
 vi.mock("@actions/core");

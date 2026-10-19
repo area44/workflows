@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseCommand, resolveBuildCommandToParse, runBuildCommand, sanitizeCommandString, validateBuildOutput } from "../src/build-command";
 import * as processUtils from "../src/process-utils";
-import * as pythonEnv from "../src/python-env";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -356,7 +355,7 @@ describe("build-command", () => {
   });
 
   describe("Vite+ build fallback and error handling scenarios", () => {
-    it("Scenario 1: vp is available and vp build succeeds -> Success; do not invoke vpr", async () => {
+    it("vp is available and vp build succeeds -> Success; do not invoke vpr", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
@@ -370,7 +369,7 @@ describe("build-command", () => {
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
     });
 
-    it("Scenario 2: vp is available but vp build exits non-zero -> Fail; do not invoke vpr", async () => {
+    it("vp is available but vp build exits non-zero -> Fail; do not invoke vpr", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
@@ -390,7 +389,7 @@ describe("build-command", () => {
       );
     });
 
-    it("Scenario 3: vp is unavailable and vpr is available -> Run vpr build", async () => {
+    it("vp is unavailable and vpr is available -> Run vpr build", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
@@ -406,7 +405,7 @@ describe("build-command", () => {
       expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
     });
 
-    it("Scenario 4: Neither executable is available -> Fail with actionable WorkflowError and exitOnFailure handling", async () => {
+    it("Neither executable is available -> Fail with actionable WorkflowError and exitOnFailure handling", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
@@ -430,7 +429,7 @@ describe("build-command", () => {
       mockExit.mockRestore();
     });
 
-    it("Scenario 5: A custom build-command is supplied -> Run custom command without automatic fallback", async () => {
+    it("A custom build-command is supplied -> Run custom command without automatic fallback", async () => {
       process.env.BUILD_COMMAND = "custom-builder build";
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 

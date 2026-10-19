@@ -33,7 +33,7 @@ describe("Error Contract Tests", () => {
     });
   });
 
-  describe("Category A: Invalid input", () => {
+  describe("Invalid input", () => {
     it("should throw INVALID_INPUT for malformed runtime syntax", () => {
       try {
         parseEnvironmentInputs("node@");
@@ -100,7 +100,7 @@ describe("Error Contract Tests", () => {
     });
   });
 
-  describe("Category B: Unsupported runtime / package manager", () => {
+  describe("Unsupported runtime / package manager", () => {
     it("should throw UNSUPPORTED_RUNTIME_OR_PM in validateRuntimePackageManagerCompatibility for invalid runtime", () => {
       try {
         validateRuntimePackageManagerCompatibility("deno", "npm");
@@ -128,7 +128,7 @@ describe("Error Contract Tests", () => {
     });
   });
 
-  describe("Category C: Unsupported combination (Bun + npm)", () => {
+  describe("Unsupported combination (Bun + npm)", () => {
     it("should throw UNSUPPORTED_COMBINATION when calling validateRuntimePackageManagerCompatibility('bun', 'npm')", () => {
       try {
         validateRuntimePackageManagerCompatibility("bun", "npm");
