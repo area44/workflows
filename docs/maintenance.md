@@ -45,8 +45,8 @@ The following generated files are produced from source code and checked into git
 
 - `dist/resolve-environment.mjs` (generated from `src/resolve-environment.ts` and imports)
 - `dist/autofix.mjs` (generated from `src/autofix.ts`)
-- `dist/site-variables.mjs` (generated from `src/site-variables.ts`)
-- `dist/build-command.mjs` (generated from `src/build-command.ts`)
+- `dist/site-variables.mjs` (generated from `src/pages/site-variables.ts`)
+- `dist/build-command.mjs` (generated from `src/pages/build-command.ts`)
 
 Build artifacts must never be edited directly. Modifications must be made in `src/`, followed by re-running `npm run build` to update `dist/`.
 

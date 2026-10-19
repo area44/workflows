@@ -5,7 +5,7 @@ import {
   parseEnvironmentInputs,
   validateRuntimePackageManagerCompatibility,
 } from "../src/resolve-environment";
-import { parseCommand } from "../src/build-command";
+import { parseCommand } from "../src/pages/build-command";
 
 describe("Error Contract Tests", () => {
   describe("Error Structure and Instance Checks", () => {

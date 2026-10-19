@@ -57,11 +57,34 @@ export default defineConfig({
     globals: true,
     include: ["__tests__/**/*.test.ts"],
   },
-  pack: ["resolve-environment", "autofix", "site-variables", "build-command"].map((name) => ({
-    entry: { [name]: `src/${name}.ts` },
-    outDir: "dist",
-    format: "esm",
-    minify: true,
-    platform: "node",
-  })),
+  pack: [
+    {
+      entry: { "resolve-environment": "src/resolve-environment.ts" },
+      outDir: "dist",
+      format: "esm",
+      minify: true,
+      platform: "node",
+    },
+    {
+      entry: { autofix: "src/autofix.ts" },
+      outDir: "dist",
+      format: "esm",
+      minify: true,
+      platform: "node",
+    },
+    {
+      entry: { "site-variables": "src/pages/site-variables.ts" },
+      outDir: "dist",
+      format: "esm",
+      minify: true,
+      platform: "node",
+    },
+    {
+      entry: { "build-command": "src/pages/build-command.ts" },
+      outDir: "dist",
+      format: "esm",
+      minify: true,
+      platform: "node",
+    },
+  ],
 });
