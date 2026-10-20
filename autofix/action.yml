@@ -21,6 +21,9 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  has-js-project:
+    description: "Whether a JavaScript project (package.json) was detected"
+    value: ${{ steps.resolve_environment.outputs.has-js-project }}
   has-python-source:
     description: "Whether Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.has-python-source }}
@@ -46,20 +49,23 @@ runs:
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Setup uv
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
+      id: setup_uv
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
         enable-cache: true
 
     - name: Setup Python
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
+      id: setup_python
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
 
     - name: Setup PNPM
-      if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}
+      id: setup_pnpm
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3
       with:
         version: ${{ steps.resolve_environment.outputs.package-manager-version }}
@@ -68,13 +74,15 @@ runs:
         cache: true
 
     - name: Setup Bun
-      if: ${{ steps.resolve_environment.outputs.setup-bun == 'true' }}
+      id: setup_bun
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-bun == 'true' }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version: ${{ steps.resolve_environment.outputs.bun-version }}
 
     - name: Setup Node.js
-      if: ${{ steps.resolve_environment.outputs.setup-node == 'true' }}
+      id: setup_node
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-node == 'true' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
@@ -83,25 +91,29 @@ runs:
           **/package-lock.json
 
     - name: Setup Ruff
-      if: ${{ steps.resolve_environment.outputs.has-python-source == 'true' }}
+      id: setup_ruff
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
         version: ${{ steps.resolve_environment.outputs.ruff-version }}
         args: "--version"
 
     - name: Run autofix
+      id: run_autofix
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.resolve_environment.outputs.has-js-project == 'true' || steps.resolve_environment.outputs.has-python-source == 'true') }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
-      run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/autofix.mjs"
-        else
-          node "$ACTION_PATH/../dist/autofix.mjs"
-        fi
+        NODE_SETUP_OUTCOME: ${{ steps.setup_node.outcome }}
+        BUN_SETUP_OUTCOME: ${{ steps.setup_bun.outcome }}
+        PNPM_SETUP_OUTCOME: ${{ steps.setup_pnpm.outcome }}
+        UV_SETUP_OUTCOME: ${{ steps.setup_uv.outcome }}
+        PY_SETUP_OUTCOME: ${{ steps.setup_python.outcome }}
+        RUFF_SETUP_OUTCOME: ${{ steps.setup_ruff.outcome }}
+      run: node "$ACTION_PATH/../dist/autofix.mjs"
 
     - name: Run autofix.ci
-      if: ${{ github.workflow == 'autofix.ci' }}
+      if: ${{ success() && github.workflow == 'autofix.ci' }}
       uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1

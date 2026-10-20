@@ -196,19 +196,97 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
   }
 }
 
-export async function run(cwd: string = process.cwd()): Promise<void> {
+async function runJsWorkflowStep(cwd: string): Promise<Error | null> {
+  const jsSetupFailed =
+    process.env.JS_SETUP_OUTCOME === "failure" ||
+    process.env.NODE_SETUP_OUTCOME === "failure" ||
+    process.env.BUN_SETUP_OUTCOME === "failure" ||
+    process.env.PNPM_SETUP_OUTCOME === "failure";
+
+  if (jsSetupFailed) {
+    return new Error("JavaScript runtime or package manager setup failed.");
+  }
+
   try {
     await executeJsWorkflow(cwd);
-
-    const pythonPmInfo = detectPythonPackageManager(cwd);
-    if (pythonPmInfo) {
-      await executePythonWorkflow(pythonPmInfo, cwd);
-    }
-
-    await executeRuffAutofix(cwd);
+    return null;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    core.setFailed(`Failed to run scripts: ${message}`);
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+async function runPythonDepsStep(cwd: string): Promise<Error | null> {
+  const pythonEnvSetupFailed =
+    process.env.PYTHON_SETUP_OUTCOME === "failure" ||
+    process.env.UV_SETUP_OUTCOME === "failure" ||
+    process.env.PY_SETUP_OUTCOME === "failure";
+
+  if (pythonEnvSetupFailed) {
+    return new Error("Python runtime or package manager setup failed.");
+  }
+
+  const pythonPmInfo = detectPythonPackageManager(cwd);
+  if (!pythonPmInfo) {
+    return null;
+  }
+
+  try {
+    await executePythonWorkflow(pythonPmInfo, cwd);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+async function runRuffStep(cwd: string): Promise<Error | null> {
+  const ruffSetupFailed = process.env.RUFF_SETUP_OUTCOME === "failure";
+
+  if (ruffSetupFailed) {
+    return new Error("Ruff setup failed.");
+  }
+
+  try {
+    await executeRuffAutofix(cwd);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+async function runPythonWorkflowStep(cwd: string): Promise<Error[]> {
+  if (!hasPythonSource(cwd)) {
+    return [];
+  }
+
+  const errors: Error[] = [];
+
+  const depsErr = await runPythonDepsStep(cwd);
+  if (depsErr) {
+    errors.push(depsErr);
+  }
+
+  const ruffErr = await runRuffStep(cwd);
+  if (ruffErr) {
+    errors.push(ruffErr);
+  }
+
+  return errors;
+}
+
+export async function run(cwd: string = process.cwd()): Promise<void> {
+  const errors: Error[] = [];
+
+  const jsErr = await runJsWorkflowStep(cwd);
+  if (jsErr) {
+    errors.push(jsErr);
+  }
+
+  const pythonErrs = await runPythonWorkflowStep(cwd);
+  errors.push(...pythonErrs);
+
+  if (errors.length > 0) {
+    const combinedMessage = errors.map((e) => e.message).join("\n");
+    core.setFailed(`Failed to run scripts: ${combinedMessage}`);
     if (process.env.NODE_ENV !== "test") {
       process.exit(1);
     }

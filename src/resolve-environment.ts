@@ -501,6 +501,9 @@ export function writeOutput(
     };
   }
 
+  const project = inspectProjectEnvironment();
+  const hasJsProject = project.hasPackageJson;
+
   const nodeSetup = setupNode(env);
   const bunSetup = setupBun(env);
   const pmSetup = setupPackageManager(env);
@@ -513,10 +516,11 @@ export function writeOutput(
   core.setOutput("toolchain", env.toolchain);
   core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
-  core.setOutput("setup-node", String(nodeSetup.shouldSetup));
+  core.setOutput("has-js-project", String(hasJsProject));
+  core.setOutput("setup-node", String(hasJsProject && nodeSetup.shouldSetup));
   core.setOutput("setup-node-cache", nodeSetup.cache);
-  core.setOutput("setup-bun", String(bunSetup.shouldSetup));
-  core.setOutput("setup-pnpm", String(pmSetup.shouldSetupPnpm));
+  core.setOutput("setup-bun", String(hasJsProject && bunSetup.shouldSetup));
+  core.setOutput("setup-pnpm", String(hasJsProject && pmSetup.shouldSetupPnpm));
 
   const hasPySource = hasPythonSource();
   core.setOutput("has-python-source", String(hasPySource));
