@@ -112,12 +112,7 @@ runs:
         UV_SETUP_OUTCOME: ${{ steps.setup_uv.outcome }}
         PY_SETUP_OUTCOME: ${{ steps.setup_python.outcome }}
         RUFF_SETUP_OUTCOME: ${{ steps.setup_ruff.outcome }}
-      run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/autofix.mjs"
-        else
-          node "$ACTION_PATH/../dist/autofix.mjs"
-        fi
+      run: node "$ACTION_PATH/../dist/autofix.mjs"
 
     - name: Run autofix.ci
       if: ${{ success() && github.workflow == 'autofix.ci' }}
