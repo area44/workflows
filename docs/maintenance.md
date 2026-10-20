@@ -8,6 +8,7 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 
 - **Single Source of Truth**: Metadata, API contracts, and version declarations originate from single designated canonical source files.
 - **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files.
+- **Action Bootstrap Runtime**: Internal action entrypoints (`dist/*.mjs`) run consistently under Node.js across supported GitHub Actions runners. The target project runtime (`RUNTIME`) and package manager (`PACKAGE_MANAGER`) determine how user project commands (`bun install`, `pnpm install`, `npm run build`, `vp build`, `ruff`) are executed, keeping internal action orchestration decoupled from project runtime selection.
 - **Reproducible Artifacts**: Code in `dist/` is generated deterministically from `src/` via `npm run build` and verified for zero drift.
 
 ## Sources of Truth
@@ -27,7 +28,7 @@ Every public action provided by this repository must adhere to the following str
 - A dedicated directory at the repository root matching its declared action name (e.g., `pages/`, `autofix/`).
 - An `action.yml` metadata file defining inputs, outputs, and composite execution steps.
 - A `README.md` file documenting exact input parameters, output parameters, and usage examples.
-- Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` (e.g., `dist/resolve-environment.mjs`).
+- Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` using Node (e.g., `node "$ACTION_PATH/../dist/resolve-environment.mjs"`).
 
 ## Build Artifacts Pipeline
 
@@ -44,7 +45,7 @@ dist/
 The following generated files are produced from source code and checked into git:
 
 - `dist/resolve-environment.mjs` (generated from `src/resolve-environment.ts` and imports)
-- `dist/autofix.mjs` (generated from `src/autofix.ts`)
+- `dist/autofix.mjs` (generated from `src/autofix/index.ts`)
 - `dist/site-variables.mjs` (generated from `src/pages/site-variables.ts`)
 - `dist/build-command.mjs` (generated from `src/pages/build-command.ts`)
 

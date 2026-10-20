@@ -47,13 +47,16 @@ runs:
       run: node "$ACTION_PATH/../dist/resolve-environment.mjs"
 
     - name: Set site variables
+      id: set_site_variables
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' }}
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
       run: node "$ACTION_PATH/../dist/site-variables.mjs"
 
     - name: Setup PNPM
-      if: ${{ steps.resolve_environment.outputs.setup-pnpm == 'true' }}
+      id: setup_pnpm
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3
       with:
         version: ${{ steps.resolve_environment.outputs.package-manager-version }}
@@ -62,13 +65,15 @@ runs:
         cache: true
 
     - name: Setup Bun
-      if: ${{ steps.resolve_environment.outputs.setup-bun == 'true' }}
+      id: setup_bun
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-bun == 'true' }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version: ${{ steps.resolve_environment.outputs.bun-version }}
 
     - name: Setup Node.js
-      if: ${{ steps.resolve_environment.outputs.setup-node == 'true' }}
+      id: setup_node
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-node == 'true' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
@@ -77,8 +82,8 @@ runs:
           **/package-lock.json
 
     - name: Setup Vite+
-      if: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
       id: setup_vp
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
@@ -86,7 +91,8 @@ runs:
         run-install: true
 
     - name: Install dependencies
-      if: ${{ steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
+      id: install_dependencies
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
@@ -113,22 +119,18 @@ runs:
 
     - name: Build site
       id: build_site
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success') }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
         DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
         BUILD_PATH: ${{ inputs.path }}
-        RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
         ACTION_PATH: ${{ github.action_path }}
-      run: |
-        if [ "$RUNTIME" = "bun" ]; then
-          bun "$ACTION_PATH/../dist/build-command.mjs"
-        else
-          node "$ACTION_PATH/../dist/build-command.mjs"
-        fi
+      run: node "$ACTION_PATH/../dist/build-command.mjs"
 
     - name: Upload site artifact
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.build_site.outcome == 'success' }}
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
         path: ${{ steps.build_site.outputs.path }}

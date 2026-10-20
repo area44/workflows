@@ -9,6 +9,8 @@ This document formalizes the security architecture, input trust model, shell com
 
 ## Command Execution & Subshell Avoidance
 
+- **Action Bootstrap Runtime**: Internal bundled action entrypoints (`dist/resolve-environment.mjs`, `dist/site-variables.mjs`, `dist/build-command.mjs`, `dist/autofix.mjs`) execute directly under Node.js.
+- **Project Commands Execution**: Project commands are executed via `@actions/exec` using binary names and tokenized argument arrays derived from the resolved project package manager and configuration.
 - **Custom Build Commands**: `src/pages/build-command.ts` parses custom `build-command` strings using a custom tokenizer that respects single quotes, double quotes, and backslash escapes.
 - **No Subshell Invocation**: Commands are executed directly as binary names and argument arrays without subshell expansion (avoiding `sh -c` or `bash -c`).
 - **Injection Prevention**: Shell metacharacters (such as `;`, `&&`, `|`, `$VAR`, `>`) are treated as literal argument values, preventing shell command injection.

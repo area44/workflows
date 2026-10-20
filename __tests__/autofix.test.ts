@@ -803,6 +803,35 @@ describe("autofix", () => {
       }
     });
 
+    it("should confirm autofix/action.yml launches dist/autofix.mjs with node unconditionally", () => {
+      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("run: node \"$ACTION_PATH/../dist/autofix.mjs\"");
+      expect(actionYmlContent).not.toContain("bun \"$ACTION_PATH/../dist/autofix.mjs\"");
+      expect(actionYmlContent).not.toContain("if [ \"$RUNTIME\" = \"bun\" ]");
+    });
+
+    it("should confirm autofix/action.yml launches all internal entrypoints with node", () => {
+      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/resolve-environment.mjs\"");
+      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/autofix.mjs\"");
+    });
+
+    it("should confirm autofix/action.yml enforces step IDs and outcome conditions for resolve_environment and run_autofix", () => {
+      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("id: resolve_environment");
+      expect(actionYmlContent).toContain("id: run_autofix");
+      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
+      expect(actionYmlContent).toContain("steps.run_autofix.outcome == 'success'");
+      expect(actionYmlContent).toContain("NODE_SETUP_OUTCOME:");
+      expect(actionYmlContent).toContain("RUFF_SETUP_OUTCOME:");
+    });
+
     it("should succeed when both JS and Python workflows succeed in a mixed project", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
@@ -957,15 +986,6 @@ describe("autofix", () => {
           /Failed to run scripts: Python command "pip install -r requirements\.txt" failed.*?\nRuff command "ruff check --fix \." failed/,
         ),
       );
-    });
-
-    it("should confirm action.yml enforces resolve_environment.outcome == success and sets setup outcome env vars", () => {
-      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
-      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
-
-      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
-      expect(actionYmlContent).toContain("NODE_SETUP_OUTCOME:");
-      expect(actionYmlContent).toContain("RUFF_SETUP_OUTCOME:");
     });
   });
 
