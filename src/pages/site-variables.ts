@@ -83,8 +83,7 @@ export function setSiteVariables(): void {
     core.exportVariable("BASE", vars.base);
     core.exportVariable("BASE_URL", vars.base);
     core.info(`Set SITE=${vars.site}`);
-    core.info(`Set BASE=${vars.base}`);
-    core.info(`Set BASE_URL=${vars.base}`);
+    core.info(`Set BASE=${vars.base} (also exported as BASE_URL)`);
   } else {
     core.warning(
       "Failed to resolve site variables from repository metadata. Skipping site variables.",
