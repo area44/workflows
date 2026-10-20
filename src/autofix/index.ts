@@ -78,6 +78,13 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
   const pm = sanitizePackageManager(rawPm);
 
+  const hasPmBin = Boolean(await io.which(pm, false));
+  if (!hasPmBin) {
+    const message = `Required JavaScript package manager '${pm}' is not available in PATH.`;
+    core.error(message);
+    throw new Error(message);
+  }
+
   const plan = getJsInstallationPlan(jsEnv, pm);
   await runJsInstallationPlan(plan, cwd);
 
@@ -197,6 +204,12 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
 }
 
 async function runJsWorkflowStep(cwd: string): Promise<Error | null> {
+  const jsEnv = inspectJsProjectEnvironment(cwd);
+  if (!jsEnv.hasPackageJson) {
+    core.info("No package.json found. Skipping scripts.");
+    return null;
+  }
+
   const jsSetupFailed =
     process.env.JS_SETUP_OUTCOME === "failure" ||
     process.env.NODE_SETUP_OUTCOME === "failure" ||

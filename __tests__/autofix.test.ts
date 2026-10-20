@@ -1,11 +1,12 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
+import { executeJsWorkflow, executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");
@@ -739,6 +740,19 @@ describe("autofix", () => {
   });
 
   describe("error and exception handling", () => {
+    it("should throw error if JS package manager binary is not available in PATH", async () => {
+      vi.spyOn(io, "which").mockResolvedValue("");
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ scripts: { check: "echo check" } }));
+
+      await expect(executeJsWorkflow(process.cwd())).rejects.toThrow(
+        "Required JavaScript package manager 'npm' is not available in PATH.",
+      );
+      expect(core.error).toHaveBeenCalledWith(
+        "Required JavaScript package manager 'npm' is not available in PATH.",
+      );
+    });
+
     it("should set failed when package.json contains malformed JSON syntax", async () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue("{ invalid json syntax }" as any);
@@ -966,6 +980,82 @@ describe("autofix", () => {
       expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
       expect(actionYmlContent).toContain("NODE_SETUP_OUTCOME:");
       expect(actionYmlContent).toContain("RUFF_SETUP_OUTCOME:");
+    });
+  });
+
+  describe("Entrypoint Launch & Action Integration Boundary", () => {
+    let tempDir: string;
+    const distAutofixPath = path.resolve(originalCwd, "dist/autofix.mjs");
+
+    beforeEach(() => {
+      tempDir = path.join(
+        originalCwd,
+        "__tests__/fixtures/autofix/temp launch dir " + Math.random().toString(36).substring(2, 9),
+      );
+      fs.mkdirSync(tempDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should successfully execute entrypoint dist/autofix.mjs as a Node process in a JS project", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "launch-test", scripts: { check: "node -e 'console.log(\"JS check ok\")'" } }),
+      );
+
+      const output = execSync(`node "${distAutofixPath}"`, {
+        cwd: tempDir,
+        env: { ...process.env, NODE_ENV: "production", PACKAGE_MANAGER: "npm" },
+        encoding: "utf8",
+      });
+
+      expect(output).toContain("Installing JS dependencies: npm install");
+      expect(output).toContain("Executing: npm run check");
+      expect(output).toContain("JS check ok");
+    });
+
+    it("should exit with status code 1 and emit failure output when process fails in dist/autofix.mjs", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "launch-test-fail", scripts: { check: "node -e 'process.exit(1)'" } }),
+      );
+
+      let errorOutput = "";
+      let exitCode = 0;
+
+      try {
+        execSync(`node "${distAutofixPath}"`, {
+          cwd: tempDir,
+          env: { ...process.env, NODE_ENV: "production", PACKAGE_MANAGER: "npm" },
+          encoding: "utf8",
+          stdio: "pipe",
+        });
+      } catch (err: any) {
+        exitCode = err.status;
+        errorOutput = (err.stdout || "") + (err.stderr || "");
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorOutput).toContain("Script \"check\" failed");
+      expect(errorOutput).toContain("Failed to run scripts:");
+    });
+
+    it("should execute Python workflow via node dist/autofix.mjs in Python-only project without package.json", () => {
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello python launch')\n");
+
+      const output = execSync(`node "${distAutofixPath}"`, {
+        cwd: tempDir,
+        env: { ...process.env, NODE_ENV: "production" },
+        encoding: "utf8",
+      });
+
+      expect(output).toContain("No package.json found. Skipping scripts.");
+      expect(output).toContain("Detected Python package manager: pip");
+      expect(output).toContain("Executing: ruff check --fix .");
     });
   });
 
