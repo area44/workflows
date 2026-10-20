@@ -950,8 +950,8 @@ describe("autofix", () => {
       const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
 
       expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
-      expect(actionYmlContent).toContain("JS_SETUP_OUTCOME:");
-      expect(actionYmlContent).toContain("PYTHON_SETUP_OUTCOME:");
+      expect(actionYmlContent).toContain("NODE_SETUP_OUTCOME:");
+      expect(actionYmlContent).toContain("RUFF_SETUP_OUTCOME:");
     });
   });
 

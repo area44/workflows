@@ -199,8 +199,13 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
 export async function run(cwd: string = process.cwd()): Promise<void> {
   const errors: Error[] = [];
 
-  const jsSetupOutcome = process.env.JS_SETUP_OUTCOME;
-  if (jsSetupOutcome === "failure") {
+  const jsSetupFailed =
+    process.env.JS_SETUP_OUTCOME === "failure" ||
+    process.env.NODE_SETUP_OUTCOME === "failure" ||
+    process.env.BUN_SETUP_OUTCOME === "failure" ||
+    process.env.PNPM_SETUP_OUTCOME === "failure";
+
+  if (jsSetupFailed) {
     errors.push(new Error("JavaScript runtime or package manager setup failed."));
   } else {
     try {
@@ -211,8 +216,13 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
     }
   }
 
-  const pythonSetupOutcome = process.env.PYTHON_SETUP_OUTCOME;
-  if (pythonSetupOutcome === "failure") {
+  const pythonSetupFailed =
+    process.env.PYTHON_SETUP_OUTCOME === "failure" ||
+    process.env.UV_SETUP_OUTCOME === "failure" ||
+    process.env.PY_SETUP_OUTCOME === "failure" ||
+    process.env.RUFF_SETUP_OUTCOME === "failure";
+
+  if (pythonSetupFailed) {
     errors.push(new Error("Python runtime or Ruff setup failed."));
   } else if (hasPythonSource(cwd)) {
     const pythonPmInfo = detectPythonPackageManager(cwd);
