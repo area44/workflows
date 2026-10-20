@@ -216,30 +216,37 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
     }
   }
 
-  const pythonSetupFailed =
-    process.env.PYTHON_SETUP_OUTCOME === "failure" ||
-    process.env.UV_SETUP_OUTCOME === "failure" ||
-    process.env.PY_SETUP_OUTCOME === "failure" ||
-    process.env.RUFF_SETUP_OUTCOME === "failure";
+  if (hasPythonSource(cwd)) {
+    const pythonEnvSetupFailed =
+      process.env.PYTHON_SETUP_OUTCOME === "failure" ||
+      process.env.UV_SETUP_OUTCOME === "failure" ||
+      process.env.PY_SETUP_OUTCOME === "failure";
 
-  if (pythonSetupFailed) {
-    errors.push(new Error("Python runtime or Ruff setup failed."));
-  } else if (hasPythonSource(cwd)) {
-    const pythonPmInfo = detectPythonPackageManager(cwd);
-    if (pythonPmInfo) {
+    if (pythonEnvSetupFailed) {
+      errors.push(new Error("Python runtime or package manager setup failed."));
+    } else {
+      const pythonPmInfo = detectPythonPackageManager(cwd);
+      if (pythonPmInfo) {
+        try {
+          await executePythonWorkflow(pythonPmInfo, cwd);
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          errors.push(err);
+        }
+      }
+    }
+
+    const ruffSetupFailed = process.env.RUFF_SETUP_OUTCOME === "failure";
+
+    if (ruffSetupFailed) {
+      errors.push(new Error("Ruff setup failed."));
+    } else {
       try {
-        await executePythonWorkflow(pythonPmInfo, cwd);
+        await executeRuffAutofix(cwd);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         errors.push(err);
       }
-    }
-
-    try {
-      await executeRuffAutofix(cwd);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      errors.push(err);
     }
   }
 

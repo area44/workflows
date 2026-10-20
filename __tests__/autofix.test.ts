@@ -907,19 +907,33 @@ describe("autofix", () => {
       );
     });
 
-    it("should skip Python workflow and execute JS workflow when Python setup outcome is failure", async () => {
+    it("should run Python dependency installation and skip Ruff when Ruff setup outcome is failure but Python setup succeeds", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      process.env.PYTHON_SETUP_OUTCOME = "failure";
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      process.env.RUFF_SETUP_OUTCOME = "failure";
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
 
       await run(tempDir);
 
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: tempDir }));
       expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Python runtime or Ruff setup failed."),
+        expect.stringContaining("Ruff setup failed."),
+      );
+    });
+
+    it("should skip Python dependency setup and attempt Ruff when Python setup outcome is failure but Ruff setup succeeds", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      process.env.PY_SETUP_OUTCOME = "failure";
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      await run(tempDir);
+
+      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("Python runtime or package manager setup failed."),
       );
     });
 
