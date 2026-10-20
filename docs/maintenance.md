@@ -9,7 +9,6 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 - **Single Source of Truth**: Metadata, API contracts, and version declarations originate from single designated canonical source files.
 - **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files.
 - **Action Bootstrap Runtime**: Internal action entrypoints (`dist/*.mjs`) run consistently under Node.js across supported GitHub Actions runners. The target project runtime (`RUNTIME`) and package manager (`PACKAGE_MANAGER`) determine how user project commands (`bun install`, `pnpm install`, `npm run build`, `vp build`, `ruff`) are executed, keeping internal action orchestration decoupled from project runtime selection.
-- **Reproducible Artifacts**: Code in `dist/` is generated deterministically from `src/` via `npm run build` and verified for zero drift.
 
 ## Sources of Truth
 
@@ -49,19 +48,21 @@ The following generated files are produced from source code and checked into git
 - `dist/site-variables.mjs` (generated from `src/pages/site-variables.ts`)
 - `dist/build-command.mjs` (generated from `src/pages/build-command.ts`)
 
-Build artifacts must never be edited directly. Modifications must be made in `src/`, followed by re-running `npm run build` to update `dist/`.
+The `npm run build` command bundles source files from `src/` to produce updated artifacts in `dist/` for development, testing, and release workflows.
 
 ## Quality Gates and Test Commands
 
-Maintainers and automated CI pipelines run the following verification and test commands:
+Maintainers and automated CI pipelines enforce the following quality gates and test commands:
 
-| Command             | Description                                          |
-| ------------------- | ---------------------------------------------------- |
-| `npm test`          | Runs all Vitest/Vite+ unit test suites               |
-| `npm run lint`      | Runs code linting rules via Vite+                    |
-| `npm run format`    | Verifies code formatting via Vite+                   |
-| `npm run build`     | Bundles TypeScript source files in `src/` to `dist/` |
-| `npm run changeset` | Interactively creates a new changeset file           |
+| Stage / Gate             | Command / Pipeline Step             | Description                                           |
+| ------------------------ | ----------------------------------- | ----------------------------------------------------- |
+| Dependency Installation  | `npm ci`                            | Installs exact workspace dependencies                 |
+| Lint                     | `npm run lint`                      | Validates code style and lint rules via Vite+         |
+| Formatting Validation    | `npm run format -- --check`         | Checks code formatting without mutating source files  |
+| Build                    | `npm run build`                     | Bundles TypeScript source code into `dist/` artifacts |
+| Unit Tests               | `npm test`                          | Executes unit test suites via Vite+                   |
+| Action Integration Tests | GitHub Actions (`test-actions.yml`) | Tests `pages` and `autofix` actions using fixtures    |
+| Changeset Creation       | `npm run changeset`                 | Interactively creates a new changeset file            |
 
 ## Release Process and Versioning
 

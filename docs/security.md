@@ -25,5 +25,4 @@ This document formalizes the security architecture, input trust model, shell com
 ## Source vs Generated Artifact Trust Boundary
 
 - **Authoritative Source**: All TypeScript source code resides in `src/`.
-- **Generated Outputs**: Files in `dist/` are build artifacts bundled via `npm run build` (`vp pack`). Direct manual edits to `dist/` are strictly prohibited.
-- **Automated Build**: Source-to-dist artifact synchronization is enforced during builds and release processes. Direct edits to `dist/` are prohibited.
+- **Generated Outputs**: Files in `dist/` are build artifacts bundled via `npm run build` (`vp pack`) used as executable entrypoints for composite GitHub Actions.
