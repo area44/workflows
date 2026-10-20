@@ -89,7 +89,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 Specialized documentation guides explain specific contracts and operational guarantees:
 
-- **[Error Contract](./docs/errors.md)**: Structured `WorkflowError` class and fail-fast `WorkflowErrorCode` values.
+- **[Error Contract](./docs/errors.md)**: Defines the error handling architecture, native error propagation.
 - **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
 - **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, and release process.
 
