@@ -160,7 +160,8 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(0);
-      expect(core.info).toHaveBeenCalledWith('Preparing build command: "pnpm run build"');
+      expect(core.info).toHaveBeenCalledWith("Preparing build command execution.");
+      expect(core.info).toHaveBeenCalledWith("Executing build command: pnpm");
       expect(exec.exec).toHaveBeenCalledWith("pnpm", ["run", "build"], { ignoreReturnCode: true });
     });
 
@@ -173,11 +174,12 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(0);
-      expect(core.info).toHaveBeenCalledWith('Preparing build command: "vpr build"');
+      expect(core.info).toHaveBeenCalledWith("Preparing build command execution.");
+      expect(core.info).toHaveBeenCalledWith("Executing build command: vpr");
       expect(exec.exec).toHaveBeenCalledWith("vpr", ["build"], { ignoreReturnCode: true });
     });
 
-    it("should execute custom BUILD_COMMAND when provided", async () => {
+    it("should execute custom BUILD_COMMAND when provided without logging raw sensitive flags in action logs", async () => {
       process.env.BUILD_COMMAND = "npm run build --token ghp_secret1234567890123456789012345";
       process.env.DEFAULT_BUILD_COMMAND = "vpr build";
 
@@ -186,8 +188,10 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(0);
-      expect(core.info).toHaveBeenCalledWith(
-        'Preparing build command: "npm run build --token ghp_secret1234567890123456789012345"',
+      expect(core.info).toHaveBeenCalledWith("Preparing build command execution.");
+      expect(core.info).toHaveBeenCalledWith("Executing build command: npm");
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("ghp_secret1234567890123456789012345"),
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
@@ -196,8 +200,8 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code and report message", async () => {
-      process.env.BUILD_COMMAND = "npm run build";
+    it("should handle failing build command with non-zero exit code without logging full user command string", async () => {
+      process.env.BUILD_COMMAND = "npm run build --secret my-secret";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
 
@@ -205,12 +209,13 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(2);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Build command failed with exit code 2: npm run build',
+        "Build command execution failed with exit code 2.",
       );
+      expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("my-secret"));
     });
 
-    it("should handle exec throwing an exception and report actionable error message", async () => {
-      process.env.BUILD_COMMAND = "nonexistent-cmd arg";
+    it("should handle exec throwing an exception and report actionable error message without user arguments", async () => {
+      process.env.BUILD_COMMAND = "nonexistent-cmd secret-arg";
 
       vi.mocked(exec.exec).mockRejectedValue(
         new Error("Unable to locate executable file: nonexistent-cmd"),
@@ -220,19 +225,58 @@ describe("build-command", () => {
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Failed to execute build command "nonexistent-cmd arg": Unable to locate executable file: nonexistent-cmd',
+        "Failed to execute build command: Unable to locate executable file: nonexistent-cmd",
       );
+      expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("secret-arg"));
     });
 
-    it("should handle command parse error and report actionable error message", async () => {
-      process.env.BUILD_COMMAND = "npm run 'unclosed quote";
+    it("should handle command parse error and report actionable error message without full command", async () => {
+      process.env.BUILD_COMMAND = "npm run 'unclosed quote secret-payload";
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Failed to parse build command "npm run \'unclosed quote": Unterminated quote in build command string.',
+        "Failed to parse build command: Unterminated quote in build command string.",
       );
+      expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("secret-payload"));
+    });
+
+    it("should fail when build command succeeds but configured output directory does not exist", async () => {
+      process.env.BUILD_COMMAND = "pnpm run build";
+      process.env.BUILD_PATH = "non_existent_output_folder_99";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Build output validation failed: Configured build output directory 'non_existent_output_folder_99' does not exist.",
+      );
+    });
+
+    it("should fail when build command succeeds but configured output directory is empty", async () => {
+      const emptyDir = path.join(process.cwd(), "tmp_empty_dist_test");
+      if (!fs.existsSync(emptyDir)) {
+        fs.mkdirSync(emptyDir, { recursive: true });
+      }
+
+      try {
+        process.env.BUILD_COMMAND = "npm run build";
+        process.env.BUILD_PATH = "tmp_empty_dist_test";
+
+        vi.mocked(exec.exec).mockResolvedValue(0);
+
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(1);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          "Build output validation failed: Configured build output directory 'tmp_empty_dist_test' is empty.",
+        );
+      } finally {
+        fs.rmdirSync(emptyDir);
+      }
     });
   });
 
@@ -297,7 +341,7 @@ describe("build-command", () => {
       expect(exitCode).toBe(2);
       expect(exec.exec).toHaveBeenCalledWith("vp", ["build"], { ignoreReturnCode: true });
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
-      expect(core.setFailed).toHaveBeenCalledWith("Build command failed with exit code 2: vp build");
+      expect(core.setFailed).toHaveBeenCalledWith("Build command execution failed with exit code 2.");
     });
 
     it("vp is unavailable and vpr is available -> Run vpr build", async () => {
@@ -379,6 +423,24 @@ describe("build-command", () => {
         expect(() => validateBuildOutput("tmp_empty_output_dir")).toThrow("Configured build output directory 'tmp_empty_output_dir' is empty.");
       } finally {
         fs.rmdirSync(testDir);
+      }
+    });
+
+    it("should default to 'dist' when given a whitespace-only path", () => {
+      expect(() => validateBuildOutput("   ")).not.toThrow();
+    });
+
+    it("should handle filesystem read errors gracefully", () => {
+      const spy = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+        throw new Error("EACCES: permission denied");
+      });
+
+      try {
+        expect(() => validateBuildOutput("dist")).toThrow(
+          "Unable to read configured build output directory 'dist': EACCES: permission denied",
+        );
+      } finally {
+        spy.mockRestore();
       }
     });
 

@@ -173,123 +173,108 @@ export interface RunBuildCommandOptions {
   exitOnFailure?: boolean;
 }
 
-async function safelyResolveBuildCommand(
-  customCommand?: string,
-  defaultCommand?: string,
-  pm?: string,
-): Promise<{ commandToParse?: string; error?: Error }> {
-  try {
-    const cmd = await resolveBuildCommandToParse(customCommand, defaultCommand, pm);
-    return { commandToParse: cmd };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { error: new Error(`Failed to resolve build command: ${msg}`) };
-  }
-}
-
-function safelyParseBuildCommand(commandToParse: string): {
-  parsed?: ParsedCommand;
-  error?: Error;
-} {
-  try {
-    return { parsed: parseCommand(commandToParse) };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { error: new Error(`Failed to parse build command "${commandToParse}": ${msg}`) };
-  }
-}
-
-async function safelyExecuteBuildCommand(
-  parsed: ParsedCommand,
-  commandToParse: string,
-): Promise<{ exitCode: number; error?: Error }> {
-  try {
-    const exitCode = await exec.exec(parsed.command, parsed.args, {
-      ignoreReturnCode: true,
-    });
-
-    if (exitCode !== 0) {
-      return {
-        exitCode,
-        error: new Error(`Build command failed with exit code ${exitCode}: ${commandToParse}`),
-      };
-    }
-    return { exitCode: 0 };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      exitCode: 1,
-      error: new Error(`Failed to execute build command "${commandToParse}": ${msg}`),
-    };
-  }
-}
-
 export function validateBuildOutput(
   outputPath: string = process.env.BUILD_PATH || "dist",
   cwd: string = process.cwd(),
 ): void {
-  const targetPath = outputPath || "dist";
+  const targetPath = (outputPath || "dist").trim() || "dist";
   const targetDir = path.resolve(cwd, targetPath);
-  if (!fs.existsSync(targetDir)) {
-    throw new Error(`Configured build output directory '${targetPath}' does not exist.`);
+
+  let stat: fs.Stats;
+  try {
+    if (!fs.existsSync(targetDir)) {
+      throw new Error(`Configured build output directory '${targetPath}' does not exist.`);
+    }
+    stat = fs.statSync(targetDir);
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Configured build output")) {
+      throw err;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Unable to access configured build output path '${targetPath}': ${msg}`);
   }
 
-  const stat = fs.statSync(targetDir);
   if (!stat.isDirectory()) {
     throw new Error(`Configured build output path '${targetPath}' is not a directory.`);
   }
 
-  const files = fs.readdirSync(targetDir);
+  let files: string[];
+  try {
+    files = fs.readdirSync(targetDir);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Unable to read configured build output directory '${targetPath}': ${msg}`);
+  }
+
   if (files.length === 0) {
     throw new Error(`Configured build output directory '${targetPath}' is empty.`);
   }
+}
+
+function handleBuildFailure(message: string, exitCode: number, exitOnFailure: boolean): number {
+  core.setFailed(message);
+  if (exitOnFailure) {
+    process.exit(exitCode);
+  }
+  return exitCode;
+}
+
+async function executeParsedCommand(parsed: ParsedCommand): Promise<number> {
+  core.info(`Executing build command: ${parsed.command}`);
+
+  return await exec.exec(parsed.command, parsed.args, {
+    ignoreReturnCode: true,
+  });
 }
 
 export async function runBuildCommand(options?: RunBuildCommandOptions): Promise<number> {
   const exitOnFailure = options?.exitOnFailure ?? true;
   const pm = process.env.PACKAGE_MANAGER || "npm";
 
-  const resolved = await safelyResolveBuildCommand(
-    process.env.BUILD_COMMAND,
-    process.env.DEFAULT_BUILD_COMMAND,
-    pm,
-  );
-  if (resolved.error) {
-    core.setFailed(resolved.error.message);
-    if (exitOnFailure) process.exit(1);
-    return 1;
+  let commandToParse: string;
+  try {
+    commandToParse = await resolveBuildCommandToParse(
+      process.env.BUILD_COMMAND,
+      process.env.DEFAULT_BUILD_COMMAND,
+      pm,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return handleBuildFailure(`Failed to resolve build command: ${msg}`, 1, exitOnFailure);
   }
-  const commandToParse = resolved.commandToParse!;
 
-  core.info(`Preparing build command: "${commandToParse}"`);
+  core.info("Preparing build command execution.");
 
-  const parsedResult = safelyParseBuildCommand(commandToParse);
-  if (parsedResult.error) {
-    core.setFailed(parsedResult.error.message);
-    if (exitOnFailure) process.exit(1);
-    return 1;
+  let parsed: ParsedCommand;
+  try {
+    parsed = parseCommand(commandToParse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return handleBuildFailure(`Failed to parse build command: ${msg}`, 1, exitOnFailure);
   }
-  const parsed = parsedResult.parsed!;
 
-  const sanitizedArgs = parsed.args.map((a) => (a.includes(" ") ? `"${a}"` : a));
-  const sanitizedDisplay = `${parsed.command} ${sanitizedArgs.join(" ")}`.trim();
-  core.info(`Executing build command: ${sanitizedDisplay}`);
+  let exitCode = 0;
+  try {
+    exitCode = await executeParsedCommand(parsed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return handleBuildFailure(`Failed to execute build command: ${msg}`, 1, exitOnFailure);
+  }
 
-  const execResult = await safelyExecuteBuildCommand(parsed, commandToParse);
-  if (execResult.error) {
-    core.setFailed(execResult.error.message);
-    if (exitOnFailure) process.exit(execResult.exitCode);
-    return execResult.exitCode;
+  if (exitCode !== 0) {
+    return handleBuildFailure(
+      `Build command execution failed with exit code ${exitCode}.`,
+      exitCode,
+      exitOnFailure,
+    );
   }
 
   try {
-    validateBuildOutput();
+    validateBuildOutput(process.env.BUILD_PATH || "dist");
     core.info("Build output directory validation succeeded.");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    core.setFailed(msg);
-    if (exitOnFailure) process.exit(1);
-    return 1;
+    return handleBuildFailure(`Build output validation failed: ${msg}`, 1, exitOnFailure);
   }
 
   return 0;
