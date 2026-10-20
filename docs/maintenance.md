@@ -41,7 +41,7 @@ Maintainers and automated CI pipelines enforce the following quality gates and t
 | ------------------------ | ----------------------------------- | ----------------------------------------------------- |
 | Dependency Installation  | `npm ci`                            | Installs exact workspace dependencies                 |
 | Lint                     | `npm run lint`                      | Validates code style and lint rules via Vite+         |
-| Formatting Validation    | `npm run format -- --check`         | Checks code formatting without mutating source files  |
+| Formatting Validation    | `npm run format --check`         | Checks code formatting without mutating source files  |
 | Build                    | `npm run build`                     | Bundles TypeScript source code into `dist/` artifacts |
 | Unit Tests               | `npm test`                          | Executes unit test suites via Vite+                   |
 | Action Integration Tests | GitHub Actions (`test-actions.yml`) | Tests `pages` and `autofix` actions using fixtures    |
