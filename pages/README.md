@@ -44,11 +44,11 @@ jobs:
 
 ## Inputs
 
-| Name            | Description                                                   | Default                       | Required |
-| --------------- | ------------------------------------------------------------- | ----------------------------- | -------- |
-| `path`          | Directory where the built site is located                     | `dist`                        | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |                               | Optional |
-| `build-command` | Custom build command                                          | `<package-manager> run build` | Optional |
+| Name            | Description                                                                                   | Default                       | Required |
+| --------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | -------- |
+| `path`          | Directory where the built site is located (empty or whitespace-only values default to `dist`) | `dist`                        | Optional |
+| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4)                                 |                               | Optional |
+| `build-command` | Custom build command                                                                          | `<package-manager> run build` | Optional |
 
 ## Exported Environment Variables
 

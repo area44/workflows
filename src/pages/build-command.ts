@@ -173,11 +173,23 @@ export interface RunBuildCommandOptions {
   exitOnFailure?: boolean;
 }
 
+/**
+ * Resolves and normalizes the build output path.
+ * Trims whitespace and defaults empty or whitespace-only paths to "dist".
+ */
+export function resolveBuildOutputPath(outputPath?: string): string {
+  if (!outputPath) {
+    return "dist";
+  }
+  const trimmed = outputPath.trim();
+  return trimmed || "dist";
+}
+
 export function validateBuildOutput(
   outputPath: string = process.env.BUILD_PATH || "dist",
   cwd: string = process.cwd(),
-): void {
-  const targetPath = (outputPath || "dist").trim() || "dist";
+): string {
+  const targetPath = resolveBuildOutputPath(outputPath);
   const targetDir = path.resolve(cwd, targetPath);
 
   let stat: fs.Stats;
@@ -209,6 +221,8 @@ export function validateBuildOutput(
   if (files.length === 0) {
     throw new Error(`Configured build output directory '${targetPath}' is empty.`);
   }
+
+  return targetPath;
 }
 
 function handleBuildFailure(message: string, exitCode: number, exitOnFailure: boolean): number {
@@ -270,8 +284,10 @@ export async function runBuildCommand(options?: RunBuildCommandOptions): Promise
   }
 
   try {
-    validateBuildOutput(process.env.BUILD_PATH || "dist");
-    core.info("Build output directory validation succeeded.");
+    const resolvedPath = resolveBuildOutputPath(process.env.BUILD_PATH);
+    validateBuildOutput(resolvedPath);
+    core.setOutput("path", resolvedPath);
+    core.info(`Build output directory validation succeeded for '${resolvedPath}'.`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return handleBuildFailure(`Build output validation failed: ${msg}`, 1, exitOnFailure);
@@ -292,8 +308,9 @@ function isMainModule(metaUrl: string): boolean {
 if (process.env.NODE_ENV !== "test" && isMainModule(import.meta.url)) {
   if (process.argv.includes("--validate-only")) {
     try {
-      validateBuildOutput();
-      core.info("Build output directory validation succeeded.");
+      const resolvedPath = validateBuildOutput();
+      core.setOutput("path", resolvedPath);
+      core.info(`Build output directory validation succeeded for '${resolvedPath}'.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       core.setFailed(msg);

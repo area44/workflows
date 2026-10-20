@@ -17,15 +17,30 @@ export function resolveSiteVariables(
 ): SiteVariables | null {
   const repoFull = env.GITHUB_REPOSITORY || "";
   const owner = env.GITHUB_REPOSITORY_OWNER || "";
-  const repo = repoFull.split("/")[1] || "";
 
-  if (!owner || !repo) {
+  if (!repoFull || !owner) {
     return null;
   }
 
-  const site = `https://${owner}.github.io`;
-  const isPrimary = repo === `${owner}.github.io`;
-  const base = isPrimary ? "/" : `/${repo}/`;
+  const parts = repoFull.split("/");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const repoOwner = parts[0].trim();
+  const repoName = parts[1].trim();
+
+  if (!repoOwner || !repoName) {
+    return null;
+  }
+
+  if (repoOwner.toLowerCase() !== owner.trim().toLowerCase()) {
+    return null;
+  }
+
+  const site = `https://${owner.trim()}.github.io`;
+  const isPrimary = repoName.toLowerCase() === `${owner.trim().toLowerCase()}.github.io`;
+  const base = isPrimary ? "/" : `/${repoName}/`;
 
   return { site, base };
 }
@@ -40,10 +55,25 @@ export function setSiteVariables(): void {
 
   const repoFull = process.env.GITHUB_REPOSITORY || "";
   const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
-  const repo = repoFull.split("/")[1] || "";
 
-  if (!owner || !repo) {
+  if (!repoFull || !owner) {
     core.warning("GITHUB_REPOSITORY or GITHUB_REPOSITORY_OWNER not set. Skipping site variables.");
+    return;
+  }
+
+  const parts = repoFull.split("/");
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+    core.warning(
+      `Invalid GITHUB_REPOSITORY format '${repoFull}'. Expected 'owner/repo'. Skipping site variables.`,
+    );
+    return;
+  }
+
+  const repoOwner = parts[0].trim();
+  if (repoOwner.toLowerCase() !== owner.trim().toLowerCase()) {
+    core.warning(
+      `Inconsistent repository owner metadata: GITHUB_REPOSITORY owner ('${repoOwner}') does not match GITHUB_REPOSITORY_OWNER ('${owner}'). Skipping site variables.`,
+    );
     return;
   }
 
@@ -55,6 +85,10 @@ export function setSiteVariables(): void {
     core.info(`Set SITE=${vars.site}`);
     core.info(`Set BASE=${vars.base}`);
     core.info(`Set BASE_URL=${vars.base}`);
+  } else {
+    core.warning(
+      "Failed to resolve site variables from repository metadata. Skipping site variables.",
+    );
   }
 }
 
