@@ -512,12 +512,7 @@ export function writeOutput(
   core.setOutput("has-python-source", String(hasPySource));
   core.setOutput("setup-python", String(hasPySource));
 
-  const shouldSetupNode = (hasJsProject && nodeSetup.shouldSetup) || hasPySource;
-  const effectiveNodeVersion = shouldSetupNode
-    ? env.nodeVersion || DEFAULT_NODE_VERSION
-    : env.nodeVersion;
-
-  core.setOutput("node-version", effectiveNodeVersion);
+  core.setOutput("node-version", env.nodeVersion);
   core.setOutput("bun-version", env.bunVersion);
   core.setOutput("package-manager", env.pm.name);
   core.setOutput("package-manager-version", env.pm.version);
@@ -526,7 +521,7 @@ export function writeOutput(
   core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
   core.setOutput("has-js-project", String(hasJsProject));
-  core.setOutput("setup-node", String(shouldSetupNode));
+  core.setOutput("setup-node", String(hasJsProject && nodeSetup.shouldSetup));
   core.setOutput("setup-node-cache", hasJsProject ? nodeSetup.cache : "");
   core.setOutput("setup-bun", String(hasJsProject && bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(hasJsProject && pmSetup.shouldSetupPnpm));
