@@ -34,6 +34,57 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       }
     });
 
+    it("should return true when repository contains only tests/test_example.py", () => {
+      const tempDir = path.join(fixturesDir, "tests-py-temp");
+      fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "tests/test_example.py"), "def test_foo(): pass\n");
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return true when repository contains only __tests__/types.pyi", () => {
+      const tempDir = path.join(fixturesDir, "dunder-tests-pyi-temp");
+      fs.mkdirSync(path.join(tempDir, "__tests__"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "__tests__/types.pyi"), "# stubs\n");
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should traverse nested tests/ directory for .py files", () => {
+      const tempDir = path.join(fixturesDir, "nested-tests-py-temp");
+      fs.mkdirSync(path.join(tempDir, "tests/unit/deep"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "tests/unit/deep/test_deep.py"),
+        "def test_deep(): pass\n",
+      );
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should traverse nested __tests__/ directory for .pyi files", () => {
+      const tempDir = path.join(fixturesDir, "nested-dunder-tests-pyi-temp");
+      fs.mkdirSync(path.join(tempDir, "__tests__/integration/sub"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "__tests__/integration/sub/types.pyi"), "# stubs\n");
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return false when directory has no python source files", () => {
       expect(hasPythonSource(path.join(fixturesDir, "none"))).toBe(false);
     });

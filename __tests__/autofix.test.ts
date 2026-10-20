@@ -97,6 +97,24 @@ describe("autofix", () => {
       }
     });
 
+    it("should run Python workflow when Python source exists only under tests/ directory", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tests-only-temp");
+      fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "tests/test_foo.py"), "def test_foo(): pass\n");
+
+      try {
+        await run(tempDir);
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should preserve updated package-lock.json when npm install synchronizes dependencies", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), JSON.stringify({ lockfileVersion: 2 }));
