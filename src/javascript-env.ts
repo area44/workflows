@@ -334,6 +334,69 @@ function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInf
   return parseDevEnginePmNamedSection(pkg);
 }
 
+function parseDevEngineRuntimeString(
+  trimmed: string,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  const lower = trimmed.toLowerCase();
+  if (lower === runtimeName) {
+    return defaultVersion;
+  }
+  if (
+    lower.startsWith(`${runtimeName}@`) ||
+    lower.startsWith(`${runtimeName}:`) ||
+    lower.startsWith(`${runtimeName} `)
+  ) {
+    const ver = trimmed.slice(runtimeName.length + 1).trim();
+    return ver || defaultVersion;
+  }
+  return undefined;
+}
+
+function parseDevEngineRuntimeItem(
+  item: unknown,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  if (typeof item === "string") {
+    return parseDevEngineRuntimeString(item.trim(), runtimeName, defaultVersion);
+  }
+  if (typeof item === "object" && item !== null && (item as any).name === runtimeName) {
+    return (item as any).version ? String((item as any).version).trim() : defaultVersion;
+  }
+  return undefined;
+}
+
+export function getDevEngineRuntimeVersion(
+  pkg: JsPackageManifest | undefined,
+  runtimeName: "node" | "bun",
+): string | undefined {
+  if (!pkg?.devEngines) return undefined;
+
+  const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
+
+  if (pkg.devEngines.runtime) {
+    const runtimes = Array.isArray(pkg.devEngines.runtime)
+      ? pkg.devEngines.runtime
+      : [pkg.devEngines.runtime];
+    for (const r of runtimes) {
+      const parsed = parseDevEngineRuntimeItem(r, runtimeName, defaultVersion);
+      if (parsed) return parsed;
+    }
+  }
+
+  const directEngine = pkg.devEngines[runtimeName];
+  if (typeof directEngine === "string") {
+    return directEngine.trim() || defaultVersion;
+  }
+  if (typeof directEngine === "object" && directEngine !== null) {
+    return directEngine.version ? String(directEngine.version).trim() : defaultVersion;
+  }
+
+  return undefined;
+}
+
 export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
   if (project.packageJsonError) {
     core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
@@ -362,17 +425,24 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
     }
   }
 
-  if (project.hasPnpmLock) {
-    core.info(`Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`);
-    return { name: "pnpm", version: DEFAULT_PNPM_VERSION };
-  }
-  if (project.hasPackageLock) {
-    core.info(`Found package-lock.json, using npm@${DEFAULT_NPM_VERSION}`);
-    return { name: "npm", version: DEFAULT_NPM_VERSION };
-  }
-  if (project.hasBunLock) {
-    core.info(`Found bun lockfile, using bun@${DEFAULT_BUN_VERSION}`);
-    return { name: "bun", version: DEFAULT_BUN_VERSION };
+  const detectedLocks: Array<{ name: SupportedPackageManager; file: string; version: string }> = [];
+  if (project.hasPnpmLock)
+    detectedLocks.push({ name: "pnpm", file: "pnpm-lock.yaml", version: DEFAULT_PNPM_VERSION });
+  if (project.hasPackageLock)
+    detectedLocks.push({ name: "npm", file: "package-lock.json", version: DEFAULT_NPM_VERSION });
+  if (project.hasBunLock)
+    detectedLocks.push({ name: "bun", file: "bun lockfile", version: DEFAULT_BUN_VERSION });
+
+  if (detectedLocks.length > 0) {
+    if (detectedLocks.length > 1) {
+      const fileList = detectedLocks.map((l) => l.file).join(", ");
+      core.warning(
+        `Multiple conflicting lockfiles found (${fileList}). Selecting '${detectedLocks[0].file}' (${detectedLocks[0].name}) based on priority precedence.`,
+      );
+    }
+    const selected = detectedLocks[0];
+    core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
+    return { name: selected.name, version: selected.version };
   }
 
   core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);

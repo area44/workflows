@@ -2,15 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as core from "@actions/core";
 import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
+  getDevEngineRuntimeVersion,
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
   sanitizePackageManager,
   selectAutofixScripts,
 } from "../src/javascript-env";
+
+vi.mock("@actions/core");
 
 describe("javascript-env", () => {
   const originalCwd = process.cwd();
@@ -151,6 +157,32 @@ describe("javascript-env", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+    });
+
+    it("should log a core warning when multiple conflicting lockfiles exist in workspace while using deterministic precedence", () => {
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Multiple conflicting lockfiles found (pnpm-lock.yaml, package-lock.json, bun lockfile). Selecting 'pnpm-lock.yaml' (pnpm) based on priority precedence.",
+      );
+    });
+
+    it("should parse devEngines runtime versions for node and bun correctly", () => {
+      const pkg = {
+        devEngines: {
+          runtime: ["node@22.0.0", "bun@1.3.0"],
+        },
+      };
+
+      expect(getDevEngineRuntimeVersion(pkg, "node")).toBe("22.0.0");
+      expect(getDevEngineRuntimeVersion(pkg, "bun")).toBe("1.3.0");
+      expect(getDevEngineRuntimeVersion(undefined, "node")).toBeUndefined();
     });
 
     it("should default to npm if no packageManager or lockfile is found", () => {
