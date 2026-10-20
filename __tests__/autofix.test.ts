@@ -891,6 +891,68 @@ describe("autofix", () => {
       expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
       expect(core.setFailed).not.toHaveBeenCalled();
     });
+
+    it("should skip JS workflow and attempt Python workflow when JS setup outcome is failure", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      process.env.JS_SETUP_OUTCOME = "failure";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      await run(tempDir);
+
+      expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("JavaScript runtime or package manager setup failed."),
+      );
+    });
+
+    it("should skip Python workflow and execute JS workflow when Python setup outcome is failure", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      process.env.PYTHON_SETUP_OUTCOME = "failure";
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("Python runtime or Ruff setup failed."),
+      );
+    });
+
+    it("should attempt Ruff execution even if Python dependency installation fails, and record both failures", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (executable) => {
+        if (executable === "pip") return 1;
+        if (executable === "ruff") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Failed to run scripts: Python command "pip install -r requirements\.txt" failed.*?\nRuff command "ruff check --fix \." failed/,
+        ),
+      );
+    });
+
+    it("should confirm action.yml enforces resolve_environment.outcome == success and sets setup outcome env vars", () => {
+      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
+      expect(actionYmlContent).toContain("JS_SETUP_OUTCOME:");
+      expect(actionYmlContent).toContain("PYTHON_SETUP_OUTCOME:");
+    });
   });
 
   describe("File Safety", () => {

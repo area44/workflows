@@ -199,19 +199,33 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
 export async function run(cwd: string = process.cwd()): Promise<void> {
   const errors: Error[] = [];
 
-  try {
-    await executeJsWorkflow(cwd);
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    errors.push(err);
+  const jsSetupOutcome = process.env.JS_SETUP_OUTCOME;
+  if (jsSetupOutcome === "failure") {
+    errors.push(new Error("JavaScript runtime or package manager setup failed."));
+  } else {
+    try {
+      await executeJsWorkflow(cwd);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      errors.push(err);
+    }
   }
 
-  if (hasPythonSource(cwd)) {
-    try {
-      const pythonPmInfo = detectPythonPackageManager(cwd);
-      if (pythonPmInfo) {
+  const pythonSetupOutcome = process.env.PYTHON_SETUP_OUTCOME;
+  if (pythonSetupOutcome === "failure") {
+    errors.push(new Error("Python runtime or Ruff setup failed."));
+  } else if (hasPythonSource(cwd)) {
+    const pythonPmInfo = detectPythonPackageManager(cwd);
+    if (pythonPmInfo) {
+      try {
         await executePythonWorkflow(pythonPmInfo, cwd);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        errors.push(err);
       }
+    }
+
+    try {
       await executeRuffAutofix(cwd);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
