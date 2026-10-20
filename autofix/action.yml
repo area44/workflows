@@ -21,6 +21,9 @@ outputs:
   runtime:
     description: "The runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.runtime }}
+  has-js-project:
+    description: "Whether a JavaScript project (package.json) was detected"
+    value: ${{ steps.resolve_environment.outputs.has-js-project }}
   has-python-source:
     description: "Whether Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.has-python-source }}
@@ -90,7 +93,7 @@ runs:
         args: "--version"
 
     - name: Run autofix
-      if: ${{ !cancelled() }}
+      if: ${{ !cancelled() && (steps.resolve_environment.outputs.has-js-project == 'true' || steps.resolve_environment.outputs.has-python-source == 'true') }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
