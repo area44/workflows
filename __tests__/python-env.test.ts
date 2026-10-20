@@ -58,14 +58,25 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       }
     });
 
-    it("should traverse nested tests/ and __tests__/ directories", () => {
-      const tempDir = path.join(fixturesDir, "nested-tests-temp");
+    it("should traverse nested tests/ directory for .py files", () => {
+      const tempDir = path.join(fixturesDir, "nested-tests-py-temp");
       fs.mkdirSync(path.join(tempDir, "tests/unit/deep"), { recursive: true });
-      fs.mkdirSync(path.join(tempDir, "__tests__/integration/sub"), { recursive: true });
       fs.writeFileSync(
         path.join(tempDir, "tests/unit/deep/test_deep.py"),
         "def test_deep(): pass\n",
       );
+
+      try {
+        expect(hasPythonSource(tempDir)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should traverse nested __tests__/ directory for .pyi files", () => {
+      const tempDir = path.join(fixturesDir, "nested-dunder-tests-pyi-temp");
+      fs.mkdirSync(path.join(tempDir, "__tests__/integration/sub"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "__tests__/integration/sub/types.pyi"), "# stubs\n");
 
       try {
         expect(hasPythonSource(tempDir)).toBe(true);

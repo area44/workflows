@@ -31,24 +31,7 @@ Every public action provided by this repository must adhere to the following str
 
 ## Build Artifacts Pipeline
 
-The build artifact pipeline converts TypeScript sources into bundled, executable JavaScript artifacts in `dist/`:
-
-```
-src/
-  ↓ (npm run build / vp pack)
-dist/
-```
-
-### Generated Files
-
-The following generated files are produced from source code and checked into git:
-
-- `dist/resolve-environment.mjs` (generated from `src/resolve-environment.ts` and imports)
-- `dist/autofix.mjs` (generated from `src/autofix/index.ts`)
-- `dist/site-variables.mjs` (generated from `src/pages/site-variables.ts`)
-- `dist/build-command.mjs` (generated from `src/pages/build-command.ts`)
-
-The `npm run build` command bundles source files from `src/` to produce updated artifacts in `dist/` for development, testing, and release workflows.
+The `npm run build` command bundles source files from `src/` to produce executable artifacts in `dist/` for development, testing, and release workflows.
 
 ## Quality Gates and Test Commands
 
