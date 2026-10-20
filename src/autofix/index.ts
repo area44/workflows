@@ -197,18 +197,31 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
 }
 
 export async function run(cwd: string = process.cwd()): Promise<void> {
+  const errors: Error[] = [];
+
   try {
     await executeJsWorkflow(cwd);
-
-    const pythonPmInfo = detectPythonPackageManager(cwd);
-    if (pythonPmInfo) {
-      await executePythonWorkflow(pythonPmInfo, cwd);
-    }
-
-    await executeRuffAutofix(cwd);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    core.setFailed(`Failed to run scripts: ${message}`);
+    const err = error instanceof Error ? error : new Error(String(error));
+    errors.push(err);
+  }
+
+  if (hasPythonSource(cwd)) {
+    try {
+      const pythonPmInfo = detectPythonPackageManager(cwd);
+      if (pythonPmInfo) {
+        await executePythonWorkflow(pythonPmInfo, cwd);
+      }
+      await executeRuffAutofix(cwd);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      errors.push(err);
+    }
+  }
+
+  if (errors.length > 0) {
+    const combinedMessage = errors.map((e) => e.message).join("\n");
+    core.setFailed(`Failed to run scripts: ${combinedMessage}`);
     if (process.env.NODE_ENV !== "test") {
       process.exit(1);
     }

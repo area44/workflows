@@ -740,7 +740,7 @@ describe("autofix", () => {
 
   describe("error and exception handling", () => {
     it("should set failed when package.json contains malformed JSON syntax", async () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue("{ invalid json syntax }" as any);
 
       await run();
@@ -752,7 +752,7 @@ describe("autofix", () => {
     });
 
     it("should set failed when package.json encounters a read/file access error", async () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw new Error("EACCES: permission denied, open 'package.json'");
       });
@@ -783,6 +783,113 @@ describe("autofix", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         'Failed to run scripts: Script "check" failed while executing "npm run check".',
       );
+    });
+  });
+
+  describe("Independent Workflow Execution & Scenario Matrix", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = path.join(
+        originalCwd,
+        "__tests__/fixtures/autofix/temp matrix dir " + Math.random().toString(36).substring(2, 9),
+      );
+      fs.mkdirSync(tempDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should succeed when both JS and Python workflows succeed in a mixed project", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).not.toHaveBeenCalled();
+    });
+
+    it("should attempt Python workflow when JS workflow fails, and report action failure", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "exit 1" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (cmd, args) => {
+        if (cmd === "npm" && args?.[0] === "run") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining('Script "check" failed while executing "npm run check".'),
+      );
+    });
+
+    it("should complete JS workflow when Python workflow fails, and report action failure", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "echo check" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (cmd, args) => {
+        if (cmd === "ruff" && args?.[0] === "check") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining('Ruff command "ruff check --fix ." failed.'),
+      );
+    });
+
+    it("should attempt both workflows and aggregate error messages when both JS and Python workflows fail", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "exit 1" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (cmd, args) => {
+        if (cmd === "npm" && args?.[0] === "run") return 1;
+        if (cmd === "ruff" && args?.[0] === "check") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Failed to run scripts: Script "check" failed while executing "npm run check"\.\nRuff command "ruff check --fix \." failed\./,
+        ),
+      );
+    });
+
+    it("should perform JS dependency installation when package.json has no supported autofix script, and succeed if Python succeeds", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(exec.exec).not.toHaveBeenCalledWith("npm", ["run", expect.anything()], expect.anything());
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
+      expect(core.setFailed).not.toHaveBeenCalled();
     });
   });
 
