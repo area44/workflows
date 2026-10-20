@@ -3,23 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { getDefaultJsPackageManagerVersion } from "../src/javascript-env";
 import type { ResolvedEnvironment } from "../src/resolve-environment";
 import {
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
-  detectBunVersion,
-  detectNodeVersion,
-  detectPackageManager,
-  detectProjectEnvironment,
-  detectRuntime,
-  getDefaultPackageManagerVersion,
-  getPnpmRuntime,
   inspectProjectEnvironment,
   parseEnvironmentInputs,
-  parseRuntimeInput,
+  resolveBunVersion,
   resolveEnvironment,
+  resolveNodeVersion,
   resolvePackageManager,
   resolvePnpmSetupRuntime,
   resolveRuntime,
@@ -57,9 +52,9 @@ describe("resolve-environment", () => {
       expect(DEFAULT_BUN_VERSION).toBe("1.4");
       expect(DEFAULT_NPM_VERSION).toBe("12");
       expect(DEFAULT_PNPM_VERSION).toBe("12");
-      expect(getDefaultPackageManagerVersion("npm")).toBe("12");
-      expect(getDefaultPackageManagerVersion("pnpm")).toBe("12");
-      expect(getDefaultPackageManagerVersion("bun")).toBe("1.4");
+      expect(getDefaultJsPackageManagerVersion("npm")).toBe("12");
+      expect(getDefaultJsPackageManagerVersion("pnpm")).toBe("12");
+      expect(getDefaultJsPackageManagerVersion("bun")).toBe("1.4");
     });
   });
 
@@ -237,6 +232,7 @@ describe("resolve-environment", () => {
     describe("resolvePackageManager", () => {
       it("should resolve package manager from packageManager field, devEngines, lockfiles, and fallback", () => {
         const pmFromField = resolvePackageManager({
+          hasPackageJson: true,
           packageJson: { packageManager: "pnpm@9.5.0" },
           hasPnpmLock: false,
           hasPackageLock: false,
@@ -245,6 +241,7 @@ describe("resolve-environment", () => {
         expect(pmFromField).toEqual({ name: "pnpm", version: "9.5.0" });
 
         const pmFromLock = resolvePackageManager({
+          hasPackageJson: false,
           hasPnpmLock: true,
           hasPackageLock: false,
           hasBunLock: false,
@@ -289,6 +286,7 @@ describe("resolve-environment", () => {
     describe("resolveVersions & validateEnvironment", () => {
       it("should resolve versions and validate clean env struct", () => {
         const project = {
+          hasPackageJson: false,
           hasPnpmLock: true,
           hasPackageLock: false,
           hasBunLock: false,
@@ -308,6 +306,7 @@ describe("resolve-environment", () => {
           bunVersion: versions.bunVersion,
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         });
 
         expect(env.runtime).toBe("node");
@@ -321,6 +320,7 @@ describe("resolve-environment", () => {
             bunVersion: "",
             pm: { name: "npm", version: "12" },
             runtime: "invalid" as any,
+            toolchain: "vite",
           }),
         ).toThrow("Invalid resolved runtime");
 
@@ -330,6 +330,7 @@ describe("resolve-environment", () => {
             bunVersion: "",
             pm: { name: "", version: "" },
             runtime: "node",
+            toolchain: "vite",
           }),
         ).toThrow("Invalid resolved package manager");
       });
@@ -360,38 +361,25 @@ describe("resolve-environment", () => {
     });
   });
 
-  describe("detectRuntime", () => {
-    it("should detect node when pm is npm and bunVersion is empty", () => {
-      const runtime = detectRuntime({ name: "npm", version: "latest" }, "");
+  describe("resolveRuntime", () => {
+    it("should resolve node when pm is npm and specifiedRuntime is not set", () => {
+      const runtime = resolveRuntime({}, { name: "npm", version: "latest" });
       expect(runtime).toBe("node");
     });
 
-    it("should detect bun when pm is bun or bunVersion is present", () => {
-      const runtime = detectRuntime({ name: "bun", version: "latest" }, "latest");
-      expect(runtime).toBe("bun");
+    it("should resolve bun when pm is bun or specifiedRuntime is bun", () => {
+      expect(resolveRuntime({}, { name: "bun", version: "latest" })).toBe("bun");
+      expect(
+        resolveRuntime({ specifiedRuntime: "bun" }, { name: "pnpm", version: "12" }),
+      ).toBe("bun");
     });
 
-    it("should return bun when pm is npm but bunVersion is non-empty", () => {
-      const runtime = detectRuntime({ name: "npm", version: "12" }, "1.4");
-      expect(runtime).toBe("bun");
-    });
-  });
-
-  describe("getPnpmRuntime", () => {
-    it("should format bun runtime when bunVersion is non-empty", () => {
-      expect(getPnpmRuntime("1.4", "")).toBe("bun@1.4");
-      expect(getPnpmRuntime("1.4", "24")).toBe("bun@1.4");
-    });
-
-    it("should format node runtime when nodeVersion is non-empty and does not start with lts", () => {
-      expect(getPnpmRuntime("", "24")).toBe("node@24");
-      expect(getPnpmRuntime("", "22.0.0")).toBe("node@22.0.0");
-    });
-
-    it("should format node@lts when nodeVersion starts with lts or is empty", () => {
-      expect(getPnpmRuntime("", "lts/*")).toBe("node@lts");
-      expect(getPnpmRuntime("", "lts/iron")).toBe("node@lts");
-      expect(getPnpmRuntime("", "")).toBe("node@lts");
+    it("should resolve node when specifiedRuntime is node even if pm is bun", () => {
+      const runtime = resolveRuntime(
+        { specifiedRuntime: "node" },
+        { name: "bun", version: "1.4" },
+      );
+      expect(runtime).toBe("node");
     });
   });
 
@@ -402,8 +390,6 @@ describe("resolve-environment", () => {
           resolvePnpmSetupRuntime({
             nodeVersion: "24",
             bunVersion: "1.4",
-            pm: { name: "pnpm", version: "12" },
-            runtime: "bun",
           }),
         ).toBe("bun@1.4");
       });
@@ -413,8 +399,6 @@ describe("resolve-environment", () => {
           resolvePnpmSetupRuntime({
             nodeVersion: "22.1.0",
             bunVersion: "",
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
           }),
         ).toBe("node@22.1.0");
       });
@@ -424,8 +408,6 @@ describe("resolve-environment", () => {
           resolvePnpmSetupRuntime({
             nodeVersion: "lts/iron",
             bunVersion: "",
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
           }),
         ).toBe("node@lts");
 
@@ -433,8 +415,6 @@ describe("resolve-environment", () => {
           resolvePnpmSetupRuntime({
             nodeVersion: "",
             bunVersion: "",
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
           }),
         ).toBe("node@lts");
       });
@@ -447,6 +427,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "npm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: true,
@@ -461,6 +442,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: true,
@@ -475,6 +457,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: false,
@@ -489,6 +472,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
+          toolchain: "vite",
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: false,
@@ -505,6 +489,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
+          toolchain: "vite",
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: true,
@@ -518,6 +503,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "pnpm", version: "12" },
           runtime: "bun",
+          toolchain: "vite",
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: false,
@@ -531,6 +517,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "npm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: false,
@@ -546,6 +533,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "pnpm", version: "9.0.0" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupPackageManager(env)).toEqual({
           name: "pnpm",
@@ -561,6 +549,7 @@ describe("resolve-environment", () => {
           bunVersion: "",
           pm: { name: "npm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         };
         expect(setupPackageManager(env)).toEqual({
           name: "npm",
@@ -576,6 +565,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
+          toolchain: "vite",
         };
         expect(setupPackageManager(env)).toEqual({
           name: "bun",
@@ -596,6 +586,7 @@ describe("resolve-environment", () => {
           bunVersion: "1.4",
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
+          toolchain: "vite",
         };
 
         const nodeConfig = setupNode(env);
@@ -614,12 +605,14 @@ describe("resolve-environment", () => {
     });
   });
 
-  describe("detectNodeVersion", () => {
+  describe("resolveNodeVersion", () => {
     it("should return version from .nvmrc if it exists and trim whitespace", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
       vi.spyOn(fs, "readFileSync").mockReturnValue("  20.11.0\n" as any);
 
-      expect(detectNodeVersion()).toBe("20.11.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.11.0");
       expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.11.0");
     });
 
@@ -627,7 +620,9 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".node-version");
       vi.spyOn(fs, "readFileSync").mockReturnValue(" 22.0.0 \n" as any);
 
-      expect(detectNodeVersion()).toBe("22.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("22.0.0");
       expect(core.info).toHaveBeenCalledWith("Found .node-version: 22.0.0");
     });
 
@@ -637,7 +632,9 @@ describe("resolve-environment", () => {
         JSON.stringify({ devEngines: { runtime: { name: "node", version: ">=20.0.0" } } }) as any,
       );
 
-      expect(detectNodeVersion()).toBe(">=20.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe(">=20.0.0");
       expect(core.info).toHaveBeenCalledWith(
         "Found Node.js version in package.json devEngines: >=20.0.0",
       );
@@ -647,38 +644,48 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
-      expect(detectNodeVersion("bun")).toBe("");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "bun", version: "1.4" };
+      expect(resolveNodeVersion({}, pm, "bun", project)).toBe("");
       expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
-    it("should return version from .nvmrc for detectNodeVersion('bun') if .nvmrc exists", () => {
+    it("should return version from .nvmrc for resolveNodeVersion with bun pm if .nvmrc exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");
       vi.spyOn(fs, "readFileSync").mockReturnValue("20.11.0\n" as any);
 
-      expect(detectNodeVersion("bun")).toBe("20.11.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "bun", version: "1.4" };
+      expect(resolveNodeVersion({}, pm, "bun", project)).toBe("20.11.0");
     });
 
-    it("should return version from .node-version for detectNodeVersion('bun') if .node-version exists", () => {
+    it("should return version from .node-version for resolveNodeVersion with bun pm if .node-version exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".node-version");
       vi.spyOn(fs, "readFileSync").mockReturnValue("22.0.0\n" as any);
 
-      expect(detectNodeVersion("bun")).toBe("22.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "bun", version: "1.4" };
+      expect(resolveNodeVersion({}, pm, "bun", project)).toBe("22.0.0");
     });
 
-    it("should return version from package.json devEngines for detectNodeVersion('bun') if devEngines node exists", () => {
+    it("should return version from package.json devEngines for resolveNodeVersion with bun pm if devEngines node exists", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { runtime: { name: "node", version: "20.0.0" } } }) as any,
       );
 
-      expect(detectNodeVersion("bun")).toBe("20.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "bun", version: "1.4" };
+      expect(resolveNodeVersion({}, pm, "bun", project)).toBe("20.0.0");
     });
 
     it("should fall back to 24 if package.json exists but devEngines is missing for non-bun package manager", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({}) as any);
 
-      expect(detectNodeVersion("npm")).toBe("24");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("24");
       expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
 
@@ -688,7 +695,9 @@ describe("resolve-environment", () => {
         throw new Error("SyntaxError: Unexpected token");
       });
 
-      expect(detectNodeVersion("npm")).toBe("24");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: Failed to read package.json: SyntaxError: Unexpected token",
       );
@@ -701,7 +710,9 @@ describe("resolve-environment", () => {
         throw "Raw string error";
       });
 
-      expect(detectNodeVersion()).toBe("24");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("24");
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect Node.js version: Failed to read package.json: Raw string error",
       );
@@ -710,24 +721,28 @@ describe("resolve-environment", () => {
     it("should fall back to 24 if no node configuration files exist and pm is not bun", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      expect(detectNodeVersion()).toBe("24");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("24");
       expect(core.info).toHaveBeenCalledWith("Node.js version not specified, using 24");
     });
   });
 
-  describe("detectBunVersion", () => {
+  describe("resolveBunVersion", () => {
     it("should detect version from .bun-version if present", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".bun-version");
       vi.spyOn(fs, "readFileSync").mockReturnValue(" 1.1.20 \n" as any);
 
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("1.1.20");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.1.20");
       expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.20");
     });
 
     it("should return pm.version when pm.name is bun and version is not latest", () => {
+      const project = inspectProjectEnvironment();
       const pm = { name: "bun", version: "1.1.20" };
-      expect(detectBunVersion(pm)).toBe("1.1.20");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.1.20");
     });
 
     it("should detect devEngines.runtime bun from package.json if pm.name is not bun", () => {
@@ -736,74 +751,36 @@ describe("resolve-environment", () => {
         JSON.stringify({ devEngines: { runtime: { name: "bun", version: ">=1.1.0" } } }) as any,
       );
 
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe(">=1.1.0");
+      expect(resolveBunVersion({}, pm, project)).toBe(">=1.1.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: >=1.1.0");
     });
 
     it("should fall back to 1.4 if bun lockfile exists and no specific version was specified", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("1.4");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.4");
     });
 
     it("should return empty string if pm is not bun and bun is not detected", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "10.0.0" };
-      expect(detectBunVersion(pm)).toBe("");
+      expect(resolveBunVersion({}, pm, project)).toBe("");
     });
   });
 
-  describe("parseRuntimeInput", () => {
-    it("should parse node@24 format", () => {
-      const result = parseRuntimeInput("node@24");
-      expect(result).toEqual({
-        specifiedRuntime: "node",
-        nodeVersion: "24",
-        bunVersion: undefined,
-      });
-    });
-
-    it("should parse bun@1.4 format", () => {
-      const result = parseRuntimeInput("bun@1.4");
-      expect(result).toEqual({
-        specifiedRuntime: "bun",
-        nodeVersion: undefined,
-        bunVersion: "1.4",
-      });
-    });
-
-    it("should parse node@24,bun@1.4 format", () => {
-      const result = parseRuntimeInput("node@24,bun@1.4");
-      expect(result).toEqual({
-        specifiedRuntime: "node",
-        nodeVersion: "24",
-        bunVersion: "1.4",
-      });
-    });
-
-    it("should parse both keyword", () => {
-      const result = parseRuntimeInput("both");
-      expect(result).toEqual({
-        specifiedRuntime: undefined,
-        nodeVersion: undefined,
-        bunVersion: "1.4",
-      });
-    });
-
-    it("should return empty object for empty input", () => {
-      expect(parseRuntimeInput("")).toEqual({});
-    });
-  });
-
-  describe("detectPackageManager", () => {
+  describe("inspectProjectEnvironment and resolvePackageManager", () => {
     it("should detect packageManager without version in package.json and use default version for that PM", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ packageManager: "bun" }) as any);
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "bun", version: "1.4" });
       expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4");
     });
@@ -814,16 +791,17 @@ describe("resolve-environment", () => {
         JSON.stringify({ devEngines: { packageManager: { name: "pnpm", version: "9.0.0" } } }) as any,
       );
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "9.0.0" });
       expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json devEngines: pnpm@9.0.0");
     });
 
-
     it("should check fallback lockfiles in order: pnpm-lock.yaml", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "pnpm-lock.yaml");
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
       expect(core.info).toHaveBeenCalledWith(
         `Found pnpm-lock.yaml, using pnpm@${DEFAULT_PNPM_VERSION}`,
@@ -833,7 +811,8 @@ describe("resolve-environment", () => {
     it("should check fallback lockfiles in order: package-lock.json", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package-lock.json");
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.info).toHaveBeenCalledWith("Found package-lock.json, using npm@12");
     });
@@ -841,7 +820,8 @@ describe("resolve-environment", () => {
     it("should check fallback lockfiles in order: bun.lock", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "bun", version: "1.4" });
       expect(core.info).toHaveBeenCalledWith("Found bun lockfile, using bun@1.4");
     });
@@ -849,7 +829,8 @@ describe("resolve-environment", () => {
     it("should fallback to default npm@12 if no lockfiles or configuration exists", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
@@ -860,7 +841,8 @@ describe("resolve-environment", () => {
         throw new Error("Broken File System");
       });
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect package manager: Failed to read package.json: Broken File System",
@@ -868,13 +850,14 @@ describe("resolve-environment", () => {
       expect(core.info).toHaveBeenCalledWith("Package manager not specified, using npm@12");
     });
 
-    it("should handle raw exceptions gracefully inside detectPackageManager", () => {
+    it("should handle raw exceptions gracefully inside resolvePackageManager", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockImplementation(() => {
         throw "Unexpected raw string error";
       });
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "npm", version: "12" });
       expect(core.warning).toHaveBeenCalledWith(
         "Failed to detect package manager: Failed to read package.json: Unexpected raw string error",
@@ -1100,7 +1083,8 @@ describe("resolve-environment", () => {
         }) as any,
       );
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "9.0.0" });
     });
 
@@ -1116,7 +1100,9 @@ describe("resolve-environment", () => {
         return "" as any;
       });
 
-      expect(detectNodeVersion()).toBe("20.10.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.10.0");
     });
 
     it(".node-version takes precedence over devEngines.runtime when .nvmrc is absent", () => {
@@ -1130,7 +1116,9 @@ describe("resolve-environment", () => {
         return "" as any;
       });
 
-      expect(detectNodeVersion()).toBe("22.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("22.0.0");
     });
 
     it("devEngines.runtime takes precedence over devEngines.node", () => {
@@ -1144,7 +1132,9 @@ describe("resolve-environment", () => {
         }) as any,
       );
 
-      expect(detectNodeVersion()).toBe("18.0.0");
+      const project = inspectProjectEnvironment();
+      const pm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("18.0.0");
     });
 
     it("lockfile precedence: pnpm-lock.yaml beats package-lock.json and bun.lock", () => {
@@ -1152,7 +1142,8 @@ describe("resolve-environment", () => {
         ["pnpm-lock.yaml", "package-lock.json", "bun.lock"].includes(p as string),
       );
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
     });
 
@@ -1161,10 +1152,10 @@ describe("resolve-environment", () => {
         ["package-lock.json", "bun.lock"].includes(p as string),
       );
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
     });
-
 
     it("handles package manager specified without an explicit version tag", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
@@ -1172,17 +1163,26 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ packageManager: "pnpm" }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: DEFAULT_PNPM_VERSION,
+      });
 
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ packageManager: "bun" }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "bun", version: DEFAULT_BUN_VERSION });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "bun",
+        version: DEFAULT_BUN_VERSION,
+      });
 
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ packageManager: "npm" }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "npm",
+        version: DEFAULT_NPM_VERSION,
+      });
     });
 
     it("handles Bun runtime specified with non-Bun package manager (pnpm)", () => {
@@ -1209,31 +1209,46 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { packageManager: ["pnpm@9.1.0", "npm@10.0.0"] } }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: "9.1.0",
+      });
 
       // Object form
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { packageManager: { name: "pnpm", version: "9.2.0" } } }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: "9.2.0" });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: "9.2.0",
+      });
 
       // String form
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { packageManager: "pnpm@9.3.0" } }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: "9.3.0" });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: "9.3.0",
+      });
 
       // devEngines[pm] object form
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { pnpm: { version: "9.4.0" } } }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: "9.4.0" });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: "9.4.0",
+      });
 
       // devEngines[pm] string form
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { pnpm: "9.5.0" } }) as any,
       );
-      expect(detectPackageManager()).toEqual({ name: "pnpm", version: "9.5.0" });
+      expect(resolvePackageManager(inspectProjectEnvironment())).toEqual({
+        name: "pnpm",
+        version: "9.5.0",
+      });
     });
 
     it("parses devEngines.runtime in string, object, and array forms for Node and Bun", () => {
@@ -1243,9 +1258,10 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { runtime: ["node@20.0.0", "bun@1.2.0"] } }) as any,
       );
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "12" };
-      expect(detectNodeVersion("npm")).toBe("20.0.0");
-      expect(detectBunVersion(pm)).toBe("1.2.0");
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.0.0");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.2.0");
 
       // Array of objects
       vi.spyOn(fs, "readFileSync").mockReturnValue(
@@ -1258,8 +1274,9 @@ describe("resolve-environment", () => {
           },
         }) as any,
       );
-      expect(detectNodeVersion("npm")).toBe("22.1.0");
-      expect(detectBunVersion(pm)).toBe("1.3.1");
+      const project2 = inspectProjectEnvironment();
+      expect(resolveNodeVersion({}, pm, "node", project2)).toBe("22.1.0");
+      expect(resolveBunVersion({}, pm, project2)).toBe("1.3.1");
 
       // devEngines.node and devEngines.bun direct objects
       vi.spyOn(fs, "readFileSync").mockReturnValue(
@@ -1270,8 +1287,9 @@ describe("resolve-environment", () => {
           },
         }) as any,
       );
-      expect(detectNodeVersion("npm")).toBe("24.1.0");
-      expect(detectBunVersion(pm)).toBe("1.4.2");
+      const project3 = inspectProjectEnvironment();
+      expect(resolveNodeVersion({}, pm, "node", project3)).toBe("24.1.0");
+      expect(resolveBunVersion({}, pm, project3)).toBe("1.4.2");
     });
 
     it("does not match false-positive prefix names like bunyan or nodedev in devEngines.runtime", () => {
@@ -1280,9 +1298,10 @@ describe("resolve-environment", () => {
         JSON.stringify({ devEngines: { runtime: ["bunyan@1.0.0", "nodedev@2.0.0"] } }) as any,
       );
 
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "12" };
-      expect(detectNodeVersion("npm")).toBe(DEFAULT_NODE_VERSION);
-      expect(detectBunVersion(pm)).toBe("");
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe(DEFAULT_NODE_VERSION);
+      expect(resolveBunVersion({}, pm, project)).toBe("");
     });
 
     it("parses valid runtime specifiers with various delimiters (at-symbol, colon, space) in devEngines.runtime", () => {
@@ -1291,13 +1310,15 @@ describe("resolve-environment", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { runtime: "bun:1.3.5" } }) as any,
       );
+      const project = inspectProjectEnvironment();
       const pm = { name: "npm", version: "12" };
-      expect(detectBunVersion(pm)).toBe("1.3.5");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.3.5");
 
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({ devEngines: { runtime: "node 22.2.0" } }) as any,
       );
-      expect(detectNodeVersion("npm")).toBe("22.2.0");
+      const project2 = inspectProjectEnvironment();
+      expect(resolveNodeVersion({}, pm, "node", project2)).toBe("22.2.0");
     });
 
     it("devEngines.[pm] precedence: devEngines.pnpm beats devEngines.npm and devEngines.bun when all are present", () => {
@@ -1312,7 +1333,8 @@ describe("resolve-environment", () => {
         }) as any,
       );
 
-      const pm = detectPackageManager();
+      const project = inspectProjectEnvironment();
+      const pm = resolvePackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "9.1.0" });
     });
 
@@ -1350,12 +1372,10 @@ describe("resolve-environment", () => {
         return "" as any;
       });
 
-      // runtime = "node" without @version -> keeps detected .nvmrc version
       const envNode = resolveEnvironment("node");
       expect(envNode.runtime).toBe("node");
       expect(envNode.nodeVersion).toBe("20.11.0");
 
-      // runtime = "bun" without @version -> parseRuntimeInput resolves bunVersion to DEFAULT_BUN_VERSION ("1.4")
       const envBun = resolveEnvironment("bun");
       expect(envBun.runtime).toBe("bun");
       expect(envBun.bunVersion).toBe(DEFAULT_BUN_VERSION);
@@ -1396,8 +1416,16 @@ describe("resolve-environment", () => {
   });
 
   describe("writeOutput", () => {
-    it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and adapter step outputs correctly for positional arguments", () => {
-      writeOutput("20.10.0", { name: "pnpm", version: "9.0.0" }, "", "node");
+    it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and adapter step outputs correctly for ResolvedEnvironment", () => {
+      const env: ResolvedEnvironment = {
+        nodeVersion: "20.10.0",
+        bunVersion: "",
+        pm: { name: "pnpm", version: "9.0.0" },
+        runtime: "node",
+        toolchain: "vite",
+      };
+
+      writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
@@ -1417,6 +1445,7 @@ describe("resolve-environment", () => {
         bunVersion: "",
         pm: { name: "npm", version: "12" },
         runtime: "node",
+        toolchain: "vite",
       };
 
       writeOutput(env);
@@ -1433,16 +1462,18 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
     });
 
-    it("should throw a clear error when string first argument is provided without package manager parameter", () => {
-      expect(() => (writeOutput as any)("24")).toThrow(
-        "Missing package manager parameter in writeOutput",
-      );
-    });
-
     it("should set has-python-source and setup-python to false and clear python outputs when no Python source files exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
-      writeOutput("24", { name: "npm", version: "12" }, "", "node");
+      const env: ResolvedEnvironment = {
+        nodeVersion: "24",
+        bunVersion: "",
+        pm: { name: "npm", version: "12" },
+        runtime: "node",
+        toolchain: "vite",
+      };
+
+      writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
@@ -1459,7 +1490,15 @@ describe("resolve-environment", () => {
 
       process.chdir(tempDir);
       try {
-        writeOutput("24", { name: "npm", version: "12" }, "", "node");
+        const env: ResolvedEnvironment = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+          toolchain: "vite",
+        };
+
+        writeOutput(env);
 
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
@@ -1478,7 +1517,15 @@ describe("resolve-environment", () => {
 
       process.chdir(tempDir);
       try {
-        writeOutput("24", { name: "npm", version: "12" }, "", "node");
+        const env: ResolvedEnvironment = {
+          nodeVersion: "24",
+          bunVersion: "",
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+          toolchain: "vite",
+        };
+
+        writeOutput(env);
 
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");

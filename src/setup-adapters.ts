@@ -22,7 +22,7 @@ export interface PackageManagerSetupConfig {
  * Formats the runtime argument for pnpm/setup based on resolved Bun or Node.js versions.
  */
 export function resolvePnpmSetupRuntime(
-  env: ResolvedEnvironment | { bunVersion: string; nodeVersion: string },
+  env: Pick<ResolvedEnvironment, "bunVersion" | "nodeVersion">,
 ): string {
   if (env.bunVersion) {
     return `bun@${env.bunVersion}`;
@@ -31,19 +31,6 @@ export function resolvePnpmSetupRuntime(
     return `node@${env.nodeVersion}`;
   }
   return "node@lts";
-}
-
-/**
- * Legacy wrapper alias for resolvePnpmSetupRuntime.
- */
-export function getPnpmRuntime(
-  bunVersionOrEnv: string | ResolvedEnvironment | { bunVersion: string; nodeVersion: string },
-  nodeVersion: string = "",
-): string {
-  if (typeof bunVersionOrEnv === "string") {
-    return resolvePnpmSetupRuntime({ bunVersion: bunVersionOrEnv, nodeVersion });
-  }
-  return resolvePnpmSetupRuntime(bunVersionOrEnv);
 }
 
 /**

@@ -7,7 +7,6 @@ import {
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
-  getDefaultJsPackageManagerVersion,
   hasVitePlusDependency,
   inspectJsProjectEnvironment,
   isSupportedPackageManager,
@@ -61,7 +60,6 @@ export type {
   PackageManagerSetupConfig,
 } from "./setup-adapters.js";
 export {
-  getPnpmRuntime,
   resolvePnpmSetupRuntime,
   setupBun,
   setupNode,
@@ -72,10 +70,6 @@ export type { PythonPackageManager, PythonPackageManagerInfo };
 export { detectPythonPackageManager, PYTHON_PACKAGE_MANAGER_PRIORITY } from "./python-env.js";
 
 export { DEFAULT_BUN_VERSION, DEFAULT_NODE_VERSION, DEFAULT_NPM_VERSION, DEFAULT_PNPM_VERSION };
-
-export function getDefaultPackageManagerVersion(pmName: string): string {
-  return getDefaultJsPackageManagerVersion(pmName);
-}
 
 export interface PackageManager {
   name: string;
@@ -264,9 +258,6 @@ export function parseEnvironmentInputs(
   };
 }
 
-/** Legacy wrapper alias for parseEnvironmentInputs */
-export const parseRuntimeInput = parseEnvironmentInputs;
-
 /**
  * Project Environment Inspection
  * Inspects raw project state from workspace files and configurations.
@@ -274,9 +265,6 @@ export const parseRuntimeInput = parseEnvironmentInputs;
 export function inspectProjectEnvironment(cwd: string = process.cwd()): ProjectEnvironment {
   return inspectJsProjectEnvironment(cwd);
 }
-
-/** Legacy wrapper alias for inspectProjectEnvironment */
-export const detectProjectEnvironment = inspectProjectEnvironment;
 
 /**
  * Package Manager Resolution
@@ -296,14 +284,6 @@ export function resolveRuntime(parsed: ParsedInputs, pm: PackageManager): "node"
     return parsed.specifiedRuntime;
   }
   if (pm.name === "bun") {
-    return "bun";
-  }
-  return "node";
-}
-
-/** Legacy helper wrapper for runtime resolution */
-export function detectRuntime(pm: PackageManager, bunVersion?: string): "node" | "bun" {
-  if (pm.name === "bun" || Boolean(bunVersion)) {
     return "bun";
   }
   return "node";
@@ -421,32 +401,6 @@ export function resolveVersions(
 }
 
 /**
- * Legacy wrapper function for detecting package manager.
- */
-export function detectPackageManager(): PackageManager {
-  const project = inspectProjectEnvironment();
-  return resolvePackageManager(project);
-}
-
-/**
- * Legacy wrapper function for detecting Node.js version.
- */
-export function detectNodeVersion(pmName?: string): string {
-  const project = inspectProjectEnvironment();
-  const dummyPm = { name: pmName || "npm", version: "" };
-  const runtime = pmName === "bun" ? "bun" : "node";
-  return resolveNodeVersion({}, dummyPm, runtime, project);
-}
-
-/**
- * Legacy wrapper function for detecting Bun version.
- */
-export function detectBunVersion(pm: PackageManager): string {
-  const project = inspectProjectEnvironment();
-  return resolveBunVersion({}, pm, project);
-}
-
-/**
  * Validation
  * Basic sanity check on resolved environment before returning.
  */
@@ -470,37 +424,7 @@ export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironme
 /**
  * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
  */
-export function writeOutput(env: ResolvedEnvironment): void;
-export function writeOutput(
-  nodeVersion: string,
-  pm: PackageManager,
-  bunVersion?: string,
-  runtime?: "bun" | "node",
-  toolchain?: Toolchain,
-): void;
-export function writeOutput(
-  nodeVersionOrEnv: string | ResolvedEnvironment,
-  pm?: PackageManager,
-  bunVersion: string = "",
-  runtime: "bun" | "node" = "node",
-  toolchain: Toolchain = "vite",
-): void {
-  let env: ResolvedEnvironment;
-  if (typeof nodeVersionOrEnv === "object" && nodeVersionOrEnv !== null) {
-    env = nodeVersionOrEnv;
-  } else {
-    if (!pm) {
-      throw new Error("Missing package manager parameter in writeOutput");
-    }
-    env = {
-      nodeVersion: nodeVersionOrEnv,
-      pm,
-      bunVersion,
-      runtime,
-      toolchain,
-    };
-  }
-
+export function writeOutput(env: ResolvedEnvironment): void {
   const project = inspectProjectEnvironment();
   const hasJsProject = project.hasPackageJson;
 
@@ -566,9 +490,6 @@ export function resolveEnvironment(
 
   return validateEnvironment(env);
 }
-
-/** Legacy wrapper alias for resolveEnvironment */
-export const detectEnv = resolveEnvironment;
 
 export function run(): void {
   try {
