@@ -765,7 +765,7 @@ describe("autofix", () => {
     });
 
     it("should log an error and set workflow as failed if a script fails during execution", async () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(true);
+      vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) => String(p).endsWith("package.json"));
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
