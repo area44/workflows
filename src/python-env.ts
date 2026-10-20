@@ -36,6 +36,8 @@ export const DEFAULT_EXCLUDED_DIRS: readonly string[] = [
   "out",
   "vendor",
   ".yarn",
+  "__tests__",
+  "tests",
 ] as const;
 
 export interface PythonInstallCommand {
