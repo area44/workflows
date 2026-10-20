@@ -173,16 +173,65 @@ describe("javascript-env", () => {
       );
     });
 
-    it("should parse devEngines runtime versions for node and bun correctly", () => {
-      const pkg = {
+    it("should parse devEngines runtime versions for node and bun in string, object, and array shapes", () => {
+      const pkgStrings = {
         devEngines: {
-          runtime: ["node@22.0.0", "bun@1.3.0"],
+          runtime: ["NODE@22.0.0", " Bun@1.3.0 "],
         },
       };
+      expect(getDevEngineRuntimeVersion(pkgStrings, "node")).toBe("22.0.0");
+      expect(getDevEngineRuntimeVersion(pkgStrings, "bun")).toBe("1.3.0");
 
-      expect(getDevEngineRuntimeVersion(pkg, "node")).toBe("22.0.0");
-      expect(getDevEngineRuntimeVersion(pkg, "bun")).toBe("1.3.0");
+      const pkgObjects = {
+        devEngines: {
+          runtime: [
+            { name: "  NODE ", version: " 24.1.0 " },
+            { name: "bun", version: "1.4.1" },
+          ],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgObjects, "node")).toBe("24.1.0");
+      expect(getDevEngineRuntimeVersion(pkgObjects, "bun")).toBe("1.4.1");
+
+      const pkgDirect = {
+        devEngines: {
+          node: { version: "20.12.0" },
+          bun: "1.2.3",
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgDirect, "node")).toBe("20.12.0");
+      expect(getDevEngineRuntimeVersion(pkgDirect, "bun")).toBe("1.2.3");
+    });
+
+    it("should handle empty or whitespace-only devEngines runtime values without crashing", () => {
+      const pkgEmpty = {
+        devEngines: {
+          node: "   ",
+          bun: "",
+          runtime: ["", "  "],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgEmpty, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgEmpty, "bun")).toBeUndefined();
       expect(getDevEngineRuntimeVersion(undefined, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion({}, "node")).toBeUndefined();
+    });
+
+    it("should strictly enforce packageManager precedence: packageManager field > devEngines > lockfile", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          packageManager: "npm@11.0.0",
+          devEngines: { packageManager: "bun@1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      // Should pick explicit packageManager field, not lockfile or devEngines
+      expect(pm).toEqual({ name: "npm", version: "11.0.0" });
     });
 
     it("should default to npm if no packageManager or lockfile is found", () => {

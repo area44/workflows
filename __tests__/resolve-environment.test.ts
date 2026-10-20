@@ -605,6 +605,90 @@ describe("resolve-environment", () => {
     });
   });
 
+  describe("End-to-End Version Resolution Precedence Hierarchy", () => {
+    it("explicit input version overrides project files (.nvmrc, .node-version, .bun-version) and devEngines", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: ["node@18.0.0", "bun@1.0.0"] } },
+        nvmRcVersion: "20.0.0",
+        nodeFileVersion: "21.0.0",
+        bunFileVersion: "1.1.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "npm", version: "12" };
+
+      const nodeVer = resolveNodeVersion({ nodeVersion: "24.2.0" }, pm, "node", project);
+      expect(nodeVer).toBe("24.2.0");
+
+      const bunVer = resolveBunVersion({ bunVersion: "1.4.2" }, pm, project);
+      expect(bunVer).toBe("1.4.2");
+    });
+
+    it(".nvmrc takes precedence over .node-version and devEngines for Node.js resolution", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: "node@18.0.0" } },
+        nvmRcVersion: "20.10.0",
+        nodeFileVersion: "22.0.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "npm", version: "12" };
+      const nodeVer = resolveNodeVersion({}, pm, "node", project);
+      expect(nodeVer).toBe("20.10.0");
+    });
+
+    it(".node-version takes precedence over devEngines when .nvmrc is absent", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: "node@18.0.0" } },
+        nodeFileVersion: "22.0.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "npm", version: "12" };
+      const nodeVer = resolveNodeVersion({}, pm, "node", project);
+      expect(nodeVer).toBe("22.0.0");
+    });
+
+    it(".bun-version takes precedence over devEngines for Bun resolution", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: "bun@1.2.0" } },
+        bunFileVersion: "1.3.5",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "bun", version: "1.3.5" };
+      const bunVer = resolveBunVersion({}, pm, project);
+      expect(bunVer).toBe("1.3.5");
+    });
+
+    it("falls back to documented defaults when version configuration is missing", () => {
+      const emptyProject = {
+        hasPackageJson: false,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const npmPm = { name: "npm", version: "12" };
+      expect(resolveNodeVersion({}, npmPm, "node", emptyProject)).toBe(DEFAULT_NODE_VERSION);
+
+      const bunPm = { name: "bun", version: "1.4" };
+      expect(resolveBunVersion({}, bunPm, emptyProject)).toBe("1.4");
+    });
+  });
+
   describe("resolveNodeVersion", () => {
     it("should return version from .nvmrc if it exists and trim whitespace", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === ".nvmrc");

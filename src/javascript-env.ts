@@ -278,6 +278,7 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
 function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
   if (typeof pm === "string") {
     const trimmed = pm.trim();
+    if (!trimmed) return undefined;
     const atIdx = trimmed.indexOf("@");
     const rawName = atIdx !== -1 ? trimmed.slice(0, atIdx) : trimmed;
     const rawVer = atIdx !== -1 ? trimmed.slice(atIdx + 1) : "";
@@ -286,39 +287,46 @@ function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
       const version = rawVer.trim() || getDefaultJsPackageManagerVersion(name);
       return { name, version };
     }
-  } else if (typeof pm === "object" && pm !== null && (pm as any).name) {
-    const name = String((pm as any).name)
-      .trim()
-      .toLowerCase();
-    if (isSupportedPackageManager(name)) {
-      const version = (pm as any).version
-        ? String((pm as any).version).trim()
-        : getDefaultJsPackageManagerVersion(name);
-      return { name, version };
+  } else if (typeof pm === "object" && pm !== null) {
+    const obj = pm as Record<string, unknown>;
+    if (typeof obj.name === "string" || typeof obj.name === "number") {
+      const nameStr = String(obj.name).trim().toLowerCase();
+      if (isSupportedPackageManager(nameStr)) {
+        const verStr =
+          typeof obj.version === "string" || typeof obj.version === "number"
+            ? String(obj.version).trim()
+            : "";
+        const version = verStr || getDefaultJsPackageManagerVersion(nameStr);
+        return { name: nameStr, version };
+      }
     }
   }
   return undefined;
 }
 
 function parseDevEnginePmNamedSection(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
+  if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
   for (const pm of ["pnpm", "npm", "bun"] as const) {
-    if (pkg.devEngines[pm]) {
+    if (pkg.devEngines[pm] !== undefined && pkg.devEngines[pm] !== null) {
       const val = pkg.devEngines[pm];
       const defaultVer = getDefaultJsPackageManagerVersion(pm);
-      const version =
-        typeof val === "string"
-          ? val.trim() || defaultVer
-          : typeof val === "object" && val !== null && val.version
-            ? String(val.version).trim() || defaultVer
-            : defaultVer;
-      return { name: pm, version };
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        return { name: pm, version: trimmed || defaultVer };
+      } else if (typeof val === "object" && val !== null) {
+        const ver =
+          (val as any).version !== undefined && (val as any).version !== null
+            ? String((val as any).version).trim()
+            : "";
+        return { name: pm, version: ver || defaultVer };
+      }
     }
   }
   return undefined;
 }
 
 function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
-  if (!pkg.devEngines) return undefined;
+  if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
 
   if (pkg.devEngines.packageManager) {
     const pmList = Array.isArray(pkg.devEngines.packageManager)
@@ -360,10 +368,22 @@ function parseDevEngineRuntimeItem(
   defaultVersion: string,
 ): string | undefined {
   if (typeof item === "string") {
-    return parseDevEngineRuntimeString(item.trim(), runtimeName, defaultVersion);
+    const trimmed = item.trim();
+    if (!trimmed) return undefined;
+    return parseDevEngineRuntimeString(trimmed, runtimeName, defaultVersion);
   }
-  if (typeof item === "object" && item !== null && (item as any).name === runtimeName) {
-    return (item as any).version ? String((item as any).version).trim() : defaultVersion;
+  if (typeof item === "object" && item !== null) {
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.name === "string" || typeof obj.name === "number") {
+      const nameStr = String(obj.name).trim().toLowerCase();
+      if (nameStr === runtimeName) {
+        const verStr =
+          typeof obj.version === "string" || typeof obj.version === "number"
+            ? String(obj.version).trim()
+            : "";
+        return verStr || defaultVersion;
+      }
+    }
   }
   return undefined;
 }
@@ -372,7 +392,7 @@ export function getDevEngineRuntimeVersion(
   pkg: JsPackageManifest | undefined,
   runtimeName: "node" | "bun",
 ): string | undefined {
-  if (!pkg?.devEngines) return undefined;
+  if (!pkg?.devEngines || typeof pkg.devEngines !== "object") return undefined;
 
   const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
 
@@ -382,16 +402,23 @@ export function getDevEngineRuntimeVersion(
       : [pkg.devEngines.runtime];
     for (const r of runtimes) {
       const parsed = parseDevEngineRuntimeItem(r, runtimeName, defaultVersion);
-      if (parsed) return parsed;
+      if (parsed !== undefined) return parsed;
     }
   }
 
   const directEngine = pkg.devEngines[runtimeName];
   if (typeof directEngine === "string") {
-    return directEngine.trim() || defaultVersion;
+    const trimmed = directEngine.trim();
+    if (!trimmed) return undefined;
+    const parsed = parseDevEngineRuntimeString(trimmed, runtimeName, defaultVersion);
+    return parsed || trimmed;
   }
   if (typeof directEngine === "object" && directEngine !== null) {
-    return directEngine.version ? String(directEngine.version).trim() : defaultVersion;
+    const ver =
+      (directEngine as any).version !== undefined && (directEngine as any).version !== null
+        ? String((directEngine as any).version).trim()
+        : "";
+    return ver || defaultVersion;
   }
 
   return undefined;
