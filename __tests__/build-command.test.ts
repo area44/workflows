@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseCommand, resolveBuildCommandToParse, runBuildCommand, validateBuildOutput } from "../src/pages/build-command";
+import {
+  parseCommand,
+  resolveBuildCommandToParse,
+  resolveBuildOutputPath,
+  runBuildCommand,
+  validateBuildOutput,
+} from "../src/pages/build-command";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
@@ -20,6 +26,24 @@ describe("build-command", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+  });
+
+  describe("resolveBuildOutputPath", () => {
+    it("should default to 'dist' when path is undefined or empty string", () => {
+      expect(resolveBuildOutputPath(undefined)).toBe("dist");
+      expect(resolveBuildOutputPath("")).toBe("dist");
+    });
+
+    it("should default to 'dist' when path is whitespace-only", () => {
+      expect(resolveBuildOutputPath("   ")).toBe("dist");
+      expect(resolveBuildOutputPath(" \t\n ")).toBe("dist");
+    });
+
+    it("should trim and return valid non-empty relative paths", () => {
+      expect(resolveBuildOutputPath("out")).toBe("out");
+      expect(resolveBuildOutputPath("  public  ")).toBe("public");
+      expect(resolveBuildOutputPath("./build")).toBe("./build");
+    });
   });
 
   describe("parseCommand", () => {
@@ -240,6 +264,42 @@ describe("build-command", () => {
         "Failed to parse build command: Unterminated quote in build command string.",
       );
       expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("secret-payload"));
+    });
+
+    it("should validate and set step output 'path' to 'dist' when BUILD_PATH is omitted or whitespace-only", async () => {
+      delete process.env.BUILD_PATH;
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(0);
+      expect(core.setOutput).toHaveBeenCalledWith("path", "dist");
+
+      process.env.BUILD_PATH = "   ";
+      const exitCode2 = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode2).toBe(0);
+      expect(core.setOutput).toHaveBeenCalledWith("path", "dist");
+    });
+
+    it("should validate and set step output 'path' to trimmed BUILD_PATH when specified", async () => {
+      const customDir = path.join(process.cwd(), "tmp_custom_out_dir");
+      if (!fs.existsSync(customDir)) {
+        fs.mkdirSync(customDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(customDir, "index.html"), "<h1>Custom Output</h1>");
+
+      try {
+        process.env.BUILD_PATH = "  tmp_custom_out_dir  ";
+        vi.mocked(exec.exec).mockResolvedValue(0);
+
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(0);
+        expect(core.setOutput).toHaveBeenCalledWith("path", "tmp_custom_out_dir");
+      } finally {
+        fs.rmSync(customDir, { recursive: true, force: true });
+      }
     });
 
     it("should fail when build command succeeds but configured output directory does not exist", async () => {
