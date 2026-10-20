@@ -4,7 +4,7 @@ Automatically update code with [autofix.ci](https://autofix.ci/).
 
 ## Features
 
-- **Auto-detection of project environments:** Automatically detects Node.js, Bun, and Python project configurations and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`).
+- **Auto-detection of project environments:** Automatically detects Node.js, Bun, and Python project configurations and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`), running internal orchestration entrypoints under Node while executing project commands with resolved project tools.
 - **Automatic dependency installation:** Synchronizes dependencies and lockfiles whenever a supported JavaScript or Python project configuration is detected.
 - **JavaScript/TypeScript/Markdown project script execution:** Executes repository-configured scripts (`check`, `format`, `fmt`, `lint`) for JavaScript, TypeScript, Markdown, and other project-defined tooling.
 - **Python linting and formatting with Ruff:** Automatically provisions Ruff once and runs `ruff check --fix .` and `ruff format .` sequentially in a single step whenever Python source files (`.py`/`.pyi`) are present in the repository.

@@ -28,6 +28,40 @@ describe("build-command", () => {
     process.env = { ...originalEnv };
   });
 
+  describe("Action Launch Contract & Action.yml Structure for Pages", () => {
+    it("should confirm pages/action.yml launches dist/build-command.mjs with node unconditionally", () => {
+      const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("run: node \"$ACTION_PATH/../dist/build-command.mjs\"");
+      expect(actionYmlContent).not.toContain("bun \"$ACTION_PATH/../dist/build-command.mjs\"");
+      expect(actionYmlContent).not.toContain("if [ \"$RUNTIME\" = \"bun\" ]");
+    });
+
+    it("should confirm pages/action.yml launches all internal entrypoints with node", () => {
+      const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/resolve-environment.mjs\"");
+      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/site-variables.mjs\"");
+      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/build-command.mjs\"");
+    });
+
+    it("should confirm pages/action.yml enforces resolve_environment, dependency installation, and build_site outcome guards", () => {
+      const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
+      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+
+      expect(actionYmlContent).toContain("id: resolve_environment");
+      expect(actionYmlContent).toContain("id: install_dependencies");
+      expect(actionYmlContent).toContain("id: setup_vp");
+      expect(actionYmlContent).toContain("id: build_site");
+
+      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
+      expect(actionYmlContent).toContain("steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success'");
+      expect(actionYmlContent).toContain("steps.build_site.outcome == 'success'");
+    });
+  });
+
   describe("resolveBuildOutputPath", () => {
     it("should default to 'dist' when path is undefined or empty string", () => {
       expect(resolveBuildOutputPath(undefined)).toBe("dist");

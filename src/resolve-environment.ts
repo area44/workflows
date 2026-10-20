@@ -508,6 +508,10 @@ export function writeOutput(
   const bunSetup = setupBun(env);
   const pmSetup = setupPackageManager(env);
 
+  const hasPySource = hasPythonSource();
+  core.setOutput("has-python-source", String(hasPySource));
+  core.setOutput("setup-python", String(hasPySource));
+
   core.setOutput("node-version", env.nodeVersion);
   core.setOutput("bun-version", env.bunVersion);
   core.setOutput("package-manager", env.pm.name);
@@ -518,13 +522,9 @@ export function writeOutput(
 
   core.setOutput("has-js-project", String(hasJsProject));
   core.setOutput("setup-node", String(hasJsProject && nodeSetup.shouldSetup));
-  core.setOutput("setup-node-cache", nodeSetup.cache);
+  core.setOutput("setup-node-cache", hasJsProject ? nodeSetup.cache : "");
   core.setOutput("setup-bun", String(hasJsProject && bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(hasJsProject && pmSetup.shouldSetupPnpm));
-
-  const hasPySource = hasPythonSource();
-  core.setOutput("has-python-source", String(hasPySource));
-  core.setOutput("setup-python", String(hasPySource));
 
   if (hasPySource) {
     const pyVersion = resolvePythonVersion();

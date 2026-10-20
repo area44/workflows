@@ -7,7 +7,7 @@ Build static sites and upload GitHub Pages artifacts with automatic JavaScript e
 - **Unified Build Pipeline:** Standardized environment resolution, dependency installation, build execution, output validation, and Pages artifact upload for static site generators.
 - **Automatic Vite+ Detection:** Automatically detects Vite+ projects from `package.json` dependencies and uses `voidzero-dev/setup-vp` for setup and dependency installation.
 - **Output Validation:** Ensures the configured build output directory exists and is non-empty before uploading the GitHub Pages artifact.
-- **Flexible Runtimes:** Supports Node.js and Bun runtimes with automatic version detection or explicit overrides.
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection or explicit overrides. Internal action orchestration entrypoints run consistently under Node while project build commands execute via the resolved project package manager and runtime.
 - **Automatic Site and Base Variables:** Automatically resolves and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`) for static site generators.
 
 ## Usage

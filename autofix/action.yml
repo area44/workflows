@@ -115,5 +115,5 @@ runs:
       run: node "$ACTION_PATH/../dist/autofix.mjs"
 
     - name: Run autofix.ci
-      if: ${{ success() && github.workflow == 'autofix.ci' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.run_autofix.outcome == 'success' && github.workflow == 'autofix.ci' }}
       uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1

@@ -1470,6 +1470,24 @@ describe("resolve-environment", () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    it("should set setup-node to false for Python-only projects without package.json", () => {
+      const tempDir = path.join(fixturesDir, "python-only-node-setup-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      process.chdir(tempDir);
+      try {
+        writeOutput("24", { name: "npm", version: "12" }, "", "node");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("run", () => {
@@ -1531,6 +1549,24 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+    });
+
+    it("should ensure setup-node is false for Python-only project when run() executes", () => {
+      const tempDir = path.join(fixturesDir, "python-only-run-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      process.chdir(tempDir);
+      try {
+        run();
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
