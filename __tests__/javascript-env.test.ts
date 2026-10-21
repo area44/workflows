@@ -11,9 +11,17 @@ import {
   getDevEngineRuntimeVersion,
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
+  isSupportedPackageManager,
+  isSupportedRuntime,
+  parseEnvironmentInputs,
+  resolveBunVersion,
   resolveJsPackageManager,
+  resolveNodeVersion,
+  resolveRuntime,
+  resolveVersions,
   sanitizePackageManager,
   selectAutofixScripts,
+  validateRuntimePackageManagerCompatibility,
 } from "../src/javascript-env";
 
 vi.mock("@actions/core");
@@ -34,6 +42,151 @@ describe("javascript-env", () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  describe("isSupportedRuntime & validateRuntimePackageManagerCompatibility", () => {
+    it("should identify supported runtimes", () => {
+      expect(isSupportedRuntime("node")).toBe(true);
+      expect(isSupportedRuntime("bun")).toBe(true);
+      expect(isSupportedRuntime("deno")).toBe(false);
+      expect(isSupportedRuntime("python")).toBe(false);
+    });
+
+    it("should validate valid runtime and package manager combinations", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("node", "npm")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("node", "pnpm")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("node", "bun")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "bun")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "pnpm")).not.toThrow();
+    });
+
+    it("should throw for unsupported runtime", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("deno", "npm")).toThrow(
+        'Unsupported runtime "deno"',
+      );
+    });
+
+    it("should throw for unsupported package manager", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("node", "yarn")).toThrow(
+        'Unsupported package manager "yarn"',
+      );
+    });
+
+    it("should throw when bun runtime is paired with npm", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "npm")).toThrow(
+        "Bun runtime does not support npm package manager",
+      );
+    });
+  });
+
+  describe("parseEnvironmentInputs", () => {
+    it("should return empty object for empty or whitespace-only input", () => {
+      expect(parseEnvironmentInputs("")).toEqual({});
+      expect(parseEnvironmentInputs("   ")).toEqual({});
+    });
+
+    it("should parse valid runtime input strings", () => {
+      expect(parseEnvironmentInputs("node")).toEqual({
+        specifiedRuntime: "node",
+        nodeVersion: undefined,
+        bunVersion: undefined,
+      });
+
+      expect(parseEnvironmentInputs("bun")).toEqual({
+        specifiedRuntime: "bun",
+        nodeVersion: undefined,
+        bunVersion: DEFAULT_BUN_VERSION,
+      });
+
+      expect(parseEnvironmentInputs("node@22")).toEqual({
+        specifiedRuntime: "node",
+        nodeVersion: "22",
+        bunVersion: undefined,
+      });
+
+      expect(parseEnvironmentInputs("bun@1.4")).toEqual({
+        specifiedRuntime: "bun",
+        nodeVersion: undefined,
+        bunVersion: "1.4",
+      });
+
+      expect(parseEnvironmentInputs("node@24,bun@1.4")).toEqual({
+        specifiedRuntime: "node",
+        nodeVersion: "24",
+        bunVersion: "1.4",
+      });
+
+      expect(parseEnvironmentInputs("both")).toEqual({
+        specifiedRuntime: undefined,
+        nodeVersion: undefined,
+        bunVersion: DEFAULT_BUN_VERSION,
+      });
+    });
+
+    it("should throw error for invalid runtime inputs", () => {
+      expect(() => parseEnvironmentInputs("deno")).toThrow("unrecognized or malformed");
+      expect(() => parseEnvironmentInputs("node@")).toThrow("malformed version specifier");
+      expect(() => parseEnvironmentInputs(",node")).toThrow("malformed comma placement");
+      expect(() => parseEnvironmentInputs("node@20, node@22")).toThrow("duplicate or conflicting");
+    });
+  });
+
+  describe("resolveRuntime", () => {
+    it("should prioritize specifiedRuntime over package manager", () => {
+      expect(
+        resolveRuntime({ specifiedRuntime: "node" }, { name: "bun", version: "1.4" }),
+      ).toBe("node");
+      expect(
+        resolveRuntime({ specifiedRuntime: "bun" }, { name: "pnpm", version: "12" }),
+      ).toBe("bun");
+    });
+
+    it("should resolve bun runtime when package manager is bun and no specifiedRuntime is provided", () => {
+      expect(resolveRuntime({}, { name: "bun", version: "1.4" })).toBe("bun");
+    });
+
+    it("should resolve node runtime when package manager is npm or pnpm and no specifiedRuntime is provided", () => {
+      expect(resolveRuntime({}, { name: "npm", version: "12" })).toBe("node");
+      expect(resolveRuntime({}, { name: "pnpm", version: "12" })).toBe("node");
+    });
+  });
+
+  describe("resolveNodeVersion & resolveBunVersion & resolveVersions", () => {
+    it("should resolve node and bun versions based on project state and precedence", () => {
+      const project = {
+        hasPackageJson: true,
+        nvmRcVersion: "20.10.0",
+        nodeFileVersion: "22.0.0",
+        bunFileVersion: "1.2.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "npm", version: "12" };
+
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.10.0");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.2.0");
+
+      const versions = resolveVersions({ nodeVersion: "24" }, pm, "node", project);
+      expect(versions).toEqual({ nodeVersion: "24", bunVersion: "1.2.0" });
+    });
+
+    it("should fall back to defaults when no version files or configs exist", () => {
+      const emptyProject = {
+        hasPackageJson: false,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      expect(resolveNodeVersion({}, { name: "npm", version: "12" }, "node", emptyProject)).toBe(
+        DEFAULT_NODE_VERSION,
+      );
+      expect(resolveBunVersion({}, { name: "bun", version: "1.4" }, emptyProject)).toBe(
+        DEFAULT_BUN_VERSION,
+      );
+    });
   });
 
   describe("sanitizePackageManager", () => {

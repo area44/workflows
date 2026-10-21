@@ -7,75 +7,83 @@ import {
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
-  getDevEngineRuntimeVersion,
   hasVitePlusDependency,
   inspectJsProjectEnvironment,
   isSupportedPackageManager,
+  isSupportedRuntime,
+  parseEnvironmentInputs,
+  resolveBunVersion,
   resolveJsPackageManager,
+  resolveNodeVersion,
+  resolveRuntime,
   resolveToolchain,
+  resolveVersions,
+  validateRuntimePackageManagerCompatibility,
   type JsProjectEnvironment,
+  type PackageManager,
+  type ParsedInputs,
   type SupportedPackageManager,
+  type SupportedRuntime,
   type Toolchain,
   type ToolchainInput,
 } from "./javascript-env.js";
-
-export type SupportedRuntime = "node" | "bun";
-export type { SupportedPackageManager, Toolchain, ToolchainInput };
-export { hasVitePlusDependency, isSupportedPackageManager, resolveToolchain };
-
-export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
-  return runtime === "node" || runtime === "bun";
-}
-
-export function validateRuntimePackageManagerCompatibility(runtime: string, pmName: string): void {
-  if (!isSupportedRuntime(runtime)) {
-    throw new Error(`Unsupported runtime "${runtime}". Supported runtimes are: node, bun.`);
-  }
-
-  if (!isSupportedPackageManager(pmName)) {
-    throw new Error(
-      `Unsupported package manager "${pmName}". Supported package managers are: npm, pnpm, bun.`,
-    );
-  }
-
-  if (runtime === "bun" && pmName === "npm") {
-    throw new Error(
-      `Unsupported runtime and package manager combination: Bun runtime does not support npm package manager. Bun runtime requires Bun or pnpm package manager.`,
-    );
-  }
-}
-
 import {
   detectPythonPackageManager,
   hasPythonSource,
   resolvePythonVersion,
   resolveRuffVersion,
+  PYTHON_PACKAGE_MANAGER_PRIORITY,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
 } from "./python-env.js";
-import { setupBun, setupNode, setupPackageManager } from "./setup-adapters.js";
-
-export type {
-  BunSetupConfig,
-  NodeSetupConfig,
-  PackageManagerSetupConfig,
-} from "./setup-adapters.js";
-export {
+import {
   resolvePnpmSetupRuntime,
   setupBun,
   setupNode,
   setupPackageManager,
+  type BunSetupConfig,
+  type NodeSetupConfig,
+  type PackageManagerSetupConfig,
 } from "./setup-adapters.js";
 
-export type { PythonPackageManager, PythonPackageManagerInfo };
-export { detectPythonPackageManager, PYTHON_PACKAGE_MANAGER_PRIORITY } from "./python-env.js";
+export type {
+  SupportedRuntime,
+  SupportedPackageManager,
+  Toolchain,
+  ToolchainInput,
+  PackageManager,
+  ParsedInputs,
+  BunSetupConfig,
+  NodeSetupConfig,
+  PackageManagerSetupConfig,
+  PythonPackageManager,
+  PythonPackageManagerInfo,
+};
 
-export { DEFAULT_BUN_VERSION, DEFAULT_NODE_VERSION, DEFAULT_NPM_VERSION, DEFAULT_PNPM_VERSION };
+export type ProjectEnvironment = JsProjectEnvironment;
 
-export interface PackageManager {
-  name: string;
-  version: string;
-}
+export {
+  isSupportedRuntime,
+  isSupportedPackageManager,
+  validateRuntimePackageManagerCompatibility,
+  parseEnvironmentInputs,
+  resolveRuntime,
+  resolveNodeVersion,
+  resolveBunVersion,
+  resolveVersions,
+  hasVitePlusDependency,
+  resolveToolchain,
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
+  DEFAULT_NPM_VERSION,
+  DEFAULT_PNPM_VERSION,
+  detectPythonPackageManager,
+  PYTHON_PACKAGE_MANAGER_PRIORITY,
+  resolvePnpmSetupRuntime,
+  setupBun,
+  setupNode,
+  setupPackageManager,
+};
 
 export interface ResolvedEnvironment {
   nodeVersion: string;
@@ -83,120 +91,6 @@ export interface ResolvedEnvironment {
   pm: PackageManager;
   runtime: "node" | "bun";
   toolchain: Toolchain;
-}
-
-export interface ParsedInputs {
-  specifiedRuntime?: "node" | "bun";
-  nodeVersion?: string;
-  bunVersion?: string;
-}
-
-export type ProjectEnvironment = JsProjectEnvironment;
-
-function validateCommaStructure(trimmed: string, runtimeInput: string): void {
-  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-    );
-  }
-}
-
-interface ParsedPart {
-  type: "node" | "bun" | "both";
-  version?: string;
-}
-
-function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPart {
-  const part = rawPart.toLowerCase();
-
-  if (part === "both") {
-    return { type: "both" };
-  }
-  if (part === "node") {
-    return { type: "node" };
-  }
-  if (part === "bun") {
-    return { type: "bun" };
-  }
-
-  const isNodeSpec = part.startsWith("node@");
-  const isBunSpec = part.startsWith("bun@");
-
-  if (isNodeSpec || isBunSpec) {
-    const prefixLen = isNodeSpec ? 5 : 4;
-    const ver = part.slice(prefixLen);
-    if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
-      throw new Error(
-        `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-      );
-    }
-    return { type: isNodeSpec ? "node" : "bun", version: ver };
-  }
-
-  throw new Error(
-    `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
-  );
-}
-
-/**
- * Input Parsing
- * Parses raw action runtime inputs into normalized input representations.
- */
-export function parseEnvironmentInputs(
-  runtimeInput: string = core.getInput("runtime"),
-): ParsedInputs {
-  if (!runtimeInput) return {};
-
-  const trimmed = runtimeInput.trim();
-  if (!trimmed) return {};
-
-  validateCommaStructure(trimmed, runtimeInput);
-
-  const parts = trimmed.split(/[\s,]+/);
-  let specifiedRuntime: "node" | "bun" | undefined;
-  let nodeVersion: string | undefined;
-  let bunVersion: string | undefined;
-
-  let hasBun = false;
-  const counts = { node: 0, bun: 0, both: 0 };
-
-  for (const rawPart of parts) {
-    const parsed = parseSingleRuntimePart(rawPart, runtimeInput);
-    counts[parsed.type]++;
-
-    if (parsed.type === "both") {
-      hasBun = true;
-    } else if (parsed.type === "node") {
-      if (!specifiedRuntime) specifiedRuntime = "node";
-      if (parsed.version) nodeVersion = parsed.version;
-    } else if (parsed.type === "bun") {
-      hasBun = true;
-      if (!specifiedRuntime) specifiedRuntime = "bun";
-      if (parsed.version) bunVersion = parsed.version;
-    }
-  }
-
-  if (counts.node > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
-    );
-  }
-  if (counts.bun > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
-    );
-  }
-  if (counts.both > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
-    );
-  }
-
-  return {
-    specifiedRuntime,
-    nodeVersion,
-    bunVersion: bunVersion || (hasBun ? DEFAULT_BUN_VERSION : undefined),
-  };
 }
 
 /**
@@ -213,132 +107,6 @@ export function inspectProjectEnvironment(cwd: string = process.cwd()): ProjectE
  */
 export function resolvePackageManager(project: ProjectEnvironment): PackageManager {
   return resolveJsPackageManager(project);
-}
-
-/**
- * Runtime Resolution
- * Resolves target runtime according to canonical precedence:
- * explicit specifiedRuntime > package manager derived runtime > default node runtime
- */
-export function resolveRuntime(parsed: ParsedInputs, pm: PackageManager): "node" | "bun" {
-  if (parsed.specifiedRuntime) {
-    return parsed.specifiedRuntime;
-  }
-  if (pm.name === "bun") {
-    return "bun";
-  }
-  return "node";
-}
-
-/**
- * Version Resolution
- * Resolves Node.js version based on parsed inputs, runtime, and project state.
- */
-export function resolveNodeVersion(
-  parsed: ParsedInputs,
-  pm: PackageManager,
-  runtime: "node" | "bun",
-  project: ProjectEnvironment,
-): string {
-  if (parsed.nodeVersion !== undefined) {
-    return parsed.nodeVersion;
-  }
-
-  if (parsed.specifiedRuntime === "bun") {
-    return "";
-  }
-
-  if (project.nvmRcError) {
-    core.warning(`Failed to detect Node.js version: ${project.nvmRcError}`);
-  } else if (project.nvmRcVersion) {
-    core.info(`Found .nvmrc: ${project.nvmRcVersion}`);
-    return project.nvmRcVersion;
-  }
-
-  if (project.nodeFileError) {
-    core.warning(`Failed to detect Node.js version: ${project.nodeFileError}`);
-  } else if (project.nodeFileVersion) {
-    core.info(`Found .node-version: ${project.nodeFileVersion}`);
-    return project.nodeFileVersion;
-  }
-
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect Node.js version: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "node");
-    if (devVersion) {
-      core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
-      return devVersion;
-    }
-  }
-
-  if (runtime === "bun" || pm.name === "bun") {
-    return "";
-  }
-
-  core.info(`Node.js version not specified, using ${DEFAULT_NODE_VERSION}`);
-  return DEFAULT_NODE_VERSION;
-}
-
-/**
- * Version Resolution
- * Resolves Bun version based on parsed inputs, package manager, and project state.
- */
-export function resolveBunVersion(
-  parsed: ParsedInputs,
-  pm: PackageManager,
-  project: ProjectEnvironment,
-): string {
-  if (parsed.bunVersion !== undefined) {
-    return parsed.bunVersion;
-  }
-
-  if (project.bunFileError) {
-    core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
-  } else if (project.bunFileVersion) {
-    core.info(`Found .bun-version: ${project.bunFileVersion}`);
-    return project.bunFileVersion;
-  }
-
-  if (pm.name === "bun" && pm.version && pm.version !== "latest") {
-    return pm.version;
-  }
-
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
-    if (devVersion) {
-      core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
-      return devVersion;
-    }
-  }
-
-  const hasBunEngine =
-    project.packageJson && getDevEngineRuntimeVersion(project.packageJson, "bun") !== undefined;
-  const isBunDetected = pm.name === "bun" || project.hasBunLock || hasBunEngine;
-
-  if (isBunDetected) {
-    return DEFAULT_BUN_VERSION;
-  }
-
-  return "";
-}
-
-/**
- * Version Resolution
- * Resolves nodeVersion and bunVersion.
- */
-export function resolveVersions(
-  parsed: ParsedInputs,
-  pm: PackageManager,
-  runtime: "node" | "bun",
-  project: ProjectEnvironment,
-): { nodeVersion: string; bunVersion: string } {
-  return {
-    nodeVersion: resolveNodeVersion(parsed, pm, runtime, project),
-    bunVersion: resolveBunVersion(parsed, pm, project),
-  };
 }
 
 /**
@@ -415,8 +183,8 @@ export function resolveEnvironment(
   toolchainInput: string = core.getInput("toolchain"),
 ): ResolvedEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
-  const project = inspectProjectEnvironment();
-  const pm = resolvePackageManager(project);
+  const project = inspectJsProjectEnvironment();
+  const pm = resolveJsPackageManager(project);
   const runtime = resolveRuntime(parsedInputs, pm);
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
   const toolchain = resolveToolchain(toolchainInput, project);

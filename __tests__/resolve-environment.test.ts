@@ -58,6 +58,93 @@ describe("resolve-environment", () => {
     });
   });
 
+  describe("Cross-Language Integration Scenarios", () => {
+    it("should handle JavaScript-only projects correctly", () => {
+      const tempDir = path.join(fixturesDir, "js-only-integration-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "js-app" }));
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle Python-only projects correctly", () => {
+      const tempDir = path.join(fixturesDir, "python-only-integration-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'py-app'\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle mixed-language (JS + Python) projects correctly", () => {
+      const tempDir = path.join(fixturesDir, "mixed-lang-integration-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "mixed-app", packageManager: "pnpm@9.0.0" }));
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle projects with neither JS nor Python correctly", () => {
+      const tempDir = path.join(fixturesDir, "neither-lang-integration-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "README.md"), "# Hello\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("Environment Resolution Pipeline", () => {
     describe("parseEnvironmentInputs runtime input validation", () => {
       describe("valid runtime inputs", () => {
