@@ -76,7 +76,6 @@ describe("resolve-environment", () => {
           ruffVersion: "0.4.2",
           pmInfo: {
             name: "uv",
-            installCommand: "uv sync",
             execPrefix: "uv run",
             lockfile: "uv.lock",
             configFile: "pyproject.toml",
@@ -235,15 +234,18 @@ describe("resolve-environment", () => {
 
     it("should throw error for invalid required pmInfo string fields", () => {
       const env = createValidEnvironment();
-      (env.python.pmInfo as any).installCommand = 123;
+      (env.python.pmInfo as any).execPrefix = null;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pmInfo.installCommand" must be a string',
-      );
-
-      const env2 = createValidEnvironment();
-      (env2.python.pmInfo as any).execPrefix = null;
-      expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: "pmInfo.execPrefix" must be a string',
+      );
+    });
+
+    it("should reject legacy installCommand supplied without installCommands", () => {
+      const env = createValidEnvironment();
+      delete (env.python.pmInfo as any).installCommands;
+      (env.python.pmInfo as any).installCommand = "uv sync";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo.installCommands" must be an array',
       );
     });
 
@@ -271,6 +273,18 @@ describe("resolve-environment", () => {
       const env2 = createValidEnvironment();
       (env2.python.pmInfo as any).installCommands = [{ executable: "uv", args: "sync" }];
       expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: malformed "installCommands" item',
+      );
+
+      const env3 = createValidEnvironment();
+      (env3.python.pmInfo as any).installCommands = [{ executable: "", args: ["sync"] }];
+      expect(() => validateEnvironment(env3)).toThrow(
+        'Invalid Python environment: malformed "installCommands" item',
+      );
+
+      const env4 = createValidEnvironment();
+      (env4.python.pmInfo as any).installCommands = [{ executable: "uv", args: [123] }];
+      expect(() => validateEnvironment(env4)).toThrow(
         'Invalid Python environment: malformed "installCommands" item',
       );
     });

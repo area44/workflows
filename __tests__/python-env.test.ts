@@ -341,11 +341,50 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("uv");
       expect(pmInfo?.lockfile).toBe("uv.lock");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("uv sync");
       expect(pmInfo?.installCommands).toEqual([
         { executable: "uv", args: ["sync"] },
       ]);
       expect(pmInfo?.execPrefix).toBe("uv run");
+    });
+
+    it("should detect uv when uv.lock is present but pyproject.toml is missing", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-no-pyproject-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBeUndefined();
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv when pyproject.toml has [tool.uv] table but uv.lock is missing", () => {
+      const tempDir = path.join(fixturesDir, "uv-config-no-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.uv]\ndev-dependencies = []\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should detect pip package manager from pip fixture directory", () => {
@@ -354,12 +393,28 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("pip");
       expect(pmInfo?.lockfile).toBe("requirements.txt");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
       expect(pmInfo?.installCommands).toEqual([
         { executable: "pip", args: ["install", "-r", "requirements.txt"] },
         { executable: "pip", args: ["install", "-e", "."] },
       ]);
       expect(pmInfo?.execPrefix).toBe("");
+    });
+
+    it("should return standalone pip info when Python source exists without manifest or lockfile", () => {
+      const tempDir = path.join(fixturesDir, "standalone-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('standalone')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+        expect(pmInfo?.installCommands).toEqual([]);
+        expect(pmInfo?.execPrefix).toBe("");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should return null for JS/TS repositories with tool-only pyproject.toml ([tool.ruff]) and no .py files", () => {
@@ -393,7 +448,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         const pmInfo = detectPythonPackageManager(tempDir);
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt");
         expect(pmInfo?.installCommands).toEqual([
           { executable: "pip", args: ["install", "-r", "requirements.txt"] },
         ]);

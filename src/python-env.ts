@@ -47,8 +47,7 @@ export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
   lockfile?: string;
   configFile?: string;
-  installCommand: string;
-  installCommands?: PythonInstallCommand[];
+  installCommands: PythonInstallCommand[];
   lockCommand?: string;
   syncCommand?: string;
   execPrefix: string;
@@ -182,17 +181,10 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
       ? [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }]
       : [{ executable: "uv", args: ["sync"] }];
 
-  const installCommand = hasUvLock
-    ? "uv sync"
-    : hasReqs
-      ? "uv pip install -r requirements.txt"
-      : "uv sync";
-
   return {
     name: "uv",
     lockfile: hasUvLock ? "uv.lock" : undefined,
     configFile: hasUvConfig ? "pyproject.toml" : undefined,
-    installCommand,
     installCommands,
     lockCommand: "uv lock",
     syncCommand: "uv sync",
@@ -220,25 +212,21 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
     configFile = "setup.cfg";
   }
 
-  let installCommand = "";
   let installCommands: PythonInstallCommand[] = [];
   let lockfile: string | undefined;
 
   const isPackage = hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
 
   if (hasRequirements && isPackage) {
-    installCommand = "pip install -r requirements.txt && pip install -e .";
     installCommands = [
       { executable: "pip", args: ["install", "-r", "requirements.txt"] },
       { executable: "pip", args: ["install", "-e", "."] },
     ];
     lockfile = "requirements.txt";
   } else if (hasRequirements) {
-    installCommand = "pip install -r requirements.txt";
     installCommands = [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
     lockfile = "requirements.txt";
   } else if (isPackage) {
-    installCommand = "pip install -e .";
     installCommands = [{ executable: "pip", args: ["install", "-e", "."] }];
   }
 
@@ -246,7 +234,6 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
     name: "pip",
     lockfile,
     configFile,
-    installCommand,
     installCommands,
     execPrefix: "",
   };
@@ -332,7 +319,6 @@ export function detectPythonPackageManager(
   // Standalone Python project without manifest or lockfile
   return {
     name: "pip",
-    installCommand: "",
     installCommands: [],
     execPrefix: "",
     isStandalone: true,

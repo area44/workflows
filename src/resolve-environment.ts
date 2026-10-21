@@ -97,6 +97,7 @@ function validateInstallCommands(commands: unknown): void {
     const item = cmd as Record<string, unknown>;
     if (
       typeof item.executable !== "string" ||
+      !item.executable.trim() ||
       !Array.isArray(item.args) ||
       !item.args.every((a: unknown) => typeof a === "string")
     ) {
@@ -116,10 +117,6 @@ function validatePythonPmInfo(pmInfo: unknown): void {
     throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
   }
 
-  if (typeof pmObj.installCommand !== "string") {
-    throw new Error('Invalid Python environment: "pmInfo.installCommand" must be a string');
-  }
-
   if (typeof pmObj.execPrefix !== "string") {
     throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
   }
@@ -135,9 +132,11 @@ function validatePythonPmInfo(pmInfo: unknown): void {
     throw new Error('Invalid Python environment: "pmInfo.isStandalone" must be a boolean');
   }
 
-  if (pmObj.installCommands !== undefined) {
-    validateInstallCommands(pmObj.installCommands);
+  if (!("installCommands" in pmObj) || pmObj.installCommands === undefined) {
+    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
   }
+
+  validateInstallCommands(pmObj.installCommands);
 }
 
 function validatePythonEnvironment(python: unknown): void {
