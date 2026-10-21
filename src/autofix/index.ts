@@ -108,27 +108,22 @@ async function runPythonCommand(
   }
 }
 
-export async function executePythonWorkflow(
-  pmInfo: PythonPackageManagerInfo,
-  cwd: string = process.cwd(),
-): Promise<void> {
+function validatePythonWorkflowPmInfo(pmInfo: unknown): void {
   if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
     throw new Error('Invalid Python environment: "pmInfo" must be an object');
   }
-
-  if (pmInfo.name !== "uv" && pmInfo.name !== "pip") {
+  const obj = pmInfo as Record<string, unknown>;
+  if (obj.name !== "uv" && obj.name !== "pip") {
     throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
   }
-
-  if (!Array.isArray(pmInfo.installCommands)) {
+  if (!Array.isArray(obj.installCommands)) {
     throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
   }
-
-  for (const cmd of pmInfo.installCommands) {
+  for (const cmd of obj.installCommands) {
     if (!cmd || typeof cmd !== "object") {
       throw new Error('Invalid Python environment: malformed "installCommands" item');
     }
-    const item = cmd as unknown as Record<string, unknown>;
+    const item = cmd as Record<string, unknown>;
     if (
       typeof item.executable !== "string" ||
       !item.executable.trim() ||
@@ -138,6 +133,13 @@ export async function executePythonWorkflow(
       throw new Error('Invalid Python environment: malformed "installCommands" item');
     }
   }
+}
+
+export async function executePythonWorkflow(
+  pmInfo: PythonPackageManagerInfo,
+  cwd: string = process.cwd(),
+): Promise<void> {
+  validatePythonWorkflowPmInfo(pmInfo);
 
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
@@ -150,14 +152,12 @@ export async function executePythonWorkflow(
     throw new Error(message);
   }
 
-  if (!pmInfo.isStandalone) {
+  if (!pmInfo.isStandalone && pmInfo.installCommands.length > 0) {
     const installCmds = pmInfo.installCommands;
-    if (installCmds.length > 0) {
-      const displayCmd = installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
-      core.info(`Installing Python dependencies: ${displayCmd}`);
-      for (const { executable, args } of installCmds) {
-        await runPythonCommand(executable, args, pmInfo.name, cwd);
-      }
+    const displayCmd = installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
+    core.info(`Installing Python dependencies: ${displayCmd}`);
+    for (const { executable, args } of installCmds) {
+      await runPythonCommand(executable, args, pmInfo.name, cwd);
     }
   }
 }
