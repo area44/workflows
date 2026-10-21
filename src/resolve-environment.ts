@@ -3,38 +3,12 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  DEFAULT_BUN_VERSION,
-  DEFAULT_NODE_VERSION,
-  DEFAULT_NPM_VERSION,
-  DEFAULT_PNPM_VERSION,
-  hasVitePlusDependency,
-  isSupportedPackageManager,
   isSupportedRuntime,
-  parseEnvironmentInputs,
-  resolveBunVersion,
   resolveJsEnvironment,
-  resolveNodeVersion,
-  resolveRuntime,
-  resolveToolchain,
-  resolveVersions,
   validateRuntimePackageManagerCompatibility,
-  type JsProjectEnvironment,
-  type PackageManager,
-  type ParsedInputs,
   type ResolvedJsEnvironment,
-  type SupportedPackageManager,
-  type SupportedRuntime,
-  type Toolchain,
-  type ToolchainInput,
 } from "./javascript-env.js";
-import {
-  detectPythonPackageManager,
-  resolvePythonEnvironment,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
-  type PythonPackageManager,
-  type PythonPackageManagerInfo,
-  type ResolvedPythonEnvironment,
-} from "./python-env.js";
+import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
 import {
   resolvePnpmSetupRuntime,
   setupBun,
@@ -46,42 +20,16 @@ import {
 } from "./setup-adapters.js";
 
 export type {
-  SupportedRuntime,
-  SupportedPackageManager,
-  Toolchain,
-  ToolchainInput,
-  PackageManager,
-  ParsedInputs,
   ResolvedJsEnvironment,
   ResolvedPythonEnvironment,
   BunSetupConfig,
   NodeSetupConfig,
   PackageManagerSetupConfig,
-  PythonPackageManager,
-  PythonPackageManagerInfo,
 };
 
-export type ProjectEnvironment = JsProjectEnvironment;
-
 export {
-  isSupportedRuntime,
-  isSupportedPackageManager,
-  validateRuntimePackageManagerCompatibility,
-  parseEnvironmentInputs,
-  resolveRuntime,
-  resolveNodeVersion,
-  resolveBunVersion,
-  resolveVersions,
-  hasVitePlusDependency,
-  resolveToolchain,
   resolveJsEnvironment,
   resolvePythonEnvironment,
-  DEFAULT_BUN_VERSION,
-  DEFAULT_NODE_VERSION,
-  DEFAULT_NPM_VERSION,
-  DEFAULT_PNPM_VERSION,
-  detectPythonPackageManager,
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePnpmSetupRuntime,
   setupBun,
   setupNode,
@@ -89,33 +37,26 @@ export {
 };
 
 export interface ResolvedEnvironment {
-  nodeVersion: string;
-  bunVersion: string;
-  pm: PackageManager;
-  runtime: "node" | "bun";
-  toolchain: Toolchain;
   js: ResolvedJsEnvironment;
   python: ResolvedPythonEnvironment;
 }
 
 /**
  * Validation
- * Basic sanity check on resolved environment before returning.
+ * Basic sanity check on resolved aggregate environment before returning.
  */
 export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
-  const rt = env.runtime as string;
-  if (!isSupportedRuntime(rt)) {
-    throw new Error(`Invalid resolved runtime: "${rt}"`);
+  const js = env?.js;
+  if (!js || !isSupportedRuntime(js.runtime)) {
+    throw new Error(`Invalid resolved runtime: "${js?.runtime}"`);
   }
-  if (!env.pm || !env.pm.name || !env.pm.version) {
-    throw new Error(`Invalid resolved package manager: ${JSON.stringify(env.pm)}`);
+  if (!js.pm || !js.pm.name || !js.pm.version) {
+    throw new Error(`Invalid resolved package manager: ${JSON.stringify(js?.pm)}`);
   }
-  if (typeof env.nodeVersion !== "string" || typeof env.bunVersion !== "string") {
-    throw new Error(
-      `Invalid resolved versions: node="${env.nodeVersion}", bun="${env.bunVersion}"`,
-    );
+  if (typeof js.nodeVersion !== "string" || typeof js.bunVersion !== "string") {
+    throw new Error(`Invalid resolved versions: node="${js.nodeVersion}", bun="${js.bunVersion}"`);
   }
-  validateRuntimePackageManagerCompatibility(env.runtime, env.pm.name);
+  validateRuntimePackageManagerCompatibility(js.runtime, js.pm.name);
   return env;
 }
 
@@ -134,12 +75,12 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("has-python-source", String(python.hasPythonSource));
   core.setOutput("setup-python", String(python.hasPythonSource));
 
-  core.setOutput("node-version", env.nodeVersion);
-  core.setOutput("bun-version", env.bunVersion);
-  core.setOutput("package-manager", env.pm.name);
-  core.setOutput("package-manager-version", env.pm.version);
-  core.setOutput("runtime", env.runtime);
-  core.setOutput("toolchain", env.toolchain);
+  core.setOutput("node-version", js.nodeVersion);
+  core.setOutput("bun-version", js.bunVersion);
+  core.setOutput("package-manager", js.pm.name);
+  core.setOutput("package-manager-version", js.pm.version);
+  core.setOutput("runtime", js.runtime);
+  core.setOutput("toolchain", js.toolchain);
   core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
   core.setOutput("has-js-project", String(hasJsProject));
@@ -161,7 +102,7 @@ export function writeOutput(env: ResolvedEnvironment): void {
 
 /**
  * Executes the full environment resolution pipeline:
- * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Environment
+ * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Aggregate Environment
  */
 export function resolveEnvironment(
   runtimeInput: string = core.getInput("runtime"),
@@ -171,11 +112,6 @@ export function resolveEnvironment(
   const python = resolvePythonEnvironment();
 
   const env: ResolvedEnvironment = {
-    nodeVersion: js.nodeVersion,
-    bunVersion: js.bunVersion,
-    pm: js.pm,
-    runtime: js.runtime,
-    toolchain: js.toolchain,
     js,
     python,
   };

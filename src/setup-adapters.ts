@@ -1,4 +1,5 @@
-import type { ResolvedEnvironment } from "./resolve-environment";
+import type { ResolvedJsEnvironment } from "./javascript-env.js";
+import type { ResolvedEnvironment } from "./resolve-environment.js";
 
 export interface NodeSetupConfig {
   shouldSetup: boolean;
@@ -22,13 +23,13 @@ export interface PackageManagerSetupConfig {
  * Formats the runtime argument for pnpm/setup based on resolved Bun or Node.js versions.
  */
 export function resolvePnpmSetupRuntime(
-  env: Pick<ResolvedEnvironment, "bunVersion" | "nodeVersion">,
+  js: Pick<ResolvedJsEnvironment, "bunVersion" | "nodeVersion">,
 ): string {
-  if (env.bunVersion) {
-    return `bun@${env.bunVersion}`;
+  if (js.bunVersion) {
+    return `bun@${js.bunVersion}`;
   }
-  if (env.nodeVersion && !env.nodeVersion.startsWith("lts")) {
-    return `node@${env.nodeVersion}`;
+  if (js.nodeVersion && !js.nodeVersion.startsWith("lts")) {
+    return `node@${js.nodeVersion}`;
   }
   return "node@lts";
 }
@@ -37,11 +38,12 @@ export function resolvePnpmSetupRuntime(
  * Derives setup parameters for actions/setup-node from a resolved environment.
  */
 export function setupNode(env: ResolvedEnvironment): NodeSetupConfig {
-  const shouldSetup = env.pm.name !== "pnpm" && Boolean(env.nodeVersion);
+  const js = env.js;
+  const shouldSetup = js.pm.name !== "pnpm" && Boolean(js.nodeVersion);
   return {
     shouldSetup,
-    nodeVersion: env.nodeVersion,
-    cache: env.pm.name === "npm" ? "npm" : "",
+    nodeVersion: js.nodeVersion,
+    cache: js.pm.name === "npm" ? "npm" : "",
   };
 }
 
@@ -49,10 +51,11 @@ export function setupNode(env: ResolvedEnvironment): NodeSetupConfig {
  * Derives setup parameters for oven-sh/setup-bun from a resolved environment.
  */
 export function setupBun(env: ResolvedEnvironment): BunSetupConfig {
-  const shouldSetup = env.pm.name !== "pnpm" && Boolean(env.bunVersion);
+  const js = env.js;
+  const shouldSetup = js.pm.name !== "pnpm" && Boolean(js.bunVersion);
   return {
     shouldSetup,
-    bunVersion: env.bunVersion,
+    bunVersion: js.bunVersion,
   };
 }
 
@@ -60,10 +63,11 @@ export function setupBun(env: ResolvedEnvironment): BunSetupConfig {
  * Derives setup parameters for package manager setup from a resolved environment.
  */
 export function setupPackageManager(env: ResolvedEnvironment): PackageManagerSetupConfig {
+  const js = env.js;
   return {
-    name: env.pm.name,
-    version: env.pm.version,
-    pnpmRuntime: resolvePnpmSetupRuntime(env),
-    shouldSetupPnpm: env.pm.name === "pnpm",
+    name: js.pm.name,
+    version: js.pm.version,
+    pnpmRuntime: resolvePnpmSetupRuntime(js),
+    shouldSetupPnpm: js.pm.name === "pnpm",
   };
 }
