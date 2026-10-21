@@ -13,6 +13,7 @@ import {
   isSupportedRuntime,
   parseEnvironmentInputs,
   resolveBunVersion,
+  resolveJsEnvironment,
   resolveJsPackageManager,
   resolveNodeVersion,
   resolveRuntime,
@@ -22,6 +23,7 @@ import {
   type JsProjectEnvironment,
   type PackageManager,
   type ParsedInputs,
+  type ResolvedJsEnvironment,
   type SupportedPackageManager,
   type SupportedRuntime,
   type Toolchain,
@@ -29,12 +31,11 @@ import {
 } from "./javascript-env.js";
 import {
   detectPythonPackageManager,
-  hasPythonSource,
-  resolvePythonVersion,
-  resolveRuffVersion,
+  resolvePythonEnvironment,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   type PythonPackageManager,
   type PythonPackageManagerInfo,
+  type ResolvedPythonEnvironment,
 } from "./python-env.js";
 import {
   resolvePnpmSetupRuntime,
@@ -53,6 +54,8 @@ export type {
   ToolchainInput,
   PackageManager,
   ParsedInputs,
+  ResolvedJsEnvironment,
+  ResolvedPythonEnvironment,
   BunSetupConfig,
   NodeSetupConfig,
   PackageManagerSetupConfig,
@@ -73,6 +76,8 @@ export {
   resolveVersions,
   hasVitePlusDependency,
   resolveToolchain,
+  resolveJsEnvironment,
+  resolvePythonEnvironment,
   DEFAULT_BUN_VERSION,
   DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
@@ -91,6 +96,8 @@ export interface ResolvedEnvironment {
   pm: PackageManager;
   runtime: "node" | "bun";
   toolchain: Toolchain;
+  js: ResolvedJsEnvironment;
+  python: ResolvedPythonEnvironment;
 }
 
 /**
@@ -134,16 +141,25 @@ export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironme
  * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
  */
 export function writeOutput(env: ResolvedEnvironment): void {
-  const project = inspectProjectEnvironment();
-  const hasJsProject = project.hasPackageJson;
+  const js = env.js || {
+    hasJsProject: inspectJsProjectEnvironment().hasPackageJson,
+    project: inspectJsProjectEnvironment(),
+    pm: env.pm,
+    runtime: env.runtime,
+    nodeVersion: env.nodeVersion,
+    bunVersion: env.bunVersion,
+    toolchain: env.toolchain,
+  };
+
+  const python = env.python || resolvePythonEnvironment();
+  const hasJsProject = js.hasJsProject;
 
   const nodeSetup = setupNode(env);
   const bunSetup = setupBun(env);
   const pmSetup = setupPackageManager(env);
 
-  const hasPySource = hasPythonSource();
-  core.setOutput("has-python-source", String(hasPySource));
-  core.setOutput("setup-python", String(hasPySource));
+  core.setOutput("has-python-source", String(python.hasPythonSource));
+  core.setOutput("setup-python", String(python.hasPythonSource));
 
   core.setOutput("node-version", env.nodeVersion);
   core.setOutput("bun-version", env.bunVersion);
@@ -159,14 +175,10 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("setup-bun", String(hasJsProject && bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(hasJsProject && pmSetup.shouldSetupPnpm));
 
-  if (hasPySource) {
-    const pyVersion = resolvePythonVersion();
-    const pythonPmInfo = detectPythonPackageManager();
-    const ruffVer = resolveRuffVersion();
-
-    core.setOutput("python-version", pyVersion);
-    core.setOutput("ruff-version", ruffVer);
-    core.setOutput("python-package-manager", pythonPmInfo ? pythonPmInfo.name : "");
+  if (python.hasPythonSource) {
+    core.setOutput("python-version", python.pythonVersion);
+    core.setOutput("ruff-version", python.ruffVersion);
+    core.setOutput("python-package-manager", python.pmInfo ? python.pmInfo.name : "");
   } else {
     core.setOutput("python-version", "");
     core.setOutput("ruff-version", "");
@@ -176,25 +188,23 @@ export function writeOutput(env: ResolvedEnvironment): void {
 
 /**
  * Executes the full environment resolution pipeline:
- * Input Parsing -> Project Inspection -> PM Resolution -> Runtime Resolution -> Version Resolution -> Validation -> Environment
+ * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Environment
  */
 export function resolveEnvironment(
   runtimeInput: string = core.getInput("runtime"),
   toolchainInput: string = core.getInput("toolchain"),
 ): ResolvedEnvironment {
-  const parsedInputs = parseEnvironmentInputs(runtimeInput);
-  const project = inspectJsProjectEnvironment();
-  const pm = resolveJsPackageManager(project);
-  const runtime = resolveRuntime(parsedInputs, pm);
-  const versions = resolveVersions(parsedInputs, pm, runtime, project);
-  const toolchain = resolveToolchain(toolchainInput, project);
+  const js = resolveJsEnvironment(runtimeInput, toolchainInput);
+  const python = resolvePythonEnvironment();
 
   const env: ResolvedEnvironment = {
-    nodeVersion: versions.nodeVersion,
-    bunVersion: versions.bunVersion,
-    pm,
-    runtime,
-    toolchain,
+    nodeVersion: js.nodeVersion,
+    bunVersion: js.bunVersion,
+    pm: js.pm,
+    runtime: js.runtime,
+    toolchain: js.toolchain,
+    js,
+    python,
   };
 
   return validateEnvironment(env);

@@ -69,6 +69,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
+        expect(env.js.hasJsProject).toBe(true);
+        expect(env.python.hasPythonSource).toBe(false);
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
@@ -91,6 +93,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.hasPythonSource).toBe(true);
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
@@ -115,6 +119,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
+        expect(env.js.hasJsProject).toBe(true);
+        expect(env.python.hasPythonSource).toBe(true);
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
@@ -135,6 +141,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.hasPythonSource).toBe(false);
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
@@ -394,6 +402,21 @@ describe("resolve-environment", () => {
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {
+            hasJsProject: false,
+            project,
+            pm: { name: "pnpm", version: "12" },
+            runtime: "node",
+            nodeVersion: versions.nodeVersion,
+            bunVersion: versions.bunVersion,
+            toolchain: "vite",
+          },
+          python: {
+            hasPythonSource: false,
+            pythonVersion: "",
+            ruffVersion: "",
+            pmInfo: null,
+          },
         });
 
         expect(env.runtime).toBe("node");
@@ -408,6 +431,8 @@ describe("resolve-environment", () => {
             pm: { name: "npm", version: "12" },
             runtime: "invalid" as any,
             toolchain: "vite",
+            js: {} as any,
+            python: {} as any,
           }),
         ).toThrow("Invalid resolved runtime");
 
@@ -418,6 +443,8 @@ describe("resolve-environment", () => {
             pm: { name: "", version: "" },
             runtime: "node",
             toolchain: "vite",
+            js: {} as any,
+            python: {} as any,
           }),
         ).toThrow("Invalid resolved package manager");
       });
@@ -437,13 +464,13 @@ describe("resolve-environment", () => {
         const run2 = resolveEnvironment("node");
 
         expect(run1).toEqual(run2);
-        expect(run1).toEqual({
-          nodeVersion: "22.1.0",
-          bunVersion: "",
-          pm: { name: "npm", version: DEFAULT_NPM_VERSION },
-          runtime: "node",
-          toolchain: "vite",
-        });
+        expect(run1.nodeVersion).toBe("22.1.0");
+        expect(run1.bunVersion).toBe("");
+        expect(run1.pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+        expect(run1.runtime).toBe("node");
+        expect(run1.toolchain).toBe("vite");
+        expect(run1.js.nodeVersion).toBe("22.1.0");
+        expect(run1.python.hasPythonSource).toBe(false);
       });
     });
   });
@@ -515,6 +542,8 @@ describe("resolve-environment", () => {
           pm: { name: "npm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: true,
@@ -530,6 +559,8 @@ describe("resolve-environment", () => {
           pm: { name: "bun", version: "1.4" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: true,
@@ -545,6 +576,8 @@ describe("resolve-environment", () => {
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: false,
@@ -560,6 +593,8 @@ describe("resolve-environment", () => {
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupNode(env)).toEqual({
           shouldSetup: false,
@@ -577,6 +612,8 @@ describe("resolve-environment", () => {
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: true,
@@ -591,6 +628,8 @@ describe("resolve-environment", () => {
           pm: { name: "pnpm", version: "12" },
           runtime: "bun",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: false,
@@ -605,6 +644,8 @@ describe("resolve-environment", () => {
           pm: { name: "npm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupBun(env)).toEqual({
           shouldSetup: false,
@@ -621,6 +662,8 @@ describe("resolve-environment", () => {
           pm: { name: "pnpm", version: "9.0.0" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupPackageManager(env)).toEqual({
           name: "pnpm",
@@ -637,6 +680,8 @@ describe("resolve-environment", () => {
           pm: { name: "npm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupPackageManager(env)).toEqual({
           name: "npm",
@@ -653,6 +698,8 @@ describe("resolve-environment", () => {
           pm: { name: "bun", version: "1.4" },
           runtime: "bun",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
         expect(setupPackageManager(env)).toEqual({
           name: "bun",
@@ -674,6 +721,8 @@ describe("resolve-environment", () => {
           pm: { name: "pnpm", version: "12" },
           runtime: "node",
           toolchain: "vite",
+          js: {} as any,
+          python: {} as any,
         };
 
         const nodeConfig = setupNode(env);
@@ -1594,6 +1643,21 @@ describe("resolve-environment", () => {
         pm: { name: "pnpm", version: "9.0.0" },
         runtime: "node",
         toolchain: "vite",
+        js: {
+          hasJsProject: true,
+          project: {} as any,
+          pm: { name: "pnpm", version: "9.0.0" },
+          runtime: "node",
+          nodeVersion: "20.10.0",
+          bunVersion: "",
+          toolchain: "vite",
+        },
+        python: {
+          hasPythonSource: false,
+          pythonVersion: "",
+          ruffVersion: "",
+          pmInfo: null,
+        },
       };
 
       writeOutput(env);
@@ -1617,6 +1681,21 @@ describe("resolve-environment", () => {
         pm: { name: "npm", version: "12" },
         runtime: "node",
         toolchain: "vite",
+        js: {
+          hasJsProject: true,
+          project: {} as any,
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+          nodeVersion: "24",
+          bunVersion: "",
+          toolchain: "vite",
+        },
+        python: {
+          hasPythonSource: false,
+          pythonVersion: "",
+          ruffVersion: "",
+          pmInfo: null,
+        },
       };
 
       writeOutput(env);
@@ -1642,6 +1721,21 @@ describe("resolve-environment", () => {
         pm: { name: "npm", version: "12" },
         runtime: "node",
         toolchain: "vite",
+        js: {
+          hasJsProject: false,
+          project: {} as any,
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+          nodeVersion: "24",
+          bunVersion: "",
+          toolchain: "vite",
+        },
+        python: {
+          hasPythonSource: false,
+          pythonVersion: "",
+          ruffVersion: "",
+          pmInfo: null,
+        },
       };
 
       writeOutput(env);
@@ -1661,13 +1755,7 @@ describe("resolve-environment", () => {
 
       process.chdir(tempDir);
       try {
-        const env: ResolvedEnvironment = {
-          nodeVersion: "24",
-          bunVersion: "",
-          pm: { name: "npm", version: "12" },
-          runtime: "node",
-          toolchain: "vite",
-        };
+        const env = resolveEnvironment();
 
         writeOutput(env);
 
@@ -1688,13 +1776,7 @@ describe("resolve-environment", () => {
 
       process.chdir(tempDir);
       try {
-        const env: ResolvedEnvironment = {
-          nodeVersion: "24",
-          bunVersion: "",
-          pm: { name: "npm", version: "12" },
-          runtime: "node",
-          toolchain: "vite",
-        };
+        const env = resolveEnvironment();
 
         writeOutput(env);
 
@@ -1785,6 +1867,19 @@ describe("resolve-environment", () => {
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("should report failure via core.setFailed if environment resolution throws", () => {
+      vi.spyOn(core, "getInput").mockImplementation((name) => {
+        if (name === "runtime") return "invalid-runtime";
+        return "";
+      });
+
+      run();
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("Environment setup failed:"),
+      );
     });
   });
 

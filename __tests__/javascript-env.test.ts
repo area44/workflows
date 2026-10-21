@@ -15,6 +15,7 @@ import {
   isSupportedRuntime,
   parseEnvironmentInputs,
   resolveBunVersion,
+  resolveJsEnvironment,
   resolveJsPackageManager,
   resolveNodeVersion,
   resolveRuntime,
@@ -42,6 +43,20 @@ describe("javascript-env", () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  describe("resolveJsEnvironment", () => {
+    it("should resolve full JS environment for a project with package.json and pnpm lockfile", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "my-app", packageManager: "pnpm@9.1.0" }));
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(true);
+      expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(res.runtime).toBe("node");
+      expect(res.nodeVersion).toBe("20.10.0");
+      expect(res.toolchain).toBe("vite");
+    });
   });
 
   describe("isSupportedRuntime & validateRuntimePackageManagerCompatibility", () => {

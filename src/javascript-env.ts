@@ -113,6 +113,16 @@ export interface JsInstallationPlan {
   args: string[];
 }
 
+export interface ResolvedJsEnvironment {
+  hasJsProject: boolean;
+  project: JsProjectEnvironment;
+  pm: PackageManager;
+  runtime: "node" | "bun";
+  nodeVersion: string;
+  bunVersion: string;
+  toolchain: Toolchain;
+}
+
 function validateCommaStructure(trimmed: string, runtimeInput: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
     throw new Error(
@@ -427,6 +437,32 @@ export function resolveToolchain(
   }
 
   return "vite";
+}
+
+/**
+ * Cohesive JavaScript environment resolution entry point.
+ */
+export function resolveJsEnvironment(
+  runtimeInput?: string,
+  toolchainInput?: string,
+  cwd: string = process.cwd(),
+): ResolvedJsEnvironment {
+  const parsedInputs = parseEnvironmentInputs(runtimeInput);
+  const project = inspectJsProjectEnvironment(cwd);
+  const pm = resolveJsPackageManager(project);
+  const runtime = resolveRuntime(parsedInputs, pm);
+  const versions = resolveVersions(parsedInputs, pm, runtime, project);
+  const toolchain = resolveToolchain(toolchainInput, project);
+
+  return {
+    hasJsProject: project.hasPackageJson,
+    project,
+    pm,
+    runtime,
+    nodeVersion: versions.nodeVersion,
+    bunVersion: versions.bunVersion,
+    toolchain,
+  };
 }
 
 export function sanitizePackageManager(pm: string): string {
