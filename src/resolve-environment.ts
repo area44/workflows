@@ -106,7 +106,7 @@ function validateInstallCommands(commands: unknown): void {
 }
 
 function validatePythonPmInfo(pmInfo: unknown): void {
-  if (!pmInfo || typeof pmInfo !== "object") {
+  if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
     throw new Error('Invalid Python environment: "pmInfo" must be an object when present');
   }
 
@@ -159,7 +159,11 @@ function validatePythonEnvironment(python: unknown): void {
     throw new Error('Invalid Python environment: "ruffVersion" must be a string');
   }
 
-  if (pyObj.pmInfo !== null && pyObj.pmInfo !== undefined) {
+  if (!("pmInfo" in pyObj) || pyObj.pmInfo === undefined) {
+    throw new Error('Invalid Python environment: "pmInfo" property is required');
+  }
+
+  if (pyObj.pmInfo !== null) {
     validatePythonPmInfo(pyObj.pmInfo);
   }
 }

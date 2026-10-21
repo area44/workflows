@@ -98,6 +98,65 @@ describe("resolve-environment", () => {
       expect(validateEnvironment(valid)).toEqual(valid);
     });
 
+    it("should reject missing pmInfo property", () => {
+      const env = createValidEnvironment();
+      delete (env.python as any).pmInfo;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo" property is required',
+      );
+    });
+
+    it("should reject explicit pmInfo: undefined", () => {
+      const env = createValidEnvironment();
+      (env.python as any).pmInfo = undefined;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo" property is required',
+      );
+    });
+
+    it.each([123, "uv", true, [1, 2, 3]])(
+      "should reject invalid primitive or array value for pmInfo: %p",
+      (invalidPmInfo) => {
+        const env = createValidEnvironment();
+        (env.python as any).pmInfo = invalidPmInfo;
+        expect(() => validateEnvironment(env)).toThrow(
+          'Invalid Python environment: "pmInfo" must be an object when present',
+        );
+      },
+    );
+
+    it.each(["poetry", "npm", "pipenv", "", "PIP"])(
+      "should reject invalid package manager name in pmInfo: %p",
+      (invalidName) => {
+        const env = createValidEnvironment();
+        (env.python.pmInfo as any).name = invalidName;
+        expect(() => validateEnvironment(env)).toThrow(
+          'Invalid Python environment: pmInfo name must be "uv" or "pip"',
+        );
+      },
+    );
+
+    it("should validate legitimate resolver output when no Python package manager is detected", () => {
+      const tempDir = path.join(fixturesDir, "no-python-pm-validation-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "script.py"), "print('hello')\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.python.pmInfo).not.toBeNull();
+        expect(env.python.pmInfo?.name).toBe("pip");
+
+        // Force pmInfo to null to test resolver output with pmInfo null
+        env.python.pmInfo = null;
+        expect(() => validateEnvironment(env)).not.toThrow();
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should throw error for non-object environment", () => {
       expect(() => validateEnvironment(null as any)).toThrow(
         "Invalid environment: must be a non-null object",
@@ -171,14 +230,6 @@ describe("resolve-environment", () => {
       (env2.python as any).ruffVersion = undefined;
       expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: "ruffVersion" must be a string',
-      );
-    });
-
-    it("should throw error for invalid pmInfo package manager name", () => {
-      const env = createValidEnvironment();
-      (env.python.pmInfo as any).name = "poetry";
-      expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: pmInfo name must be "uv" or "pip"',
       );
     });
 
@@ -296,7 +347,10 @@ describe("resolve-environment", () => {
     it("should handle mixed-language (JS + Python) projects correctly", () => {
       const tempDir = path.join(fixturesDir, "mixed-lang-integration-temp");
       fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "mixed-app", packageManager: "pnpm@9.0.0" }));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "mixed-app", packageManager: "pnpm@9.0.0" }),
+      );
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "");

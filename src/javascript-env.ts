@@ -123,10 +123,10 @@ export interface ResolvedJsEnvironment {
   toolchain: Toolchain;
 }
 
-function validateCommaStructure(trimmed: string, runtimeInput: string): void {
+function validateCommaStructure(trimmed: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
     throw new Error(
-      `Invalid runtime input "${runtimeInput}": malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+      'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
     );
   }
 }
@@ -136,7 +136,7 @@ interface ParsedPart {
   version?: string;
 }
 
-function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPart {
+function parseSingleRuntimePart(rawPart: string): ParsedPart {
   const part = rawPart.toLowerCase();
 
   if (part === "both") {
@@ -157,14 +157,14 @@ function parseSingleRuntimePart(rawPart: string, runtimeInput: string): ParsedPa
     const ver = part.slice(prefixLen);
     if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
       throw new Error(
-        `Invalid runtime input "${runtimeInput}": malformed version specifier in "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+        'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
       );
     }
     return { type: isNodeSpec ? "node" : "bun", version: ver };
   }
 
   throw new Error(
-    `Invalid runtime input "${runtimeInput}": unrecognized or malformed runtime specifier "${rawPart}". Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".`,
+    'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
   );
 }
 
@@ -180,7 +180,7 @@ export function parseEnvironmentInputs(
   const trimmed = runtimeInput.trim();
   if (!trimmed) return {};
 
-  validateCommaStructure(trimmed, runtimeInput);
+  validateCommaStructure(trimmed);
 
   const parts = trimmed.split(/[\s,]+/);
   let specifiedRuntime: "node" | "bun" | undefined;
@@ -191,7 +191,7 @@ export function parseEnvironmentInputs(
   const counts = { node: 0, bun: 0, both: 0 };
 
   for (const rawPart of parts) {
-    const parsed = parseSingleRuntimePart(rawPart, runtimeInput);
+    const parsed = parseSingleRuntimePart(rawPart);
     counts[parsed.type]++;
 
     if (parsed.type === "both") {
@@ -207,19 +207,13 @@ export function parseEnvironmentInputs(
   }
 
   if (counts.node > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "node".`,
-    );
+    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "node".');
   }
   if (counts.bun > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "bun".`,
-    );
+    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "bun".');
   }
   if (counts.both > 1) {
-    throw new Error(
-      `Invalid runtime input "${runtimeInput}": duplicate or conflicting specifiers for "both".`,
-    );
+    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "both".');
   }
 
   return {
@@ -427,7 +421,7 @@ export function resolveToolchain(
         return trimmed;
       }
       throw new Error(
-        `Invalid toolchain input "${toolchainInput}". Supported values are "auto", "vite", or "vite-plus".`,
+        'Invalid toolchain input: unsupported value. Supported values are "auto", "vite", or "vite-plus".',
       );
     }
   }
@@ -666,7 +660,7 @@ function parseDevEngineRuntimeString(
     const ver = trimmed.slice(runtimeName.length + 1).trim();
     if (!ver) {
       core.warning(
-        `Malformed ${runtimeName} runtime version specifier in package.json devEngines: "${trimmed}".`,
+        `Malformed ${runtimeName} runtime version specifier in package.json devEngines.`,
       );
       return undefined;
     }
