@@ -351,14 +351,26 @@ function parseDevEngineRuntimeString(
   if (lower === runtimeName) {
     return defaultVersion;
   }
+
+  const prefixAt = `${runtimeName}@`;
+  const prefixColon = `${runtimeName}:`;
+  const prefixSpace = `${runtimeName} `;
+
   if (
-    lower.startsWith(`${runtimeName}@`) ||
-    lower.startsWith(`${runtimeName}:`) ||
-    lower.startsWith(`${runtimeName} `)
+    lower.startsWith(prefixAt) ||
+    lower.startsWith(prefixColon) ||
+    lower.startsWith(prefixSpace)
   ) {
     const ver = trimmed.slice(runtimeName.length + 1).trim();
-    return ver || defaultVersion;
+    if (!ver) {
+      core.warning(
+        `Malformed ${runtimeName} runtime version specifier in package.json devEngines: "${trimmed}".`,
+      );
+      return undefined;
+    }
+    return ver;
   }
+
   return undefined;
 }
 
@@ -377,11 +389,20 @@ function parseDevEngineRuntimeItem(
     if (typeof obj.name === "string" || typeof obj.name === "number") {
       const nameStr = String(obj.name).trim().toLowerCase();
       if (nameStr === runtimeName) {
+        if (obj.version === undefined || obj.version === null) {
+          return defaultVersion;
+        }
         const verStr =
           typeof obj.version === "string" || typeof obj.version === "number"
             ? String(obj.version).trim()
             : "";
-        return verStr || defaultVersion;
+        if (!verStr) {
+          core.warning(
+            `Malformed ${runtimeName} runtime version specifier in package.json devEngines object for "${runtimeName}": version is empty.`,
+          );
+          return undefined;
+        }
+        return verStr;
       }
     }
   }
@@ -411,14 +432,28 @@ export function getDevEngineRuntimeVersion(
     const trimmed = directEngine.trim();
     if (!trimmed) return undefined;
     const parsed = parseDevEngineRuntimeString(trimmed, runtimeName, defaultVersion);
-    return parsed || trimmed;
+    if (parsed !== undefined) return parsed;
+    if (new RegExp(`^(?:${runtimeName})[@:\\s]`, "i").test(trimmed)) {
+      return undefined;
+    }
+    return trimmed;
   }
   if (typeof directEngine === "object" && directEngine !== null) {
-    const ver =
-      (directEngine as any).version !== undefined && (directEngine as any).version !== null
-        ? String((directEngine as any).version).trim()
+    const obj = directEngine as Record<string, unknown>;
+    if (obj.version === undefined || obj.version === null) {
+      return defaultVersion;
+    }
+    const verStr =
+      typeof obj.version === "string" || typeof obj.version === "number"
+        ? String(obj.version).trim()
         : "";
-    return ver || defaultVersion;
+    if (!verStr) {
+      core.warning(
+        `Malformed ${runtimeName} runtime version specifier in package.json devEngines.${runtimeName}: version is empty.`,
+      );
+      return undefined;
+    }
+    return verStr;
   }
 
   return undefined;

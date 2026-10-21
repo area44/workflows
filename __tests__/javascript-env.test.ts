@@ -173,46 +173,66 @@ describe("javascript-env", () => {
       );
     });
 
-    it("should parse devEngines runtime versions for node and bun in string, object, and array shapes", () => {
-      const pkgStrings = {
+    it("should parse devEngines runtime declarations without explicit version and return default runtime versions", () => {
+      const pkgWithoutVersions = {
         devEngines: {
-          runtime: ["NODE@22.0.0", " Bun@1.3.0 "],
+          runtime: ["NODE", " bun "],
         },
       };
-      expect(getDevEngineRuntimeVersion(pkgStrings, "node")).toBe("22.0.0");
-      expect(getDevEngineRuntimeVersion(pkgStrings, "bun")).toBe("1.3.0");
+      expect(getDevEngineRuntimeVersion(pkgWithoutVersions, "node")).toBe(DEFAULT_NODE_VERSION);
+      expect(getDevEngineRuntimeVersion(pkgWithoutVersions, "bun")).toBe(DEFAULT_BUN_VERSION);
 
-      const pkgObjects = {
+      const pkgObjectsWithoutVersions = {
         devEngines: {
-          runtime: [
-            { name: "  NODE ", version: " 24.1.0 " },
-            { name: "bun", version: "1.4.1" },
-          ],
+          runtime: [{ name: "NODE" }, { name: "bun" }],
         },
       };
-      expect(getDevEngineRuntimeVersion(pkgObjects, "node")).toBe("24.1.0");
-      expect(getDevEngineRuntimeVersion(pkgObjects, "bun")).toBe("1.4.1");
-
-      const pkgDirect = {
-        devEngines: {
-          node: { version: "20.12.0" },
-          bun: "1.2.3",
-        },
-      };
-      expect(getDevEngineRuntimeVersion(pkgDirect, "node")).toBe("20.12.0");
-      expect(getDevEngineRuntimeVersion(pkgDirect, "bun")).toBe("1.2.3");
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "node")).toBe(DEFAULT_NODE_VERSION);
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "bun")).toBe(DEFAULT_BUN_VERSION);
     });
 
-    it("should handle empty or whitespace-only devEngines runtime values without crashing", () => {
-      const pkgEmpty = {
+    it("should handle malformed explicit runtime version specifiers by warning and returning undefined instead of defaulting", () => {
+      const pkgMalformedStrings = {
         devEngines: {
-          node: "   ",
-          bun: "",
-          runtime: ["", "  "],
+          runtime: ["node@", "bun:"],
         },
       };
-      expect(getDevEngineRuntimeVersion(pkgEmpty, "node")).toBeUndefined();
-      expect(getDevEngineRuntimeVersion(pkgEmpty, "bun")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "bun")).toBeUndefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        'Malformed node runtime version specifier in package.json devEngines: "node@".',
+      );
+      expect(core.warning).toHaveBeenCalledWith(
+        'Malformed bun runtime version specifier in package.json devEngines: "bun:".',
+      );
+
+      const pkgMalformedObjects = {
+        devEngines: {
+          runtime: [{ name: "node", version: "   " }, { name: "bun", version: "" }],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgMalformedObjects, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgMalformedObjects, "bun")).toBeUndefined();
+
+      const pkgDirectMalformed = {
+        devEngines: {
+          node: "node@",
+          bun: { version: "" },
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgDirectMalformed, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgDirectMalformed, "bun")).toBeUndefined();
+    });
+
+    it("should ignore unrelated runtime declarations and empty/whitespace values", () => {
+      const pkgUnrelated = {
+        devEngines: {
+          runtime: ["nodedev@1.0.0", "bunyan@2.0.0", "", "   "],
+          node: "   ",
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgUnrelated, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgUnrelated, "bun")).toBeUndefined();
       expect(getDevEngineRuntimeVersion(undefined, "node")).toBeUndefined();
       expect(getDevEngineRuntimeVersion({}, "node")).toBeUndefined();
     });
@@ -232,6 +252,22 @@ describe("javascript-env", () => {
 
       // Should pick explicit packageManager field, not lockfile or devEngines
       expect(pm).toEqual({ name: "npm", version: "11.0.0" });
+    });
+
+    it("should enforce devEngines.packageManager precedence over lockfiles when packageManager field is absent", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          devEngines: { packageManager: "bun@1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      // Should pick devEngines.packageManager over lockfile
+      expect(pm).toEqual({ name: "bun", version: "1.4.0" });
     });
 
     it("should default to npm if no packageManager or lockfile is found", () => {
