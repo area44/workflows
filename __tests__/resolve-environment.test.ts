@@ -53,6 +53,196 @@ describe("resolve-environment", () => {
     });
   });
 
+  describe("Aggregate Environment Validation (validateEnvironment)", () => {
+    function createValidEnvironment(): ResolvedEnvironment {
+      return {
+        js: {
+          hasJsProject: true,
+          project: {
+            hasPackageJson: true,
+            hasPnpmLock: false,
+            hasPackageLock: true,
+            hasBunLock: false,
+          },
+          pm: { name: "npm", version: "12" },
+          runtime: "node",
+          nodeVersion: "24",
+          bunVersion: "",
+          toolchain: "vite",
+        },
+        python: {
+          hasPythonSource: true,
+          pythonVersion: "3.12",
+          ruffVersion: "0.4.2",
+          pmInfo: {
+            name: "uv",
+            installCommand: "uv sync",
+            execPrefix: "uv run",
+            lockfile: "uv.lock",
+            configFile: "pyproject.toml",
+            installCommands: [{ executable: "uv", args: ["sync"] }],
+            isStandalone: false,
+          },
+        },
+      };
+    }
+
+    it("should validate a complete and valid aggregate environment", () => {
+      const valid = createValidEnvironment();
+      expect(validateEnvironment(valid)).toEqual(valid);
+    });
+
+    it("should validate a valid Python environment with pmInfo: null", () => {
+      const valid = createValidEnvironment();
+      valid.python.pmInfo = null;
+      expect(validateEnvironment(valid)).toEqual(valid);
+    });
+
+    it("should throw error for non-object environment", () => {
+      expect(() => validateEnvironment(null as any)).toThrow(
+        "Invalid environment: must be a non-null object",
+      );
+    });
+
+    it("should throw error for missing or invalid js section", () => {
+      const env = createValidEnvironment();
+      delete (env as any).js;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid environment: missing or invalid "js" section',
+      );
+    });
+
+    it("should throw error for missing or invalid python section", () => {
+      const env = createValidEnvironment();
+      delete (env as any).python;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid environment: missing or invalid "python" section',
+      );
+    });
+
+    it("should throw error for non-boolean hasJsProject", () => {
+      const env = createValidEnvironment();
+      (env.js as any).hasJsProject = "true";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid JavaScript environment: "hasJsProject" must be a boolean',
+      );
+    });
+
+    it("should throw error for invalid runtime in js section", () => {
+      const env = createValidEnvironment();
+      (env.js as any).runtime = "invalid-runtime";
+      expect(() => validateEnvironment(env)).toThrow('Invalid resolved runtime: "invalid-runtime"');
+    });
+
+    it("should throw error for invalid or missing package manager in js section", () => {
+      const env = createValidEnvironment();
+      (env.js as any).pm = { name: "", version: "12" };
+      expect(() => validateEnvironment(env)).toThrow("Invalid resolved package manager");
+    });
+
+    it("should throw error for non-string nodeVersion or bunVersion in js section", () => {
+      const env = createValidEnvironment();
+      (env.js as any).nodeVersion = 24;
+      expect(() => validateEnvironment(env)).toThrow("Invalid resolved versions");
+    });
+
+    it("should throw error for invalid toolchain in js section", () => {
+      const env = createValidEnvironment();
+      (env.js as any).toolchain = "webpack";
+      expect(() => validateEnvironment(env)).toThrow('Invalid resolved toolchain: "webpack"');
+    });
+
+    it("should throw error for non-boolean hasPythonSource", () => {
+      const env = createValidEnvironment();
+      (env.python as any).hasPythonSource = "yes";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "hasPythonSource" must be a boolean',
+      );
+    });
+
+    it("should throw error for non-string pythonVersion or ruffVersion", () => {
+      const env = createValidEnvironment();
+      (env.python as any).pythonVersion = 3.12;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pythonVersion" must be a string',
+      );
+
+      const env2 = createValidEnvironment();
+      (env2.python as any).ruffVersion = undefined;
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: "ruffVersion" must be a string',
+      );
+    });
+
+    it("should throw error for invalid pmInfo package manager name", () => {
+      const env = createValidEnvironment();
+      (env.python.pmInfo as any).name = "poetry";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: pmInfo name must be "uv" or "pip"',
+      );
+    });
+
+    it("should throw error for invalid required pmInfo string fields", () => {
+      const env = createValidEnvironment();
+      (env.python.pmInfo as any).installCommand = 123;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo.installCommand" must be a string',
+      );
+
+      const env2 = createValidEnvironment();
+      (env2.python.pmInfo as any).execPrefix = null;
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: "pmInfo.execPrefix" must be a string',
+      );
+    });
+
+    it("should throw error for invalid optional string or boolean fields in pmInfo", () => {
+      const env = createValidEnvironment();
+      (env.python.pmInfo as any).lockfile = 456;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo.lockfile" must be a string',
+      );
+
+      const env2 = createValidEnvironment();
+      (env2.python.pmInfo as any).isStandalone = "false";
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: "pmInfo.isStandalone" must be a boolean',
+      );
+    });
+
+    it("should throw error for malformed installCommands in pmInfo", () => {
+      const env = createValidEnvironment();
+      (env.python.pmInfo as any).installCommands = "uv sync";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo.installCommands" must be an array',
+      );
+
+      const env2 = createValidEnvironment();
+      (env2.python.pmInfo as any).installCommands = [{ executable: "uv", args: "sync" }];
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: malformed "installCommands" item',
+      );
+    });
+
+    it("should prove writeOutput is not called when validation fails in run()", () => {
+      const getInputSpy = vi.spyOn(core, "getInput").mockImplementation((name) => {
+        if (name === "runtime") return "invalid-runtime";
+        return "";
+      });
+
+      try {
+        run();
+
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("Environment setup failed:"),
+        );
+        expect(core.setOutput).not.toHaveBeenCalled();
+      } finally {
+        getInputSpy.mockRestore();
+      }
+    });
+  });
+
   describe("Cross-Language Integration Scenarios", () => {
     it("should handle JavaScript-only projects correctly", () => {
       const tempDir = path.join(fixturesDir, "js-only-integration-temp");
@@ -73,6 +263,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -97,6 +288,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -122,6 +314,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -143,70 +336,13 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
   });
 
   describe("Environment Resolution Pipeline", () => {
-    describe("validateEnvironment", () => {
-      it("should validate clean env struct", () => {
-        const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: false,
-            project: {} as any,
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
-            nodeVersion: "22",
-            bunVersion: "",
-            toolchain: "vite",
-          },
-          python: {
-            hasPythonSource: false,
-            pythonVersion: "",
-            ruffVersion: "",
-            pmInfo: null,
-          },
-        };
-
-        const validated = validateEnvironment(env);
-        expect(validated.js.runtime).toBe("node");
-        expect(validated.js.nodeVersion).toBe("22");
-      });
-
-      it("should throw error in validateEnvironment when runtime or package manager is invalid", () => {
-        expect(() =>
-          validateEnvironment({
-            js: {
-              hasJsProject: false,
-              project: {} as any,
-              pm: { name: "npm", version: "12" },
-              runtime: "invalid" as any,
-              nodeVersion: "24",
-              bunVersion: "",
-              toolchain: "vite",
-            },
-            python: {} as any,
-          }),
-        ).toThrow("Invalid resolved runtime");
-
-        expect(() =>
-          validateEnvironment({
-            js: {
-              hasJsProject: false,
-              project: {} as any,
-              pm: { name: "", version: "" },
-              runtime: "node",
-              nodeVersion: "24",
-              bunVersion: "",
-              toolchain: "vite",
-            },
-            python: {} as any,
-          }),
-        ).toThrow("Invalid resolved package manager");
-      });
-    });
-
     describe("Pipeline Determinism", () => {
       it("should produce identical resolved environment given identical inputs and project state", () => {
         vi.spyOn(fs, "existsSync").mockImplementation((p) =>
@@ -700,6 +836,7 @@ describe("resolve-environment", () => {
         expect(existsSpy).not.toHaveBeenCalled();
         expect(readSpy).not.toHaveBeenCalled();
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -818,6 +955,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -838,6 +976,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -918,21 +1057,26 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
       } finally {
+        process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
     it("should report failure via core.setFailed if environment resolution throws", () => {
-      vi.spyOn(core, "getInput").mockImplementation((name) => {
+      const getInputSpy = vi.spyOn(core, "getInput").mockImplementation((name) => {
         if (name === "runtime") return "invalid-runtime";
         return "";
       });
 
-      run();
+      try {
+        run();
 
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Environment setup failed:"),
-      );
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("Environment setup failed:"),
+        );
+      } finally {
+        getInputSpy.mockRestore();
+      }
     });
   });
 

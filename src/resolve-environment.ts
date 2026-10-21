@@ -41,22 +41,134 @@ export interface ResolvedEnvironment {
   python: ResolvedPythonEnvironment;
 }
 
+function validateJsEnvironment(js: unknown): void {
+  if (!js || typeof js !== "object") {
+    throw new Error('Invalid environment: missing or invalid "js" section');
+  }
+
+  const jsObj = js as Record<string, unknown>;
+
+  if (typeof jsObj.hasJsProject !== "boolean") {
+    throw new Error('Invalid JavaScript environment: "hasJsProject" must be a boolean');
+  }
+
+  const runtime = jsObj.runtime;
+  if (typeof runtime !== "string" || !isSupportedRuntime(runtime)) {
+    throw new Error(`Invalid resolved runtime: "${String(runtime)}"`);
+  }
+
+  const pm = jsObj.pm as Record<string, unknown> | undefined;
+  if (
+    !pm ||
+    typeof pm !== "object" ||
+    typeof pm.name !== "string" ||
+    typeof pm.version !== "string" ||
+    !pm.name ||
+    !pm.version
+  ) {
+    throw new Error("Invalid resolved package manager");
+  }
+
+  if (typeof jsObj.nodeVersion !== "string" || typeof jsObj.bunVersion !== "string") {
+    throw new Error(
+      `Invalid resolved versions: node="${String(jsObj.nodeVersion)}", bun="${String(jsObj.bunVersion)}"`,
+    );
+  }
+
+  if (
+    typeof jsObj.toolchain !== "string" ||
+    (jsObj.toolchain !== "vite" && jsObj.toolchain !== "vite-plus")
+  ) {
+    throw new Error(`Invalid resolved toolchain: "${String(jsObj.toolchain)}"`);
+  }
+
+  validateRuntimePackageManagerCompatibility(runtime, pm.name);
+}
+
+function validatePythonPmInfo(pmInfo: unknown): void {
+  if (!pmInfo || typeof pmInfo !== "object") {
+    throw new Error('Invalid Python environment: "pmInfo" must be an object when present');
+  }
+
+  const pmObj = pmInfo as Record<string, unknown>;
+
+  if (pmObj.name !== "uv" && pmObj.name !== "pip") {
+    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  }
+
+  if (typeof pmObj.installCommand !== "string") {
+    throw new Error('Invalid Python environment: "pmInfo.installCommand" must be a string');
+  }
+
+  if (typeof pmObj.execPrefix !== "string") {
+    throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
+  }
+
+  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
+  for (const field of optionalStrings) {
+    if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
+      throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
+    }
+  }
+
+  if (pmObj.isStandalone !== undefined && typeof pmObj.isStandalone !== "boolean") {
+    throw new Error('Invalid Python environment: "pmInfo.isStandalone" must be a boolean');
+  }
+
+  if (pmObj.installCommands !== undefined) {
+    if (!Array.isArray(pmObj.installCommands)) {
+      throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
+    }
+    for (const cmd of pmObj.installCommands) {
+      if (
+        !cmd ||
+        typeof cmd !== "object" ||
+        typeof cmd.executable !== "string" ||
+        !Array.isArray(cmd.args) ||
+        !cmd.args.every((a: unknown) => typeof a === "string")
+      ) {
+        throw new Error('Invalid Python environment: malformed "installCommands" item');
+      }
+    }
+  }
+}
+
+function validatePythonEnvironment(python: unknown): void {
+  if (!python || typeof python !== "object") {
+    throw new Error('Invalid environment: missing or invalid "python" section');
+  }
+
+  const pyObj = python as Record<string, unknown>;
+
+  if (typeof pyObj.hasPythonSource !== "boolean") {
+    throw new Error('Invalid Python environment: "hasPythonSource" must be a boolean');
+  }
+
+  if (typeof pyObj.pythonVersion !== "string") {
+    throw new Error('Invalid Python environment: "pythonVersion" must be a string');
+  }
+
+  if (typeof pyObj.ruffVersion !== "string") {
+    throw new Error('Invalid Python environment: "ruffVersion" must be a string');
+  }
+
+  if (pyObj.pmInfo !== null && pyObj.pmInfo !== undefined) {
+    validatePythonPmInfo(pyObj.pmInfo);
+  }
+}
+
 /**
  * Validation
  * Basic sanity check on resolved aggregate environment before returning.
  */
 export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironment {
-  const js = env?.js;
-  if (!js || !isSupportedRuntime(js.runtime)) {
-    throw new Error(`Invalid resolved runtime: "${js?.runtime}"`);
+  if (!env || typeof env !== "object") {
+    throw new Error("Invalid environment: must be a non-null object");
   }
-  if (!js.pm || !js.pm.name || !js.pm.version) {
-    throw new Error(`Invalid resolved package manager: ${JSON.stringify(js?.pm)}`);
-  }
-  if (typeof js.nodeVersion !== "string" || typeof js.bunVersion !== "string") {
-    throw new Error(`Invalid resolved versions: node="${js.nodeVersion}", bun="${js.bunVersion}"`);
-  }
-  validateRuntimePackageManagerCompatibility(js.runtime, js.pm.name);
+
+  validateJsEnvironment(env.js);
+  validatePythonEnvironment(env.python);
+
   return env;
 }
 
