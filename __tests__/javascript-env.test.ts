@@ -2,15 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as core from "@actions/core";
 import {
+  DEFAULT_BUN_VERSION,
+  DEFAULT_NODE_VERSION,
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
+  getDevEngineRuntimeVersion,
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
   sanitizePackageManager,
   selectAutofixScripts,
 } from "../src/javascript-env";
+
+vi.mock("@actions/core");
 
 describe("javascript-env", () => {
   const originalCwd = process.cwd();
@@ -151,6 +157,117 @@ describe("javascript-env", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+    });
+
+    it("should log a core warning when multiple conflicting lockfiles exist in workspace while using deterministic precedence", () => {
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Multiple conflicting lockfiles found (pnpm-lock.yaml, package-lock.json, bun lockfile). Selecting 'pnpm-lock.yaml' (pnpm) based on priority precedence.",
+      );
+    });
+
+    it("should parse devEngines runtime declarations without explicit version and return default runtime versions", () => {
+      const pkgWithoutVersions = {
+        devEngines: {
+          runtime: ["NODE", " bun "],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgWithoutVersions, "node")).toBe(DEFAULT_NODE_VERSION);
+      expect(getDevEngineRuntimeVersion(pkgWithoutVersions, "bun")).toBe(DEFAULT_BUN_VERSION);
+
+      const pkgObjectsWithoutVersions = {
+        devEngines: {
+          runtime: [{ name: "NODE" }, { name: "bun" }],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "node")).toBe(DEFAULT_NODE_VERSION);
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "bun")).toBe(DEFAULT_BUN_VERSION);
+    });
+
+    it("should handle malformed explicit runtime version specifiers by warning and returning undefined instead of defaulting", () => {
+      const pkgMalformedStrings = {
+        devEngines: {
+          runtime: ["node@", "bun:"],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "bun")).toBeUndefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        'Malformed node runtime version specifier in package.json devEngines: "node@".',
+      );
+      expect(core.warning).toHaveBeenCalledWith(
+        'Malformed bun runtime version specifier in package.json devEngines: "bun:".',
+      );
+
+      const pkgMalformedObjects = {
+        devEngines: {
+          runtime: [{ name: "node", version: "   " }, { name: "bun", version: "" }],
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgMalformedObjects, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgMalformedObjects, "bun")).toBeUndefined();
+
+      const pkgDirectMalformed = {
+        devEngines: {
+          node: "node@",
+          bun: { version: "" },
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgDirectMalformed, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgDirectMalformed, "bun")).toBeUndefined();
+    });
+
+    it("should ignore unrelated runtime declarations and empty/whitespace values", () => {
+      const pkgUnrelated = {
+        devEngines: {
+          runtime: ["nodedev@1.0.0", "bunyan@2.0.0", "", "   "],
+          node: "   ",
+        },
+      };
+      expect(getDevEngineRuntimeVersion(pkgUnrelated, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(pkgUnrelated, "bun")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion(undefined, "node")).toBeUndefined();
+      expect(getDevEngineRuntimeVersion({}, "node")).toBeUndefined();
+    });
+
+    it("should strictly enforce packageManager precedence: packageManager field > devEngines > lockfile", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          packageManager: "npm@11.0.0",
+          devEngines: { packageManager: "bun@1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      // Should pick explicit packageManager field, not lockfile or devEngines
+      expect(pm).toEqual({ name: "npm", version: "11.0.0" });
+    });
+
+    it("should enforce devEngines.packageManager precedence over lockfiles when packageManager field is absent", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          devEngines: { packageManager: "bun@1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      // Should pick devEngines.packageManager over lockfile
+      expect(pm).toEqual({ name: "bun", version: "1.4.0" });
     });
 
     it("should default to npm if no packageManager or lockfile is found", () => {
