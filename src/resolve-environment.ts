@@ -8,13 +8,11 @@ import {
   DEFAULT_NPM_VERSION,
   DEFAULT_PNPM_VERSION,
   hasVitePlusDependency,
-  inspectJsProjectEnvironment,
   isSupportedPackageManager,
   isSupportedRuntime,
   parseEnvironmentInputs,
   resolveBunVersion,
   resolveJsEnvironment,
-  resolveJsPackageManager,
   resolveNodeVersion,
   resolveRuntime,
   resolveToolchain,
@@ -101,22 +99,6 @@ export interface ResolvedEnvironment {
 }
 
 /**
- * Project Environment Inspection
- * Inspects raw project state from workspace files and configurations.
- */
-export function inspectProjectEnvironment(cwd: string = process.cwd()): ProjectEnvironment {
-  return inspectJsProjectEnvironment(cwd);
-}
-
-/**
- * Package Manager Resolution
- * Resolves final package manager and version given project environment state.
- */
-export function resolvePackageManager(project: ProjectEnvironment): PackageManager {
-  return resolveJsPackageManager(project);
-}
-
-/**
  * Validation
  * Basic sanity check on resolved environment before returning.
  */
@@ -141,17 +123,8 @@ export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironme
  * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
  */
 export function writeOutput(env: ResolvedEnvironment): void {
-  const js = env.js || {
-    hasJsProject: inspectJsProjectEnvironment().hasPackageJson,
-    project: inspectJsProjectEnvironment(),
-    pm: env.pm,
-    runtime: env.runtime,
-    nodeVersion: env.nodeVersion,
-    bunVersion: env.bunVersion,
-    toolchain: env.toolchain,
-  };
-
-  const python = env.python || resolvePythonEnvironment();
+  const js = env.js;
+  const python = env.python;
   const hasJsProject = js.hasJsProject;
 
   const nodeSetup = setupNode(env);
