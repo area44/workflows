@@ -409,6 +409,79 @@ function parseDevEngineRuntimeItem(
   return undefined;
 }
 
+function getDevEngineRuntimeListVersion(
+  pkg: JsPackageManifest,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  if (!pkg.devEngines.runtime) return undefined;
+
+  const runtimes = Array.isArray(pkg.devEngines.runtime)
+    ? pkg.devEngines.runtime
+    : [pkg.devEngines.runtime];
+
+  for (const r of runtimes) {
+    const parsed = parseDevEngineRuntimeItem(r, runtimeName, defaultVersion);
+    if (parsed !== undefined) return parsed;
+  }
+
+  return undefined;
+}
+
+function parseDirectEngineString(
+  trimmed: string,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  const parsed = parseDevEngineRuntimeString(trimmed, runtimeName, defaultVersion);
+  if (parsed !== undefined) return parsed;
+  if (new RegExp(`^(?:${runtimeName})[@:\\s]`, "i").test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function parseDirectEngineObject(
+  obj: Record<string, unknown>,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  if (obj.version === undefined || obj.version === null) {
+    return defaultVersion;
+  }
+  const verStr =
+    typeof obj.version === "string" || typeof obj.version === "number"
+      ? String(obj.version).trim()
+      : "";
+  if (!verStr) {
+    core.warning(
+      `Malformed ${runtimeName} runtime version specifier in package.json devEngines.${runtimeName}: version is empty.`,
+    );
+    return undefined;
+  }
+  return verStr;
+}
+
+function getDevEngineDirectRuntimeVersion(
+  pkg: JsPackageManifest,
+  runtimeName: "node" | "bun",
+  defaultVersion: string,
+): string | undefined {
+  const directEngine = pkg.devEngines[runtimeName];
+  if (typeof directEngine === "string") {
+    const trimmed = directEngine.trim();
+    return trimmed ? parseDirectEngineString(trimmed, runtimeName, defaultVersion) : undefined;
+  }
+  if (typeof directEngine === "object" && directEngine !== null) {
+    return parseDirectEngineObject(
+      directEngine as Record<string, unknown>,
+      runtimeName,
+      defaultVersion,
+    );
+  }
+  return undefined;
+}
+
 export function getDevEngineRuntimeVersion(
   pkg: JsPackageManifest | undefined,
   runtimeName: "node" | "bun",
@@ -417,46 +490,10 @@ export function getDevEngineRuntimeVersion(
 
   const defaultVersion = runtimeName === "bun" ? DEFAULT_BUN_VERSION : DEFAULT_NODE_VERSION;
 
-  if (pkg.devEngines.runtime) {
-    const runtimes = Array.isArray(pkg.devEngines.runtime)
-      ? pkg.devEngines.runtime
-      : [pkg.devEngines.runtime];
-    for (const r of runtimes) {
-      const parsed = parseDevEngineRuntimeItem(r, runtimeName, defaultVersion);
-      if (parsed !== undefined) return parsed;
-    }
-  }
-
-  const directEngine = pkg.devEngines[runtimeName];
-  if (typeof directEngine === "string") {
-    const trimmed = directEngine.trim();
-    if (!trimmed) return undefined;
-    const parsed = parseDevEngineRuntimeString(trimmed, runtimeName, defaultVersion);
-    if (parsed !== undefined) return parsed;
-    if (new RegExp(`^(?:${runtimeName})[@:\\s]`, "i").test(trimmed)) {
-      return undefined;
-    }
-    return trimmed;
-  }
-  if (typeof directEngine === "object" && directEngine !== null) {
-    const obj = directEngine as Record<string, unknown>;
-    if (obj.version === undefined || obj.version === null) {
-      return defaultVersion;
-    }
-    const verStr =
-      typeof obj.version === "string" || typeof obj.version === "number"
-        ? String(obj.version).trim()
-        : "";
-    if (!verStr) {
-      core.warning(
-        `Malformed ${runtimeName} runtime version specifier in package.json devEngines.${runtimeName}: version is empty.`,
-      );
-      return undefined;
-    }
-    return verStr;
-  }
-
-  return undefined;
+  return (
+    getDevEngineRuntimeListVersion(pkg, runtimeName, defaultVersion) ??
+    getDevEngineDirectRuntimeVersion(pkg, runtimeName, defaultVersion)
+  );
 }
 
 export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
