@@ -85,6 +85,26 @@ function validateJsEnvironment(js: unknown): void {
   validateRuntimePackageManagerCompatibility(runtime, pm.name);
 }
 
+function validateInstallCommands(commands: unknown): void {
+  if (!Array.isArray(commands)) {
+    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
+  }
+
+  for (const cmd of commands) {
+    if (!cmd || typeof cmd !== "object") {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+    const item = cmd as Record<string, unknown>;
+    if (
+      typeof item.executable !== "string" ||
+      !Array.isArray(item.args) ||
+      !item.args.every((a: unknown) => typeof a === "string")
+    ) {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+  }
+}
+
 function validatePythonPmInfo(pmInfo: unknown): void {
   if (!pmInfo || typeof pmInfo !== "object") {
     throw new Error('Invalid Python environment: "pmInfo" must be an object when present');
@@ -116,20 +136,7 @@ function validatePythonPmInfo(pmInfo: unknown): void {
   }
 
   if (pmObj.installCommands !== undefined) {
-    if (!Array.isArray(pmObj.installCommands)) {
-      throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
-    }
-    for (const cmd of pmObj.installCommands) {
-      if (
-        !cmd ||
-        typeof cmd !== "object" ||
-        typeof cmd.executable !== "string" ||
-        !Array.isArray(cmd.args) ||
-        !cmd.args.every((a: unknown) => typeof a === "string")
-      ) {
-        throw new Error('Invalid Python environment: malformed "installCommands" item');
-      }
-    }
+    validateInstallCommands(pmObj.installCommands);
   }
 }
 
