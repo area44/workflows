@@ -11,9 +11,19 @@ import {
   getDevEngineRuntimeVersion,
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
+  isSupportedPackageManager,
+  isSupportedRuntime,
+  parseEnvironmentInputs,
+  resolveBunVersion,
+  resolveJsEnvironment,
   resolveJsPackageManager,
+  resolveNodeVersion,
+  resolveRuntime,
+  resolveToolchain,
+  resolveVersions,
   sanitizePackageManager,
   selectAutofixScripts,
+  validateRuntimePackageManagerCompatibility,
 } from "../src/javascript-env";
 
 vi.mock("@actions/core");
@@ -24,7 +34,10 @@ describe("javascript-env", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    tempDir = path.join(originalCwd, "__tests__/fixtures/temp-js-env-" + Math.random().toString(36).substring(2, 9));
+    tempDir = path.join(
+      originalCwd,
+      "__tests__/fixtures/temp-js-env-" + Math.random().toString(36).substring(2, 9),
+    );
     fs.mkdirSync(tempDir, { recursive: true });
     process.chdir(tempDir);
   });
@@ -34,6 +47,341 @@ describe("javascript-env", () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  describe("resolveJsEnvironment", () => {
+    it("should resolve full JS environment for a project with package.json and pnpm lockfile", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "my-app", packageManager: "pnpm@9.1.0" }),
+      );
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(true);
+      expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(res.runtime).toBe("node");
+      expect(res.nodeVersion).toBe("20.10.0");
+      expect(res.toolchain).toBe("vite");
+    });
+  });
+
+  describe("isSupportedRuntime & validateRuntimePackageManagerCompatibility", () => {
+    it("should identify supported runtimes", () => {
+      expect(isSupportedRuntime("node")).toBe(true);
+      expect(isSupportedRuntime("bun")).toBe(true);
+      expect(isSupportedRuntime("deno")).toBe(false);
+      expect(isSupportedRuntime("python")).toBe(false);
+    });
+
+    it("should validate valid runtime and package manager combinations", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("node", "npm")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("node", "pnpm")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("node", "bun")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "bun")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "pnpm")).not.toThrow();
+    });
+
+    it("should throw for unsupported runtime", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("deno", "npm")).toThrow(
+        'Unsupported runtime "deno"',
+      );
+    });
+
+    it("should throw for unsupported package manager", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("node", "yarn")).toThrow(
+        'Unsupported package manager "yarn"',
+      );
+    });
+
+    it("should throw when bun runtime is paired with npm", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "npm")).toThrow(
+        "Bun runtime does not support npm package manager",
+      );
+    });
+  });
+
+  describe("parseEnvironmentInputs", () => {
+    describe("valid runtime inputs", () => {
+      it("should return empty object for empty or whitespace-only input", () => {
+        expect(parseEnvironmentInputs("")).toEqual({});
+        expect(parseEnvironmentInputs("   ")).toEqual({});
+      });
+
+      it("should parse explicit node runtime without version", () => {
+        expect(parseEnvironmentInputs("node")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: undefined,
+          bunVersion: undefined,
+        });
+      });
+
+      it("should parse explicit bun runtime without version", () => {
+        expect(parseEnvironmentInputs("bun")).toEqual({
+          specifiedRuntime: "bun",
+          nodeVersion: undefined,
+          bunVersion: DEFAULT_BUN_VERSION,
+        });
+      });
+
+      it("should parse explicit node version string", () => {
+        expect(parseEnvironmentInputs("node@22")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: "22",
+          bunVersion: undefined,
+        });
+      });
+
+      it("should parse explicit bun version string", () => {
+        expect(parseEnvironmentInputs("bun@1.4")).toEqual({
+          specifiedRuntime: "bun",
+          nodeVersion: undefined,
+          bunVersion: "1.4",
+        });
+      });
+
+      it("should parse multi-runtime specifier with comma or space", () => {
+        expect(parseEnvironmentInputs("node@24,bun@1.4")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: "24",
+          bunVersion: "1.4",
+        });
+
+        expect(parseEnvironmentInputs("bun@1.4, node@24")).toEqual({
+          specifiedRuntime: "bun",
+          nodeVersion: "24",
+          bunVersion: "1.4",
+        });
+
+        expect(parseEnvironmentInputs("node, bun")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: undefined,
+          bunVersion: DEFAULT_BUN_VERSION,
+        });
+      });
+
+      it("should parse both keyword", () => {
+        expect(parseEnvironmentInputs("both")).toEqual({
+          specifiedRuntime: undefined,
+          nodeVersion: undefined,
+          bunVersion: DEFAULT_BUN_VERSION,
+        });
+      });
+
+      it("should support mixed-case and whitespace-padded inputs", () => {
+        expect(parseEnvironmentInputs("  NODE@24  ")).toEqual({
+          specifiedRuntime: "node",
+          nodeVersion: "24",
+          bunVersion: undefined,
+        });
+
+        expect(parseEnvironmentInputs("Bun@1.4 , Node@22")).toEqual({
+          specifiedRuntime: "bun",
+          nodeVersion: "22",
+          bunVersion: "1.4",
+        });
+
+        expect(parseEnvironmentInputs("BOTH")).toEqual({
+          specifiedRuntime: undefined,
+          nodeVersion: undefined,
+          bunVersion: DEFAULT_BUN_VERSION,
+        });
+      });
+    });
+
+    describe("invalid and malformed runtime inputs", () => {
+      it("should reject unknown runtime names without echoing raw input", () => {
+        const rawInput = "deno_secret_token_12345";
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs(rawInput);
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain(rawInput);
+        expect(err?.message).toBe(
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        );
+      });
+
+      it("should reject prefix or partial runtime matches without echoing raw input", () => {
+        const rawInput = "node18_secret_token";
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs(rawInput);
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain(rawInput);
+        expect(err?.message).toBe(
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        );
+      });
+
+      it("should reject malformed version syntax without echoing raw input", () => {
+        const rawInputWithToken = "node@20@22?secret=token_12345";
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs(rawInputWithToken);
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain("token_12345");
+        expect(err?.message).not.toContain(rawInputWithToken);
+        expect(err?.message).toBe(
+          'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        );
+      });
+
+      it("should reject malformed comma formatting without echoing raw input", () => {
+        const rawInput = ",node,secret_token";
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs(rawInput);
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain("secret_token");
+        expect(err?.message).not.toContain(rawInput);
+        expect(err?.message).toBe(
+          'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        );
+      });
+
+      it("should reject duplicate or conflicting specifiers without echoing full raw input", () => {
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs("node@20, node@22");
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain("node@20");
+        expect(err?.message).toBe(
+          'Invalid runtime input: duplicate or conflicting specifiers for "node".',
+        );
+
+        expect(() => parseEnvironmentInputs("bun@1.2, bun@1.4")).toThrow(
+          'Invalid runtime input: duplicate or conflicting specifiers for "bun".',
+        );
+        expect(() => parseEnvironmentInputs("both, both")).toThrow(
+          'Invalid runtime input: duplicate or conflicting specifiers for "both".',
+        );
+      });
+
+      it("should reject mixed valid and invalid runtime specifiers without echoing raw input", () => {
+        const rawInput = "node@24, deno_token_secret";
+        let err: Error | undefined;
+        try {
+          parseEnvironmentInputs(rawInput);
+        } catch (e) {
+          err = e as Error;
+        }
+        expect(err).toBeDefined();
+        expect(err?.message).not.toContain("deno_token_secret");
+        expect(err?.message).not.toContain(rawInput);
+      });
+
+      it("should sanitize sensitive values in malformed or unrecognized runtime input error messages", () => {
+        const sensitiveToken = "ghp_1234567890abcdefghijklmnopqrstuv";
+        const inputWithToken = `node@24, invalid_specifier?token=${sensitiveToken}`;
+        let caughtError: Error | undefined;
+        try {
+          parseEnvironmentInputs(inputWithToken);
+        } catch (err) {
+          caughtError = err as Error;
+        }
+        expect(caughtError).toBeDefined();
+        expect(caughtError?.message).not.toContain(sensitiveToken);
+        expect(caughtError?.message).not.toContain("invalid_specifier");
+        expect(caughtError?.message).toBe(
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        );
+      });
+    });
+  });
+
+  describe("resolveToolchain", () => {
+    it("should resolve toolchain correctly and sanitize unknown toolchain inputs", () => {
+      expect(resolveToolchain("vite")).toBe("vite");
+      expect(resolveToolchain("vite-plus")).toBe("vite-plus");
+      expect(resolveToolchain("auto")).toBe("vite");
+
+      const sensitiveToolchainInput = "invalid_toolchain_token_xyz123";
+      let err: Error | undefined;
+      try {
+        resolveToolchain(sensitiveToolchainInput);
+      } catch (e) {
+        err = e as Error;
+      }
+      expect(err).toBeDefined();
+      expect(err?.message).not.toContain(sensitiveToolchainInput);
+      expect(err?.message).toBe(
+        'Invalid toolchain input: unsupported value. Supported values are "auto", "vite", or "vite-plus".',
+      );
+    });
+  });
+
+  describe("resolveRuntime", () => {
+    it("should prioritize specifiedRuntime over package manager", () => {
+      expect(
+        resolveRuntime({ specifiedRuntime: "node" }, { name: "bun", version: "1.4" }),
+      ).toBe("node");
+      expect(
+        resolveRuntime({ specifiedRuntime: "bun" }, { name: "pnpm", version: "12" }),
+      ).toBe("bun");
+    });
+
+    it("should resolve bun runtime when package manager is bun and no specifiedRuntime is provided", () => {
+      expect(resolveRuntime({}, { name: "bun", version: "1.4" })).toBe("bun");
+    });
+
+    it("should resolve node runtime when package manager is npm or pnpm and no specifiedRuntime is provided", () => {
+      expect(resolveRuntime({}, { name: "npm", version: "12" })).toBe("node");
+      expect(resolveRuntime({}, { name: "pnpm", version: "12" })).toBe("node");
+    });
+  });
+
+  describe("resolveNodeVersion & resolveBunVersion & resolveVersions", () => {
+    it("should resolve node and bun versions based on project state and precedence", () => {
+      const project = {
+        hasPackageJson: true,
+        nvmRcVersion: "20.10.0",
+        nodeFileVersion: "22.0.0",
+        bunFileVersion: "1.2.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      const pm = { name: "npm", version: "12" };
+
+      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.10.0");
+      expect(resolveBunVersion({}, pm, project)).toBe("1.2.0");
+
+      const versions = resolveVersions({ nodeVersion: "24" }, pm, "node", project);
+      expect(versions).toEqual({ nodeVersion: "24", bunVersion: "1.2.0" });
+    });
+
+    it("should fall back to defaults when no version files or configs exist", () => {
+      const emptyProject = {
+        hasPackageJson: false,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+
+      expect(resolveNodeVersion({}, { name: "npm", version: "12" }, "node", emptyProject)).toBe(
+        DEFAULT_NODE_VERSION,
+      );
+      expect(resolveBunVersion({}, { name: "bun", version: "1.4" }, emptyProject)).toBe(
+        DEFAULT_BUN_VERSION,
+      );
+    });
   });
 
   describe("sanitizePackageManager", () => {
@@ -111,7 +459,9 @@ describe("javascript-env", () => {
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson).toBeUndefined();
-      expect(env.packageJsonError).toContain("Failed to read package.json: EACCES: permission denied");
+      expect(env.packageJsonError).toContain(
+        "Failed to read package.json: EACCES: permission denied",
+      );
       expect(env.packageJsonErrorType).toBe("read");
       expect(env.packageJsonErrorCause).toBeDefined();
     });
@@ -119,14 +469,20 @@ describe("javascript-env", () => {
 
   describe("resolveJsPackageManager", () => {
     it("should resolve packageManager field from package.json", () => {
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "pnpm@9.5.0" }));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@9.5.0" }),
+      );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
     });
 
     it("should trim whitespace and normalize uppercase in packageManager field", () => {
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "  PNPM@9.5.0  " }));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "  PNPM@9.5.0  " }),
+      );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
@@ -187,8 +543,12 @@ describe("javascript-env", () => {
           runtime: [{ name: "NODE" }, { name: "bun" }],
         },
       };
-      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "node")).toBe(DEFAULT_NODE_VERSION);
-      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "bun")).toBe(DEFAULT_BUN_VERSION);
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "node")).toBe(
+        DEFAULT_NODE_VERSION,
+      );
+      expect(getDevEngineRuntimeVersion(pkgObjectsWithoutVersions, "bun")).toBe(
+        DEFAULT_BUN_VERSION,
+      );
     });
 
     it("should handle malformed explicit runtime version specifiers by warning and returning undefined instead of defaulting", () => {
@@ -200,10 +560,10 @@ describe("javascript-env", () => {
       expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "node")).toBeUndefined();
       expect(getDevEngineRuntimeVersion(pkgMalformedStrings, "bun")).toBeUndefined();
       expect(core.warning).toHaveBeenCalledWith(
-        'Malformed node runtime version specifier in package.json devEngines: "node@".',
+        "Malformed node runtime version specifier in package.json devEngines.",
       );
       expect(core.warning).toHaveBeenCalledWith(
-        'Malformed bun runtime version specifier in package.json devEngines: "bun:".',
+        "Malformed bun runtime version specifier in package.json devEngines.",
       );
 
       const pkgMalformedObjects = {
@@ -277,7 +637,10 @@ describe("javascript-env", () => {
     });
 
     it("should throw an Error if an unsupported package manager is specified in packageManager field", () => {
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ packageManager: "yarn@3.0.0" }));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "yarn@3.0.0" }),
+      );
       const project = inspectJsProjectEnvironment(tempDir);
       expect(() => resolveJsPackageManager(project)).toThrow(Error);
       expect(() => resolveJsPackageManager(project)).toThrow(/Unsupported package manager 'yarn'/);
@@ -287,7 +650,14 @@ describe("javascript-env", () => {
   describe("getJsInstallationPlan", () => {
     const planCases = [
       { pm: "npm", expected: { packageManager: "npm", command: "npm", args: ["install"] } },
-      { pm: "pnpm", expected: { packageManager: "pnpm", command: "pnpm", args: ["install", "--no-frozen-lockfile"] } },
+      {
+        pm: "pnpm",
+        expected: {
+          packageManager: "pnpm",
+          command: "pnpm",
+          args: ["install", "--no-frozen-lockfile"],
+        },
+      },
       { pm: "bun", expected: { packageManager: "bun", command: "bun", args: ["install"] } },
     ];
 
@@ -300,7 +670,9 @@ describe("javascript-env", () => {
     it("should throw Error for unsupported package manager", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       expect(() => getJsInstallationPlan(project, "yarn")).toThrow(Error);
-      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(/Unsupported package manager 'yarn'/);
+      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(
+        /Unsupported package manager 'yarn'/,
+      );
     });
   });
 

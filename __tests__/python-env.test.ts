@@ -10,12 +10,33 @@ import {
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
+  resolvePythonEnvironment,
   resolvePythonVersion,
   resolveRuffVersion,
 } from "../src/python-env.js";
 
 describe("Python Package Manager Detection & Ruff Version Resolution", () => {
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
+
+  describe("resolvePythonEnvironment()", () => {
+    it("should return hasPythonSource=false and empty fields when no python source exists", () => {
+      const resolved = resolvePythonEnvironment(path.join(fixturesDir, "none"));
+      expect(resolved).toEqual({
+        hasPythonSource: false,
+        pythonVersion: "",
+        ruffVersion: "",
+        pmInfo: null,
+      });
+    });
+
+    it("should resolve python version, package manager, and ruff version when python source exists", () => {
+      const resolved = resolvePythonEnvironment(path.join(fixturesDir, "uv"));
+      expect(resolved.hasPythonSource).toBe(true);
+      expect(resolved.pythonVersion).toBe("3.12");
+      expect(resolved.ruffVersion).toBe("");
+      expect(resolved.pmInfo?.name).toBe("uv");
+    });
+  });
 
   describe("hasPythonSource()", () => {
     it("should return true when .py file exists in directory", () => {

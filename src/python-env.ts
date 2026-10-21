@@ -55,6 +55,13 @@ export interface PythonPackageManagerInfo {
   isStandalone?: boolean;
 }
 
+export interface ResolvedPythonEnvironment {
+  hasPythonSource: boolean;
+  pythonVersion: string;
+  ruffVersion: string;
+  pmInfo: PythonPackageManagerInfo | null;
+}
+
 export function parsePythonVersionFromConstraint(raw: string): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
@@ -465,4 +472,27 @@ export function isRuffDeclaredInProject(
   }
 
   return false;
+}
+
+/**
+ * Cohesive Python environment resolution entry point.
+ */
+export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedPythonEnvironment {
+  const pySourcePresent = hasPythonSource(cwd);
+
+  if (!pySourcePresent) {
+    return {
+      hasPythonSource: false,
+      pythonVersion: "",
+      ruffVersion: "",
+      pmInfo: null,
+    };
+  }
+
+  return {
+    hasPythonSource: true,
+    pythonVersion: resolvePythonVersion(cwd),
+    ruffVersion: resolveRuffVersion(cwd),
+    pmInfo: detectPythonPackageManager(cwd),
+  };
 }
