@@ -91,10 +91,52 @@ describe("resolve-environment", () => {
       expect(validateEnvironment(valid)).toEqual(valid);
     });
 
-    it("should validate a valid Python environment with pmInfo: null", () => {
+    it("should validate a valid Python environment with pmInfo: null when hasPythonSource is false", () => {
       const valid = createValidEnvironment();
+      valid.python.hasPythonSource = false;
+      valid.python.pythonVersion = "";
+      valid.python.ruffVersion = "";
       valid.python.pmInfo = null;
       expect(validateEnvironment(valid)).toEqual(valid);
+    });
+
+    it("should reject hasPythonSource: false with non-null pmInfo", () => {
+      const env = createValidEnvironment();
+      env.python.hasPythonSource = false;
+      env.python.pythonVersion = "";
+      env.python.ruffVersion = "";
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo" must be null when hasPythonSource is false',
+      );
+    });
+
+    it("should reject hasPythonSource: false with non-empty pythonVersion or ruffVersion", () => {
+      const env1 = createValidEnvironment();
+      env1.python.hasPythonSource = false;
+      env1.python.pythonVersion = "3.12";
+      env1.python.ruffVersion = "";
+      env1.python.pmInfo = null;
+      expect(() => validateEnvironment(env1)).toThrow(
+        'Invalid Python environment: "pythonVersion" must be empty string when hasPythonSource is false',
+      );
+
+      const env2 = createValidEnvironment();
+      env2.python.hasPythonSource = false;
+      env2.python.pythonVersion = "";
+      env2.python.ruffVersion = "0.4.2";
+      env2.python.pmInfo = null;
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: "ruffVersion" must be empty string when hasPythonSource is false',
+      );
+    });
+
+    it("should reject hasPythonSource: true with pmInfo: null", () => {
+      const env = createValidEnvironment();
+      env.python.hasPythonSource = true;
+      env.python.pmInfo = null;
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid Python environment: "pmInfo" cannot be null when hasPythonSource is true',
+      );
     });
 
     it("should reject missing pmInfo property", () => {
@@ -135,8 +177,8 @@ describe("resolve-environment", () => {
       },
     );
 
-    it("should validate legitimate resolver output when no Python package manager is detected", () => {
-      const tempDir = path.join(fixturesDir, "no-python-pm-validation-temp");
+    it("should validate legitimate resolver output for standalone Python source without manifest", () => {
+      const tempDir = path.join(fixturesDir, "standalone-pm-validation-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "script.py"), "print('hello')\n");
 
@@ -144,11 +186,13 @@ describe("resolve-environment", () => {
       try {
         const env = resolveEnvironment();
         expect(env.python.hasPythonSource).toBe(true);
-        expect(env.python.pmInfo).not.toBeNull();
-        expect(env.python.pmInfo?.name).toBe("pip");
+        expect(env.python.pmInfo).toEqual({
+          name: "pip",
+          installCommands: [],
+          execPrefix: "",
+          isStandalone: true,
+        });
 
-        // Force pmInfo to null to test resolver output with pmInfo null
-        env.python.pmInfo = null;
         expect(() => validateEnvironment(env)).not.toThrow();
       } finally {
         process.chdir(originalCwd);
@@ -263,6 +307,23 @@ describe("resolve-environment", () => {
       );
     });
 
+    it("should reject inconsistent standalone metadata in pmInfo", () => {
+      const env1 = createValidEnvironment();
+      env1.python.pmInfo!.isStandalone = true;
+      // installCommands is non-empty
+      expect(() => validateEnvironment(env1)).toThrow(
+        'Invalid Python environment: standalone "pmInfo" must have empty installCommands array',
+      );
+
+      const env2 = createValidEnvironment();
+      env2.python.pmInfo!.isStandalone = true;
+      env2.python.pmInfo!.installCommands = [];
+      env2.python.pmInfo!.lockfile = "uv.lock";
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: standalone "pmInfo" cannot specify lockfile or configFile',
+      );
+    });
+
     it("should throw error for malformed installCommands in pmInfo", () => {
       const env = createValidEnvironment();
       (env.python.pmInfo as any).installCommands = "uv sync";
@@ -366,6 +427,7 @@ describe("resolve-environment", () => {
         JSON.stringify({ name: "mixed-app", packageManager: "pnpm@9.0.0" }),
       );
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'mixed-app'\n");
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "");
 

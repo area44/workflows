@@ -112,8 +112,31 @@ export async function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
 ): Promise<void> {
+  if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
+    throw new Error('Invalid Python environment: "pmInfo" must be an object');
+  }
+
+  if (pmInfo.name !== "uv" && pmInfo.name !== "pip") {
+    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  }
+
   if (!Array.isArray(pmInfo.installCommands)) {
     throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
+  }
+
+  for (const cmd of pmInfo.installCommands) {
+    if (!cmd || typeof cmd !== "object") {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+    const item = cmd as unknown as Record<string, unknown>;
+    if (
+      typeof item.executable !== "string" ||
+      !item.executable.trim() ||
+      !Array.isArray(item.args) ||
+      !item.args.every((a: unknown) => typeof a === "string")
+    ) {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
   }
 
   core.info(`Detected Python package manager: ${pmInfo.name}`);

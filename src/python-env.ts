@@ -174,7 +174,25 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
   const hasUvConfig = pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "uv");
   if (!hasUvLock && !hasUvConfig) return null;
 
+  const hasPyproject = pyprojectContent !== undefined;
   const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
+
+  if (hasUvLock && !hasPyproject) {
+    if (hasReqs) {
+      return {
+        name: "uv",
+        lockfile: "uv.lock",
+        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+        lockCommand: "uv lock",
+        syncCommand: "uv sync",
+        execPrefix: "uv run",
+      };
+    }
+    throw new Error(
+      "Invalid Python project configuration: 'uv.lock' was detected without 'pyproject.toml' or 'requirements.txt'. 'uv sync' requires a valid 'pyproject.toml' file.",
+    );
+  }
+
   const installCommands: PythonInstallCommand[] = hasUvLock
     ? [{ executable: "uv", args: ["sync"] }]
     : hasReqs

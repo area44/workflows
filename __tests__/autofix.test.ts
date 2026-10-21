@@ -534,16 +534,75 @@ describe("autofix", () => {
       }
     });
 
+    it("should throw Error when pmInfo is null, non-object, or has unsupported package manager name", async () => {
+      await expect(executePythonWorkflow(null as any)).rejects.toThrow(
+        'Invalid Python environment: "pmInfo" must be an object',
+      );
+
+      await expect(executePythonWorkflow("pip" as any)).rejects.toThrow(
+        'Invalid Python environment: "pmInfo" must be an object',
+      );
+
+      await expect(
+        executePythonWorkflow({ name: "poetry", installCommands: [], execPrefix: "" } as any),
+      ).rejects.toThrow('Invalid Python environment: pmInfo name must be "uv" or "pip"');
+    });
+
     it("should throw Error when pmInfo.installCommands is missing or not an array", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
 
       await expect(
         executePythonWorkflow({
           name: "pip",
-          installCommand: "pip install --invalid-flag-syntax && rm -rf /",
           execPrefix: "",
         } as any),
       ).rejects.toThrow('Invalid Python environment: "pmInfo.installCommands" must be an array');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: "pip install -r requirements.txt",
+          execPrefix: "",
+        } as any),
+      ).rejects.toThrow('Invalid Python environment: "pmInfo.installCommands" must be an array');
+    });
+
+    it("should throw Error before execution when installCommands contains malformed item, blank executable, or non-string args", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "", args: ["install"] }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "   ", args: ["install"] }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "pip", args: "install" as any }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "pip", args: [123 as any] }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      expect(exec.exec).not.toHaveBeenCalled();
     });
 
     it("should pass arguments containing spaces unchanged when structured PythonInstallCommand is used", async () => {

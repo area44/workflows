@@ -137,6 +137,20 @@ function validatePythonPmInfo(pmInfo: unknown): void {
   }
 
   validateInstallCommands(pmObj.installCommands);
+
+  if (pmObj.isStandalone === true) {
+    const installCmds = pmObj.installCommands as unknown[];
+    if (installCmds.length > 0) {
+      throw new Error(
+        'Invalid Python environment: standalone "pmInfo" must have empty installCommands array',
+      );
+    }
+    if (pmObj.lockfile !== undefined || pmObj.configFile !== undefined) {
+      throw new Error(
+        'Invalid Python environment: standalone "pmInfo" cannot specify lockfile or configFile',
+      );
+    }
+  }
 }
 
 function validatePythonEnvironment(python: unknown): void {
@@ -162,7 +176,28 @@ function validatePythonEnvironment(python: unknown): void {
     throw new Error('Invalid Python environment: "pmInfo" property is required');
   }
 
-  if (pyObj.pmInfo !== null) {
+  if (!pyObj.hasPythonSource) {
+    if (pyObj.pmInfo !== null) {
+      throw new Error(
+        'Invalid Python environment: "pmInfo" must be null when hasPythonSource is false',
+      );
+    }
+    if (pyObj.pythonVersion !== "") {
+      throw new Error(
+        'Invalid Python environment: "pythonVersion" must be empty string when hasPythonSource is false',
+      );
+    }
+    if (pyObj.ruffVersion !== "") {
+      throw new Error(
+        'Invalid Python environment: "ruffVersion" must be empty string when hasPythonSource is false',
+      );
+    }
+  } else {
+    if (pyObj.pmInfo === null) {
+      throw new Error(
+        'Invalid Python environment: "pmInfo" cannot be null when hasPythonSource is true',
+      );
+    }
     validatePythonPmInfo(pyObj.pmInfo);
   }
 }
