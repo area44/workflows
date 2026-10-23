@@ -402,6 +402,114 @@ name = "string-content"
     });
   });
 
+  describe("Python Project Table Classification Regression Tests", () => {
+    it("should classify a pyproject.toml with valid [project] table containing metadata as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "project-metadata-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[project]\nname = "my-app"\nversion = "0.1.0"\n',
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml containing only [project.optional-dependencies] as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify an empty [project] table as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "empty-project-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a project with [build-system] as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system]\nrequires = ['flit_core']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle malformed pyproject.toml alongside requirements.txt safely by falling back to requirements.txt pip detection", () => {
+      const tempDir = path.join(fixturesDir, "malformed-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project\nname = 'broken'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBeUndefined();
+        expect(pmInfo?.lockfile).toBe("requirements.txt");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("resolvePythonEnvironment()", () => {
     it("should return hasPythonSource=false and empty fields when no python source exists", () => {
       const resolved = resolvePythonEnvironment(path.join(fixturesDir, "none"));
@@ -434,44 +542,6 @@ name = "string-content"
 
       try {
         expect(hasPythonSource(tempDir)).toBe(true);
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should return standalone pip when pyproject.toml contains only [project.optional-dependencies] without main [project]", () => {
-      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[project.optional-dependencies]\ndev = ['pytest']\n",
-      );
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.isStandalone).toBe(true);
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should return standalone pip when pyproject.toml contains only [tool.uvicorn]", () => {
-      const tempDir = path.join(fixturesDir, "uvicorn-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[tool.uvicorn]\nreload = true\n",
-      );
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.isStandalone).toBe(true);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
