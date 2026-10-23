@@ -353,14 +353,38 @@ function detectPip(
   };
 }
 
+function extractRuffVersionFromEntry(val: unknown): string | undefined {
+  if (typeof val === "string") {
+    return extractRuffVersionSpecifier(val);
+  }
+  if (isObject(val) && typeof val.version === "string") {
+    return extractRuffVersionSpecifier(val.version);
+  }
+  return undefined;
+}
+
+function findRuffVersionInObject(
+  obj: Record<string, unknown>,
+  keyPath: string[],
+): string | undefined {
+  for (const [key, val] of Object.entries(obj)) {
+    if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
+      continue;
+    }
+    if (key.toLowerCase() === "ruff") {
+      const ver = extractRuffVersionFromEntry(val);
+      if (ver) return ver;
+    }
+    const found = findRuffVersionInToml(val, [...keyPath, key]);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function findRuffVersionInToml(obj: unknown, keyPath: string[] = []): string | undefined {
   if (typeof obj === "string") {
-    if (/^ruff\b/i.test(obj)) {
-      return extractRuffVersionSpecifier(obj);
-    }
-    return undefined;
+    return /^ruff\b/i.test(obj) ? extractRuffVersionSpecifier(obj) : undefined;
   }
-
   if (Array.isArray(obj)) {
     for (const item of obj) {
       const found = findRuffVersionInToml(item, keyPath);
@@ -368,56 +392,37 @@ function findRuffVersionInToml(obj: unknown, keyPath: string[] = []): string | u
     }
     return undefined;
   }
-
   if (isObject(obj)) {
-    for (const [key, val] of Object.entries(obj)) {
-      if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
-        continue;
-      }
+    return findRuffVersionInObject(obj, keyPath);
+  }
+  return undefined;
+}
 
-      if (key.toLowerCase() === "ruff") {
-        if (typeof val === "string") {
-          const ver = extractRuffVersionSpecifier(val);
-          if (ver) return ver;
-        } else if (isObject(val) && typeof val.version === "string") {
-          const ver = extractRuffVersionSpecifier(val.version);
-          if (ver) return ver;
-        }
-      }
-
-      const found = findRuffVersionInToml(val, [...keyPath, key]);
-      if (found) return found;
+function hasRuffDeclarationInObject(obj: Record<string, unknown>, keyPath: string[]): boolean {
+  for (const [key, val] of Object.entries(obj)) {
+    if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
+      continue;
+    }
+    if (key.toLowerCase() === "ruff") {
+      return true;
+    }
+    if (hasRuffDeclarationInToml(val, [...keyPath, key])) {
+      return true;
     }
   }
-
-  return undefined;
+  return false;
 }
 
 function hasRuffDeclarationInToml(obj: unknown, keyPath: string[] = []): boolean {
   if (typeof obj === "string") {
     return /\bruff\b/i.test(obj);
   }
-
   if (Array.isArray(obj)) {
     return obj.some((item) => hasRuffDeclarationInToml(item, keyPath));
   }
-
   if (isObject(obj)) {
-    for (const [key, val] of Object.entries(obj)) {
-      if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
-        continue;
-      }
-
-      if (key.toLowerCase() === "ruff") {
-        return true;
-      }
-
-      if (hasRuffDeclarationInToml(val, [...keyPath, key])) {
-        return true;
-      }
-    }
+    return hasRuffDeclarationInObject(obj, keyPath);
   }
-
   return false;
 }
 
