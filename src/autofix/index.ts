@@ -15,7 +15,6 @@ import {
 import {
   detectPythonPackageManager,
   hasPythonSource,
-  type PythonInstallCommand,
   type PythonPackageManagerInfo,
 } from "../python-env.js";
 
@@ -92,36 +91,6 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   await executeJsScripts(scripts, pm, cwd);
 }
 
-function resolvePythonInstallCommands(pmInfo: PythonPackageManagerInfo): PythonInstallCommand[] {
-  if (pmInfo.installCommands && pmInfo.installCommands.length > 0) {
-    return pmInfo.installCommands;
-  }
-
-  const rawCmd = (pmInfo.installCommand || "").trim();
-  if (!rawCmd) return [];
-
-  if (rawCmd === "pip install -r requirements.txt && pip install -e .") {
-    return [
-      { executable: "pip", args: ["install", "-r", "requirements.txt"] },
-      { executable: "pip", args: ["install", "-e", "."] },
-    ];
-  }
-  if (rawCmd === "pip install -r requirements.txt") {
-    return [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
-  }
-  if (rawCmd === "pip install -e .") {
-    return [{ executable: "pip", args: ["install", "-e", "."] }];
-  }
-  if (rawCmd === "uv sync") {
-    return [{ executable: "uv", args: ["sync"] }];
-  }
-  if (rawCmd === "uv pip install -r requirements.txt") {
-    return [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }];
-  }
-
-  throw new Error(`Unsupported or malformed Python install command configuration: "${rawCmd}".`);
-}
-
 async function runPythonCommand(
   executable: string,
   args: string[],
@@ -139,10 +108,39 @@ async function runPythonCommand(
   }
 }
 
+function validatePythonWorkflowPmInfo(pmInfo: unknown): void {
+  if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
+    throw new Error('Invalid Python environment: "pmInfo" must be an object');
+  }
+  const obj = pmInfo as Record<string, unknown>;
+  if (obj.name !== "uv" && obj.name !== "pip") {
+    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  }
+  if (!Array.isArray(obj.installCommands)) {
+    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
+  }
+  for (const cmd of obj.installCommands) {
+    if (!cmd || typeof cmd !== "object") {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+    const item = cmd as Record<string, unknown>;
+    if (
+      typeof item.executable !== "string" ||
+      !item.executable.trim() ||
+      !Array.isArray(item.args) ||
+      !item.args.every((a: unknown) => typeof a === "string")
+    ) {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+  }
+}
+
 export async function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
 ): Promise<void> {
+  validatePythonWorkflowPmInfo(pmInfo);
+
   core.info(`Detected Python package manager: ${pmInfo.name}`);
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
@@ -154,16 +152,12 @@ export async function executePythonWorkflow(
     throw new Error(message);
   }
 
-  if (!pmInfo.isStandalone) {
-    const installCmds = resolvePythonInstallCommands(pmInfo);
-    if (installCmds.length > 0) {
-      const displayCmd =
-        pmInfo.installCommand ||
-        installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
-      core.info(`Installing Python dependencies: ${displayCmd}`);
-      for (const { executable, args } of installCmds) {
-        await runPythonCommand(executable, args, pmInfo.name, cwd);
-      }
+  if (!pmInfo.isStandalone && pmInfo.installCommands.length > 0) {
+    const installCmds = pmInfo.installCommands;
+    const displayCmd = installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
+    core.info(`Installing Python dependencies: ${displayCmd}`);
+    for (const { executable, args } of installCmds) {
+      await runPythonCommand(executable, args, pmInfo.name, cwd);
     }
   }
 }

@@ -85,22 +85,75 @@ function validateJsEnvironment(js: unknown): void {
   validateRuntimePackageManagerCompatibility(runtime, pm.name);
 }
 
+function validateInstallCommandItem(cmd: unknown): void {
+  if (!cmd || typeof cmd !== "object") {
+    throw new Error('Invalid Python environment: malformed "installCommands" item');
+  }
+  const item = cmd as Record<string, unknown>;
+  if (
+    typeof item.executable !== "string" ||
+    !item.executable.trim() ||
+    !Array.isArray(item.args) ||
+    !item.args.every((a: unknown) => typeof a === "string")
+  ) {
+    throw new Error('Invalid Python environment: malformed "installCommands" item');
+  }
+}
+
 function validateInstallCommands(commands: unknown): void {
   if (!Array.isArray(commands)) {
     throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
   }
-
   for (const cmd of commands) {
-    if (!cmd || typeof cmd !== "object") {
-      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    validateInstallCommandItem(cmd);
+  }
+}
+
+function validatePmInfoFields(pmObj: Record<string, unknown>): void {
+  if (pmObj.name !== "uv" && pmObj.name !== "pip") {
+    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  }
+  if (typeof pmObj.execPrefix !== "string") {
+    throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
+  }
+  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
+  for (const field of optionalStrings) {
+    if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
+      throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
     }
-    const item = cmd as Record<string, unknown>;
-    if (
-      typeof item.executable !== "string" ||
-      !Array.isArray(item.args) ||
-      !item.args.every((a: unknown) => typeof a === "string")
-    ) {
-      throw new Error('Invalid Python environment: malformed "installCommands" item');
+  }
+  if (pmObj.isStandalone !== undefined && typeof pmObj.isStandalone !== "boolean") {
+    throw new Error('Invalid Python environment: "pmInfo.isStandalone" must be a boolean');
+  }
+}
+
+function validatePmInfoStandalone(pmObj: Record<string, unknown>): void {
+  if (pmObj.isStandalone === true) {
+    const installCmds = pmObj.installCommands as unknown[];
+    if (installCmds.length > 0) {
+      throw new Error(
+        'Invalid Python environment: standalone "pmInfo" must have empty installCommands array',
+      );
+    }
+    if (pmObj.lockfile !== undefined || pmObj.configFile !== undefined) {
+      throw new Error(
+        'Invalid Python environment: standalone "pmInfo" cannot specify lockfile or configFile',
+      );
+    }
+  }
+}
+
+function validateUvPmInfoInvariants(pmObj: Record<string, unknown>): void {
+  if (pmObj.name === "uv") {
+    if (pmObj.lockfile !== undefined && pmObj.lockfile !== "uv.lock") {
+      throw new Error(
+        'Invalid Python environment: UV lockfile name must be "uv.lock" when present',
+      );
+    }
+    if (pmObj.lockfile === "uv.lock" && pmObj.configFile !== "pyproject.toml") {
+      throw new Error(
+        'Invalid Python environment: UV lockfile requires configFile "pyproject.toml"',
+      );
     }
   }
 }
@@ -109,34 +162,32 @@ function validatePythonPmInfo(pmInfo: unknown): void {
   if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
     throw new Error('Invalid Python environment: "pmInfo" must be an object when present');
   }
-
   const pmObj = pmInfo as Record<string, unknown>;
+  validatePmInfoFields(pmObj);
 
-  if (pmObj.name !== "uv" && pmObj.name !== "pip") {
-    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  if (!("installCommands" in pmObj) || pmObj.installCommands === undefined) {
+    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
   }
+  validateInstallCommands(pmObj.installCommands);
+  validatePmInfoStandalone(pmObj);
+  validateUvPmInfoInvariants(pmObj);
+}
 
-  if (typeof pmObj.installCommand !== "string") {
-    throw new Error('Invalid Python environment: "pmInfo.installCommand" must be a string');
+function validateNoPythonSourceEnv(pyObj: Record<string, unknown>): void {
+  if (pyObj.pmInfo !== null) {
+    throw new Error(
+      'Invalid Python environment: "pmInfo" must be null when hasPythonSource is false',
+    );
   }
-
-  if (typeof pmObj.execPrefix !== "string") {
-    throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
+  if (pyObj.pythonVersion !== "") {
+    throw new Error(
+      'Invalid Python environment: "pythonVersion" must be empty string when hasPythonSource is false',
+    );
   }
-
-  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
-  for (const field of optionalStrings) {
-    if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
-      throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
-    }
-  }
-
-  if (pmObj.isStandalone !== undefined && typeof pmObj.isStandalone !== "boolean") {
-    throw new Error('Invalid Python environment: "pmInfo.isStandalone" must be a boolean');
-  }
-
-  if (pmObj.installCommands !== undefined) {
-    validateInstallCommands(pmObj.installCommands);
+  if (pyObj.ruffVersion !== "") {
+    throw new Error(
+      'Invalid Python environment: "ruffVersion" must be empty string when hasPythonSource is false',
+    );
   }
 }
 
@@ -150,20 +201,24 @@ function validatePythonEnvironment(python: unknown): void {
   if (typeof pyObj.hasPythonSource !== "boolean") {
     throw new Error('Invalid Python environment: "hasPythonSource" must be a boolean');
   }
-
   if (typeof pyObj.pythonVersion !== "string") {
     throw new Error('Invalid Python environment: "pythonVersion" must be a string');
   }
-
   if (typeof pyObj.ruffVersion !== "string") {
     throw new Error('Invalid Python environment: "ruffVersion" must be a string');
   }
-
   if (!("pmInfo" in pyObj) || pyObj.pmInfo === undefined) {
     throw new Error('Invalid Python environment: "pmInfo" property is required');
   }
 
-  if (pyObj.pmInfo !== null) {
+  if (!pyObj.hasPythonSource) {
+    validateNoPythonSourceEnv(pyObj);
+  } else {
+    if (pyObj.pmInfo === null) {
+      throw new Error(
+        'Invalid Python environment: "pmInfo" cannot be null when hasPythonSource is true',
+      );
+    }
     validatePythonPmInfo(pyObj.pmInfo);
   }
 }

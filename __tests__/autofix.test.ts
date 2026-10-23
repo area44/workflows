@@ -293,7 +293,7 @@ describe("autofix", () => {
       await executePythonWorkflow(
         {
           name: "pip",
-          installCommand: "pip install -r requirements.txt",
+          installCommands: [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }],
           execPrefix: "",
         },
         originalCwd,
@@ -308,7 +308,10 @@ describe("autofix", () => {
       await executePythonWorkflow(
         {
           name: "pip",
-          installCommand: "pip install -r requirements.txt && pip install -e .",
+          installCommands: [
+            { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+            { executable: "pip", args: ["install", "-e", "."] },
+          ],
           execPrefix: "",
         },
         originalCwd,
@@ -326,12 +329,15 @@ describe("autofix", () => {
         executePythonWorkflow(
           {
             name: "pip",
-            installCommand: "pip install -r requirements.txt && pip install -e .",
+            installCommands: [
+              { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+              { executable: "pip", args: ["install", "-e", "."] },
+            ],
             execPrefix: "",
           },
           originalCwd,
         ),
-      ).rejects.toThrow("Python command \"pip install -r requirements.txt\" failed.");
+      ).rejects.toThrow('Python command "pip install -r requirements.txt" failed.');
 
       expect(exec.exec).toHaveBeenCalledTimes(1);
       expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.anything());
@@ -340,7 +346,7 @@ describe("autofix", () => {
     it("should skip lockfile sync and dependency installation for standalone Python projects", async () => {
       await executePythonWorkflow({
         name: "pip",
-        installCommand: "",
+        installCommands: [],
         execPrefix: "",
         isStandalone: true,
       });
@@ -470,7 +476,7 @@ describe("autofix", () => {
       await expect(
         executePythonWorkflow({
           name: "uv",
-          installCommand: "uv sync",
+          installCommands: [{ executable: "uv", args: ["sync"] }],
           execPrefix: "uv run",
         }),
       ).rejects.toThrow("Required Python package manager 'uv' is not available in PATH.");
@@ -528,16 +534,75 @@ describe("autofix", () => {
       }
     });
 
-    it("should throw Error for unsupported or malformed Python install command string", async () => {
+    it("should throw Error when pmInfo is null, non-object, or has unsupported package manager name", async () => {
+      await expect(executePythonWorkflow(null as any)).rejects.toThrow(
+        'Invalid Python environment: "pmInfo" must be an object',
+      );
+
+      await expect(executePythonWorkflow("pip" as any)).rejects.toThrow(
+        'Invalid Python environment: "pmInfo" must be an object',
+      );
+
+      await expect(
+        executePythonWorkflow({ name: "poetry", installCommands: [], execPrefix: "" } as any),
+      ).rejects.toThrow('Invalid Python environment: pmInfo name must be "uv" or "pip"');
+    });
+
+    it("should throw Error when pmInfo.installCommands is missing or not an array", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
 
       await expect(
         executePythonWorkflow({
           name: "pip",
-          installCommand: "pip install --invalid-flag-syntax && rm -rf /",
+          execPrefix: "",
+        } as any),
+      ).rejects.toThrow('Invalid Python environment: "pmInfo.installCommands" must be an array');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: "pip install -r requirements.txt",
+          execPrefix: "",
+        } as any),
+      ).rejects.toThrow('Invalid Python environment: "pmInfo.installCommands" must be an array');
+    });
+
+    it("should throw Error before execution when installCommands contains malformed item, blank executable, or non-string args", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "", args: ["install"] }],
           execPrefix: "",
         }),
-      ).rejects.toThrow("Unsupported or malformed Python install command configuration");
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "   ", args: ["install"] }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "pip", args: "install" as any }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      await expect(
+        executePythonWorkflow({
+          name: "pip",
+          installCommands: [{ executable: "pip", args: [123 as any] }],
+          execPrefix: "",
+        }),
+      ).rejects.toThrow('Invalid Python environment: malformed "installCommands" item');
+
+      expect(exec.exec).not.toHaveBeenCalled();
     });
 
     it("should pass arguments containing spaces unchanged when structured PythonInstallCommand is used", async () => {
@@ -545,7 +610,6 @@ describe("autofix", () => {
 
       await executePythonWorkflow({
         name: "pip",
-        installCommand: "pip install -r requirements.txt",
         installCommands: [
           { executable: "pip", args: ["install", "-r", "path with spaces/requirements.txt"] },
         ],
@@ -566,7 +630,7 @@ describe("autofix", () => {
       await expect(
         executePythonWorkflow({
           name: "pip",
-          installCommand: "pip install -r requirements.txt",
+          installCommands: [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }],
           execPrefix: "",
         }),
       ).rejects.toThrow('Python command "pip install -r requirements.txt" failed. Check Python environment and dependency configuration.');
@@ -581,7 +645,7 @@ describe("autofix", () => {
       await expect(
         executePythonWorkflow({
           name: "pip",
-          installCommand: "pip install -r requirements.txt",
+          installCommands: [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }],
           execPrefix: "",
         }),
       ).rejects.toThrow("Unable to locate executable file: pip");

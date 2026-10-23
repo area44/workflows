@@ -47,8 +47,7 @@ export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
   lockfile?: string;
   configFile?: string;
-  installCommand: string;
-  installCommands?: PythonInstallCommand[];
+  installCommands: PythonInstallCommand[];
   lockCommand?: string;
   syncCommand?: string;
   execPrefix: string;
@@ -164,36 +163,86 @@ export function hasPythonSource(
   return false;
 }
 
-function hasTomlTable(content: string, tableName: string): boolean {
-  const escaped = tableName.replace(/\./g, "\\.");
-  const pattern = new RegExp(`^\\s*\\[\\s*tool\\.${escaped}(?:\\.|\\s*\\])`, "m");
-  return pattern.test(content);
+function getTomlTables(content: string): string[] {
+  const lines = content.split("\n");
+  const tables: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*/, "").trim();
+    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
+    if (match) {
+      tables.push(match[1].trim().toLowerCase());
+    }
+  }
+  return tables;
+}
+
+function hasUvProjectConfig(content: string): boolean {
+  const tables = getTomlTables(content);
+  return (
+    tables.includes("project") ||
+    tables.includes("build-system") ||
+    tables.includes("tool.uv.workspace")
+  );
+}
+
+function hasPipProjectConfig(content: string): boolean {
+  const tables = getTomlTables(content);
+  return tables.includes("project") || tables.includes("build-system");
+}
+
+function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
+  if (!hasValidPyproject) {
+    throw new Error(
+      "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+    );
+  }
+  return {
+    name: "uv",
+    lockfile: "uv.lock",
+    configFile: "pyproject.toml",
+    installCommands: [{ executable: "uv", args: ["sync"] }],
+    lockCommand: "uv lock",
+    syncCommand: "uv sync",
+    execPrefix: "uv run",
+  };
 }
 
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
-  const hasUvConfig = pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "uv");
-  if (!hasUvLock && !hasUvConfig) return null;
 
+  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
+
+  const hasUvToolConfig =
+    pyprojectContent !== undefined &&
+    getTomlTables(pyprojectContent).some(
+      (t: string) => t === "tool.uv" || t.startsWith("tool.uv."),
+    );
+
+  if (!hasUvLock && !hasUvToolConfig) return null;
+
+  if (hasUvLock) {
+    return detectUvLockedProject(hasValidPyproject);
+  }
+
+  // hasUvToolConfig is true without uv.lock
   const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
-  const installCommands: PythonInstallCommand[] = hasUvLock
-    ? [{ executable: "uv", args: ["sync"] }]
-    : hasReqs
-      ? [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }]
-      : [{ executable: "uv", args: ["sync"] }];
+  if (hasReqs) {
+    return {
+      name: "uv",
+      configFile: "pyproject.toml",
+      installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+      execPrefix: "uv run",
+    };
+  }
 
-  const installCommand = hasUvLock
-    ? "uv sync"
-    : hasReqs
-      ? "uv pip install -r requirements.txt"
-      : "uv sync";
+  if (!hasValidPyproject) {
+    return null;
+  }
 
   return {
     name: "uv",
-    lockfile: hasUvLock ? "uv.lock" : undefined,
-    configFile: hasUvConfig ? "pyproject.toml" : undefined,
-    installCommand,
-    installCommands,
+    configFile: "pyproject.toml",
+    installCommands: [{ executable: "uv", args: ["sync"] }],
     lockCommand: "uv lock",
     syncCommand: "uv sync",
     execPrefix: "uv run",
@@ -205,8 +254,7 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
   const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
   const hasProjectOrBuildSystem =
-    pyprojectContent !== undefined &&
-    /^\s*\[\s*(?:project|build-system)\s*\]/m.test(pyprojectContent);
+    pyprojectContent !== undefined && hasPipProjectConfig(pyprojectContent);
 
   const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
@@ -220,25 +268,21 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
     configFile = "setup.cfg";
   }
 
-  let installCommand = "";
   let installCommands: PythonInstallCommand[] = [];
   let lockfile: string | undefined;
 
   const isPackage = hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
 
   if (hasRequirements && isPackage) {
-    installCommand = "pip install -r requirements.txt && pip install -e .";
     installCommands = [
       { executable: "pip", args: ["install", "-r", "requirements.txt"] },
       { executable: "pip", args: ["install", "-e", "."] },
     ];
     lockfile = "requirements.txt";
   } else if (hasRequirements) {
-    installCommand = "pip install -r requirements.txt";
     installCommands = [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
     lockfile = "requirements.txt";
   } else if (isPackage) {
-    installCommand = "pip install -e .";
     installCommands = [{ executable: "pip", args: ["install", "-e", "."] }];
   }
 
@@ -246,7 +290,6 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
     name: "pip",
     lockfile,
     configFile,
-    installCommand,
     installCommands,
     execPrefix: "",
   };
@@ -284,8 +327,7 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
   if (fs.existsSync(pyprojectPath)) {
     try {
       const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = stripToolRuffSections(content);
-      if (/^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(stripped)) {
+      if (hasUvProjectConfig(content)) {
         return true;
       }
       if (isRuffDeclaredInProject(cwd)) {
@@ -332,7 +374,6 @@ export function detectPythonPackageManager(
   // Standalone Python project without manifest or lockfile
   return {
     name: "pip",
-    installCommand: "",
     installCommands: [],
     execPrefix: "",
     isStandalone: true,

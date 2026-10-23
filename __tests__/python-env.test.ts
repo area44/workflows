@@ -55,6 +55,44 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       }
     });
 
+    it("should return standalone pip when pyproject.toml contains only [project.optional-dependencies] without main [project]", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return standalone pip when pyproject.toml contains only [tool.uvicorn]", () => {
+      const tempDir = path.join(fixturesDir, "uvicorn-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uvicorn]\nreload = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return true when repository contains only tests/test_example.py", () => {
       const tempDir = path.join(fixturesDir, "tests-py-temp");
       fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });
@@ -334,6 +372,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     });
   });
 
+
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));
@@ -341,11 +380,170 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("uv");
       expect(pmInfo?.lockfile).toBe("uv.lock");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("uv sync");
       expect(pmInfo?.installCommands).toEqual([
         { executable: "uv", args: ["sync"] },
       ]);
       expect(pmInfo?.execPrefix).toBe("uv run");
+    });
+
+    it("should throw actionable error when uv.lock is present without pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-no-pyproject-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should throw actionable error when uv.lock is present with malformed pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-malformed-pyproject-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project\nname = 'broken'\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return standalone pip when pyproject.toml contains only [tool.uv.sources] or [tool.uv.index] without project/workspace table", () => {
+      const tempDir = path.join(fixturesDir, "uv-sources-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.sources]\nfoo = { path = 'pkgs/foo' }\n\n[[tool.uv.index]]\nname = 'custom'\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv for valid uv project that also contains requirements.txt and uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-reqs-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\nversion = '0.1.0'\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect pip for pyproject.toml containing only [build-system]", () => {
+      const tempDir = path.join(fixturesDir, "build-system-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system]\nrequires = ['setuptools']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should throw actionable error when uv.lock is present with tool-only pyproject.toml ([tool.ruff])", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-tool-ruff-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv for valid UV workspace configuration ([tool.uv.workspace]) with uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv when pyproject.toml has valid project configuration and [tool.uv] table but uv.lock is missing", () => {
+      const tempDir = path.join(fixturesDir, "uv-config-no-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\n\n[tool.uv]\ndev-dependencies = []\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should detect pip package manager from pip fixture directory", () => {
@@ -354,12 +552,28 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("pip");
       expect(pmInfo?.lockfile).toBe("requirements.txt");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt && pip install -e .");
       expect(pmInfo?.installCommands).toEqual([
         { executable: "pip", args: ["install", "-r", "requirements.txt"] },
         { executable: "pip", args: ["install", "-e", "."] },
       ]);
       expect(pmInfo?.execPrefix).toBe("");
+    });
+
+    it("should return standalone pip info when Python source exists without manifest or lockfile", () => {
+      const tempDir = path.join(fixturesDir, "standalone-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('standalone')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+        expect(pmInfo?.installCommands).toEqual([]);
+        expect(pmInfo?.execPrefix).toBe("");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("should return null for JS/TS repositories with tool-only pyproject.toml ([tool.ruff]) and no .py files", () => {
@@ -393,7 +607,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         const pmInfo = detectPythonPackageManager(tempDir);
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.installCommand).toBe("pip install -r requirements.txt");
         expect(pmInfo?.installCommands).toEqual([
           { executable: "pip", args: ["install", "-r", "requirements.txt"] },
         ]);
