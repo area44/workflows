@@ -167,41 +167,125 @@ function collectParentDirs(resolvedCwd: string): string[] {
   return dirs;
 }
 
-function isValidUvWorkspaceConfig(workspace: unknown): boolean {
-  if (!isObject(workspace)) return false;
-  return Array.isArray(workspace.members) && workspace.members.every((m) => typeof m === "string");
+function globToRegex(glob: string): RegExp {
+  const normalized = glob.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  if (normalized === "." || normalized === "") {
+    return /^$/;
+  }
+  let regexStr = "^";
+  let i = 0;
+  while (i < normalized.length) {
+    const char = normalized[i];
+    if (char === "*") {
+      if (normalized[i + 1] === "*") {
+        if (normalized[i + 2] === "/") {
+          regexStr += "(?:.*/)?";
+          i += 3;
+          continue;
+        }
+        regexStr += ".*";
+        i += 2;
+        continue;
+      }
+      regexStr += "[^/]*";
+      i++;
+      continue;
+    }
+    if (char === "?") {
+      regexStr += "[^/]";
+      i++;
+      continue;
+    }
+    if ("./+^$()|[]{}\\".includes(char)) {
+      regexStr += "\\" + char;
+      i++;
+      continue;
+    }
+    regexStr += char;
+    i++;
+  }
+  regexStr += "$";
+  return new RegExp(regexStr);
 }
 
-function isUvWorkspaceRoot(dir: string, pyproject?: ParsedToml | null): boolean {
-  const pyParsed = pyproject !== undefined ? pyproject : readPyprojectToml(dir);
-  return (
-    pyParsed?.success === true &&
-    isObject(pyParsed.data.tool) &&
-    isObject((pyParsed.data.tool as Record<string, unknown>).uv) &&
-    isValidUvWorkspaceConfig(
-      ((pyParsed.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
-    )
-  );
+export function isDirectoryMatchedByGlobs(relPath: string, globs: string[]): boolean {
+  const normRelPath = relPath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  for (const glob of globs) {
+    if (globToRegex(glob).test(normRelPath)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isValidUvWorkspaceConfig(workspace: unknown): boolean {
+  if (!isObject(workspace)) return false;
+  if (!Array.isArray(workspace.members) || workspace.members.length === 0) return false;
+  return workspace.members.every((m) => typeof m === "string");
+}
+
+export function isWorkspaceMember(
+  wsRootDir: string,
+  childDir: string,
+  workspaceConfig: Record<string, unknown>,
+): boolean {
+  const resolvedWsRoot = path.resolve(wsRootDir);
+  const resolvedChild = path.resolve(childDir);
+  const relPath = path.relative(resolvedWsRoot, resolvedChild).replace(/\\/g, "/");
+
+  if (relPath.startsWith("..") || path.isAbsolute(relPath)) {
+    return false;
+  }
+
+  const members = Array.isArray(workspaceConfig.members)
+    ? workspaceConfig.members.filter((m): m is string => typeof m === "string")
+    : [];
+
+  const excludes = Array.isArray(workspaceConfig.exclude)
+    ? workspaceConfig.exclude.filter((e): e is string => typeof e === "string")
+    : [];
+
+  const effectiveRelPath = relPath === "" ? "." : relPath;
+
+  if (excludes.length > 0 && isDirectoryMatchedByGlobs(effectiveRelPath, excludes)) {
+    return false;
+  }
+
+  return isDirectoryMatchedByGlobs(effectiveRelPath, members);
 }
 
 function findWorkspaceRootContext(
   dirs: string[],
+  childDir: string,
   startIndex: number = 0,
 ): { dir?: string; toml?: ParsedToml | null } {
   for (let i = startIndex; i < dirs.length; i++) {
-    const dir = dirs[i];
-    const pyproject = readPyprojectToml(dir);
-    if (pyproject && isUvWorkspaceRoot(dir, pyproject)) {
-      return { dir, toml: pyproject };
+    const parentDir = dirs[i];
+    const pyproject = readPyprojectToml(parentDir);
+    if (pyproject?.success === true && isObject(pyproject.data.tool) && isObject(pyproject.data.tool.uv)) {
+      const uv = pyproject.data.tool.uv as Record<string, unknown>;
+      if (isValidUvWorkspaceConfig(uv.workspace)) {
+        if (isWorkspaceMember(parentDir, childDir, uv.workspace as Record<string, unknown>)) {
+          return { dir: parentDir, toml: pyproject };
+        }
+      }
     }
   }
   return {};
 }
 
-function resolveUvLockDir(dirs: string[], pyprojectDir?: string): string | undefined {
+function resolveUvLockDir(
+  dirs: string[],
+  childDir: string,
+  pyprojectDir?: string,
+): string | undefined {
   for (const dir of dirs) {
     if (fs.existsSync(path.join(dir, "uv.lock"))) {
-      if (!pyprojectDir || dir === pyprojectDir || isUvWorkspaceRoot(dir)) {
+      if (dir === childDir || (pyprojectDir && dir === pyprojectDir)) {
+        return dir;
+      }
+      const ws = findWorkspaceRootContext(dirs, childDir);
+      if (ws.dir === dir) {
         return dir;
       }
     }
@@ -236,9 +320,9 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
 
   const pyprojectToml = readPyprojectToml(resolvedCwd);
   const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
-  const ws = findWorkspaceRootContext(dirs, 1);
+  const ws = findWorkspaceRootContext(dirs, resolvedCwd, 1);
   const uvToml = readUvToml(resolvedCwd);
-  const uvLockDir = resolveUvLockDir(dirs, pyprojectDir);
+  const uvLockDir = resolveUvLockDir(dirs, resolvedCwd, pyprojectDir);
 
   const hasRequirementsTxt = fs.existsSync(path.join(resolvedCwd, "requirements.txt"));
   const hasSetupPy = fs.existsSync(path.join(resolvedCwd, "setup.py"));
@@ -272,9 +356,9 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
     if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
       const pyprojectDir = pyprojectToml ? pDir : undefined;
-      const ws = findWorkspaceRootContext(dirs, i + 1);
+      const ws = findWorkspaceRootContext(dirs, resolvedCwd, i + 1);
       const uvToml = readUvToml(pDir);
-      const uvLockDir = resolveUvLockDir(dirs.slice(i), pyprojectDir);
+      const uvLockDir = resolveUvLockDir(dirs.slice(i), resolvedCwd, pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
       const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
       const hasSetupCfg = fs.existsSync(path.join(pDir, "setup.cfg"));
