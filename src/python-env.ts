@@ -209,7 +209,10 @@ function globToRegex(glob: string): RegExp {
 }
 
 export function isDirectoryMatchedByGlobs(relPath: string, globs: string[]): boolean {
-  const normRelPath = relPath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  let normRelPath = relPath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  if (normRelPath === ".") {
+    normRelPath = "";
+  }
   for (const glob of globs) {
     if (globToRegex(glob).test(normRelPath)) {
       return true;
@@ -258,31 +261,21 @@ function getWorkspaceConfigInDir(
   dir: string,
 ): { dir: string; toml: ParsedToml; config: Record<string, unknown> } | null {
   const pyproject = readPyprojectToml(dir);
-  if (pyproject?.success === true) {
-    if (
-      isObject(pyproject.data.tool) &&
-      isObject((pyproject.data.tool as Record<string, unknown>).uv) &&
-      isValidUvWorkspaceConfig(
-        ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
-      )
-    ) {
-      return {
-        dir,
-        toml: pyproject,
-        config: ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>)
-          .workspace as Record<string, unknown>,
-      };
-    }
-    if (isValidUvWorkspaceConfig(pyproject.data.workspace)) {
-      return { dir, toml: pyproject, config: pyproject.data.workspace as Record<string, unknown> };
-    }
+  if (
+    pyproject?.success === true &&
+    isObject(pyproject.data.tool) &&
+    isObject((pyproject.data.tool as Record<string, unknown>).uv) &&
+    isValidUvWorkspaceConfig(
+      ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
+    )
+  ) {
+    return {
+      dir,
+      toml: pyproject,
+      config: ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>)
+        .workspace as Record<string, unknown>,
+    };
   }
-
-  const uvToml = readUvToml(dir);
-  if (uvToml?.success === true && isValidUvWorkspaceConfig(uvToml.data.workspace)) {
-    return { dir, toml: uvToml, config: uvToml.data.workspace as Record<string, unknown> };
-  }
-
   return null;
 }
 

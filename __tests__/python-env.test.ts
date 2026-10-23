@@ -7,6 +7,7 @@ import {
   detectPythonPackageManager,
   extractRuffVersionSpecifier,
   hasPythonSource,
+  isDirectoryMatchedByGlobs,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
   parseToml,
@@ -437,23 +438,57 @@ dev = ["pytest"]
       }
     });
 
-    it("should resolve workspace members defined via [workspace] in uv.toml or pyproject.toml", () => {
-      const tempDir = path.join(fixturesDir, "uv-toml-workspace-temp");
+    it("should resolve workspace members defined via [tool.uv.workspace] in pyproject.toml when child has own manifest", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-isolated-temp");
       const subDir = path.join(tempDir, "apps/web");
       fs.mkdirSync(subDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, ".git"), "");
-      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[workspace]\nmembers = ['apps/*']\n");
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
-        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n",
+        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['apps/*']\n",
       );
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(subDir, "pyproject.toml"),
+        "[project]\nname = 'web-app'\nversion = '0.1.0'\n",
+      );
       fs.writeFileSync(path.join(subDir, "app.py"), "print('web')\n");
 
       try {
         const pmInfo = detectPythonPackageManager(subDir);
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not assign root uv.lock to an independent child project that has its own manifest and is not a workspace member", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-non-member-temp");
+      const subDir = path.join(tempDir, "services/billing");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(subDir, "pyproject.toml"),
+        "[project]\nname = 'billing-service'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(subDir, "service.py"), "print('billing')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -1285,6 +1320,31 @@ enabled = true
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
     it("should define priority order as uv > pip", () => {
       expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
+    });
+  });
+
+  describe("isDirectoryMatchedByGlobs() Glob Matching Unit Tests", () => {
+    it("should match single wildcard glob patterns like packages/*", () => {
+      expect(isDirectoryMatchedByGlobs("packages/sub", ["packages/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/app", ["packages/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/sub/deep", ["packages/*"])).toBe(false);
+      expect(isDirectoryMatchedByGlobs("other/sub", ["packages/*"])).toBe(false);
+    });
+
+    it("should match double wildcard glob patterns like packages/**", () => {
+      expect(isDirectoryMatchedByGlobs("packages/sub", ["packages/**"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/sub/deep", ["packages/**"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("other/sub", ["packages/**"])).toBe(false);
+    });
+
+    it("should normalize Windows path backslashes and leading dot-slash", () => {
+      expect(isDirectoryMatchedByGlobs("packages\\sub\\app", ["packages/*/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("./packages/sub", ["packages/*"])).toBe(true);
+    });
+
+    it("should handle root directory dot matching", () => {
+      expect(isDirectoryMatchedByGlobs(".", ["."])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("", ["."])).toBe(true);
     });
   });
 
