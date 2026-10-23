@@ -420,6 +420,142 @@ function inspectRuffInDependencyMap(
   return undefined;
 }
 
+function inspectPep621Ruff(project: Record<string, unknown>) {
+  if (Array.isArray(project.dependencies)) {
+    const res = inspectRuffInSpecifierArray(project.dependencies);
+    if (res) return res;
+  }
+  if (isObject(project["optional-dependencies"])) {
+    for (const group of Object.values(project["optional-dependencies"])) {
+      if (Array.isArray(group)) {
+        const res = inspectRuffInSpecifierArray(group);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPep735Ruff(depGroups: Record<string, unknown>) {
+  for (const group of Object.values(depGroups)) {
+    if (Array.isArray(group)) {
+      const res = inspectRuffInSpecifierArray(group);
+      if (res) return res;
+    }
+  }
+  return undefined;
+}
+
+function inspectToolUvRuff(uv: Record<string, unknown>) {
+  for (const key of ["dev-dependencies", "override-dependencies", "constraint-dependencies"]) {
+    if (Array.isArray(uv[key])) {
+      const res = inspectRuffInSpecifierArray(uv[key] as unknown[]);
+      if (res) return res;
+    }
+  }
+  return undefined;
+}
+
+function inspectPoetryRuff(poetry: Record<string, unknown>) {
+  if (isObject(poetry.dependencies)) {
+    const res = inspectRuffInDependencyMap(poetry.dependencies);
+    if (res) return res;
+  }
+  if (isObject(poetry["dev-dependencies"])) {
+    const res = inspectRuffInDependencyMap(poetry["dev-dependencies"]);
+    if (res) return res;
+  }
+  if (isObject(poetry.group)) {
+    for (const grpObj of Object.values(poetry.group)) {
+      if (isObject(grpObj) && isObject(grpObj.dependencies)) {
+        const res = inspectRuffInDependencyMap(grpObj.dependencies);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPdmRuff(pdm: Record<string, unknown>) {
+  if (isObject(pdm["dev-dependencies"])) {
+    for (const grp of Object.values(pdm["dev-dependencies"])) {
+      if (Array.isArray(grp)) {
+        const res = inspectRuffInSpecifierArray(grp);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectHatchRuff(hatch: Record<string, unknown>) {
+  if (isObject(hatch.envs)) {
+    for (const envObj of Object.values(hatch.envs)) {
+      if (isObject(envObj)) {
+        if (Array.isArray(envObj.dependencies)) {
+          const res = inspectRuffInSpecifierArray(envObj.dependencies);
+          if (res) return res;
+        }
+        if (Array.isArray(envObj["extra-dependencies"])) {
+          const res = inspectRuffInSpecifierArray(envObj["extra-dependencies"]);
+          if (res) return res;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPixiRuff(pixi: Record<string, unknown>) {
+  if (isObject(pixi.dependencies)) {
+    const res = inspectRuffInDependencyMap(pixi.dependencies);
+    if (res) return res;
+  }
+  if (isObject(pixi["dev-dependencies"])) {
+    const res = inspectRuffInDependencyMap(pixi["dev-dependencies"]);
+    if (res) return res;
+  }
+  if (isObject(pixi.feature)) {
+    for (const featObj of Object.values(pixi.feature)) {
+      if (isObject(featObj)) {
+        if (isObject(featObj.dependencies)) {
+          const res = inspectRuffInDependencyMap(featObj.dependencies);
+          if (res) return res;
+        }
+        if (isObject(featObj["dev-dependencies"])) {
+          const res = inspectRuffInDependencyMap(featObj["dev-dependencies"]);
+          if (res) return res;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectToolRuff(tool: Record<string, unknown>) {
+  if (isObject(tool.uv)) {
+    const res = inspectToolUvRuff(tool.uv);
+    if (res) return res;
+  }
+  if (isObject(tool.poetry)) {
+    const res = inspectPoetryRuff(tool.poetry);
+    if (res) return res;
+  }
+  if (isObject(tool.pdm)) {
+    const res = inspectPdmRuff(tool.pdm);
+    if (res) return res;
+  }
+  if (isObject(tool.hatch)) {
+    const res = inspectHatchRuff(tool.hatch);
+    if (res) return res;
+  }
+  if (isObject(tool.pixi)) {
+    const res = inspectPixiRuff(tool.pixi);
+    if (res) return res;
+  }
+  return undefined;
+}
+
 /**
  * Inspects pyproject.toml data strictly in supported dependency declarations
  * (PEP 621, PEP 735, tool.uv, Poetry, PDM, Hatch, Pixi, build-system).
@@ -430,29 +566,14 @@ export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
 } {
   // 1. PEP 621 project.dependencies & project.optional-dependencies
   if (isObject(parsed.project)) {
-    const proj = parsed.project;
-    if (Array.isArray(proj.dependencies)) {
-      const res = inspectRuffInSpecifierArray(proj.dependencies);
-      if (res) return res;
-    }
-    if (isObject(proj["optional-dependencies"])) {
-      for (const group of Object.values(proj["optional-dependencies"])) {
-        if (Array.isArray(group)) {
-          const res = inspectRuffInSpecifierArray(group);
-          if (res) return res;
-        }
-      }
-    }
+    const res = inspectPep621Ruff(parsed.project);
+    if (res) return res;
   }
 
   // 2. PEP 735 dependency-groups
   if (isObject(parsed["dependency-groups"])) {
-    for (const group of Object.values(parsed["dependency-groups"])) {
-      if (Array.isArray(group)) {
-        const res = inspectRuffInSpecifierArray(group);
-        if (res) return res;
-      }
-    }
+    const res = inspectPep735Ruff(parsed["dependency-groups"]);
+    if (res) return res;
   }
 
   // 3. build-system.requires
@@ -463,92 +584,8 @@ export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
 
   // 4. tool table
   if (isObject(parsed.tool)) {
-    const tool = parsed.tool;
-
-    // tool.uv
-    if (isObject(tool.uv)) {
-      const uv = tool.uv;
-      for (const key of ["dev-dependencies", "override-dependencies", "constraint-dependencies"]) {
-        if (Array.isArray(uv[key])) {
-          const res = inspectRuffInSpecifierArray(uv[key] as unknown[]);
-          if (res) return res;
-        }
-      }
-    }
-
-    // tool.poetry
-    if (isObject(tool.poetry)) {
-      const poetry = tool.poetry;
-      if (isObject(poetry.dependencies)) {
-        const res = inspectRuffInDependencyMap(poetry.dependencies);
-        if (res) return res;
-      }
-      if (isObject(poetry["dev-dependencies"])) {
-        const res = inspectRuffInDependencyMap(poetry["dev-dependencies"]);
-        if (res) return res;
-      }
-      if (isObject(poetry.group)) {
-        for (const grpObj of Object.values(poetry.group)) {
-          if (isObject(grpObj) && isObject(grpObj.dependencies)) {
-            const res = inspectRuffInDependencyMap(grpObj.dependencies);
-            if (res) return res;
-          }
-        }
-      }
-    }
-
-    // tool.pdm
-    if (isObject(tool.pdm) && isObject(tool.pdm["dev-dependencies"])) {
-      for (const grp of Object.values(tool.pdm["dev-dependencies"])) {
-        if (Array.isArray(grp)) {
-          const res = inspectRuffInSpecifierArray(grp);
-          if (res) return res;
-        }
-      }
-    }
-
-    // tool.hatch
-    if (isObject(tool.hatch) && isObject(tool.hatch.envs)) {
-      for (const envObj of Object.values(tool.hatch.envs)) {
-        if (isObject(envObj)) {
-          if (Array.isArray(envObj.dependencies)) {
-            const res = inspectRuffInSpecifierArray(envObj.dependencies);
-            if (res) return res;
-          }
-          if (Array.isArray(envObj["extra-dependencies"])) {
-            const res = inspectRuffInSpecifierArray(envObj["extra-dependencies"]);
-            if (res) return res;
-          }
-        }
-      }
-    }
-
-    // tool.pixi
-    if (isObject(tool.pixi)) {
-      const pixi = tool.pixi;
-      if (isObject(pixi.dependencies)) {
-        const res = inspectRuffInDependencyMap(pixi.dependencies);
-        if (res) return res;
-      }
-      if (isObject(pixi["dev-dependencies"])) {
-        const res = inspectRuffInDependencyMap(pixi["dev-dependencies"]);
-        if (res) return res;
-      }
-      if (isObject(pixi.feature)) {
-        for (const featObj of Object.values(pixi.feature)) {
-          if (isObject(featObj)) {
-            if (isObject(featObj.dependencies)) {
-              const res = inspectRuffInDependencyMap(featObj.dependencies);
-              if (res) return res;
-            }
-            if (isObject(featObj["dev-dependencies"])) {
-              const res = inspectRuffInDependencyMap(featObj["dev-dependencies"]);
-              if (res) return res;
-            }
-          }
-        }
-      }
-    }
+    const res = inspectToolRuff(parsed.tool);
+    if (res) return res;
   }
 
   return { declared: false };
