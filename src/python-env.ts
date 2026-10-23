@@ -223,6 +223,106 @@ export function hasPythonSource(
   return false;
 }
 
+/**
+ * Strips comments and all TOML string literals (single-line basic/literal,
+ * multiline basic/literal) from raw TOML text, replacing their characters with spaces.
+ * This guarantees table headers like [project] inside multiline strings or comments
+ * are ignored when checking for actual TOML headers.
+ */
+export function stripTomlStringsAndComments(raw: string): string {
+  let result = "";
+  let i = 0;
+  const len = raw.length;
+
+  while (i < len) {
+    const ch = raw[i];
+
+    // Check for comment
+    if (ch === "#") {
+      while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
+        result += " ";
+        i++;
+      }
+      continue;
+    }
+
+    // Check for multiline basic string """
+    if (raw.slice(i, i + 3) === '"""') {
+      result += "   ";
+      i += 3;
+      while (i < len && raw.slice(i, i + 3) !== '"""') {
+        if (raw[i] === "\\" && i + 1 < len) {
+          result += "  ";
+          i += 2;
+        } else {
+          result += raw[i] === "\n" ? "\n" : " ";
+          i++;
+        }
+      }
+      if (i < len) {
+        result += "   ";
+        i += 3;
+      }
+      continue;
+    }
+
+    // Check for multiline literal string '''
+    if (raw.slice(i, i + 3) === "'''") {
+      result += "   ";
+      i += 3;
+      while (i < len && raw.slice(i, i + 3) !== "'''") {
+        result += raw[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < len) {
+        result += "   ";
+        i += 3;
+      }
+      continue;
+    }
+
+    // Check for single-line basic string "
+    if (ch === '"') {
+      result += " ";
+      i++;
+      while (i < len && raw[i] !== '"' && raw[i] !== "\n" && raw[i] !== "\r") {
+        if (raw[i] === "\\" && i + 1 < len) {
+          result += "  ";
+          i += 2;
+        } else {
+          result += " ";
+          i++;
+        }
+      }
+      if (i < len && raw[i] === '"') {
+        result += " ";
+        i++;
+      }
+      continue;
+    }
+
+    // Check for single-line literal string '
+    if (ch === "'") {
+      result += " ";
+      i++;
+      while (i < len && raw[i] !== "'" && raw[i] !== "\n" && raw[i] !== "\r") {
+        result += " ";
+        i++;
+      }
+      if (i < len && raw[i] === "'") {
+        result += " ";
+        i++;
+      }
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+
+  return result;
+}
+
 function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (!isObject(parsed.project)) return false;
   const keys = Object.keys(parsed.project);
@@ -238,9 +338,10 @@ function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): 
   if (hasDirectProjectKeys) return true;
 
   // parsed.project contains ONLY subtable keys.
-  // If rawContent is available, check whether an explicit [project] header is present.
+  // If rawContent is available, check whether an explicit [project] header is present in stripped TOML.
   if (rawContent) {
-    return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:#.*)?(?:\n|$)/.test(rawContent);
+    const stripped = stripTomlStringsAndComments(rawContent);
+    return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:\n|$)/.test(stripped);
   }
   return false;
 }

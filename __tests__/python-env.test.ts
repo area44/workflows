@@ -14,6 +14,7 @@ import {
   resolvePythonEnvironment,
   resolvePythonVersion,
   resolveRuffVersion,
+  stripTomlStringsAndComments,
 } from "../src/python-env.js";
 
 describe("Python Package Manager Detection & Ruff Version Resolution", () => {
@@ -263,6 +264,25 @@ authors = [{ name = "Alice", email = "alice@example.com" }]
     });
 
     describe("Integration & Invariant Regression Tests", () => {
+      it("should strip comments and string contents correctly in stripTomlStringsAndComments", () => {
+        const content = `
+# [project]
+[tool.uv]
+description = """
+[project]
+name = "string-content"
+"""
+notes = '''
+[project]
+'''
+key = " [project] "
+lit = ' [project] '
+`;
+        const stripped = stripTomlStringsAndComments(content);
+        expect(stripped).not.toContain("[project]");
+        expect(stripped).toContain("[tool.uv]");
+      });
+
       it("should not falsely treat commented-out table headers as active tables", () => {
         const content = `
 # [project]
@@ -293,6 +313,33 @@ name = "string-content"
           expect(res.data.project).toBeUndefined();
           expect(res.data["build-system"]).toBeUndefined();
           expect((res.data.tool as Record<string, unknown>).uv).toBeDefined();
+        }
+      });
+
+      it("should classify pyproject.toml as standalone pip when [project] header appears only inside a multiline string", () => {
+        const tempDir = path.join(fixturesDir, "project-in-multiline-str-temp");
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          `[tool.uv]
+description = """
+[project]
+name = "fake"
+"""
+
+[project.optional-dependencies]
+dev = ["pytest"]
+`,
+        );
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
       });
 
