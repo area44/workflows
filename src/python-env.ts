@@ -364,7 +364,8 @@ export function resolvePythonVersion(
   pyprojectToml?: ParsedToml | null,
 ): string {
   const ctx = findPythonProjectContext(cwd);
-  const pyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+  const pyproject =
+    pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
   if (ctx.pythonVersionFile && fs.existsSync(ctx.pythonVersionFile)) {
     try {
@@ -1028,7 +1029,7 @@ export function detectPythonPackageManager(
   }
 
   const ctx = findPythonProjectContext(cwd);
-  if (pyprojectToml !== undefined) {
+  if (pyprojectToml !== undefined && pyprojectToml !== null) {
     ctx.pyprojectToml = pyprojectToml;
   }
 
@@ -1120,7 +1121,8 @@ export function resolveRuffVersion(
   pyprojectToml?: ParsedToml | null,
 ): string {
   const ctx = findPythonProjectContext(cwd);
-  const parsedPyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+  const parsedPyproject =
+    pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
   const lockVer = resolveRuffVersionFromUvLock(ctx.uvLockDir || cwd);
   if (lockVer) return lockVer;
@@ -1152,7 +1154,8 @@ export function isRuffDeclaredInProject(
   if (ver) return true;
 
   const ctx = findPythonProjectContext(cwd);
-  const parsedPyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+  const parsedPyproject =
+    pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
   if (parsedPyproject?.success === true) {
     const dep = findRuffDependencyInToml(parsedPyproject.data);
@@ -1200,12 +1203,12 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     };
   }
 
-  const pyprojectToml = readPyprojectToml(cwd);
+  const ctx = findPythonProjectContext(cwd);
 
   return {
     hasPythonSource: true,
-    pythonVersion: resolvePythonVersion(cwd, pyprojectToml),
-    ruffVersion: resolveRuffVersion(cwd, pyprojectToml),
-    pmInfo: detectPythonPackageManager(cwd, pyprojectToml),
+    pythonVersion: resolvePythonVersion(cwd, ctx.pyprojectToml),
+    ruffVersion: resolveRuffVersion(cwd, ctx.pyprojectToml),
+    pmInfo: detectPythonPackageManager(cwd, ctx.pyprojectToml),
   };
 }
