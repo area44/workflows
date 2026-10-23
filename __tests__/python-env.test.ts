@@ -1117,19 +1117,41 @@ enabled = true
   });
 
   describe("uv.toml and Parent Directory Context Regression Tests", () => {
-    it("should detect uv project using uv.toml and uv.lock", () => {
-      const tempDir = path.join(fixturesDir, "uv-toml-lock-temp");
+    it("should throw actionable error when uv.toml and uv.lock are present without pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-lock-no-pyproject-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "uv.toml"), "dev-dependencies = ['pytest']\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
 
       try {
-        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve root pyproject.toml when subdirectory contains configuration-only uv.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-sub-config-only-temp");
+      const pkgDir = path.join(tempDir, "packages/subpkg");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-app'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(pkgDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('subpkg')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(pkgDir);
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
-        expect(pmInfo?.configFile).toBe("uv.toml");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
         expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1155,6 +1177,36 @@ enabled = true
         expect(pmInfo?.lockfile).toBe("uv.lock");
         expect(pmInfo?.configFile).toBe("pyproject.toml");
         expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not mix parent uv.lock into independent child pip project if parent is not a uv workspace root", () => {
+      const tempDir = path.join(fixturesDir, "non-workspace-child-pip-temp");
+      const pkgDir = path.join(tempDir, "tools/cli");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(pkgDir, "pyproject.toml"),
+        "[project]\nname = 'child-cli'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(pkgDir, "cli.py"), "print('cli')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(pkgDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

@@ -190,11 +190,12 @@ function isUvWorkspaceRoot(
   return false;
 }
 
-function findWorkspaceUvLock(dirs: string[], cwdIndex: number): string | undefined {
-  for (let i = cwdIndex + 1; i < dirs.length; i++) {
-    const parentDir = dirs[i];
-    if (fs.existsSync(path.join(parentDir, "uv.lock")) && isUvWorkspaceRoot(parentDir)) {
-      return parentDir;
+function resolveUvLockDir(dirs: string[], pyprojectDir?: string): string | undefined {
+  for (const dir of dirs) {
+    if (fs.existsSync(path.join(dir, "uv.lock"))) {
+      if (!pyprojectDir || dir === pyprojectDir || isUvWorkspaceRoot(dir)) {
+        return dir;
+      }
     }
   }
   return undefined;
@@ -213,7 +214,6 @@ function findFirstExistingPath(dirs: string[], filename: string): string | undef
 function hasOwnManifestFiles(dir: string): boolean {
   return (
     fs.existsSync(path.join(dir, "pyproject.toml")) ||
-    fs.existsSync(path.join(dir, "uv.toml")) ||
     fs.existsSync(path.join(dir, "requirements.txt")) ||
     fs.existsSync(path.join(dir, "setup.py")) ||
     fs.existsSync(path.join(dir, "setup.cfg")) ||
@@ -227,10 +227,9 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   }
 
   const pyprojectToml = readPyprojectToml(resolvedCwd);
+  const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
   const uvToml = readUvToml(resolvedCwd);
-  const hasOwnLock = fs.existsSync(path.join(resolvedCwd, "uv.lock"));
-  const workspaceLockDir = hasOwnLock ? undefined : findWorkspaceUvLock(dirs, 0);
-  const uvLockDir = hasOwnLock ? resolvedCwd : workspaceLockDir;
+  const uvLockDir = resolveUvLockDir(dirs, pyprojectDir);
 
   const hasRequirementsTxt = fs.existsSync(path.join(resolvedCwd, "requirements.txt"));
   const hasSetupPy = fs.existsSync(path.join(resolvedCwd, "setup.py"));
@@ -240,7 +239,7 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
     cwd: resolvedCwd,
     projectDir: resolvedCwd,
     pyprojectToml,
-    pyprojectDir: pyprojectToml ? resolvedCwd : undefined,
+    pyprojectDir,
     uvToml,
     uvTomlDir: uvToml ? resolvedCwd : undefined,
     hasUvLock: Boolean(uvLockDir),
@@ -259,10 +258,11 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
 function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext {
   for (let i = 1; i < dirs.length; i++) {
     const pDir = dirs[i];
-    if (hasOwnManifestFiles(pDir) || fs.existsSync(path.join(pDir, "uv.lock"))) {
+    if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
+      const pyprojectDir = pyprojectToml ? pDir : undefined;
       const uvToml = readUvToml(pDir);
-      const hasUvLock = fs.existsSync(path.join(pDir, "uv.lock"));
+      const uvLockDir = resolveUvLockDir(dirs.slice(i), pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
       const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
       const hasSetupCfg = fs.existsSync(path.join(pDir, "setup.cfg"));
@@ -271,11 +271,11 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
         cwd: resolvedCwd,
         projectDir: pDir,
         pyprojectToml,
-        pyprojectDir: pyprojectToml ? pDir : undefined,
+        pyprojectDir,
         uvToml,
         uvTomlDir: uvToml ? pDir : undefined,
-        hasUvLock,
-        uvLockDir: hasUvLock ? pDir : undefined,
+        hasUvLock: Boolean(uvLockDir),
+        uvLockDir,
         hasRequirementsTxt,
         requirementsDir: hasRequirementsTxt ? pDir : undefined,
         hasSetupPy,
@@ -653,18 +653,16 @@ function getRelativePath(fromDir: string, toPath: string): string {
 function checkUvLockedProject(
   ctx: PythonProjectContext,
   hasValidPyproject: boolean,
-  hasValidUvToml: boolean,
 ): PythonPackageManagerInfo {
-  if (!hasValidPyproject && !hasValidUvToml) {
+  if (!hasValidPyproject) {
     throw new Error(
       "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
     );
   }
-  const configFile = ctx.pyprojectDir ? "pyproject.toml" : ctx.uvTomlDir ? "uv.toml" : undefined;
   return {
     name: "uv",
     lockfile: "uv.lock",
-    configFile,
+    configFile: "pyproject.toml",
     installCommands: [{ executable: "uv", args: ["sync"] }],
     lockCommand: "uv lock",
     syncCommand: "uv sync",
@@ -716,7 +714,7 @@ function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInf
   const isUvProject = hasValidPyproject || hasValidUvToml || ctx.hasUvLock;
 
   if (ctx.hasUvLock) {
-    return checkUvLockedProject(ctx, hasValidPyproject, hasValidUvToml);
+    return checkUvLockedProject(ctx, hasValidPyproject);
   }
 
   if (hasUvToolConfig || hasAnyUvToml) {
