@@ -2,4 +2,4 @@
 "@area44/workflows": patch
 ---
 
-Fix TOML parsing in Python environment resolution and validate UV configuration table structure.
+Fix TOML parsing and preserve Python project detection behavior.

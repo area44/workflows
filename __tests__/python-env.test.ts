@@ -426,7 +426,7 @@ name = "string-content"
     });
 
     it("should classify a pyproject.toml containing only [project.optional-dependencies] as a pip project", () => {
-      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
+      const tempDir = path.join(fixturesDir, "opt-deps-only-cls-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(
@@ -504,6 +504,22 @@ name = "string-content"
         expect(pmInfo?.installCommands).toEqual([
           { executable: "pip", args: ["install", "-r", "requirements.txt"] },
         ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not falsely detect ruff dependency when [project] name is ruff or description mentions ruff", () => {
+      const tempDir = path.join(fixturesDir, "project-name-ruff-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[project]\nname = "ruff"\ndescription = "ruff helper tool"\n',
+      );
+
+      try {
+        expect(isRuffDeclaredInProject(tempDir)).toBe(false);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

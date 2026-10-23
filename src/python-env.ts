@@ -356,12 +356,33 @@ function extractRuffVersionFromEntry(val: unknown): string | undefined {
   return undefined;
 }
 
+function isNonDependencyProjectKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k === "name" ||
+    k === "version" ||
+    k === "description" ||
+    k === "readme" ||
+    k === "license" ||
+    k === "keywords" ||
+    k === "classifiers" ||
+    k === "authors" ||
+    k === "maintainers" ||
+    k === "urls" ||
+    k === "scripts" ||
+    k === "gui-scripts"
+  );
+}
+
 function findRuffVersionInObject(
   obj: Record<string, unknown>,
   keyPath: string[],
 ): string | undefined {
   for (const [key, val] of Object.entries(obj)) {
     if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
+      continue;
+    }
+    if (keyPath.length === 1 && keyPath[0] === "project" && isNonDependencyProjectKey(key)) {
       continue;
     }
     if (key.toLowerCase() === "ruff") {
@@ -376,7 +397,7 @@ function findRuffVersionInObject(
 
 function findRuffVersionInToml(obj: unknown, keyPath: string[] = []): string | undefined {
   if (typeof obj === "string") {
-    return /^ruff\b/i.test(obj) ? extractRuffVersionSpecifier(obj) : undefined;
+    return /^ruff\b/i.test(obj.trim()) ? extractRuffVersionSpecifier(obj) : undefined;
   }
   if (Array.isArray(obj)) {
     for (const item of obj) {
@@ -396,6 +417,9 @@ function hasRuffDeclarationInObject(obj: Record<string, unknown>, keyPath: strin
     if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
       continue;
     }
+    if (keyPath.length === 1 && keyPath[0] === "project" && isNonDependencyProjectKey(key)) {
+      continue;
+    }
     if (key.toLowerCase() === "ruff") {
       return true;
     }
@@ -408,7 +432,7 @@ function hasRuffDeclarationInObject(obj: Record<string, unknown>, keyPath: strin
 
 function hasRuffDeclarationInToml(obj: unknown, keyPath: string[] = []): boolean {
   if (typeof obj === "string") {
-    return /\bruff\b/i.test(obj);
+    return /^ruff\b/i.test(obj.trim());
   }
   if (Array.isArray(obj)) {
     return obj.some((item) => hasRuffDeclarationInToml(item, keyPath));
