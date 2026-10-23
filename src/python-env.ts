@@ -163,136 +163,21 @@ export function hasPythonSource(
   return false;
 }
 
-export interface ParsedPyprojectToml {
-  tables: string[];
-  isMalformed: boolean;
-  errorMessage?: string;
-}
-
-interface MultilineState {
-  inMultiline: boolean;
-  quoteChar: string;
-}
-
-function handleMultilineState(
-  line: string,
-  state: MultilineState,
-): { line: string; inMultiline: boolean } {
-  if (state.inMultiline) {
-    const closingIdx = line.indexOf(state.quoteChar);
-    if (closingIdx !== -1) {
-      state.inMultiline = false;
-      return { line: line.slice(closingIdx + 3), inMultiline: false };
-    }
-    return { line: "", inMultiline: true };
-  }
-
-  const tripleDoubleIdx = line.indexOf('"""');
-  const tripleSingleIdx = line.indexOf("'''");
-  if (tripleDoubleIdx !== -1 || tripleSingleIdx !== -1) {
-    const idx =
-      tripleDoubleIdx !== -1 && tripleSingleIdx !== -1
-        ? Math.min(tripleDoubleIdx, tripleSingleIdx)
-        : tripleDoubleIdx !== -1
-          ? tripleDoubleIdx
-          : tripleSingleIdx;
-    const quoteChar = idx === tripleDoubleIdx ? '"""' : "'''";
-    const afterStart = line.slice(idx + 3);
-    if (afterStart.includes(quoteChar)) {
-      return {
-        line: line.slice(0, idx) + " " + afterStart.slice(afterStart.indexOf(quoteChar) + 3),
-        inMultiline: false,
-      };
-    }
-    state.inMultiline = true;
-    state.quoteChar = quoteChar;
-    return { line: line.slice(0, idx), inMultiline: true };
-  }
-
-  return { line, inMultiline: false };
-}
-
-function parseTableHeader(line: string): { tableName?: string; isMalformed: boolean } {
-  if (!line.endsWith("]")) {
-    return { isMalformed: true };
-  }
-  const headerContent = line.slice(1, -1).trim();
-  if (!headerContent || headerContent.startsWith("[") || headerContent.endsWith("]")) {
-    return { isMalformed: true };
-  }
-  const isArrayTable = headerContent.startsWith("[") && headerContent.endsWith("]");
-  const tableName = isArrayTable ? headerContent.slice(1, -1).trim() : headerContent;
-  return { tableName: tableName.toLowerCase(), isMalformed: false };
-}
-
-function validateKeyValueLine(line: string): boolean {
-  const eqIdx = line.indexOf("=");
-  if (eqIdx === -1) {
-    return false;
-  }
-  const val = line.slice(eqIdx + 1).trim();
-  if (
-    (val.startsWith('"') && !val.endsWith('"') && val.length > 1) ||
-    (val.startsWith("'") && !val.endsWith("'") && val.length > 1)
-  ) {
-    return false;
-  }
-  return true;
-}
-
-export function parsePyprojectToml(content: string): ParsedPyprojectToml {
+function getTomlTables(content: string): string[] {
   const lines = content.split("\n");
   const tables: string[] = [];
-  const state: MultilineState = { inMultiline: false, quoteChar: "" };
-
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const rawLine = lines[lineNum];
-    const { line: processedLine, inMultiline } = handleMultilineState(rawLine, state);
-    if (inMultiline) continue;
-
-    const commentIdx = processedLine.indexOf("#");
-    const line = (commentIdx !== -1 ? processedLine.slice(0, commentIdx) : processedLine).trim();
-    if (!line) continue;
-
-    if (line.startsWith("[")) {
-      const { tableName, isMalformed } = parseTableHeader(line);
-      if (isMalformed || !tableName) {
-        return {
-          tables,
-          isMalformed: true,
-          errorMessage: `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`,
-        };
-      }
-      tables.push(tableName);
-      continue;
-    }
-
-    if (!validateKeyValueLine(line)) {
-      return {
-        tables,
-        isMalformed: true,
-        errorMessage: `Malformed TOML line ${lineNum + 1}: ${rawLine.trim()}`,
-      };
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*/, "").trim();
+    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
+    if (match) {
+      tables.push(match[1].trim().toLowerCase());
     }
   }
-
-  if (state.inMultiline) {
-    return {
-      tables,
-      isMalformed: true,
-      errorMessage: "Unclosed multiline string in pyproject.toml",
-    };
-  }
-
-  return { tables, isMalformed: false };
+  return tables;
 }
 
 function hasUvProjectConfig(content: string): boolean {
-  const parsed = parsePyprojectToml(content);
-  if (parsed.isMalformed) {
-    return false;
-  }
-  const tables = parsed.tables;
+  const tables = getTomlTables(content);
   return (
     tables.includes("project") ||
     tables.includes("build-system") ||
@@ -301,23 +186,11 @@ function hasUvProjectConfig(content: string): boolean {
 }
 
 function hasPipProjectConfig(content: string): boolean {
-  const parsed = parsePyprojectToml(content);
-  if (parsed.isMalformed) {
-    return false;
-  }
-  const tables = parsed.tables;
+  const tables = getTomlTables(content);
   return tables.includes("project") || tables.includes("build-system");
 }
 
-function detectUvLockedProject(
-  parsed: ParsedPyprojectToml | undefined,
-  hasValidPyproject: boolean,
-): PythonPackageManagerInfo {
-  if (parsed?.isMalformed) {
-    throw new Error(
-      `Invalid Python project configuration: 'pyproject.toml' is malformed (${parsed.errorMessage}). 'uv sync' requires a valid 'pyproject.toml' file.`,
-    );
-  }
+function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
   if (!hasValidPyproject) {
     throw new Error(
       "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
@@ -337,26 +210,21 @@ function detectUvLockedProject(
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
 
-  let parsed: ParsedPyprojectToml | undefined;
-  if (pyprojectContent !== undefined) {
-    parsed = parsePyprojectToml(pyprojectContent);
-  }
+  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
 
-  const hasValidPyproject =
-    pyprojectContent !== undefined && !parsed?.isMalformed && hasUvProjectConfig(pyprojectContent);
+  const hasUvToolConfig =
+    pyprojectContent !== undefined &&
+    getTomlTables(pyprojectContent).some(
+      (t: string) => t === "tool.uv" || t.startsWith("tool.uv."),
+    );
 
-  const hasUvConfig =
-    parsed !== undefined &&
-    !parsed.isMalformed &&
-    parsed.tables.some((t) => t === "tool.uv" || t.startsWith("tool.uv."));
-
-  if (!hasUvLock && !hasUvConfig) return null;
+  if (!hasUvLock && !hasUvToolConfig) return null;
 
   if (hasUvLock) {
-    return detectUvLockedProject(parsed, hasValidPyproject);
+    return detectUvLockedProject(hasValidPyproject);
   }
 
-  // hasUvConfig is true without uv.lock
+  // hasUvToolConfig is true without uv.lock
   const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
   if (hasReqs) {
     return {

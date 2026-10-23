@@ -8,7 +8,6 @@ import {
   extractRuffVersionSpecifier,
   hasPythonSource,
   isRuffDeclaredInProject,
-  parsePyprojectToml,
   parsePythonVersionFromConstraint,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
@@ -373,25 +372,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     });
   });
 
-  describe("parsePyprojectToml()", () => {
-    it("should parse valid TOML tables cleanly", () => {
-      const parsed = parsePyprojectToml(
-        "[project]\nname = 'demo'\n\n[build-system]\nrequires = ['setuptools']\n\n[tool.uv.workspace]\nmembers = []\n",
-      );
-      expect(parsed.isMalformed).toBe(false);
-      expect(parsed.tables).toEqual(["project", "build-system", "tool.uv.workspace"]);
-    });
-
-    it("should detect malformed TOML headers or key-values", () => {
-      const parsed1 = parsePyprojectToml("[project\nname = 'demo'");
-      expect(parsed1.isMalformed).toBe(true);
-      expect(parsed1.errorMessage).toContain("Malformed TOML header");
-
-      const parsed2 = parsePyprojectToml("[project]\n unclosed_quote = \"abc");
-      expect(parsed2.isMalformed).toBe(true);
-      expect(parsed2.errorMessage).toContain("Malformed TOML line 2");
-    });
-  });
 
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
@@ -430,20 +410,20 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
 
       try {
         expect(() => detectPythonPackageManager(tempDir)).toThrow(
-          "Invalid Python project configuration: 'pyproject.toml' is malformed",
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
         );
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should return standalone pip when pyproject.toml contains only [tool.uv.sources] without project/workspace table", () => {
+    it("should return standalone pip when pyproject.toml contains only [tool.uv.sources] or [tool.uv.index] without project/workspace table", () => {
       const tempDir = path.join(fixturesDir, "uv-sources-only-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
-        "[tool.uv.sources]\nfoo = { path = 'pkgs/foo' }\n",
+        "[tool.uv.sources]\nfoo = { path = 'pkgs/foo' }\n\n[[tool.uv.index]]\nname = 'custom'\n",
       );
 
       try {
@@ -451,6 +431,31 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
         expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv for valid uv project that also contains requirements.txt and uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-reqs-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\nversion = '0.1.0'\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
