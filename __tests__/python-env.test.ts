@@ -389,7 +389,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
 
       const parsed2 = parsePyprojectToml("[project]\n unclosed_quote = \"abc");
       expect(parsed2.isMalformed).toBe(true);
-      expect(parsed2.errorMessage).toContain("Unmatched quote");
+      expect(parsed2.errorMessage).toContain("Malformed TOML line 2");
     });
   });
 

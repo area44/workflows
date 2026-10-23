@@ -169,98 +169,122 @@ export interface ParsedPyprojectToml {
   errorMessage?: string;
 }
 
+interface MultilineState {
+  inMultiline: boolean;
+  quoteChar: string;
+}
+
+function handleMultilineState(
+  line: string,
+  state: MultilineState,
+): { line: string; inMultiline: boolean } {
+  if (state.inMultiline) {
+    const closingIdx = line.indexOf(state.quoteChar);
+    if (closingIdx !== -1) {
+      state.inMultiline = false;
+      return { line: line.slice(closingIdx + 3), inMultiline: false };
+    }
+    return { line: "", inMultiline: true };
+  }
+
+  const tripleDoubleIdx = line.indexOf('"""');
+  const tripleSingleIdx = line.indexOf("'''");
+  if (tripleDoubleIdx !== -1 || tripleSingleIdx !== -1) {
+    const idx =
+      tripleDoubleIdx !== -1 && tripleSingleIdx !== -1
+        ? Math.min(tripleDoubleIdx, tripleSingleIdx)
+        : tripleDoubleIdx !== -1
+          ? tripleDoubleIdx
+          : tripleSingleIdx;
+    const quoteChar = idx === tripleDoubleIdx ? '"""' : "'''";
+    const afterStart = line.slice(idx + 3);
+    if (afterStart.includes(quoteChar)) {
+      return {
+        line: line.slice(0, idx) + " " + afterStart.slice(afterStart.indexOf(quoteChar) + 3),
+        inMultiline: false,
+      };
+    }
+    state.inMultiline = true;
+    state.quoteChar = quoteChar;
+    return { line: line.slice(0, idx), inMultiline: true };
+  }
+
+  return { line, inMultiline: false };
+}
+
+function parseTableHeader(line: string): { tableName?: string; isMalformed: boolean } {
+  if (!line.endsWith("]")) {
+    return { isMalformed: true };
+  }
+  const headerContent = line.slice(1, -1).trim();
+  if (!headerContent || headerContent.startsWith("[") || headerContent.endsWith("]")) {
+    return { isMalformed: true };
+  }
+  const isArrayTable = headerContent.startsWith("[") && headerContent.endsWith("]");
+  const tableName = isArrayTable ? headerContent.slice(1, -1).trim() : headerContent;
+  return { tableName: tableName.toLowerCase(), isMalformed: false };
+}
+
+function validateKeyValueLine(line: string): boolean {
+  const eqIdx = line.indexOf("=");
+  if (eqIdx === -1) {
+    return false;
+  }
+  const val = line.slice(eqIdx + 1).trim();
+  if (
+    (val.startsWith('"') && !val.endsWith('"') && val.length > 1) ||
+    (val.startsWith("'") && !val.endsWith("'") && val.length > 1)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function parsePyprojectToml(content: string): ParsedPyprojectToml {
   const lines = content.split("\n");
   const tables: string[] = [];
-  let isMalformed = false;
-  let errorMessage: string | undefined;
-  let inMultilineString = false;
-  let multilineQuoteChar = "";
+  const state: MultilineState = { inMultiline: false, quoteChar: "" };
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const rawLine = lines[lineNum];
-    let line = rawLine;
+    const { line: processedLine, inMultiline } = handleMultilineState(rawLine, state);
+    if (inMultiline) continue;
 
-    if (inMultilineString) {
-      const closingIdx = line.indexOf(multilineQuoteChar);
-      if (closingIdx !== -1) {
-        inMultilineString = false;
-        line = line.slice(closingIdx + 3);
-      } else {
-        continue;
-      }
-    }
-
-    const tripleDoubleIdx = line.indexOf('"""');
-    const tripleSingleIdx = line.indexOf("'''");
-    if (tripleDoubleIdx !== -1 || tripleSingleIdx !== -1) {
-      const idx =
-        tripleDoubleIdx !== -1 && tripleSingleIdx !== -1
-          ? Math.min(tripleDoubleIdx, tripleSingleIdx)
-          : tripleDoubleIdx !== -1
-            ? tripleDoubleIdx
-            : tripleSingleIdx;
-      const quoteChar = idx === tripleDoubleIdx ? '"""' : "'''";
-      const afterStart = line.slice(idx + 3);
-      if (afterStart.includes(quoteChar)) {
-        line = line.slice(0, idx) + " " + afterStart.slice(afterStart.indexOf(quoteChar) + 3);
-      } else {
-        inMultilineString = true;
-        multilineQuoteChar = quoteChar;
-        line = line.slice(0, idx);
-      }
-    }
-
-    const commentIdx = line.indexOf("#");
-    if (commentIdx !== -1) {
-      line = line.slice(0, commentIdx);
-    }
-
-    line = line.trim();
+    const commentIdx = processedLine.indexOf("#");
+    const line = (commentIdx !== -1 ? processedLine.slice(0, commentIdx) : processedLine).trim();
     if (!line) continue;
 
     if (line.startsWith("[")) {
-      if (!line.endsWith("]")) {
-        isMalformed = true;
-        errorMessage = `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`;
-        break;
+      const { tableName, isMalformed } = parseTableHeader(line);
+      if (isMalformed || !tableName) {
+        return {
+          tables,
+          isMalformed: true,
+          errorMessage: `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`,
+        };
       }
-      const headerContent = line.slice(1, -1).trim();
-      if (!headerContent || headerContent.startsWith("[") || headerContent.endsWith("]")) {
-        isMalformed = true;
-        errorMessage = `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`;
-        break;
-      }
-      const isArrayTable = headerContent.startsWith("[") && headerContent.endsWith("]");
-      const tableName = isArrayTable ? headerContent.slice(1, -1).trim() : headerContent;
-      tables.push(tableName.toLowerCase());
+      tables.push(tableName);
       continue;
     }
 
-    const eqIdx = line.indexOf("=");
-    if (eqIdx === -1) {
-      isMalformed = true;
-      errorMessage = `Malformed TOML line ${lineNum + 1}: ${rawLine.trim()}`;
-      break;
-    }
-
-    const val = line.slice(eqIdx + 1).trim();
-    if (
-      (val.startsWith('"') && !val.endsWith('"') && val.length > 1) ||
-      (val.startsWith("'") && !val.endsWith("'") && val.length > 1)
-    ) {
-      isMalformed = true;
-      errorMessage = `Unmatched quote on line ${lineNum + 1}: ${rawLine.trim()}`;
-      break;
+    if (!validateKeyValueLine(line)) {
+      return {
+        tables,
+        isMalformed: true,
+        errorMessage: `Malformed TOML line ${lineNum + 1}: ${rawLine.trim()}`,
+      };
     }
   }
 
-  if (inMultilineString) {
-    isMalformed = true;
-    errorMessage = "Unclosed multiline string in pyproject.toml";
+  if (state.inMultiline) {
+    return {
+      tables,
+      isMalformed: true,
+      errorMessage: "Unclosed multiline string in pyproject.toml",
+    };
   }
 
-  return { tables, isMalformed, errorMessage };
+  return { tables, isMalformed: false };
 }
 
 function hasUvProjectConfig(content: string): boolean {
@@ -285,6 +309,31 @@ function hasPipProjectConfig(content: string): boolean {
   return tables.includes("project") || tables.includes("build-system");
 }
 
+function detectUvLockedProject(
+  parsed: ParsedPyprojectToml | undefined,
+  hasValidPyproject: boolean,
+): PythonPackageManagerInfo {
+  if (parsed?.isMalformed) {
+    throw new Error(
+      `Invalid Python project configuration: 'pyproject.toml' is malformed (${parsed.errorMessage}). 'uv sync' requires a valid 'pyproject.toml' file.`,
+    );
+  }
+  if (!hasValidPyproject) {
+    throw new Error(
+      "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+    );
+  }
+  return {
+    name: "uv",
+    lockfile: "uv.lock",
+    configFile: "pyproject.toml",
+    installCommands: [{ executable: "uv", args: ["sync"] }],
+    lockCommand: "uv lock",
+    syncCommand: "uv sync",
+    execPrefix: "uv run",
+  };
+}
+
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
 
@@ -303,31 +352,12 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
 
   if (!hasUvLock && !hasUvConfig) return null;
 
-  const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
-
   if (hasUvLock) {
-    if (parsed?.isMalformed) {
-      throw new Error(
-        `Invalid Python project configuration: 'pyproject.toml' is malformed (${parsed.errorMessage}). 'uv sync' requires a valid 'pyproject.toml' file.`,
-      );
-    }
-    if (!hasValidPyproject) {
-      throw new Error(
-        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
-      );
-    }
-    return {
-      name: "uv",
-      lockfile: "uv.lock",
-      configFile: "pyproject.toml",
-      installCommands: [{ executable: "uv", args: ["sync"] }],
-      lockCommand: "uv lock",
-      syncCommand: "uv sync",
-      execPrefix: "uv run",
-    };
+    return detectUvLockedProject(parsed, hasValidPyproject);
   }
 
   // hasUvConfig is true without uv.lock
+  const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
   if (hasReqs) {
     return {
       name: "uv",
