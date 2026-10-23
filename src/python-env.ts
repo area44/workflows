@@ -486,6 +486,41 @@ export function resolvePythonVersion(
   const pyproject =
     pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
+  // 1. Local .python-version in projectDir
+  const localPyVerFile = path.join(ctx.projectDir, ".python-version");
+  if (fs.existsSync(localPyVerFile)) {
+    try {
+      const content = fs.readFileSync(localPyVerFile, "utf8").trim();
+      const parsedVer = parsePythonVersionFromConstraint(content);
+      if (parsedVer) return parsedVer;
+    } catch {
+      // fallback
+    }
+  }
+
+  // 2. Local pyproject.toml requires-python in projectDir
+  const pyprojectVer = readPyprojectPythonVersion(ctx.projectDir, pyproject);
+  if (pyprojectVer) return pyprojectVer;
+
+  // 3. Local runtime.txt in projectDir
+  const localRuntimeTxt = path.join(ctx.projectDir, "runtime.txt");
+  if (fs.existsSync(localRuntimeTxt)) {
+    try {
+      const content = fs.readFileSync(localRuntimeTxt, "utf8").trim();
+      const parsedVer = parsePythonVersionFromConstraint(content);
+      if (parsedVer) return parsedVer;
+    } catch {
+      // fallback
+    }
+  }
+
+  // 4. Workspace root pyproject.toml requires-python
+  if (ctx.workspaceRootToml) {
+    const wsVer = readPyprojectPythonVersion(ctx.workspaceRootDir || cwd, ctx.workspaceRootToml);
+    if (wsVer) return wsVer;
+  }
+
+  // 5. Ancestor .python-version
   if (ctx.pythonVersionFile && fs.existsSync(ctx.pythonVersionFile)) {
     try {
       const content = fs.readFileSync(ctx.pythonVersionFile, "utf8").trim();
@@ -496,14 +531,7 @@ export function resolvePythonVersion(
     }
   }
 
-  const pyprojectVer = readPyprojectPythonVersion(cwd, pyproject);
-  if (pyprojectVer) return pyprojectVer;
-
-  if (ctx.workspaceRootToml) {
-    const wsVer = readPyprojectPythonVersion(ctx.workspaceRootDir || cwd, ctx.workspaceRootToml);
-    if (wsVer) return wsVer;
-  }
-
+  // 6. Ancestor runtime.txt
   if (ctx.runtimeTxtFile && fs.existsSync(ctx.runtimeTxtFile)) {
     try {
       const content = fs.readFileSync(ctx.runtimeTxtFile, "utf8").trim();
