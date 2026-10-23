@@ -1116,6 +1116,70 @@ enabled = true
     });
   });
 
+  describe("uv.toml and Parent Directory Context Regression Tests", () => {
+    it("should detect uv project using uv.toml and uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-lock-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "dev-dependencies = ['pytest']\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("uv.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv workspace member in sub-directory with root pyproject.toml and uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-member-temp");
+      const pkgDir = path.join(tempDir, "packages/subpkg");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), ""); // mock repo boundary
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('subpkg')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(pkgDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ignore configuration-only uv.toml containing only index and sources tables", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-config-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "uv.toml"),
+        "[[index]]\nname = 'custom'\nurl = 'https://pypi.org/simple'\n\n[sources]\nfoo = { path = 'pkgs/foo' }\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));

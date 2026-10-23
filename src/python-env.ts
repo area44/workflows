@@ -101,9 +101,144 @@ export function parseToml(content: string): ParsedToml {
 }
 
 /**
+ * Reads and parses uv.toml in cwd using parseToml.
+ * Returns null if file does not exist, or ParsedToml result if file exists.
+ */
+export function readUvToml(cwd: string = process.cwd()): ParsedToml | null {
+  const uvTomlPath = path.join(cwd, "uv.toml");
+  if (!fs.existsSync(uvTomlPath)) {
+    return null;
+  }
+  try {
+    const content = fs.readFileSync(uvTomlPath, "utf8");
+    return parseToml(content);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
+/**
  * Reads and parses pyproject.toml in cwd using parseToml.
  * Returns null if file does not exist, or ParsedToml result if file exists.
  */
+export interface PythonProjectContext {
+  cwd: string;
+  projectDir: string;
+  pyprojectToml: ParsedToml | null;
+  pyprojectDir?: string;
+  uvToml: ParsedToml | null;
+  uvTomlDir?: string;
+  hasUvLock: boolean;
+  uvLockDir?: string;
+  hasRequirementsTxt: boolean;
+  requirementsDir?: string;
+  hasSetupPy: boolean;
+  setupPyDir?: string;
+  hasSetupCfg: boolean;
+  setupCfgDir?: string;
+  pythonVersionFile?: string;
+  runtimeTxtFile?: string;
+}
+
+/**
+ * Traverses directories from cwd up to the repository root (stopping at .git or filesystem root)
+ * to gather Python project configuration, manifests, and lockfiles across parent directories and workspace roots.
+ */
+export function findPythonProjectContext(cwd: string = process.cwd()): PythonProjectContext {
+  const resolvedCwd = path.resolve(cwd);
+  const dirs: string[] = [];
+  let curr = resolvedCwd;
+
+  while (true) {
+    dirs.push(curr);
+    if (fs.existsSync(path.join(curr, ".git"))) {
+      break;
+    }
+    const parent = path.dirname(curr);
+    if (parent === curr) {
+      break;
+    }
+    curr = parent;
+  }
+
+  let pyprojectToml: ParsedToml | null = null;
+  let pyprojectDir: string | undefined;
+  let uvToml: ParsedToml | null = null;
+  let uvTomlDir: string | undefined;
+  let uvLockDir: string | undefined;
+  let requirementsDir: string | undefined;
+  let setupPyDir: string | undefined;
+  let setupCfgDir: string | undefined;
+  let pythonVersionFile: string | undefined;
+  let runtimeTxtFile: string | undefined;
+
+  for (const dir of dirs) {
+    if (!pyprojectToml) {
+      const parsed = readPyprojectToml(dir);
+      if (parsed) {
+        pyprojectToml = parsed;
+        pyprojectDir = dir;
+      }
+    }
+    if (!uvToml) {
+      const parsed = readUvToml(dir);
+      if (parsed) {
+        uvToml = parsed;
+        uvTomlDir = dir;
+      }
+    }
+    if (!uvLockDir && fs.existsSync(path.join(dir, "uv.lock"))) {
+      uvLockDir = dir;
+    }
+    if (!requirementsDir && fs.existsSync(path.join(dir, "requirements.txt"))) {
+      requirementsDir = dir;
+    }
+    if (!setupPyDir && fs.existsSync(path.join(dir, "setup.py"))) {
+      setupPyDir = dir;
+    }
+    if (!setupCfgDir && fs.existsSync(path.join(dir, "setup.cfg"))) {
+      setupCfgDir = dir;
+    }
+    if (!pythonVersionFile && fs.existsSync(path.join(dir, ".python-version"))) {
+      pythonVersionFile = path.join(dir, ".python-version");
+    }
+    if (!runtimeTxtFile && fs.existsSync(path.join(dir, "runtime.txt"))) {
+      runtimeTxtFile = path.join(dir, "runtime.txt");
+    }
+  }
+
+  const projectDir =
+    pyprojectDir ||
+    uvTomlDir ||
+    uvLockDir ||
+    requirementsDir ||
+    setupPyDir ||
+    setupCfgDir ||
+    resolvedCwd;
+
+  return {
+    cwd: resolvedCwd,
+    projectDir,
+    pyprojectToml,
+    pyprojectDir,
+    uvToml,
+    uvTomlDir,
+    hasUvLock: Boolean(uvLockDir),
+    uvLockDir,
+    hasRequirementsTxt: Boolean(requirementsDir),
+    requirementsDir,
+    hasSetupPy: Boolean(setupPyDir),
+    setupPyDir,
+    hasSetupCfg: Boolean(setupCfgDir),
+    setupCfgDir,
+    pythonVersionFile,
+    runtimeTxtFile,
+  };
+}
+
 export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | null {
   const pyprojectPath = path.join(cwd, "pyproject.toml");
   if (!fs.existsSync(pyprojectPath)) {
@@ -130,17 +265,6 @@ export function parsePythonVersionFromConstraint(raw: string): string | undefine
   return match ? match[1] : undefined;
 }
 
-function readPythonVersionFile(cwd: string): string | undefined {
-  const pythonVersionFile = path.join(cwd, ".python-version");
-  if (!fs.existsSync(pythonVersionFile)) return undefined;
-  try {
-    const content = fs.readFileSync(pythonVersionFile, "utf8").trim();
-    return parsePythonVersionFromConstraint(content);
-  } catch {
-    return undefined;
-  }
-}
-
 function readPyprojectPythonVersion(
   cwd: string,
   pyprojectToml?: ParsedToml | null,
@@ -154,17 +278,6 @@ function readPyprojectPythonVersion(
   return undefined;
 }
 
-function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
-  const runtimeTxt = path.join(cwd, "runtime.txt");
-  if (!fs.existsSync(runtimeTxt)) return undefined;
-  try {
-    const content = fs.readFileSync(runtimeTxt, "utf8").trim();
-    return parsePythonVersionFromConstraint(content);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Resolves the target Python version from project configuration files (.python-version,
  * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
@@ -173,12 +286,33 @@ export function resolvePythonVersion(
   cwd: string = process.cwd(),
   pyprojectToml?: ParsedToml | null,
 ): string {
-  return (
-    readPythonVersionFile(cwd) ||
-    readPyprojectPythonVersion(cwd, pyprojectToml) ||
-    readRuntimeTxtPythonVersion(cwd) ||
-    DEFAULT_PYTHON_VERSION
-  );
+  const ctx = findPythonProjectContext(cwd);
+  const pyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+
+  if (ctx.pythonVersionFile && fs.existsSync(ctx.pythonVersionFile)) {
+    try {
+      const content = fs.readFileSync(ctx.pythonVersionFile, "utf8").trim();
+      const parsedVer = parsePythonVersionFromConstraint(content);
+      if (parsedVer) return parsedVer;
+    } catch {
+      // fallback
+    }
+  }
+
+  const pyprojectVer = readPyprojectPythonVersion(cwd, pyproject);
+  if (pyprojectVer) return pyprojectVer;
+
+  if (ctx.runtimeTxtFile && fs.existsSync(ctx.runtimeTxtFile)) {
+    try {
+      const content = fs.readFileSync(ctx.runtimeTxtFile, "utf8").trim();
+      const parsedVer = parsePythonVersionFromConstraint(content);
+      if (parsedVer) return parsedVer;
+    } catch {
+      // fallback
+    }
+  }
+
+  return DEFAULT_PYTHON_VERSION;
 }
 
 /**
@@ -395,14 +529,34 @@ function hasBuildSystemTable(parsed: Record<string, unknown>, rawContent?: strin
   return entries.some(([, val]) => !isObject(val));
 }
 
+function isUvToolObjectConfigPresent(uvObj: Record<string, unknown>): boolean {
+  if ("workspace" in uvObj && isObject(uvObj.workspace)) return true;
+  if ("dev-dependencies" in uvObj && Array.isArray(uvObj["dev-dependencies"])) return true;
+  if ("override-dependencies" in uvObj && Array.isArray(uvObj["override-dependencies"]))
+    return true;
+  if ("constraint-dependencies" in uvObj && Array.isArray(uvObj["constraint-dependencies"]))
+    return true;
+  if ("default-groups" in uvObj && Array.isArray(uvObj["default-groups"])) return true;
+  if ("package" in uvObj) return true;
+  if ("managed" in uvObj && uvObj.managed === true) return true;
+  return false;
+}
+
 function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
-  return (
-    hasProjectTable(parsed, rawContent) ||
-    hasBuildSystemTable(parsed, rawContent) ||
-    (isObject(parsed.tool) &&
-      isObject((parsed.tool as Record<string, unknown>).uv) &&
-      isObject(((parsed.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace))
-  );
+  if (hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent)) {
+    return true;
+  }
+  if (isObject(parsed.tool) && isObject(parsed.tool.uv)) {
+    return isUvToolObjectConfigPresent(parsed.tool.uv as Record<string, unknown>);
+  }
+  return false;
+}
+
+function isUvTomlProjectConfigPresent(parsed: Record<string, unknown>): boolean {
+  if (isUvToolObjectConfigPresent(parsed)) return true;
+  const configOnlyKeys = new Set(["sources", "index", "pip"]);
+  const keys = Object.keys(parsed);
+  return keys.some((k) => !configOnlyKeys.has(k));
 }
 
 function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
@@ -413,99 +567,92 @@ function isPipProjectConfigPresent(parsed: Record<string, unknown>, rawContent?:
   return hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent);
 }
 
-function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
-  if (!hasValidPyproject) {
-    throw new Error(
-      "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
-    );
-  }
-  return {
-    name: "uv",
-    lockfile: "uv.lock",
-    configFile: "pyproject.toml",
-    installCommands: [{ executable: "uv", args: ["sync"] }],
-    lockCommand: "uv lock",
-    syncCommand: "uv sync",
-    execPrefix: "uv run",
-  };
-}
-
-function detectUv(cwd: string, pyprojectToml?: ParsedToml | null): PythonPackageManagerInfo | null {
-  const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
-
+function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInfo | null {
   const hasValidPyproject =
-    pyprojectToml?.success === true &&
-    isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
+    ctx.pyprojectToml?.success === true &&
+    isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent);
+
+  const hasValidUvToml =
+    ctx.uvToml?.success === true && isUvTomlProjectConfigPresent(ctx.uvToml.data);
 
   const hasUvToolConfig =
-    pyprojectToml?.success === true && isUvToolConfigPresent(pyprojectToml.data);
+    ctx.pyprojectToml?.success === true && isUvToolConfigPresent(ctx.pyprojectToml.data);
 
-  if (!hasUvLock && !hasUvToolConfig) return null;
+  const isUvProject = hasValidPyproject || hasValidUvToml || ctx.hasUvLock;
 
-  if (hasUvLock) {
-    return detectUvLockedProject(hasValidPyproject);
-  }
-
-  // hasUvToolConfig is true without uv.lock
-  const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
-  if (hasReqs) {
+  if (ctx.hasUvLock) {
+    if (!hasValidPyproject && !hasValidUvToml) {
+      throw new Error(
+        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+      );
+    }
+    const configFile = ctx.pyprojectDir ? "pyproject.toml" : ctx.uvTomlDir ? "uv.toml" : undefined;
     return {
       name: "uv",
-      configFile: "pyproject.toml",
-      installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+      lockfile: "uv.lock",
+      configFile,
+      installCommands: [{ executable: "uv", args: ["sync"] }],
+      lockCommand: "uv lock",
+      syncCommand: "uv sync",
       execPrefix: "uv run",
     };
   }
 
-  if (!hasValidPyproject) {
-    return null;
+  if (hasUvToolConfig || hasValidUvToml) {
+    if (ctx.hasRequirementsTxt) {
+      return {
+        name: "uv",
+        configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
+        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+        execPrefix: "uv run",
+      };
+    }
+
+    if (isUvProject) {
+      return {
+        name: "uv",
+        configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
+        installCommands: [{ executable: "uv", args: ["sync"] }],
+        lockCommand: "uv lock",
+        syncCommand: "uv sync",
+        execPrefix: "uv run",
+      };
+    }
   }
 
-  return {
-    name: "uv",
-    configFile: "pyproject.toml",
-    installCommands: [{ executable: "uv", args: ["sync"] }],
-    lockCommand: "uv lock",
-    syncCommand: "uv sync",
-    execPrefix: "uv run",
-  };
+  return null;
 }
 
-function detectPip(
-  cwd: string,
-  pyprojectToml?: ParsedToml | null,
-): PythonPackageManagerInfo | null {
-  const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
-  const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
-  const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
+function detectPipFromContext(ctx: PythonProjectContext): PythonPackageManagerInfo | null {
   const hasProjectOrBuildSystem =
-    pyprojectToml?.success === true &&
-    isPipProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
+    ctx.pyprojectToml?.success === true &&
+    isPipProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent);
 
-  const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
+  const isPipProject =
+    ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
 
   let configFile: string | undefined;
   if (hasProjectOrBuildSystem) {
     configFile = "pyproject.toml";
-  } else if (hasSetupPy) {
+  } else if (ctx.hasSetupPy) {
     configFile = "setup.py";
-  } else if (hasSetupCfg) {
+  } else if (ctx.hasSetupCfg) {
     configFile = "setup.cfg";
   }
 
   let installCommands: PythonInstallCommand[] = [];
   let lockfile: string | undefined;
 
-  const isPackage = hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
+  const isPackage = ctx.hasSetupPy || ctx.hasSetupCfg || hasProjectOrBuildSystem;
 
-  if (hasRequirements && isPackage) {
+  if (ctx.hasRequirementsTxt && isPackage) {
     installCommands = [
       { executable: "pip", args: ["install", "-r", "requirements.txt"] },
       { executable: "pip", args: ["install", "-e", "."] },
     ];
     lockfile = "requirements.txt";
-  } else if (hasRequirements) {
+  } else if (ctx.hasRequirementsTxt) {
     installCommands = [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
     lockfile = "requirements.txt";
   } else if (isPackage) {
@@ -743,21 +890,23 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     return true;
   }
 
-  const pyprojectToml = readPyprojectToml(cwd);
-  if (pyprojectToml?.success === true) {
-    if (isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent)) {
+  const ctx = findPythonProjectContext(cwd);
+
+  if (ctx.pyprojectToml?.success === true) {
+    if (isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent)) {
       return true;
     }
-    if (isRuffDeclaredInProject(cwd, undefined, pyprojectToml)) {
+    if (isRuffDeclaredInProject(cwd, undefined, ctx.pyprojectToml)) {
       return true;
     }
   }
 
-  const pyIndicatorFiles = ["setup.py", "setup.cfg", "requirements.txt", "uv.lock"];
-  for (const f of pyIndicatorFiles) {
-    if (fs.existsSync(path.join(cwd, f))) {
-      return true;
-    }
+  if (ctx.uvToml?.success === true && isUvTomlProjectConfigPresent(ctx.uvToml.data)) {
+    return true;
+  }
+
+  if (ctx.hasUvLock || ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg) {
+    return true;
   }
 
   return false;
@@ -771,9 +920,12 @@ export function detectPythonPackageManager(
     return null;
   }
 
-  const parsedToml = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  const ctx = findPythonProjectContext(cwd);
+  if (pyprojectToml !== undefined) {
+    ctx.pyprojectToml = pyprojectToml;
+  }
 
-  const detected = detectUv(cwd, parsedToml) || detectPip(cwd, parsedToml);
+  const detected = detectUvFromContext(ctx) || detectPipFromContext(ctx);
 
   if (detected) {
     return detected;
@@ -837,16 +989,6 @@ function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
   return undefined;
 }
 
-function resolveRuffVersionFromPyproject(
-  cwd: string,
-  pyprojectToml?: ParsedToml | null,
-): string | undefined {
-  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
-  if (parsed?.success !== true) return undefined;
-  const dep = findRuffDependencyInToml(parsed.data);
-  return dep.version;
-}
-
 function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
   const reqPath = path.join(cwd, "requirements.txt");
   if (!fs.existsSync(reqPath)) return undefined;
@@ -870,12 +1012,26 @@ export function resolveRuffVersion(
   cwd: string = process.cwd(),
   pyprojectToml?: ParsedToml | null,
 ): string {
-  return (
-    resolveRuffVersionFromUvLock(cwd) ||
-    resolveRuffVersionFromPyproject(cwd, pyprojectToml) ||
-    resolveRuffVersionFromRequirements(cwd) ||
-    ""
-  );
+  const ctx = findPythonProjectContext(cwd);
+  const parsedPyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+
+  const lockVer = resolveRuffVersionFromUvLock(ctx.uvLockDir || cwd);
+  if (lockVer) return lockVer;
+
+  if (parsedPyproject?.success === true) {
+    const dep = findRuffDependencyInToml(parsedPyproject.data);
+    if (dep.version) return dep.version;
+  }
+
+  if (ctx.uvToml?.success === true) {
+    const dep = findRuffDependencyInToml(ctx.uvToml.data);
+    if (dep.version) return dep.version;
+  }
+
+  const reqVer = resolveRuffVersionFromRequirements(ctx.requirementsDir || cwd);
+  if (reqVer) return reqVer;
+
+  return "";
 }
 
 export function isRuffDeclaredInProject(
@@ -888,15 +1044,25 @@ export function isRuffDeclaredInProject(
   const ver = resolveRuffVersion(cwd, pyprojectToml);
   if (ver) return true;
 
-  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
-  if (parsed?.success === true) {
-    const dep = findRuffDependencyInToml(parsed.data);
+  const ctx = findPythonProjectContext(cwd);
+  const parsedPyproject = pyprojectToml !== undefined ? pyprojectToml : ctx.pyprojectToml;
+
+  if (parsedPyproject?.success === true) {
+    const dep = findRuffDependencyInToml(parsedPyproject.data);
     if (dep.declared) {
       return true;
     }
   }
 
-  const reqPath = path.join(cwd, "requirements.txt");
+  if (ctx.uvToml?.success === true) {
+    const dep = findRuffDependencyInToml(ctx.uvToml.data);
+    if (dep.declared) {
+      return true;
+    }
+  }
+
+  const reqDir = ctx.requirementsDir || cwd;
+  const reqPath = path.join(reqDir, "requirements.txt");
   if (fs.existsSync(reqPath)) {
     try {
       const content = fs.readFileSync(reqPath, "utf8");
