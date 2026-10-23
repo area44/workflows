@@ -129,6 +129,8 @@ export interface PythonProjectContext {
   projectDir: string;
   pyprojectToml: ParsedToml | null;
   pyprojectDir?: string;
+  workspaceRootToml?: ParsedToml | null;
+  workspaceRootDir?: string;
   uvToml: ParsedToml | null;
   uvTomlDir?: string;
   hasUvLock: boolean;
@@ -165,16 +167,35 @@ function collectParentDirs(resolvedCwd: string): string[] {
   return dirs;
 }
 
+function isValidUvWorkspaceConfig(workspace: unknown): boolean {
+  if (!isObject(workspace)) return false;
+  return Array.isArray(workspace.members) && workspace.members.every((m) => typeof m === "string");
+}
+
 function isUvWorkspaceRoot(dir: string, pyproject?: ParsedToml | null): boolean {
   const pyParsed = pyproject !== undefined ? pyproject : readPyprojectToml(dir);
   return (
     pyParsed?.success === true &&
     isObject(pyParsed.data.tool) &&
     isObject((pyParsed.data.tool as Record<string, unknown>).uv) &&
-    isObject(
+    isValidUvWorkspaceConfig(
       ((pyParsed.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
     )
   );
+}
+
+function findWorkspaceRootContext(
+  dirs: string[],
+  startIndex: number = 0,
+): { dir?: string; toml?: ParsedToml | null } {
+  for (let i = startIndex; i < dirs.length; i++) {
+    const dir = dirs[i];
+    const pyproject = readPyprojectToml(dir);
+    if (pyproject && isUvWorkspaceRoot(dir, pyproject)) {
+      return { dir, toml: pyproject };
+    }
+  }
+  return {};
 }
 
 function resolveUvLockDir(dirs: string[], pyprojectDir?: string): string | undefined {
@@ -215,6 +236,7 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
 
   const pyprojectToml = readPyprojectToml(resolvedCwd);
   const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
+  const ws = findWorkspaceRootContext(dirs, 1);
   const uvToml = readUvToml(resolvedCwd);
   const uvLockDir = resolveUvLockDir(dirs, pyprojectDir);
 
@@ -227,6 +249,8 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
     projectDir: resolvedCwd,
     pyprojectToml,
     pyprojectDir,
+    workspaceRootToml: ws.toml,
+    workspaceRootDir: ws.dir,
     uvToml,
     uvTomlDir: uvToml ? resolvedCwd : undefined,
     hasUvLock: Boolean(uvLockDir),
@@ -248,6 +272,7 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
     if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
       const pyprojectDir = pyprojectToml ? pDir : undefined;
+      const ws = findWorkspaceRootContext(dirs, i + 1);
       const uvToml = readUvToml(pDir);
       const uvLockDir = resolveUvLockDir(dirs.slice(i), pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
@@ -259,6 +284,8 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
         projectDir: pDir,
         pyprojectToml,
         pyprojectDir,
+        workspaceRootToml: ws.toml,
+        workspaceRootDir: ws.dir,
         uvToml,
         uvTomlDir: uvToml ? pDir : undefined,
         hasUvLock: Boolean(uvLockDir),
@@ -366,6 +393,11 @@ export function resolvePythonVersion(
 
   const pyprojectVer = readPyprojectPythonVersion(cwd, pyproject);
   if (pyprojectVer) return pyprojectVer;
+
+  if (ctx.workspaceRootToml) {
+    const wsVer = readPyprojectPythonVersion(ctx.workspaceRootDir || cwd, ctx.workspaceRootToml);
+    if (wsVer) return wsVer;
+  }
 
   if (ctx.runtimeTxtFile && fs.existsSync(ctx.runtimeTxtFile)) {
     try {
@@ -600,7 +632,7 @@ function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: 
   }
   if (isObject(parsed.tool) && isObject(parsed.tool.uv)) {
     const uv = parsed.tool.uv as Record<string, unknown>;
-    return isObject(uv.workspace) || Array.isArray(uv["dev-dependencies"]);
+    return isValidUvWorkspaceConfig(uv.workspace) || Array.isArray(uv["dev-dependencies"]);
   }
   return false;
 }
@@ -1090,6 +1122,11 @@ export function resolveRuffVersion(
     if (dep.version) return dep.version;
   }
 
+  if (ctx.workspaceRootToml?.success === true) {
+    const dep = findRuffDependencyInToml(ctx.workspaceRootToml.data);
+    if (dep.version) return dep.version;
+  }
+
   if (ctx.uvToml?.success === true) {
     const dep = findRuffDependencyInToml(ctx.uvToml.data);
     if (dep.version) return dep.version;
@@ -1117,6 +1154,13 @@ export function isRuffDeclaredInProject(
 
   if (parsedPyproject?.success === true) {
     const dep = findRuffDependencyInToml(parsedPyproject.data);
+    if (dep.declared) {
+      return true;
+    }
+  }
+
+  if (ctx.workspaceRootToml?.success === true) {
+    const dep = findRuffDependencyInToml(ctx.workspaceRootToml.data);
     if (dep.declared) {
       return true;
     }

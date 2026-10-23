@@ -555,19 +555,82 @@ enabled = true
       fs.writeFileSync(path.join(tempDir, ".git"), "");
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
-        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
       );
-      fs.writeFileSync(path.join(tempDir, "uv.lock"), 'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n');
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
       fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('sub')\n");
-      fs.writeFileSync(path.join(pkgDir, "pyproject.toml"), "[project]\nname = 'sub'\nversion = '0.1.0'\n");
+      fs.writeFileSync(
+        path.join(pkgDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
 
       try {
         const resolved = resolvePythonEnvironment(pkgDir);
         expect(resolved.hasPythonSource).toBe(true);
-        expect(resolved.pythonVersion).toBe(DEFAULT_PYTHON_VERSION);
+        expect(resolved.pythonVersion).toBe("3.11");
         expect(resolved.ruffVersion).toBe("0.4.2");
         expect(resolved.pmInfo?.name).toBe("uv");
         expect(resolved.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject invalid [tool.uv.workspace] definitions (empty, missing members, or non-array members)", () => {
+      const invalidWorkspaces = [
+        "[tool.uv.workspace]\n",
+        "[tool.uv.workspace]\nfoo = 'bar'\n",
+        "[tool.uv.workspace]\nmembers = 'not-an-array'\n",
+        "[tool.uv.workspace]\nmembers = [123]\n",
+      ];
+
+      for (const [idx, content] of invalidWorkspaces.entries()) {
+        const tempDir = path.join(fixturesDir, `invalid-ws-${idx}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+
+          fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+          expect(() => detectPythonPackageManager(tempDir)).toThrow(
+            "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+          );
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should resolve nested directory with requirements.txt relative paths correctly", () => {
+      const tempDir = path.join(fixturesDir, "nested-reqs-rel-path-temp");
+      const subDir = path.join(tempDir, "sub/deep");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(path.join(subDir, "app.py"), "print('app')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "../../requirements.txt"] },
+        ]);
+
+        const resolved = resolvePythonEnvironment(subDir);
+        expect(resolved.hasPythonSource).toBe(true);
+        expect(resolved.pmInfo?.name).toBe("pip");
+        expect(resolved.pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "../../requirements.txt"] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
