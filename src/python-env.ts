@@ -163,54 +163,157 @@ export function hasPythonSource(
   return false;
 }
 
-function getTomlTables(content: string): string[] {
-  const lines = content.split("\n");
-  const tables: string[] = [];
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/#.*/, "").trim();
-    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
-    if (match) {
-      tables.push(match[1].trim().toLowerCase());
-    }
-  }
-  return tables;
+export interface ParsedPyprojectToml {
+  tables: string[];
+  isMalformed: boolean;
+  errorMessage?: string;
 }
 
-function hasTomlTable(content: string, tableName: string): boolean {
-  const fullTarget = `tool.${tableName.toLowerCase()}`;
-  const tables = getTomlTables(content);
-  return tables.some((t) => t === fullTarget || t.startsWith(`${fullTarget}.`));
+export function parsePyprojectToml(content: string): ParsedPyprojectToml {
+  const lines = content.split("\n");
+  const tables: string[] = [];
+  let isMalformed = false;
+  let errorMessage: string | undefined;
+  let inMultilineString = false;
+  let multilineQuoteChar = "";
+
+  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+    const rawLine = lines[lineNum];
+    let line = rawLine;
+
+    if (inMultilineString) {
+      const closingIdx = line.indexOf(multilineQuoteChar);
+      if (closingIdx !== -1) {
+        inMultilineString = false;
+        line = line.slice(closingIdx + 3);
+      } else {
+        continue;
+      }
+    }
+
+    const tripleDoubleIdx = line.indexOf('"""');
+    const tripleSingleIdx = line.indexOf("'''");
+    if (tripleDoubleIdx !== -1 || tripleSingleIdx !== -1) {
+      const idx =
+        tripleDoubleIdx !== -1 && tripleSingleIdx !== -1
+          ? Math.min(tripleDoubleIdx, tripleSingleIdx)
+          : tripleDoubleIdx !== -1
+            ? tripleDoubleIdx
+            : tripleSingleIdx;
+      const quoteChar = idx === tripleDoubleIdx ? '"""' : "'''";
+      const afterStart = line.slice(idx + 3);
+      if (afterStart.includes(quoteChar)) {
+        line = line.slice(0, idx) + " " + afterStart.slice(afterStart.indexOf(quoteChar) + 3);
+      } else {
+        inMultilineString = true;
+        multilineQuoteChar = quoteChar;
+        line = line.slice(0, idx);
+      }
+    }
+
+    const commentIdx = line.indexOf("#");
+    if (commentIdx !== -1) {
+      line = line.slice(0, commentIdx);
+    }
+
+    line = line.trim();
+    if (!line) continue;
+
+    if (line.startsWith("[")) {
+      if (!line.endsWith("]")) {
+        isMalformed = true;
+        errorMessage = `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`;
+        break;
+      }
+      const headerContent = line.slice(1, -1).trim();
+      if (!headerContent || headerContent.startsWith("[") || headerContent.endsWith("]")) {
+        isMalformed = true;
+        errorMessage = `Malformed TOML header on line ${lineNum + 1}: ${rawLine.trim()}`;
+        break;
+      }
+      const isArrayTable = headerContent.startsWith("[") && headerContent.endsWith("]");
+      const tableName = isArrayTable ? headerContent.slice(1, -1).trim() : headerContent;
+      tables.push(tableName.toLowerCase());
+      continue;
+    }
+
+    const eqIdx = line.indexOf("=");
+    if (eqIdx === -1) {
+      isMalformed = true;
+      errorMessage = `Malformed TOML line ${lineNum + 1}: ${rawLine.trim()}`;
+      break;
+    }
+
+    const val = line.slice(eqIdx + 1).trim();
+    if (
+      (val.startsWith('"') && !val.endsWith('"') && val.length > 1) ||
+      (val.startsWith("'") && !val.endsWith("'") && val.length > 1)
+    ) {
+      isMalformed = true;
+      errorMessage = `Unmatched quote on line ${lineNum + 1}: ${rawLine.trim()}`;
+      break;
+    }
+  }
+
+  if (inMultilineString) {
+    isMalformed = true;
+    errorMessage = "Unclosed multiline string in pyproject.toml";
+  }
+
+  return { tables, isMalformed, errorMessage };
 }
 
 function hasUvProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
-  if (tables.includes("project") || tables.includes("build-system")) {
-    return true;
+  const parsed = parsePyprojectToml(content);
+  if (parsed.isMalformed) {
+    return false;
   }
-  if (tables.includes("tool.uv") || tables.some((t) => t.startsWith("tool.uv."))) {
-    return true;
-  }
-  return false;
+  const tables = parsed.tables;
+  return (
+    tables.includes("project") ||
+    tables.includes("build-system") ||
+    tables.includes("tool.uv.workspace")
+  );
 }
 
 function hasPipProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
+  const parsed = parsePyprojectToml(content);
+  if (parsed.isMalformed) {
+    return false;
+  }
+  const tables = parsed.tables;
   return tables.includes("project") || tables.includes("build-system");
 }
 
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
-  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
-  const hasUvConfig = pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "uv");
+
+  let parsed: ParsedPyprojectToml | undefined;
+  if (pyprojectContent !== undefined) {
+    parsed = parsePyprojectToml(pyprojectContent);
+  }
+
+  const hasValidPyproject =
+    pyprojectContent !== undefined && !parsed?.isMalformed && hasUvProjectConfig(pyprojectContent);
+
+  const hasUvConfig =
+    parsed !== undefined &&
+    !parsed.isMalformed &&
+    parsed.tables.some((t) => t === "tool.uv" || t.startsWith("tool.uv."));
 
   if (!hasUvLock && !hasUvConfig) return null;
 
   const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
 
   if (hasUvLock) {
+    if (parsed?.isMalformed) {
+      throw new Error(
+        `Invalid Python project configuration: 'pyproject.toml' is malformed (${parsed.errorMessage}). 'uv sync' requires a valid 'pyproject.toml' file.`,
+      );
+    }
     if (!hasValidPyproject) {
       throw new Error(
-        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
       );
     }
     return {
@@ -224,7 +327,7 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
     };
   }
 
-  // hasUvConfig is true
+  // hasUvConfig is true without uv.lock
   if (hasReqs) {
     return {
       name: "uv",
@@ -232,6 +335,10 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
       installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
       execPrefix: "uv run",
     };
+  }
+
+  if (!hasValidPyproject) {
+    return null;
   }
 
   return {

@@ -8,6 +8,7 @@ import {
   extractRuffVersionSpecifier,
   hasPythonSource,
   isRuffDeclaredInProject,
+  parsePyprojectToml,
   parsePythonVersionFromConstraint,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
@@ -372,6 +373,26 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     });
   });
 
+  describe("parsePyprojectToml()", () => {
+    it("should parse valid TOML tables cleanly", () => {
+      const parsed = parsePyprojectToml(
+        "[project]\nname = 'demo'\n\n[build-system]\nrequires = ['setuptools']\n\n[tool.uv.workspace]\nmembers = []\n",
+      );
+      expect(parsed.isMalformed).toBe(false);
+      expect(parsed.tables).toEqual(["project", "build-system", "tool.uv.workspace"]);
+    });
+
+    it("should detect malformed TOML headers or key-values", () => {
+      const parsed1 = parsePyprojectToml("[project\nname = 'demo'");
+      expect(parsed1.isMalformed).toBe(true);
+      expect(parsed1.errorMessage).toContain("Malformed TOML header");
+
+      const parsed2 = parsePyprojectToml("[project]\n unclosed_quote = \"abc");
+      expect(parsed2.isMalformed).toBe(true);
+      expect(parsed2.errorMessage).toContain("Unmatched quote");
+    });
+  });
+
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));
@@ -393,8 +414,65 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
 
       try {
         expect(() => detectPythonPackageManager(tempDir)).toThrow(
-          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
         );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should throw actionable error when uv.lock is present with malformed pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-malformed-pyproject-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project\nname = 'broken'\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'pyproject.toml' is malformed",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return standalone pip when pyproject.toml contains only [tool.uv.sources] without project/workspace table", () => {
+      const tempDir = path.join(fixturesDir, "uv-sources-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.sources]\nfoo = { path = 'pkgs/foo' }\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect pip for pyproject.toml containing only [build-system]", () => {
+      const tempDir = path.join(fixturesDir, "build-system-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system]\nrequires = ['setuptools']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -409,7 +487,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
 
       try {
         expect(() => detectPythonPackageManager(tempDir)).toThrow(
-          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
         );
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -440,11 +518,14 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       }
     });
 
-    it("should detect uv when pyproject.toml has [tool.uv] table but uv.lock is missing", () => {
+    it("should detect uv when pyproject.toml has valid project configuration and [tool.uv] table but uv.lock is missing", () => {
       const tempDir = path.join(fixturesDir, "uv-config-no-lock-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.uv]\ndev-dependencies = []\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\n\n[tool.uv]\ndev-dependencies = []\n",
+      );
 
       try {
         const pmInfo = detectPythonPackageManager(tempDir);
