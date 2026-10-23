@@ -405,6 +405,60 @@ dev = ["pytest"]
       }
     });
 
+    it("should respect workspace exclude patterns and not assign workspace lockfile to excluded packages", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-exclude-temp");
+      const memberDir = path.join(tempDir, "packages/included");
+      const excludedDir = path.join(tempDir, "packages/excluded");
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.mkdirSync(excludedDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\nexclude = ['packages/excluded']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(memberDir, "mem.py"), "print('mem')\n");
+      fs.writeFileSync(path.join(excludedDir, "ex.py"), "print('ex')\n");
+      fs.writeFileSync(
+        path.join(excludedDir, "pyproject.toml"),
+        "[project]\nname = 'excluded-pkg'\nversion = '0.1.0'\n",
+      );
+
+      try {
+        const memberPmInfo = detectPythonPackageManager(memberDir);
+        expect(memberPmInfo?.name).toBe("uv");
+        expect(memberPmInfo?.lockfile).toBe("uv.lock");
+
+        const excludedPmInfo = detectPythonPackageManager(excludedDir);
+        expect(excludedPmInfo?.name).toBe("pip");
+        expect(excludedPmInfo?.lockfile).toBeUndefined();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve workspace members defined via [workspace] in uv.toml or pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-workspace-temp");
+      const subDir = path.join(tempDir, "apps/web");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[workspace]\nmembers = ['apps/*']\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(subDir, "app.py"), "print('web')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should classify a pyproject.toml containing only [project.custom] as standalone pip without explicit [project] header", () => {
       const tempDir = path.join(fixturesDir, "project-custom-only-cls-temp");
       fs.mkdirSync(tempDir, { recursive: true });

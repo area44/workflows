@@ -254,6 +254,38 @@ export function isWorkspaceMember(
   return isDirectoryMatchedByGlobs(effectiveRelPath, members);
 }
 
+function getWorkspaceConfigInDir(
+  dir: string,
+): { dir: string; toml: ParsedToml; config: Record<string, unknown> } | null {
+  const pyproject = readPyprojectToml(dir);
+  if (pyproject?.success === true) {
+    if (
+      isObject(pyproject.data.tool) &&
+      isObject((pyproject.data.tool as Record<string, unknown>).uv) &&
+      isValidUvWorkspaceConfig(
+        ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
+      )
+    ) {
+      return {
+        dir,
+        toml: pyproject,
+        config: ((pyproject.data.tool as Record<string, unknown>).uv as Record<string, unknown>)
+          .workspace as Record<string, unknown>,
+      };
+    }
+    if (isValidUvWorkspaceConfig(pyproject.data.workspace)) {
+      return { dir, toml: pyproject, config: pyproject.data.workspace as Record<string, unknown> };
+    }
+  }
+
+  const uvToml = readUvToml(dir);
+  if (uvToml?.success === true && isValidUvWorkspaceConfig(uvToml.data.workspace)) {
+    return { dir, toml: uvToml, config: uvToml.data.workspace as Record<string, unknown> };
+  }
+
+  return null;
+}
+
 function findWorkspaceRootContext(
   dirs: string[],
   childDir: string,
@@ -261,18 +293,9 @@ function findWorkspaceRootContext(
 ): { dir?: string; toml?: ParsedToml | null } {
   for (let i = startIndex; i < dirs.length; i++) {
     const parentDir = dirs[i];
-    const pyproject = readPyprojectToml(parentDir);
-    if (
-      pyproject?.success === true &&
-      isObject(pyproject.data.tool) &&
-      isObject(pyproject.data.tool.uv)
-    ) {
-      const uv = pyproject.data.tool.uv as Record<string, unknown>;
-      if (isValidUvWorkspaceConfig(uv.workspace)) {
-        if (isWorkspaceMember(parentDir, childDir, uv.workspace as Record<string, unknown>)) {
-          return { dir: parentDir, toml: pyproject };
-        }
-      }
+    const wsInfo = getWorkspaceConfigInDir(parentDir);
+    if (wsInfo && isWorkspaceMember(parentDir, childDir, wsInfo.config)) {
+      return { dir: parentDir, toml: wsInfo.toml };
     }
   }
   return {};
