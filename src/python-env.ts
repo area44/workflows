@@ -147,8 +147,7 @@ export interface PythonProjectContext {
  * Traverses directories from cwd up to the repository root (stopping at .git or filesystem root)
  * to gather Python project configuration, manifests, and lockfiles across parent directories and workspace roots.
  */
-export function findPythonProjectContext(cwd: string = process.cwd()): PythonProjectContext {
-  const resolvedCwd = path.resolve(cwd);
+function collectParentDirs(resolvedCwd: string): string[] {
   const dirs: string[] = [];
   let curr = resolvedCwd;
 
@@ -163,7 +162,23 @@ export function findPythonProjectContext(cwd: string = process.cwd()): PythonPro
     }
     curr = parent;
   }
+  return dirs;
+}
 
+interface DiscoveredContextFiles {
+  pyprojectToml: ParsedToml | null;
+  pyprojectDir?: string;
+  uvToml: ParsedToml | null;
+  uvTomlDir?: string;
+  uvLockDir?: string;
+  requirementsDir?: string;
+  setupPyDir?: string;
+  setupCfgDir?: string;
+  pythonVersionFile?: string;
+  runtimeTxtFile?: string;
+}
+
+function discoverContextFiles(dirs: string[]): DiscoveredContextFiles {
   let pyprojectToml: ParsedToml | null = null;
   let pyprojectDir: string | undefined;
   let uvToml: ParsedToml | null = null;
@@ -210,32 +225,55 @@ export function findPythonProjectContext(cwd: string = process.cwd()): PythonPro
     }
   }
 
+  return {
+    pyprojectToml,
+    pyprojectDir,
+    uvToml,
+    uvTomlDir,
+    uvLockDir,
+    requirementsDir,
+    setupPyDir,
+    setupCfgDir,
+    pythonVersionFile,
+    runtimeTxtFile,
+  };
+}
+
+/**
+ * Traverses directories from cwd up to the repository root (stopping at .git or filesystem root)
+ * to gather Python project configuration, manifests, and lockfiles across parent directories and workspace roots.
+ */
+export function findPythonProjectContext(cwd: string = process.cwd()): PythonProjectContext {
+  const resolvedCwd = path.resolve(cwd);
+  const dirs = collectParentDirs(resolvedCwd);
+  const files = discoverContextFiles(dirs);
+
   const projectDir =
-    pyprojectDir ||
-    uvTomlDir ||
-    uvLockDir ||
-    requirementsDir ||
-    setupPyDir ||
-    setupCfgDir ||
+    files.pyprojectDir ||
+    files.uvTomlDir ||
+    files.uvLockDir ||
+    files.requirementsDir ||
+    files.setupPyDir ||
+    files.setupCfgDir ||
     resolvedCwd;
 
   return {
     cwd: resolvedCwd,
     projectDir,
-    pyprojectToml,
-    pyprojectDir,
-    uvToml,
-    uvTomlDir,
-    hasUvLock: Boolean(uvLockDir),
-    uvLockDir,
-    hasRequirementsTxt: Boolean(requirementsDir),
-    requirementsDir,
-    hasSetupPy: Boolean(setupPyDir),
-    setupPyDir,
-    hasSetupCfg: Boolean(setupCfgDir),
-    setupCfgDir,
-    pythonVersionFile,
-    runtimeTxtFile,
+    pyprojectToml: files.pyprojectToml,
+    pyprojectDir: files.pyprojectDir,
+    uvToml: files.uvToml,
+    uvTomlDir: files.uvTomlDir,
+    hasUvLock: Boolean(files.uvLockDir),
+    uvLockDir: files.uvLockDir,
+    hasRequirementsTxt: Boolean(files.requirementsDir),
+    requirementsDir: files.requirementsDir,
+    hasSetupPy: Boolean(files.setupPyDir),
+    setupPyDir: files.setupPyDir,
+    hasSetupCfg: Boolean(files.setupCfgDir),
+    setupCfgDir: files.setupCfgDir,
+    pythonVersionFile: files.pythonVersionFile,
+    runtimeTxtFile: files.runtimeTxtFile,
   };
 }
 
