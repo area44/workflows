@@ -283,6 +283,30 @@ lit = ' [project] '
         expect(stripped).toContain("[tool.uv]");
       });
 
+      it("should correctly handle escaped quotation marks and backslashes in multiline basic strings during stripping", () => {
+        const content = `
+[tool.uv]
+description = """
+Escaped quote \\""" inside multiline string
+Fake header:
+[project]
+[build-system]
+Escaped backslash before quote \\\\
+"""
+# Real header after string closes:
+[project]
+name = "real-app"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+
+        const stripped = stripTomlStringsAndComments(content);
+        // The fake [project] and [build-system] headers inside multiline string should be stripped
+        expect(stripped.indexOf("[project]")).toBe(stripped.lastIndexOf("[project]"));
+        expect(stripped).not.toContain("[build-system]");
+        expect(stripped).toContain("[project]");
+      });
+
       it("should not falsely treat commented-out table headers as active tables", () => {
         const content = `
 # [project]

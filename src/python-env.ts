@@ -236,19 +236,25 @@ function stripComment(raw: string, startIdx: number, len: number): [string, numb
 function stripMultilineBasicString(raw: string, startIdx: number, len: number): [string, number] {
   let res = "   ";
   let i = startIdx + 3;
-  while (i < len && raw.slice(i, i + 3) !== '"""') {
-    if (raw[i] === "\\" && i + 1 < len) {
-      res += "  ";
-      i += 2;
-    } else {
-      res += raw[i] === "\n" ? "\n" : " ";
-      i++;
+
+  while (i < len) {
+    if (raw.slice(i, i + 3) === '"""') {
+      let backslashCount = 0;
+      let k = i - 1;
+      while (k >= startIdx + 3 && raw[k] === "\\") {
+        backslashCount++;
+        k--;
+      }
+      if (backslashCount % 2 === 0) {
+        res += "   ";
+        return [res, i + 3];
+      }
     }
+
+    res += raw[i] === "\n" ? "\n" : " ";
+    i++;
   }
-  if (i < len) {
-    res += "   ";
-    i += 3;
-  }
+
   return [res, i];
 }
 
@@ -269,19 +275,24 @@ function stripMultilineLiteralString(raw: string, startIdx: number, len: number)
 function stripSinglelineBasicString(raw: string, startIdx: number, len: number): [string, number] {
   let res = " ";
   let i = startIdx + 1;
-  while (i < len && raw[i] !== '"' && raw[i] !== "\n" && raw[i] !== "\r") {
-    if (raw[i] === "\\" && i + 1 < len) {
-      res += "  ";
-      i += 2;
-    } else {
-      res += " ";
-      i++;
+
+  while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
+    if (raw[i] === '"') {
+      let backslashCount = 0;
+      let k = i - 1;
+      while (k >= startIdx + 1 && raw[k] === "\\") {
+        backslashCount++;
+        k--;
+      }
+      if (backslashCount % 2 === 0) {
+        res += " ";
+        return [res, i + 1];
+      }
     }
-  }
-  if (i < len && raw[i] === '"') {
     res += " ";
     i++;
   }
+
   return [res, i];
 }
 
@@ -346,23 +357,31 @@ export function stripTomlStringsAndComments(raw: string): string {
   return result;
 }
 
+/**
+ * Checks whether an explicit [project] table header is declared in pyproject.toml.
+ *
+ * In production paths (`readPyprojectToml` / `parseToml`), `rawContent` is attached to
+ * `ParsedTomlSuccess`, allowing authoritative verification of the explicit table header in stripped TOML.
+ *
+ * Fallback when `rawContent` is absent (synthetic test objects):
+ * Checks if `parsed.project` is empty or contains non-object primitive/array values.
+ */
 function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (!isObject(parsed.project)) return false;
 
-  // When rawContent is available, directly check if [project] header was explicitly declared
   if (typeof rawContent === "string") {
     const stripped = stripTomlStringsAndComments(rawContent);
     return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:\n|$)/.test(stripped);
   }
 
-  // Fallback when rawContent is absent:
-  // An explicit empty [project] or direct primitive/array keys indicate a project table,
-  // whereas having only nested sub-objects strongly implies nested subtables (like [project.optional-dependencies] or [project.custom])
   const entries = Object.entries(parsed.project);
   if (entries.length === 0) return true;
   return entries.some(([, val]) => !isObject(val));
 }
 
+/**
+ * Checks whether an explicit [build-system] table header is declared in pyproject.toml.
+ */
 function hasBuildSystemTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (!isObject(parsed["build-system"])) return false;
 
