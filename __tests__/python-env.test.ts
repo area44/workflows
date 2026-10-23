@@ -317,6 +317,91 @@ name = "string-content"
     });
   });
 
+  describe("UV Configuration Table Type Validation Regression Tests", () => {
+    it("should not trigger UV detection when tool.uv is represented as a string", () => {
+      const tempDir = path.join(fixturesDir, "tool-uv-string-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[tool]\nuv = "example"\n');
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not trigger UV detection when tool.uv is represented as other non-table primitive values", () => {
+      const nonTableValues = [
+        '[tool]\nuv = 123\n',
+        '[tool]\nuv = true\n',
+        '[tool]\nuv = ["a", "b"]\n',
+      ];
+
+      for (const [index, content] of nonTableValues.entries()) {
+        const tempDir = path.join(fixturesDir, `tool-uv-nontable-${index}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should trigger UV detection when [tool.uv] is a valid table", () => {
+      const tempDir = path.join(fixturesDir, "valid-tool-uv-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'app'\n\n[tool.uv]\ndev-dependencies = []\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should correctly detect uv with requirements.txt when tool.uv is a valid table without uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-tool-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv]\ndev-dependencies = []\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("resolvePythonEnvironment()", () => {
     it("should return hasPythonSource=false and empty fields when no python source exists", () => {
       const resolved = resolvePythonEnvironment(path.join(fixturesDir, "none"));

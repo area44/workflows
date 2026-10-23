@@ -240,7 +240,7 @@ function isUvProjectConfigPresent(parsed: Record<string, unknown>): boolean {
 }
 
 function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
-  return isObject(parsed.tool) && "uv" in (parsed.tool as Record<string, unknown>);
+  return isObject(parsed.tool) && isObject((parsed.tool as Record<string, unknown>).uv);
 }
 
 function isPipProjectConfigPresent(parsed: Record<string, unknown>): boolean {
