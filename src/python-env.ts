@@ -650,6 +650,56 @@ function getRelativePath(fromDir: string, toPath: string): string {
   return rel;
 }
 
+function checkUvLockedProject(
+  ctx: PythonProjectContext,
+  hasValidPyproject: boolean,
+  hasValidUvToml: boolean,
+): PythonPackageManagerInfo {
+  if (!hasValidPyproject && !hasValidUvToml) {
+    throw new Error(
+      "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+    );
+  }
+  const configFile = ctx.pyprojectDir ? "pyproject.toml" : ctx.uvTomlDir ? "uv.toml" : undefined;
+  return {
+    name: "uv",
+    lockfile: "uv.lock",
+    configFile,
+    installCommands: [{ executable: "uv", args: ["sync"] }],
+    lockCommand: "uv lock",
+    syncCommand: "uv sync",
+    execPrefix: "uv run",
+  };
+}
+
+function checkUvUnlockedProject(
+  ctx: PythonProjectContext,
+  isUvProject: boolean,
+): PythonPackageManagerInfo | null {
+  if (ctx.hasRequirementsTxt && ctx.requirementsDir) {
+    const reqPathRel = getRelativePath(ctx.cwd, path.join(ctx.requirementsDir, "requirements.txt"));
+    return {
+      name: "uv",
+      configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
+      installCommands: [{ executable: "uv", args: ["pip", "install", "-r", reqPathRel] }],
+      execPrefix: "uv run",
+    };
+  }
+
+  if (isUvProject) {
+    return {
+      name: "uv",
+      configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
+      installCommands: [{ executable: "uv", args: ["sync"] }],
+      lockCommand: "uv lock",
+      syncCommand: "uv sync",
+      execPrefix: "uv run",
+    };
+  }
+
+  return null;
+}
+
 function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInfo | null {
   const hasValidPyproject =
     ctx.pyprojectToml?.success === true &&
@@ -666,47 +716,11 @@ function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInf
   const isUvProject = hasValidPyproject || hasValidUvToml || ctx.hasUvLock;
 
   if (ctx.hasUvLock) {
-    if (!hasValidPyproject && !hasValidUvToml) {
-      throw new Error(
-        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
-      );
-    }
-    const configFile = ctx.pyprojectDir ? "pyproject.toml" : ctx.uvTomlDir ? "uv.toml" : undefined;
-    return {
-      name: "uv",
-      lockfile: "uv.lock",
-      configFile,
-      installCommands: [{ executable: "uv", args: ["sync"] }],
-      lockCommand: "uv lock",
-      syncCommand: "uv sync",
-      execPrefix: "uv run",
-    };
+    return checkUvLockedProject(ctx, hasValidPyproject, hasValidUvToml);
   }
 
   if (hasUvToolConfig || hasAnyUvToml) {
-    if (ctx.hasRequirementsTxt && ctx.requirementsDir) {
-      const reqPathRel = getRelativePath(
-        ctx.cwd,
-        path.join(ctx.requirementsDir, "requirements.txt"),
-      );
-      return {
-        name: "uv",
-        configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
-        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", reqPathRel] }],
-        execPrefix: "uv run",
-      };
-    }
-
-    if (isUvProject) {
-      return {
-        name: "uv",
-        configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
-        installCommands: [{ executable: "uv", args: ["sync"] }],
-        lockCommand: "uv lock",
-        syncCommand: "uv sync",
-        execPrefix: "uv run",
-      };
-    }
+    return checkUvUnlockedProject(ctx, isUvProject);
   }
 
   return null;
