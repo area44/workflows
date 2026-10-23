@@ -425,7 +425,7 @@ name = "string-content"
       }
     });
 
-    it("should classify a pyproject.toml containing only [project.optional-dependencies] as standalone pip", () => {
+    it("should classify a pyproject.toml containing only [project.optional-dependencies] as standalone pip when no explicit [project] header is present", () => {
       const tempDir = path.join(fixturesDir, "opt-deps-only-cls-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -439,6 +439,28 @@ name = "string-content"
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
         expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml containing explicit [project] header alongside [project.optional-dependencies] as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-with-header-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\n\n[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -460,6 +482,57 @@ name = "string-content"
         ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve ruff declared in all supported dependency formats", () => {
+      const formats: [string, string, string][] = [
+        ["PEP 621 project.dependencies", "[project]\ndependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["PEP 621 project.optional-dependencies", "[project.optional-dependencies]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["PEP 735 dependency-groups", "[dependency-groups]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["build-system.requires", "[build-system]\nrequires = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.uv.dev-dependencies", "[tool.uv]\ndev-dependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.poetry.dependencies", "[tool.poetry.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.poetry.dev-dependencies", "[tool.poetry.dev-dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.poetry group dependencies", "[tool.poetry.group.dev.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.pdm dev-dependencies", "[tool.pdm.dev-dependencies]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.hatch envs dependencies", "[tool.hatch.envs.default]\ndependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.pixi dependencies", "[tool.pixi.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+      ];
+
+      for (const [label, content, expected] of formats) {
+        const tempDir = path.join(fixturesDir, `ruff-fmt-${label.replace(/[^a-z0-9]/gi, "-")}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          expect(resolveRuffVersion(tempDir)).toBe(expected);
+          expect(isRuffDeclaredInProject(tempDir)).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should ignore false-positive ruff occurrences in metadata, tool configs, or descriptions", () => {
+      const falsePositives: [string, string][] = [
+        ["unrelated tool config key", "[tool.mytool]\nruff = '0.4.2'\n"],
+        ["description mentioning ruff", "[project]\nname = 'pkg'\ndescription = 'a ruff plugin'\n"],
+        ["urls pointing to ruff", "[project.urls]\nHomepage = 'https://github.com/astral-sh/ruff'\n"],
+        ["scripts named ruff", "[project.scripts]\nruff = 'pkg.cli:main'\n"],
+      ];
+
+      for (const [label, content] of falsePositives) {
+        const tempDir = path.join(fixturesDir, `ruff-fp-${label.replace(/[^a-z0-9]/gi, "-")}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          expect(resolveRuffVersion(tempDir)).toBe("");
+          expect(isRuffDeclaredInProject(tempDir)).toBe(false);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
       }
     });
 

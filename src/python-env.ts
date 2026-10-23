@@ -65,6 +65,7 @@ export interface ResolvedPythonEnvironment {
 export interface ParsedTomlSuccess {
   success: true;
   data: Record<string, unknown>;
+  rawContent?: string;
 }
 
 export interface ParsedTomlError {
@@ -85,7 +86,7 @@ export function parseToml(content: string): ParsedToml {
   try {
     const data = parse(content);
     if (isObject(data)) {
-      return { success: true, data };
+      return { success: true, data, rawContent: content };
     }
     return {
       success: false,
@@ -222,7 +223,7 @@ export function hasPythonSource(
   return false;
 }
 
-function hasProjectTable(parsed: Record<string, unknown>): boolean {
+function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (!isObject(parsed.project)) return false;
   const keys = Object.keys(parsed.project);
   if (keys.length === 0) return true;
@@ -233,12 +234,20 @@ function hasProjectTable(parsed: Record<string, unknown>): boolean {
     "gui-scripts",
     "entry-points",
   ]);
-  return keys.some((k) => !subtableKeys.has(k));
+  const hasDirectProjectKeys = keys.some((k) => !subtableKeys.has(k));
+  if (hasDirectProjectKeys) return true;
+
+  // parsed.project contains ONLY subtable keys.
+  // If rawContent is available, check whether an explicit [project] header is present.
+  if (rawContent) {
+    return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:#.*)?(?:\n|$)/.test(rawContent);
+  }
+  return false;
 }
 
-function isUvProjectConfigPresent(parsed: Record<string, unknown>): boolean {
+function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
   return (
-    hasProjectTable(parsed) ||
+    hasProjectTable(parsed, rawContent) ||
     isObject(parsed["build-system"]) ||
     (isObject(parsed.tool) &&
       isObject((parsed.tool as Record<string, unknown>).uv) &&
@@ -250,8 +259,8 @@ function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
   return isObject(parsed.tool) && isObject((parsed.tool as Record<string, unknown>).uv);
 }
 
-function isPipProjectConfigPresent(parsed: Record<string, unknown>): boolean {
-  return hasProjectTable(parsed) || isObject(parsed["build-system"]);
+function isPipProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
+  return hasProjectTable(parsed, rawContent) || isObject(parsed["build-system"]);
 }
 
 function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
@@ -275,7 +284,8 @@ function detectUv(cwd: string, pyprojectToml?: ParsedToml | null): PythonPackage
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
 
   const hasValidPyproject =
-    pyprojectToml?.success === true && isUvProjectConfigPresent(pyprojectToml.data);
+    pyprojectToml?.success === true &&
+    isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
 
   const hasUvToolConfig =
     pyprojectToml?.success === true && isUvToolConfigPresent(pyprojectToml.data);
@@ -319,7 +329,8 @@ function detectPip(
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
   const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
   const hasProjectOrBuildSystem =
-    pyprojectToml?.success === true && isPipProjectConfigPresent(pyprojectToml.data);
+    pyprojectToml?.success === true &&
+    isPipProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
 
   const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
@@ -360,101 +371,187 @@ function detectPip(
   };
 }
 
-function extractRuffVersionFromEntry(val: unknown): string | undefined {
-  if (typeof val === "string") {
-    return extractRuffVersionSpecifier(val);
-  }
-  if (isObject(val) && typeof val.version === "string") {
-    return extractRuffVersionSpecifier(val.version);
+function inspectRuffInSpecifierArray(
+  arr: unknown[],
+): { declared: boolean; version?: string } | undefined {
+  for (const item of arr) {
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (/^ruff\b/i.test(trimmed)) {
+        return { declared: true, version: extractRuffVersionSpecifier(trimmed) };
+      }
+    } else if (isObject(item)) {
+      const pkgName =
+        typeof item.package === "string"
+          ? item.package
+          : typeof item.name === "string"
+            ? item.name
+            : undefined;
+      if (pkgName && pkgName.toLowerCase() === "ruff") {
+        const verStr = typeof item.version === "string" ? item.version : undefined;
+        return {
+          declared: true,
+          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
+        };
+      }
+    }
   }
   return undefined;
 }
 
-function isNonDependencyProjectKey(key: string): boolean {
-  const k = key.toLowerCase();
-  return (
-    k === "name" ||
-    k === "version" ||
-    k === "description" ||
-    k === "readme" ||
-    k === "license" ||
-    k === "keywords" ||
-    k === "classifiers" ||
-    k === "authors" ||
-    k === "maintainers" ||
-    k === "urls" ||
-    k === "scripts" ||
-    k === "gui-scripts"
-  );
-}
-
-function findRuffVersionInObject(
-  obj: Record<string, unknown>,
-  keyPath: string[],
-): string | undefined {
-  for (const [key, val] of Object.entries(obj)) {
-    if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
-      continue;
-    }
-    if (keyPath.length === 1 && keyPath[0] === "project" && isNonDependencyProjectKey(key)) {
-      continue;
-    }
+function inspectRuffInDependencyMap(
+  map: Record<string, unknown>,
+): { declared: boolean; version?: string } | undefined {
+  for (const [key, val] of Object.entries(map)) {
     if (key.toLowerCase() === "ruff") {
-      const ver = extractRuffVersionFromEntry(val);
-      if (ver) return ver;
+      if (typeof val === "string") {
+        return { declared: true, version: extractRuffVersionSpecifier(val) };
+      }
+      if (isObject(val)) {
+        const verStr = typeof val.version === "string" ? val.version : undefined;
+        return {
+          declared: true,
+          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
+        };
+      }
+      return { declared: true };
     }
-    const found = findRuffVersionInToml(val, [...keyPath, key]);
-    if (found) return found;
   }
   return undefined;
 }
 
-function findRuffVersionInToml(obj: unknown, keyPath: string[] = []): string | undefined {
-  if (typeof obj === "string") {
-    return /^ruff\b/i.test(obj.trim()) ? extractRuffVersionSpecifier(obj) : undefined;
-  }
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const found = findRuffVersionInToml(item, keyPath);
-      if (found) return found;
+/**
+ * Inspects pyproject.toml data strictly in supported dependency declarations
+ * (PEP 621, PEP 735, tool.uv, Poetry, PDM, Hatch, Pixi, build-system).
+ */
+export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
+  declared: boolean;
+  version?: string;
+} {
+  // 1. PEP 621 project.dependencies & project.optional-dependencies
+  if (isObject(parsed.project)) {
+    const proj = parsed.project;
+    if (Array.isArray(proj.dependencies)) {
+      const res = inspectRuffInSpecifierArray(proj.dependencies);
+      if (res) return res;
     }
-    return undefined;
+    if (isObject(proj["optional-dependencies"])) {
+      for (const group of Object.values(proj["optional-dependencies"])) {
+        if (Array.isArray(group)) {
+          const res = inspectRuffInSpecifierArray(group);
+          if (res) return res;
+        }
+      }
+    }
   }
-  if (isObject(obj)) {
-    return findRuffVersionInObject(obj, keyPath);
-  }
-  return undefined;
-}
 
-function hasRuffDeclarationInObject(obj: Record<string, unknown>, keyPath: string[]): boolean {
-  for (const [key, val] of Object.entries(obj)) {
-    if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
-      continue;
-    }
-    if (keyPath.length === 1 && keyPath[0] === "project" && isNonDependencyProjectKey(key)) {
-      continue;
-    }
-    if (key.toLowerCase() === "ruff") {
-      return true;
-    }
-    if (hasRuffDeclarationInToml(val, [...keyPath, key])) {
-      return true;
+  // 2. PEP 735 dependency-groups
+  if (isObject(parsed["dependency-groups"])) {
+    for (const group of Object.values(parsed["dependency-groups"])) {
+      if (Array.isArray(group)) {
+        const res = inspectRuffInSpecifierArray(group);
+        if (res) return res;
+      }
     }
   }
-  return false;
-}
 
-function hasRuffDeclarationInToml(obj: unknown, keyPath: string[] = []): boolean {
-  if (typeof obj === "string") {
-    return /^ruff\b/i.test(obj.trim());
+  // 3. build-system.requires
+  if (isObject(parsed["build-system"]) && Array.isArray(parsed["build-system"].requires)) {
+    const res = inspectRuffInSpecifierArray(parsed["build-system"].requires);
+    if (res) return res;
   }
-  if (Array.isArray(obj)) {
-    return obj.some((item) => hasRuffDeclarationInToml(item, keyPath));
+
+  // 4. tool table
+  if (isObject(parsed.tool)) {
+    const tool = parsed.tool;
+
+    // tool.uv
+    if (isObject(tool.uv)) {
+      const uv = tool.uv;
+      for (const key of ["dev-dependencies", "override-dependencies", "constraint-dependencies"]) {
+        if (Array.isArray(uv[key])) {
+          const res = inspectRuffInSpecifierArray(uv[key] as unknown[]);
+          if (res) return res;
+        }
+      }
+    }
+
+    // tool.poetry
+    if (isObject(tool.poetry)) {
+      const poetry = tool.poetry;
+      if (isObject(poetry.dependencies)) {
+        const res = inspectRuffInDependencyMap(poetry.dependencies);
+        if (res) return res;
+      }
+      if (isObject(poetry["dev-dependencies"])) {
+        const res = inspectRuffInDependencyMap(poetry["dev-dependencies"]);
+        if (res) return res;
+      }
+      if (isObject(poetry.group)) {
+        for (const grpObj of Object.values(poetry.group)) {
+          if (isObject(grpObj) && isObject(grpObj.dependencies)) {
+            const res = inspectRuffInDependencyMap(grpObj.dependencies);
+            if (res) return res;
+          }
+        }
+      }
+    }
+
+    // tool.pdm
+    if (isObject(tool.pdm) && isObject(tool.pdm["dev-dependencies"])) {
+      for (const grp of Object.values(tool.pdm["dev-dependencies"])) {
+        if (Array.isArray(grp)) {
+          const res = inspectRuffInSpecifierArray(grp);
+          if (res) return res;
+        }
+      }
+    }
+
+    // tool.hatch
+    if (isObject(tool.hatch) && isObject(tool.hatch.envs)) {
+      for (const envObj of Object.values(tool.hatch.envs)) {
+        if (isObject(envObj)) {
+          if (Array.isArray(envObj.dependencies)) {
+            const res = inspectRuffInSpecifierArray(envObj.dependencies);
+            if (res) return res;
+          }
+          if (Array.isArray(envObj["extra-dependencies"])) {
+            const res = inspectRuffInSpecifierArray(envObj["extra-dependencies"]);
+            if (res) return res;
+          }
+        }
+      }
+    }
+
+    // tool.pixi
+    if (isObject(tool.pixi)) {
+      const pixi = tool.pixi;
+      if (isObject(pixi.dependencies)) {
+        const res = inspectRuffInDependencyMap(pixi.dependencies);
+        if (res) return res;
+      }
+      if (isObject(pixi["dev-dependencies"])) {
+        const res = inspectRuffInDependencyMap(pixi["dev-dependencies"]);
+        if (res) return res;
+      }
+      if (isObject(pixi.feature)) {
+        for (const featObj of Object.values(pixi.feature)) {
+          if (isObject(featObj)) {
+            if (isObject(featObj.dependencies)) {
+              const res = inspectRuffInDependencyMap(featObj.dependencies);
+              if (res) return res;
+            }
+            if (isObject(featObj["dev-dependencies"])) {
+              const res = inspectRuffInDependencyMap(featObj["dev-dependencies"]);
+              if (res) return res;
+            }
+          }
+        }
+      }
+    }
   }
-  if (isObject(obj)) {
-    return hasRuffDeclarationInObject(obj, keyPath);
-  }
-  return false;
+
+  return { declared: false };
 }
 
 export function hasPythonProject(cwd: string = process.cwd()): boolean {
@@ -464,7 +561,7 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
 
   const pyprojectToml = readPyprojectToml(cwd);
   if (pyprojectToml?.success === true) {
-    if (isUvProjectConfigPresent(pyprojectToml.data)) {
+    if (isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent)) {
       return true;
     }
     if (isRuffDeclaredInProject(cwd, undefined, pyprojectToml)) {
@@ -558,7 +655,8 @@ function resolveRuffVersionFromPyproject(
 ): string | undefined {
   const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
   if (parsed?.success !== true) return undefined;
-  return findRuffVersionInToml(parsed.data);
+  const dep = findRuffDependencyInToml(parsed.data);
+  return dep.version;
 }
 
 function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
@@ -604,7 +702,8 @@ export function isRuffDeclaredInProject(
 
   const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
   if (parsed?.success === true) {
-    if (hasRuffDeclarationInToml(parsed.data)) {
+    const dep = findRuffDependencyInToml(parsed.data);
+    if (dep.declared) {
       return true;
     }
   }
