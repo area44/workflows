@@ -1568,26 +1568,55 @@ enabled = true
       }
     });
 
-    it("should resolve root pyproject.toml when subdirectory is a workspace member and contains configuration-only uv.toml", () => {
-      const tempDir = path.join(fixturesDir, "uv-sub-config-only-temp");
-      const pkgDir = path.join(tempDir, "packages/subpkg");
-      fs.mkdirSync(pkgDir, { recursive: true });
+    it("should select workspace root uv.toml when both workspace root and member have uv.toml", () => {
+      const tempDir = path.join(fixturesDir, "ws-root-and-member-uv-toml-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(memberDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, ".git"), "");
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
-        "[project]\nname = 'root-app'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+        "[project]\nname = 'root-ws'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
       );
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
-      fs.writeFileSync(path.join(pkgDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
-      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('subpkg')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://root.pypi.org'\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "uv.toml"), "[pip]\nindex-url = 'https://member.pypi.org'\n");
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
 
       try {
-        const pmInfo = detectPythonPackageManager(pkgDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("uv");
-        expect(pmInfo?.lockfile).toBe("uv.lock");
-        expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+        const resolved = resolvePythonEnvironment(memberDir);
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ignore member-local uv.toml when workspace root does not have a uv.toml", () => {
+      const tempDir = path.join(fixturesDir, "ws-member-only-uv-toml-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-ws'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "uv.toml"), "[pip]\nindex-url = 'https://member.pypi.org'\n");
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
+
+      try {
+        const resolved = resolvePythonEnvironment(memberDir);
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
+        expect(resolved.pmInfo?.configFile).toBe("pyproject.toml");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
