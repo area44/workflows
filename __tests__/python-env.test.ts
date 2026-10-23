@@ -406,6 +406,108 @@ dev = ["pytest"]
       }
     });
 
+    it("should resolve uv with requirements.txt when uv.toml and requirements.txt exist without pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).toEqual({
+          name: "uv",
+          configFile: "uv.toml",
+          installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+          execPrefix: "uv run",
+        });
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle malformed uv.toml safely without crashing", () => {
+      const tempDir = path.join(fixturesDir, "malformed-uv-toml-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip\nindex-url = 'broken'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should throw actionable error when uv.lock is combined with uv.toml without valid pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-uv-toml-orphaned-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ensure independent child project isolates Python version, Ruff version, and lockfiles from parent workspace", () => {
+      const tempDir = path.join(fixturesDir, "workspace-vs-independent-isolation-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      const independentDir = path.join(tempDir, "tools/standalone");
+
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.mkdirSync(independentDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+
+      // Workspace Root
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+
+      // Workspace Member (inherits 3.11 and ruff 0.4.2)
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
+
+      // Independent Child (not in workspace members, has own pyproject + python-version)
+      fs.writeFileSync(path.join(independentDir, ".python-version"), "3.9\n");
+      fs.writeFileSync(
+        path.join(independentDir, "pyproject.toml"),
+        "[project]\nname = 'standalone-tool'\nversion = '0.1.0'\ndependencies = ['requests']\n",
+      );
+      fs.writeFileSync(path.join(independentDir, "tool.py"), "print('tool')\n");
+
+      try {
+        const memberEnv = resolvePythonEnvironment(memberDir);
+        expect(memberEnv.pythonVersion).toBe("3.11");
+        expect(memberEnv.ruffVersion).toBe("0.4.2");
+        expect(memberEnv.pmInfo?.name).toBe("uv");
+        expect(memberEnv.pmInfo?.lockfile).toBe("uv.lock");
+
+        const independentEnv = resolvePythonEnvironment(independentDir);
+        expect(independentEnv.pythonVersion).toBe("3.9");
+        expect(independentEnv.ruffVersion).toBe("");
+        expect(independentEnv.pmInfo?.name).toBe("pip");
+        expect(independentEnv.pmInfo?.lockfile).toBeUndefined();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should respect workspace exclude patterns and not assign workspace lockfile to excluded packages", () => {
       const tempDir = path.join(fixturesDir, "uv-workspace-exclude-temp");
       const memberDir = path.join(tempDir, "packages/included");
@@ -1417,14 +1519,14 @@ enabled = true
       }
     });
 
-    it("should resolve root pyproject.toml when subdirectory contains configuration-only uv.toml", () => {
+    it("should resolve root pyproject.toml when subdirectory is a workspace member and contains configuration-only uv.toml", () => {
       const tempDir = path.join(fixturesDir, "uv-sub-config-only-temp");
       const pkgDir = path.join(tempDir, "packages/subpkg");
       fs.mkdirSync(pkgDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, ".git"), "");
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
-        "[project]\nname = 'root-app'\nversion = '0.1.0'\n",
+        "[project]\nname = 'root-app'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
       );
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
       fs.writeFileSync(path.join(pkgDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");

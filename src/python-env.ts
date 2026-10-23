@@ -326,6 +326,7 @@ function findFirstExistingPath(dirs: string[], filename: string): string | undef
 function hasOwnManifestFiles(dir: string): boolean {
   return (
     fs.existsSync(path.join(dir, "pyproject.toml")) ||
+    fs.existsSync(path.join(dir, "uv.toml")) ||
     fs.existsSync(path.join(dir, "requirements.txt")) ||
     fs.existsSync(path.join(dir, "setup.py")) ||
     fs.existsSync(path.join(dir, "setup.cfg")) ||
@@ -804,13 +805,20 @@ function checkUvUnlockedProject(
 }
 
 function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInfo | null {
-  const hasValidPyproject =
+  const localPyprojectValid =
     ctx.pyprojectToml?.success === true &&
     isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent);
 
+  const workspacePyprojectValid =
+    ctx.workspaceRootToml?.success === true &&
+    isUvProjectConfigPresent(ctx.workspaceRootToml.data, ctx.workspaceRootToml.rawContent);
+
+  const hasValidPyproject = localPyprojectValid || workspacePyprojectValid;
+
   const hasUvToml = ctx.uvToml?.success === true;
   const hasUvToolConfig =
-    ctx.pyprojectToml?.success === true && isUvToolConfigPresent(ctx.pyprojectToml.data);
+    (ctx.pyprojectToml?.success === true && isUvToolConfigPresent(ctx.pyprojectToml.data)) ||
+    (ctx.workspaceRootToml?.success === true && isUvToolConfigPresent(ctx.workspaceRootToml.data));
 
   if (ctx.hasUvLock) {
     return checkUvLockedProject(ctx, hasValidPyproject);
