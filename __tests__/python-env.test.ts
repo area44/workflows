@@ -537,7 +537,6 @@ dev = ["pytest"]
         ["PEP 621 project.dependencies", "[project]\ndependencies = ['ruff==0.4.2']\n", "0.4.2"],
         ["PEP 621 project.optional-dependencies", "[project.optional-dependencies]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
         ["PEP 735 dependency-groups", "[dependency-groups]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
-        ["build-system.requires", "[build-system]\nrequires = ['ruff==0.4.2']\n", "0.4.2"],
         ["tool.uv.dev-dependencies", "[tool.uv]\ndev-dependencies = ['ruff==0.4.2']\n", "0.4.2"],
         ["tool.poetry.dependencies", "[tool.poetry.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
         ["tool.poetry.dev-dependencies", "[tool.poetry.dev-dependencies]\nruff = '0.4.2'\n", "0.4.2"],
@@ -567,6 +566,7 @@ dev = ["pytest"]
         ["description mentioning ruff", "[project]\nname = 'pkg'\ndescription = 'a ruff plugin'\n"],
         ["urls pointing to ruff", "[project.urls]\nHomepage = 'https://github.com/astral-sh/ruff'\n"],
         ["scripts named ruff", "[project.scripts]\nruff = 'pkg.cli:main'\n"],
+        ["build-system requires build backend", "[build-system]\nrequires = ['flit_core>=3.2,<4', 'ruff==0.4.2']\n"],
       ];
 
       for (const [label, content] of falsePositives) {

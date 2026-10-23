@@ -681,8 +681,9 @@ function inspectToolRuff(tool: Record<string, unknown>) {
 }
 
 /**
- * Inspects pyproject.toml data strictly in supported dependency declarations
- * (PEP 621, PEP 735, tool.uv, Poetry, PDM, Hatch, Pixi, build-system).
+ * Inspects pyproject.toml data strictly in supported runtime/dev dependency declarations
+ * (PEP 621, PEP 735, tool.uv, Poetry, PDM, Hatch, Pixi). Note: build-system.requires is excluded
+ * because build backend requirements are build-time tools, not project linting workflow dependencies.
  */
 export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
   declared: boolean;
@@ -700,13 +701,7 @@ export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
     if (res) return res;
   }
 
-  // 3. build-system.requires
-  if (isObject(parsed["build-system"]) && Array.isArray(parsed["build-system"].requires)) {
-    const res = inspectRuffInSpecifierArray(parsed["build-system"].requires);
-    if (res) return res;
-  }
-
-  // 4. tool table
+  // 3. tool table
   if (isObject(parsed.tool)) {
     const res = inspectToolRuff(parsed.tool);
     if (res) return res;
