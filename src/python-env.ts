@@ -496,6 +496,20 @@ function readPyprojectPythonVersion(
  * Resolves the target Python version from project configuration files (.python-version,
  * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
  */
+function readVersionFromFile(filePath: string | undefined): string | undefined {
+  if (!filePath || !fs.existsSync(filePath)) return undefined;
+  try {
+    const content = fs.readFileSync(filePath, "utf8").trim();
+    return parsePythonVersionFromConstraint(content);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolves the target Python version from project configuration files (.python-version,
+ * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
+ */
 export function resolvePythonVersion(
   cwd: string = process.cwd(),
   pyprojectToml?: ParsedToml | null,
@@ -505,32 +519,16 @@ export function resolvePythonVersion(
     pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
   // 1. Local .python-version in projectDir
-  const localPyVerFile = path.join(ctx.projectDir, ".python-version");
-  if (fs.existsSync(localPyVerFile)) {
-    try {
-      const content = fs.readFileSync(localPyVerFile, "utf8").trim();
-      const parsedVer = parsePythonVersionFromConstraint(content);
-      if (parsedVer) return parsedVer;
-    } catch {
-      // fallback
-    }
-  }
+  const localPyVer = readVersionFromFile(path.join(ctx.projectDir, ".python-version"));
+  if (localPyVer) return localPyVer;
 
   // 2. Local pyproject.toml requires-python in projectDir
   const pyprojectVer = readPyprojectPythonVersion(ctx.projectDir, pyproject);
   if (pyprojectVer) return pyprojectVer;
 
   // 3. Local runtime.txt in projectDir
-  const localRuntimeTxt = path.join(ctx.projectDir, "runtime.txt");
-  if (fs.existsSync(localRuntimeTxt)) {
-    try {
-      const content = fs.readFileSync(localRuntimeTxt, "utf8").trim();
-      const parsedVer = parsePythonVersionFromConstraint(content);
-      if (parsedVer) return parsedVer;
-    } catch {
-      // fallback
-    }
-  }
+  const localRuntimeVer = readVersionFromFile(path.join(ctx.projectDir, "runtime.txt"));
+  if (localRuntimeVer) return localRuntimeVer;
 
   // 4. Workspace root pyproject.toml requires-python
   if (ctx.workspaceRootToml) {
@@ -539,26 +537,12 @@ export function resolvePythonVersion(
   }
 
   // 5. Ancestor .python-version
-  if (ctx.pythonVersionFile && fs.existsSync(ctx.pythonVersionFile)) {
-    try {
-      const content = fs.readFileSync(ctx.pythonVersionFile, "utf8").trim();
-      const parsedVer = parsePythonVersionFromConstraint(content);
-      if (parsedVer) return parsedVer;
-    } catch {
-      // fallback
-    }
-  }
+  const ancestorPyVer = readVersionFromFile(ctx.pythonVersionFile);
+  if (ancestorPyVer) return ancestorPyVer;
 
   // 6. Ancestor runtime.txt
-  if (ctx.runtimeTxtFile && fs.existsSync(ctx.runtimeTxtFile)) {
-    try {
-      const content = fs.readFileSync(ctx.runtimeTxtFile, "utf8").trim();
-      const parsedVer = parsePythonVersionFromConstraint(content);
-      if (parsedVer) return parsedVer;
-    } catch {
-      // fallback
-    }
-  }
+  const ancestorRuntimeVer = readVersionFromFile(ctx.runtimeTxtFile);
+  if (ancestorRuntimeVer) return ancestorRuntimeVer;
 
   return DEFAULT_PYTHON_VERSION;
 }
