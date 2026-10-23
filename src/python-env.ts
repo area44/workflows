@@ -178,64 +178,51 @@ interface DiscoveredContextFiles {
   runtimeTxtFile?: string;
 }
 
-function discoverContextFiles(dirs: string[]): DiscoveredContextFiles {
-  let pyprojectToml: ParsedToml | null = null;
-  let pyprojectDir: string | undefined;
-  let uvToml: ParsedToml | null = null;
-  let uvTomlDir: string | undefined;
-  let uvLockDir: string | undefined;
-  let requirementsDir: string | undefined;
-  let setupPyDir: string | undefined;
-  let setupCfgDir: string | undefined;
-  let pythonVersionFile: string | undefined;
-  let runtimeTxtFile: string | undefined;
-
+function findFirstPyproject(dirs: string[]): { toml: ParsedToml | null; dir?: string } {
   for (const dir of dirs) {
-    if (!pyprojectToml) {
-      const parsed = readPyprojectToml(dir);
-      if (parsed) {
-        pyprojectToml = parsed;
-        pyprojectDir = dir;
-      }
-    }
-    if (!uvToml) {
-      const parsed = readUvToml(dir);
-      if (parsed) {
-        uvToml = parsed;
-        uvTomlDir = dir;
-      }
-    }
-    if (!uvLockDir && fs.existsSync(path.join(dir, "uv.lock"))) {
-      uvLockDir = dir;
-    }
-    if (!requirementsDir && fs.existsSync(path.join(dir, "requirements.txt"))) {
-      requirementsDir = dir;
-    }
-    if (!setupPyDir && fs.existsSync(path.join(dir, "setup.py"))) {
-      setupPyDir = dir;
-    }
-    if (!setupCfgDir && fs.existsSync(path.join(dir, "setup.cfg"))) {
-      setupCfgDir = dir;
-    }
-    if (!pythonVersionFile && fs.existsSync(path.join(dir, ".python-version"))) {
-      pythonVersionFile = path.join(dir, ".python-version");
-    }
-    if (!runtimeTxtFile && fs.existsSync(path.join(dir, "runtime.txt"))) {
-      runtimeTxtFile = path.join(dir, "runtime.txt");
+    const parsed = readPyprojectToml(dir);
+    if (parsed) return { toml: parsed, dir };
+  }
+  return { toml: null };
+}
+
+function findFirstUvToml(dirs: string[]): { toml: ParsedToml | null; dir?: string } {
+  for (const dir of dirs) {
+    const parsed = readUvToml(dir);
+    if (parsed) return { toml: parsed, dir };
+  }
+  return { toml: null };
+}
+
+function findFirstExistingDir(dirs: string[], filename: string): string | undefined {
+  for (const dir of dirs) {
+    if (fs.existsSync(path.join(dir, filename))) {
+      return dir;
     }
   }
+  return undefined;
+}
+
+function findFirstExistingPath(dirs: string[], filename: string): string | undefined {
+  const dir = findFirstExistingDir(dirs, filename);
+  return dir ? path.join(dir, filename) : undefined;
+}
+
+function discoverContextFiles(dirs: string[]): DiscoveredContextFiles {
+  const pyproject = findFirstPyproject(dirs);
+  const uvToml = findFirstUvToml(dirs);
 
   return {
-    pyprojectToml,
-    pyprojectDir,
-    uvToml,
-    uvTomlDir,
-    uvLockDir,
-    requirementsDir,
-    setupPyDir,
-    setupCfgDir,
-    pythonVersionFile,
-    runtimeTxtFile,
+    pyprojectToml: pyproject.toml,
+    pyprojectDir: pyproject.dir,
+    uvToml: uvToml.toml,
+    uvTomlDir: uvToml.dir,
+    uvLockDir: findFirstExistingDir(dirs, "uv.lock"),
+    requirementsDir: findFirstExistingDir(dirs, "requirements.txt"),
+    setupPyDir: findFirstExistingDir(dirs, "setup.py"),
+    setupCfgDir: findFirstExistingDir(dirs, "setup.cfg"),
+    pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
+    runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
   };
 }
 
