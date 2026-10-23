@@ -324,6 +324,23 @@ describe("resolve-environment", () => {
       );
     });
 
+    it("should reject inconsistent UV lockfile metadata in pmInfo", () => {
+      const env1 = createValidEnvironment();
+      env1.python.pmInfo!.name = "uv";
+      env1.python.pmInfo!.lockfile = "invalid.lock";
+      expect(() => validateEnvironment(env1)).toThrow(
+        'Invalid Python environment: UV lockfile name must be "uv.lock" when present',
+      );
+
+      const env2 = createValidEnvironment();
+      env2.python.pmInfo!.name = "uv";
+      env2.python.pmInfo!.lockfile = "uv.lock";
+      delete env2.python.pmInfo!.configFile;
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid Python environment: UV lockfile requires configFile "pyproject.toml"',
+      );
+    });
+
     it("should throw error for malformed installCommands in pmInfo", () => {
       const env = createValidEnvironment();
       (env.python.pmInfo as any).installCommands = "uv sync";

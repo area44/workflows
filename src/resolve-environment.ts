@@ -143,6 +143,21 @@ function validatePmInfoStandalone(pmObj: Record<string, unknown>): void {
   }
 }
 
+function validateUvPmInfoInvariants(pmObj: Record<string, unknown>): void {
+  if (pmObj.name === "uv") {
+    if (pmObj.lockfile !== undefined && pmObj.lockfile !== "uv.lock") {
+      throw new Error(
+        'Invalid Python environment: UV lockfile name must be "uv.lock" when present',
+      );
+    }
+    if (pmObj.lockfile === "uv.lock" && pmObj.configFile !== "pyproject.toml") {
+      throw new Error(
+        'Invalid Python environment: UV lockfile requires configFile "pyproject.toml"',
+      );
+    }
+  }
+}
+
 function validatePythonPmInfo(pmInfo: unknown): void {
   if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
     throw new Error('Invalid Python environment: "pmInfo" must be an object when present');
@@ -155,6 +170,7 @@ function validatePythonPmInfo(pmInfo: unknown): void {
   }
   validateInstallCommands(pmObj.installCommands);
   validatePmInfoStandalone(pmObj);
+  validateUvPmInfoInvariants(pmObj);
 }
 
 function validateNoPythonSourceEnv(pyObj: Record<string, unknown>): void {

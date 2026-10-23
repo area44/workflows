@@ -169,41 +169,51 @@ function hasTomlTable(content: string, tableName: string): boolean {
   return pattern.test(content);
 }
 
+function hasUvProjectConfig(content: string): boolean {
+  const stripped = stripToolRuffSections(content);
+  return /^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(stripped);
+}
+
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
+  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
   const hasUvConfig = pyprojectContent !== undefined && hasTomlTable(pyprojectContent, "uv");
+
   if (!hasUvLock && !hasUvConfig) return null;
 
-  const hasPyproject = pyprojectContent !== undefined;
   const hasReqs = fs.existsSync(path.join(cwd, "requirements.txt"));
 
-  if (hasUvLock && !hasPyproject) {
-    if (hasReqs) {
-      return {
-        name: "uv",
-        lockfile: "uv.lock",
-        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
-        lockCommand: "uv lock",
-        syncCommand: "uv sync",
-        execPrefix: "uv run",
-      };
+  if (hasUvLock) {
+    if (!hasValidPyproject) {
+      throw new Error(
+        "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+      );
     }
-    throw new Error(
-      "Invalid Python project configuration: 'uv.lock' was detected without 'pyproject.toml' or 'requirements.txt'. 'uv sync' requires a valid 'pyproject.toml' file.",
-    );
+    return {
+      name: "uv",
+      lockfile: "uv.lock",
+      configFile: "pyproject.toml",
+      installCommands: [{ executable: "uv", args: ["sync"] }],
+      lockCommand: "uv lock",
+      syncCommand: "uv sync",
+      execPrefix: "uv run",
+    };
   }
 
-  const installCommands: PythonInstallCommand[] = hasUvLock
-    ? [{ executable: "uv", args: ["sync"] }]
-    : hasReqs
-      ? [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }]
-      : [{ executable: "uv", args: ["sync"] }];
+  // hasUvConfig is true
+  if (hasReqs) {
+    return {
+      name: "uv",
+      configFile: "pyproject.toml",
+      installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+      execPrefix: "uv run",
+    };
+  }
 
   return {
     name: "uv",
-    lockfile: hasUvLock ? "uv.lock" : undefined,
-    configFile: hasUvConfig ? "pyproject.toml" : undefined,
-    installCommands,
+    configFile: "pyproject.toml",
+    installCommands: [{ executable: "uv", args: ["sync"] }],
     lockCommand: "uv lock",
     syncCommand: "uv sync",
     execPrefix: "uv run",
