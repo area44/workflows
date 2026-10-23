@@ -165,62 +165,138 @@ function collectParentDirs(resolvedCwd: string): string[] {
   return dirs;
 }
 
-interface DiscoveredContextFiles {
-  pyprojectToml: ParsedToml | null;
-  pyprojectDir?: string;
-  uvToml: ParsedToml | null;
-  uvTomlDir?: string;
-  uvLockDir?: string;
-  requirementsDir?: string;
-  setupPyDir?: string;
-  setupCfgDir?: string;
-  pythonVersionFile?: string;
-  runtimeTxtFile?: string;
-}
-
-function findFirstPyproject(dirs: string[]): { toml: ParsedToml | null; dir?: string } {
-  for (const dir of dirs) {
-    const parsed = readPyprojectToml(dir);
-    if (parsed) return { toml: parsed, dir };
+function isUvWorkspaceRoot(
+  dir: string,
+  pyproject?: ParsedToml | null,
+  uvToml?: ParsedToml | null,
+): boolean {
+  const pyParsed = pyproject !== undefined ? pyproject : readPyprojectToml(dir);
+  if (
+    pyParsed?.success === true &&
+    isObject(pyParsed.data.tool) &&
+    isObject((pyParsed.data.tool as Record<string, unknown>).uv) &&
+    isObject(
+      ((pyParsed.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
+    )
+  ) {
+    return true;
   }
-  return { toml: null };
-}
 
-function findFirstUvToml(dirs: string[]): { toml: ParsedToml | null; dir?: string } {
-  for (const dir of dirs) {
-    const parsed = readUvToml(dir);
-    if (parsed) return { toml: parsed, dir };
+  const uvParsed = uvToml !== undefined ? uvToml : readUvToml(dir);
+  if (uvParsed?.success === true && isObject(uvParsed.data.workspace)) {
+    return true;
   }
-  return { toml: null };
+
+  return false;
 }
 
-function findFirstExistingDir(dirs: string[], filename: string): string | undefined {
-  for (const dir of dirs) {
-    if (fs.existsSync(path.join(dir, filename))) {
-      return dir;
+function findWorkspaceUvLock(dirs: string[], cwdIndex: number): string | undefined {
+  for (let i = cwdIndex + 1; i < dirs.length; i++) {
+    const parentDir = dirs[i];
+    if (fs.existsSync(path.join(parentDir, "uv.lock")) && isUvWorkspaceRoot(parentDir)) {
+      return parentDir;
     }
   }
   return undefined;
 }
 
 function findFirstExistingPath(dirs: string[], filename: string): string | undefined {
-  const dir = findFirstExistingDir(dirs, filename);
-  return dir ? path.join(dir, filename) : undefined;
+  for (const dir of dirs) {
+    const target = path.join(dir, filename);
+    if (fs.existsSync(target)) {
+      return target;
+    }
+  }
+  return undefined;
 }
 
-function discoverContextFiles(dirs: string[]): DiscoveredContextFiles {
-  const pyproject = findFirstPyproject(dirs);
-  const uvToml = findFirstUvToml(dirs);
+function hasOwnManifestFiles(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, "pyproject.toml")) ||
+    fs.existsSync(path.join(dir, "uv.toml")) ||
+    fs.existsSync(path.join(dir, "requirements.txt")) ||
+    fs.existsSync(path.join(dir, "setup.py")) ||
+    fs.existsSync(path.join(dir, "setup.cfg")) ||
+    fs.existsSync(path.join(dir, "uv.lock"))
+  );
+}
+
+function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext | null {
+  if (!hasOwnManifestFiles(resolvedCwd)) {
+    return null;
+  }
+
+  const pyprojectToml = readPyprojectToml(resolvedCwd);
+  const uvToml = readUvToml(resolvedCwd);
+  const hasOwnLock = fs.existsSync(path.join(resolvedCwd, "uv.lock"));
+  const workspaceLockDir = hasOwnLock ? undefined : findWorkspaceUvLock(dirs, 0);
+  const uvLockDir = hasOwnLock ? resolvedCwd : workspaceLockDir;
+
+  const hasRequirementsTxt = fs.existsSync(path.join(resolvedCwd, "requirements.txt"));
+  const hasSetupPy = fs.existsSync(path.join(resolvedCwd, "setup.py"));
+  const hasSetupCfg = fs.existsSync(path.join(resolvedCwd, "setup.cfg"));
 
   return {
-    pyprojectToml: pyproject.toml,
-    pyprojectDir: pyproject.dir,
-    uvToml: uvToml.toml,
-    uvTomlDir: uvToml.dir,
-    uvLockDir: findFirstExistingDir(dirs, "uv.lock"),
-    requirementsDir: findFirstExistingDir(dirs, "requirements.txt"),
-    setupPyDir: findFirstExistingDir(dirs, "setup.py"),
-    setupCfgDir: findFirstExistingDir(dirs, "setup.cfg"),
+    cwd: resolvedCwd,
+    projectDir: resolvedCwd,
+    pyprojectToml,
+    pyprojectDir: pyprojectToml ? resolvedCwd : undefined,
+    uvToml,
+    uvTomlDir: uvToml ? resolvedCwd : undefined,
+    hasUvLock: Boolean(uvLockDir),
+    uvLockDir,
+    hasRequirementsTxt,
+    requirementsDir: hasRequirementsTxt ? resolvedCwd : undefined,
+    hasSetupPy,
+    setupPyDir: hasSetupPy ? resolvedCwd : undefined,
+    hasSetupCfg,
+    setupCfgDir: hasSetupCfg ? resolvedCwd : undefined,
+    pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
+    runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
+  };
+}
+
+function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext {
+  for (let i = 1; i < dirs.length; i++) {
+    const pDir = dirs[i];
+    if (hasOwnManifestFiles(pDir) || fs.existsSync(path.join(pDir, "uv.lock"))) {
+      const pyprojectToml = readPyprojectToml(pDir);
+      const uvToml = readUvToml(pDir);
+      const hasUvLock = fs.existsSync(path.join(pDir, "uv.lock"));
+      const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
+      const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
+      const hasSetupCfg = fs.existsSync(path.join(pDir, "setup.cfg"));
+
+      return {
+        cwd: resolvedCwd,
+        projectDir: pDir,
+        pyprojectToml,
+        pyprojectDir: pyprojectToml ? pDir : undefined,
+        uvToml,
+        uvTomlDir: uvToml ? pDir : undefined,
+        hasUvLock,
+        uvLockDir: hasUvLock ? pDir : undefined,
+        hasRequirementsTxt,
+        requirementsDir: hasRequirementsTxt ? pDir : undefined,
+        hasSetupPy,
+        setupPyDir: hasSetupPy ? pDir : undefined,
+        hasSetupCfg,
+        setupCfgDir: hasSetupCfg ? pDir : undefined,
+        pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
+        runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
+      };
+    }
+  }
+
+  return {
+    cwd: resolvedCwd,
+    projectDir: resolvedCwd,
+    pyprojectToml: null,
+    uvToml: null,
+    hasUvLock: false,
+    hasRequirementsTxt: false,
+    hasSetupPy: false,
+    hasSetupCfg: false,
     pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
     runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
   };
@@ -233,35 +309,11 @@ function discoverContextFiles(dirs: string[]): DiscoveredContextFiles {
 export function findPythonProjectContext(cwd: string = process.cwd()): PythonProjectContext {
   const resolvedCwd = path.resolve(cwd);
   const dirs = collectParentDirs(resolvedCwd);
-  const files = discoverContextFiles(dirs);
-
-  const projectDir =
-    files.pyprojectDir ||
-    files.uvTomlDir ||
-    files.uvLockDir ||
-    files.requirementsDir ||
-    files.setupPyDir ||
-    files.setupCfgDir ||
-    resolvedCwd;
-
-  return {
-    cwd: resolvedCwd,
-    projectDir,
-    pyprojectToml: files.pyprojectToml,
-    pyprojectDir: files.pyprojectDir,
-    uvToml: files.uvToml,
-    uvTomlDir: files.uvTomlDir,
-    hasUvLock: Boolean(files.uvLockDir),
-    uvLockDir: files.uvLockDir,
-    hasRequirementsTxt: Boolean(files.requirementsDir),
-    requirementsDir: files.requirementsDir,
-    hasSetupPy: Boolean(files.setupPyDir),
-    setupPyDir: files.setupPyDir,
-    hasSetupCfg: Boolean(files.setupCfgDir),
-    setupCfgDir: files.setupCfgDir,
-    pythonVersionFile: files.pythonVersionFile,
-    runtimeTxtFile: files.runtimeTxtFile,
-  };
+  const selfCtx = findSelfManifestContext(resolvedCwd, dirs);
+  if (selfCtx) {
+    return selfCtx;
+  }
+  return findAncestorManifestContext(resolvedCwd, dirs);
 }
 
 export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | null {
@@ -592,6 +644,12 @@ function isPipProjectConfigPresent(parsed: Record<string, unknown>, rawContent?:
   return hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent);
 }
 
+function getRelativePath(fromDir: string, toPath: string): string {
+  const rel = path.relative(fromDir, toPath);
+  if (!rel) return ".";
+  return rel;
+}
+
 function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInfo | null {
   const hasValidPyproject =
     ctx.pyprojectToml?.success === true &&
@@ -599,6 +657,8 @@ function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInf
 
   const hasValidUvToml =
     ctx.uvToml?.success === true && isUvTomlProjectConfigPresent(ctx.uvToml.data);
+
+  const hasAnyUvToml = ctx.uvToml?.success === true;
 
   const hasUvToolConfig =
     ctx.pyprojectToml?.success === true && isUvToolConfigPresent(ctx.pyprojectToml.data);
@@ -623,12 +683,16 @@ function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInf
     };
   }
 
-  if (hasUvToolConfig || hasValidUvToml) {
-    if (ctx.hasRequirementsTxt) {
+  if (hasUvToolConfig || hasAnyUvToml) {
+    if (ctx.hasRequirementsTxt && ctx.requirementsDir) {
+      const reqPathRel = getRelativePath(
+        ctx.cwd,
+        path.join(ctx.requirementsDir, "requirements.txt"),
+      );
       return {
         name: "uv",
         configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
-        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+        installCommands: [{ executable: "uv", args: ["pip", "install", "-r", reqPathRel] }],
         execPrefix: "uv run",
       };
     }
@@ -671,17 +735,23 @@ function detectPipFromContext(ctx: PythonProjectContext): PythonPackageManagerIn
 
   const isPackage = ctx.hasSetupPy || ctx.hasSetupCfg || hasProjectOrBuildSystem;
 
+  const reqPathRel = ctx.requirementsDir
+    ? getRelativePath(ctx.cwd, path.join(ctx.requirementsDir, "requirements.txt"))
+    : "requirements.txt";
+
+  const projectDirRel = getRelativePath(ctx.cwd, ctx.projectDir);
+
   if (ctx.hasRequirementsTxt && isPackage) {
     installCommands = [
-      { executable: "pip", args: ["install", "-r", "requirements.txt"] },
-      { executable: "pip", args: ["install", "-e", "."] },
+      { executable: "pip", args: ["install", "-r", reqPathRel] },
+      { executable: "pip", args: ["install", "-e", projectDirRel] },
     ];
     lockfile = "requirements.txt";
   } else if (ctx.hasRequirementsTxt) {
-    installCommands = [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }];
+    installCommands = [{ executable: "pip", args: ["install", "-r", reqPathRel] }];
     lockfile = "requirements.txt";
   } else if (isPackage) {
-    installCommands = [{ executable: "pip", args: ["install", "-e", "."] }];
+    installCommands = [{ executable: "pip", args: ["install", "-e", projectDirRel] }];
   }
 
   return {
