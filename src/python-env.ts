@@ -223,6 +223,86 @@ export function hasPythonSource(
   return false;
 }
 
+function stripComment(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "";
+  let i = startIdx;
+  while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
+    res += " ";
+    i++;
+  }
+  return [res, i];
+}
+
+function stripMultilineBasicString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "   ";
+  let i = startIdx + 3;
+  while (i < len && raw.slice(i, i + 3) !== '"""') {
+    if (raw[i] === "\\" && i + 1 < len) {
+      res += "  ";
+      i += 2;
+    } else {
+      res += raw[i] === "\n" ? "\n" : " ";
+      i++;
+    }
+  }
+  if (i < len) {
+    res += "   ";
+    i += 3;
+  }
+  return [res, i];
+}
+
+function stripMultilineLiteralString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "   ";
+  let i = startIdx + 3;
+  while (i < len && raw.slice(i, i + 3) !== "'''") {
+    res += raw[i] === "\n" ? "\n" : " ";
+    i++;
+  }
+  if (i < len) {
+    res += "   ";
+    i += 3;
+  }
+  return [res, i];
+}
+
+function stripSinglelineBasicString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = " ";
+  let i = startIdx + 1;
+  while (i < len && raw[i] !== '"' && raw[i] !== "\n" && raw[i] !== "\r") {
+    if (raw[i] === "\\" && i + 1 < len) {
+      res += "  ";
+      i += 2;
+    } else {
+      res += " ";
+      i++;
+    }
+  }
+  if (i < len && raw[i] === '"') {
+    res += " ";
+    i++;
+  }
+  return [res, i];
+}
+
+function stripSinglelineLiteralString(
+  raw: string,
+  startIdx: number,
+  len: number,
+): [string, number] {
+  let res = " ";
+  let i = startIdx + 1;
+  while (i < len && raw[i] !== "'" && raw[i] !== "\n" && raw[i] !== "\r") {
+    res += " ";
+    i++;
+  }
+  if (i < len && raw[i] === "'") {
+    res += " ";
+    i++;
+  }
+  return [res, i];
+}
+
 /**
  * Strips comments and all TOML string literals (single-line basic/literal,
  * multiline basic/literal) from raw TOML text, replacing their characters with spaces.
@@ -237,87 +317,30 @@ export function stripTomlStringsAndComments(raw: string): string {
   while (i < len) {
     const ch = raw[i];
 
-    // Check for comment
     if (ch === "#") {
-      while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
-        result += " ";
-        i++;
-      }
-      continue;
-    }
-
-    // Check for multiline basic string """
-    if (raw.slice(i, i + 3) === '"""') {
-      result += "   ";
-      i += 3;
-      while (i < len && raw.slice(i, i + 3) !== '"""') {
-        if (raw[i] === "\\" && i + 1 < len) {
-          result += "  ";
-          i += 2;
-        } else {
-          result += raw[i] === "\n" ? "\n" : " ";
-          i++;
-        }
-      }
-      if (i < len) {
-        result += "   ";
-        i += 3;
-      }
-      continue;
-    }
-
-    // Check for multiline literal string '''
-    if (raw.slice(i, i + 3) === "'''") {
-      result += "   ";
-      i += 3;
-      while (i < len && raw.slice(i, i + 3) !== "'''") {
-        result += raw[i] === "\n" ? "\n" : " ";
-        i++;
-      }
-      if (i < len) {
-        result += "   ";
-        i += 3;
-      }
-      continue;
-    }
-
-    // Check for single-line basic string "
-    if (ch === '"') {
-      result += " ";
+      const [chunk, nextI] = stripComment(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (raw.slice(i, i + 3) === '"""') {
+      const [chunk, nextI] = stripMultilineBasicString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (raw.slice(i, i + 3) === "'''") {
+      const [chunk, nextI] = stripMultilineLiteralString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (ch === '"') {
+      const [chunk, nextI] = stripSinglelineBasicString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (ch === "'") {
+      const [chunk, nextI] = stripSinglelineLiteralString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else {
+      result += ch;
       i++;
-      while (i < len && raw[i] !== '"' && raw[i] !== "\n" && raw[i] !== "\r") {
-        if (raw[i] === "\\" && i + 1 < len) {
-          result += "  ";
-          i += 2;
-        } else {
-          result += " ";
-          i++;
-        }
-      }
-      if (i < len && raw[i] === '"') {
-        result += " ";
-        i++;
-      }
-      continue;
     }
-
-    // Check for single-line literal string '
-    if (ch === "'") {
-      result += " ";
-      i++;
-      while (i < len && raw[i] !== "'" && raw[i] !== "\n" && raw[i] !== "\r") {
-        result += " ";
-        i++;
-      }
-      if (i < len && raw[i] === "'") {
-        result += " ";
-        i++;
-      }
-      continue;
-    }
-
-    result += ch;
-    i++;
   }
 
   return result;
