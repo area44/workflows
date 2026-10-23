@@ -406,6 +406,30 @@ dev = ["pytest"]
       }
     });
 
+    it("should not leak parent root uv.toml to an independent child project with its own pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "parent-uv-toml-leak-temp");
+      const childDir = path.join(tempDir, "tools/standalone");
+      fs.mkdirSync(childDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://root.pypi.org'\n");
+      fs.writeFileSync(
+        path.join(childDir, "pyproject.toml"),
+        "[project]\nname = 'standalone-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(childDir, "tool.py"), "print('standalone')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(childDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should resolve uv with requirements.txt when uv.toml and requirements.txt exist without pyproject.toml", () => {
       const tempDir = path.join(fixturesDir, "uv-toml-reqs-temp");
       fs.mkdirSync(tempDir, { recursive: true });

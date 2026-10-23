@@ -341,7 +341,15 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   const pyprojectToml = readPyprojectToml(resolvedCwd);
   const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
   const ws = findWorkspaceRootContext(dirs, resolvedCwd, 1);
-  const uvTomlPath = findFirstExistingPath(dirs, "uv.toml");
+
+  let uvTomlPath: string | undefined;
+  if (ws.dir) {
+    const wsDirs = dirs.slice(0, dirs.indexOf(ws.dir) + 1);
+    uvTomlPath = findFirstExistingPath(wsDirs, "uv.toml");
+  } else if (fs.existsSync(path.join(resolvedCwd, "uv.toml"))) {
+    uvTomlPath = path.join(resolvedCwd, "uv.toml");
+  }
+
   const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
   const uvLockDir = resolveUvLockDir(dirs, resolvedCwd, pyprojectDir);
 
@@ -387,15 +395,23 @@ function parseTomlFile(filePath: string): ParsedToml | null {
 }
 
 function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext {
-  const uvTomlPath = findFirstExistingPath(dirs, "uv.toml");
-  const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
-
   for (let i = 1; i < dirs.length; i++) {
     const pDir = dirs[i];
     if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
       const pyprojectDir = pyprojectToml ? pDir : undefined;
       const ws = findWorkspaceRootContext(dirs, pDir, i + 1);
+
+      let uvTomlPath: string | undefined;
+      if (ws.dir) {
+        const wsDirs = dirs.slice(0, dirs.indexOf(ws.dir) + 1);
+        uvTomlPath = findFirstExistingPath(wsDirs, "uv.toml");
+      } else {
+        const pDirs = dirs.slice(0, i + 1);
+        uvTomlPath = findFirstExistingPath(pDirs, "uv.toml");
+      }
+
+      const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
       const uvLockDir = resolveUvLockDir(dirs.slice(i), pDir, pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
       const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
@@ -423,6 +439,9 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
       };
     }
   }
+
+  const uvTomlPath = findFirstExistingPath(dirs, "uv.toml");
+  const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
 
   return {
     cwd: resolvedCwd,
