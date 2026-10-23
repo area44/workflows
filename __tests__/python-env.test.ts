@@ -55,6 +55,44 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       }
     });
 
+    it("should return standalone pip when pyproject.toml contains only [project.optional-dependencies] without main [project]", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should return standalone pip when pyproject.toml contains only [tool.uvicorn]", () => {
+      const tempDir = path.join(fixturesDir, "uvicorn-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uvicorn]\nreload = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should return true when repository contains only tests/test_example.py", () => {
       const tempDir = path.join(fixturesDir, "tests-py-temp");
       fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });

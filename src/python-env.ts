@@ -163,15 +163,39 @@ export function hasPythonSource(
   return false;
 }
 
+function getTomlTables(content: string): string[] {
+  const lines = content.split("\n");
+  const tables: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*/, "").trim();
+    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
+    if (match) {
+      tables.push(match[1].trim().toLowerCase());
+    }
+  }
+  return tables;
+}
+
 function hasTomlTable(content: string, tableName: string): boolean {
-  const escaped = tableName.replace(/\./g, "\\.");
-  const pattern = new RegExp(`^\\s*\\[\\s*tool\\.${escaped}(?:\\.|\\s*\\])`, "m");
-  return pattern.test(content);
+  const fullTarget = `tool.${tableName.toLowerCase()}`;
+  const tables = getTomlTables(content);
+  return tables.some((t) => t === fullTarget || t.startsWith(`${fullTarget}.`));
 }
 
 function hasUvProjectConfig(content: string): boolean {
-  const stripped = stripToolRuffSections(content);
-  return /^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(stripped);
+  const tables = getTomlTables(content);
+  if (tables.includes("project") || tables.includes("build-system")) {
+    return true;
+  }
+  if (tables.includes("tool.uv") || tables.some((t) => t.startsWith("tool.uv."))) {
+    return true;
+  }
+  return false;
+}
+
+function hasPipProjectConfig(content: string): boolean {
+  const tables = getTomlTables(content);
+  return tables.includes("project") || tables.includes("build-system");
 }
 
 function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
@@ -225,8 +249,7 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
   const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
   const hasProjectOrBuildSystem =
-    pyprojectContent !== undefined &&
-    /^\s*\[\s*(?:project|build-system)\s*\]/m.test(pyprojectContent);
+    pyprojectContent !== undefined && hasPipProjectConfig(pyprojectContent);
 
   const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
@@ -299,8 +322,7 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
   if (fs.existsSync(pyprojectPath)) {
     try {
       const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = stripToolRuffSections(content);
-      if (/^\s*\[\s*(?:project|build-system|tool\.uv)/m.test(stripped)) {
+      if (hasUvProjectConfig(content)) {
         return true;
       }
       if (isRuffDeclaredInProject(cwd)) {
