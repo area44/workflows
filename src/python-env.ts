@@ -326,7 +326,6 @@ function findFirstExistingPath(dirs: string[], filename: string): string | undef
 function hasOwnManifestFiles(dir: string): boolean {
   return (
     fs.existsSync(path.join(dir, "pyproject.toml")) ||
-    fs.existsSync(path.join(dir, "uv.toml")) ||
     fs.existsSync(path.join(dir, "requirements.txt")) ||
     fs.existsSync(path.join(dir, "setup.py")) ||
     fs.existsSync(path.join(dir, "setup.cfg")) ||
@@ -342,7 +341,8 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   const pyprojectToml = readPyprojectToml(resolvedCwd);
   const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
   const ws = findWorkspaceRootContext(dirs, resolvedCwd, 1);
-  const uvToml = readUvToml(resolvedCwd);
+  const uvTomlPath = findFirstExistingPath(dirs, "uv.toml");
+  const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
   const uvLockDir = resolveUvLockDir(dirs, resolvedCwd, pyprojectDir);
 
   const hasRequirementsTxt = fs.existsSync(path.join(resolvedCwd, "requirements.txt"));
@@ -357,7 +357,7 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
     workspaceRootToml: ws.toml,
     workspaceRootDir: ws.dir,
     uvToml,
-    uvTomlDir: uvToml ? resolvedCwd : undefined,
+    uvTomlDir: uvTomlPath ? path.dirname(uvTomlPath) : undefined,
     hasUvLock: Boolean(uvLockDir),
     uvLockDir,
     hasRequirementsTxt,
@@ -371,14 +371,31 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   };
 }
 
+function parseTomlFile(filePath: string): ParsedToml | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    return parseToml(content);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
 function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext {
+  const uvTomlPath = findFirstExistingPath(dirs, "uv.toml");
+  const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
+
   for (let i = 1; i < dirs.length; i++) {
     const pDir = dirs[i];
     if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
       const pyprojectDir = pyprojectToml ? pDir : undefined;
       const ws = findWorkspaceRootContext(dirs, pDir, i + 1);
-      const uvToml = readUvToml(pDir);
       const uvLockDir = resolveUvLockDir(dirs.slice(i), pDir, pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
       const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
@@ -392,7 +409,7 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
         workspaceRootToml: ws.toml,
         workspaceRootDir: ws.dir,
         uvToml,
-        uvTomlDir: uvToml ? pDir : undefined,
+        uvTomlDir: uvTomlPath ? path.dirname(uvTomlPath) : undefined,
         hasUvLock: Boolean(uvLockDir),
         uvLockDir,
         hasRequirementsTxt,
@@ -411,7 +428,8 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
     cwd: resolvedCwd,
     projectDir: resolvedCwd,
     pyprojectToml: null,
-    uvToml: null,
+    uvToml,
+    uvTomlDir: uvTomlPath ? path.dirname(uvTomlPath) : undefined,
     hasUvLock: false,
     hasRequirementsTxt: false,
     hasSetupPy: false,
