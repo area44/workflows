@@ -545,6 +545,10 @@ dev = ["pytest"]
       );
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
       fs.writeFileSync(path.join(memberDir, "mem.py"), "print('mem')\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'included-pkg'\nversion = '0.1.0'\n",
+      );
       fs.writeFileSync(path.join(excludedDir, "ex.py"), "print('ex')\n");
       fs.writeFileSync(
         path.join(excludedDir, "pyproject.toml"),
@@ -559,6 +563,27 @@ dev = ["pytest"]
         const excludedPmInfo = detectPythonPackageManager(excludedDir);
         expect(excludedPmInfo?.name).toBe("pip");
         expect(excludedPmInfo?.lockfile).toBeUndefined();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject workspace candidate directory if it lacks a pyproject.toml package manifest", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-no-manifest-temp");
+      const candidateDir = path.join(tempDir, "packages/no-manifest");
+      fs.mkdirSync(candidateDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(candidateDir, "sub.py"), "print('no manifest')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(candidateDir);
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

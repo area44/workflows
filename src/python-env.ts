@@ -254,7 +254,17 @@ export function isWorkspaceMember(
     return false;
   }
 
-  return isDirectoryMatchedByGlobs(effectiveRelPath, members);
+  if (!isDirectoryMatchedByGlobs(effectiveRelPath, members)) {
+    return false;
+  }
+
+  if (resolvedChild !== resolvedWsRoot) {
+    if (!fs.existsSync(path.join(resolvedChild, "pyproject.toml"))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getWorkspaceConfigInDir(
@@ -342,14 +352,9 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   const pyprojectDir = pyprojectToml ? resolvedCwd : undefined;
   const ws = findWorkspaceRootContext(dirs, resolvedCwd, 1);
 
-  let uvTomlPath: string | undefined;
-  if (ws.dir) {
-    const wsDirs = dirs.slice(0, dirs.indexOf(ws.dir) + 1);
-    uvTomlPath = findFirstExistingPath(wsDirs, "uv.toml");
-  } else if (fs.existsSync(path.join(resolvedCwd, "uv.toml"))) {
-    uvTomlPath = path.join(resolvedCwd, "uv.toml");
-  }
+  const allowedDirs = ws.dir ? dirs.slice(0, dirs.indexOf(ws.dir) + 1) : [resolvedCwd];
 
+  const uvTomlPath = findFirstExistingPath(allowedDirs, "uv.toml");
   const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
   const uvLockDir = resolveUvLockDir(dirs, resolvedCwd, pyprojectDir);
 
@@ -374,8 +379,8 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
     setupPyDir: hasSetupPy ? resolvedCwd : undefined,
     hasSetupCfg,
     setupCfgDir: hasSetupCfg ? resolvedCwd : undefined,
-    pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
-    runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
+    pythonVersionFile: findFirstExistingPath(allowedDirs, ".python-version"),
+    runtimeTxtFile: findFirstExistingPath(allowedDirs, "runtime.txt"),
   };
 }
 
@@ -402,15 +407,9 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
       const pyprojectDir = pyprojectToml ? pDir : undefined;
       const ws = findWorkspaceRootContext(dirs, pDir, i + 1);
 
-      let uvTomlPath: string | undefined;
-      if (ws.dir) {
-        const wsDirs = dirs.slice(0, dirs.indexOf(ws.dir) + 1);
-        uvTomlPath = findFirstExistingPath(wsDirs, "uv.toml");
-      } else {
-        const pDirs = dirs.slice(0, i + 1);
-        uvTomlPath = findFirstExistingPath(pDirs, "uv.toml");
-      }
+      const allowedDirs = ws.dir ? dirs.slice(0, dirs.indexOf(ws.dir) + 1) : dirs.slice(0, i + 1);
 
+      const uvTomlPath = findFirstExistingPath(allowedDirs, "uv.toml");
       const uvToml = uvTomlPath ? parseTomlFile(uvTomlPath) : null;
       const uvLockDir = resolveUvLockDir(dirs.slice(i), pDir, pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
@@ -434,8 +433,8 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
         setupPyDir: hasSetupPy ? pDir : undefined,
         hasSetupCfg,
         setupCfgDir: hasSetupCfg ? pDir : undefined,
-        pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
-        runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
+        pythonVersionFile: findFirstExistingPath(allowedDirs, ".python-version"),
+        runtimeTxtFile: findFirstExistingPath(allowedDirs, "runtime.txt"),
       };
     }
   }
