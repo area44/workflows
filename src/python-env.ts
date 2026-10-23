@@ -348,25 +348,19 @@ export function stripTomlStringsAndComments(raw: string): string {
 
 function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (!isObject(parsed.project)) return false;
-  const keys = Object.keys(parsed.project);
-  if (keys.length === 0) return true;
-  const subtableKeys = new Set([
-    "optional-dependencies",
-    "urls",
-    "scripts",
-    "gui-scripts",
-    "entry-points",
-  ]);
-  const hasDirectProjectKeys = keys.some((k) => !subtableKeys.has(k));
-  if (hasDirectProjectKeys) return true;
 
-  // parsed.project contains ONLY subtable keys.
-  // If rawContent is available, check whether an explicit [project] header is present in stripped TOML.
-  if (rawContent) {
+  // When rawContent is available, directly check if [project] header was explicitly declared
+  if (typeof rawContent === "string") {
     const stripped = stripTomlStringsAndComments(rawContent);
     return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:\n|$)/.test(stripped);
   }
-  return false;
+
+  // Fallback when rawContent is absent:
+  // An explicit empty [project] or direct primitive/array keys indicate a project table,
+  // whereas having only nested sub-objects strongly implies nested subtables (like [project.optional-dependencies] or [project.custom])
+  const entries = Object.entries(parsed.project);
+  if (entries.length === 0) return true;
+  return entries.some(([, val]) => !isObject(val));
 }
 
 function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {

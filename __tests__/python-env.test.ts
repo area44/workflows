@@ -381,6 +381,52 @@ dev = ["pytest"]
       }
     });
 
+    it("should classify a pyproject.toml containing only [project.custom] as standalone pip without explicit [project] header", () => {
+      const tempDir = path.join(fixturesDir, "project-custom-only-cls-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.custom]\nenabled = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml as standalone pip when [project.custom] exists and misleading [project] appears only in comment or multiline string", () => {
+      const tempDir = path.join(fixturesDir, "project-custom-misleading-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        `# [project]
+[tool.mytool]
+info = """
+[project]
+"""
+
+[project.custom]
+enabled = true
+`,
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should not trigger UV detection when tool.uv is represented as other non-table primitive values", () => {
       const nonTableValues = [
         '[tool]\nuv = 123\n',
