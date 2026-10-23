@@ -517,6 +517,61 @@ enabled = true
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    it("should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true", () => {
+      const configOnlyTomls = [
+        "[tool.uv]\noverride-dependencies = ['foo']\n",
+        "[tool.uv]\ndefault-groups = ['dev']\n",
+        "[tool.uv]\npackage = false\n",
+        "[tool.uv]\nmanaged = true\n",
+      ];
+
+      for (const [idx, content] of configOnlyTomls.entries()) {
+        const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+
+          const resolved = resolvePythonEnvironment(tempDir);
+          expect(resolved.hasPythonSource).toBe(true);
+          expect(resolved.pmInfo?.name).toBe("pip");
+          expect(resolved.pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should resolve workspace member environment end-to-end via public resolvePythonEnvironment()", () => {
+      const tempDir = path.join(fixturesDir, "resolve-env-workspace-temp");
+      const pkgDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), 'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n');
+      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('sub')\n");
+      fs.writeFileSync(path.join(pkgDir, "pyproject.toml"), "[project]\nname = 'sub'\nversion = '0.1.0'\n");
+
+      try {
+        const resolved = resolvePythonEnvironment(pkgDir);
+        expect(resolved.hasPythonSource).toBe(true);
+        expect(resolved.pythonVersion).toBe(DEFAULT_PYTHON_VERSION);
+        expect(resolved.ruffVersion).toBe("0.4.2");
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("Python Project Table Classification Regression Tests", () => {

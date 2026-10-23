@@ -165,29 +165,16 @@ function collectParentDirs(resolvedCwd: string): string[] {
   return dirs;
 }
 
-function isUvWorkspaceRoot(
-  dir: string,
-  pyproject?: ParsedToml | null,
-  uvToml?: ParsedToml | null,
-): boolean {
+function isUvWorkspaceRoot(dir: string, pyproject?: ParsedToml | null): boolean {
   const pyParsed = pyproject !== undefined ? pyproject : readPyprojectToml(dir);
-  if (
+  return (
     pyParsed?.success === true &&
     isObject(pyParsed.data.tool) &&
     isObject((pyParsed.data.tool as Record<string, unknown>).uv) &&
     isObject(
       ((pyParsed.data.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace,
     )
-  ) {
-    return true;
-  }
-
-  const uvParsed = uvToml !== undefined ? uvToml : readUvToml(dir);
-  if (uvParsed?.success === true && isObject(uvParsed.data.workspace)) {
-    return true;
-  }
-
-  return false;
+  );
 }
 
 function resolveUvLockDir(dirs: string[], pyprojectDir?: string): string | undefined {
@@ -607,34 +594,15 @@ function hasBuildSystemTable(parsed: Record<string, unknown>, rawContent?: strin
   return entries.some(([, val]) => !isObject(val));
 }
 
-function isUvToolObjectConfigPresent(uvObj: Record<string, unknown>): boolean {
-  if ("workspace" in uvObj && isObject(uvObj.workspace)) return true;
-  if ("dev-dependencies" in uvObj && Array.isArray(uvObj["dev-dependencies"])) return true;
-  if ("override-dependencies" in uvObj && Array.isArray(uvObj["override-dependencies"]))
-    return true;
-  if ("constraint-dependencies" in uvObj && Array.isArray(uvObj["constraint-dependencies"]))
-    return true;
-  if ("default-groups" in uvObj && Array.isArray(uvObj["default-groups"])) return true;
-  if ("package" in uvObj) return true;
-  if ("managed" in uvObj && uvObj.managed === true) return true;
-  return false;
-}
-
 function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent)) {
     return true;
   }
   if (isObject(parsed.tool) && isObject(parsed.tool.uv)) {
-    return isUvToolObjectConfigPresent(parsed.tool.uv as Record<string, unknown>);
+    const uv = parsed.tool.uv as Record<string, unknown>;
+    return isObject(uv.workspace) || Array.isArray(uv["dev-dependencies"]);
   }
   return false;
-}
-
-function isUvTomlProjectConfigPresent(parsed: Record<string, unknown>): boolean {
-  if (isUvToolObjectConfigPresent(parsed)) return true;
-  const configOnlyKeys = new Set(["sources", "index", "pip"]);
-  const keys = Object.keys(parsed);
-  return keys.some((k) => !configOnlyKeys.has(k));
 }
 
 function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
@@ -673,7 +641,7 @@ function checkUvLockedProject(
 
 function checkUvUnlockedProject(
   ctx: PythonProjectContext,
-  isUvProject: boolean,
+  hasValidPyproject: boolean,
 ): PythonPackageManagerInfo | null {
   if (ctx.hasRequirementsTxt && ctx.requirementsDir) {
     const reqPathRel = getRelativePath(ctx.cwd, path.join(ctx.requirementsDir, "requirements.txt"));
@@ -685,7 +653,7 @@ function checkUvUnlockedProject(
     };
   }
 
-  if (isUvProject) {
+  if (hasValidPyproject) {
     return {
       name: "uv",
       configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
@@ -704,22 +672,16 @@ function detectUvFromContext(ctx: PythonProjectContext): PythonPackageManagerInf
     ctx.pyprojectToml?.success === true &&
     isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent);
 
-  const hasValidUvToml =
-    ctx.uvToml?.success === true && isUvTomlProjectConfigPresent(ctx.uvToml.data);
-
-  const hasAnyUvToml = ctx.uvToml?.success === true;
-
+  const hasUvToml = ctx.uvToml?.success === true;
   const hasUvToolConfig =
     ctx.pyprojectToml?.success === true && isUvToolConfigPresent(ctx.pyprojectToml.data);
-
-  const isUvProject = hasValidPyproject || hasValidUvToml || ctx.hasUvLock;
 
   if (ctx.hasUvLock) {
     return checkUvLockedProject(ctx, hasValidPyproject);
   }
 
-  if (hasUvToolConfig || hasAnyUvToml) {
-    return checkUvUnlockedProject(ctx, isUvProject);
+  if (hasUvToolConfig || hasUvToml) {
+    return checkUvUnlockedProject(ctx, hasValidPyproject);
   }
 
   return null;
@@ -1007,10 +969,6 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     if (isRuffDeclaredInProject(cwd, undefined, ctx.pyprojectToml)) {
       return true;
     }
-  }
-
-  if (ctx.uvToml?.success === true && isUvTomlProjectConfigPresent(ctx.uvToml.data)) {
-    return true;
   }
 
   if (ctx.hasUvLock || ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg) {
