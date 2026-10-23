@@ -262,7 +262,11 @@ function findWorkspaceRootContext(
   for (let i = startIndex; i < dirs.length; i++) {
     const parentDir = dirs[i];
     const pyproject = readPyprojectToml(parentDir);
-    if (pyproject?.success === true && isObject(pyproject.data.tool) && isObject(pyproject.data.tool.uv)) {
+    if (
+      pyproject?.success === true &&
+      isObject(pyproject.data.tool) &&
+      isObject(pyproject.data.tool.uv)
+    ) {
       const uv = pyproject.data.tool.uv as Record<string, unknown>;
       if (isValidUvWorkspaceConfig(uv.workspace)) {
         if (isWorkspaceMember(parentDir, childDir, uv.workspace as Record<string, unknown>)) {
