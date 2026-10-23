@@ -376,9 +376,9 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
     if (hasOwnManifestFiles(pDir)) {
       const pyprojectToml = readPyprojectToml(pDir);
       const pyprojectDir = pyprojectToml ? pDir : undefined;
-      const ws = findWorkspaceRootContext(dirs, resolvedCwd, i + 1);
+      const ws = findWorkspaceRootContext(dirs, pDir, i + 1);
       const uvToml = readUvToml(pDir);
-      const uvLockDir = resolveUvLockDir(dirs.slice(i), resolvedCwd, pyprojectDir);
+      const uvLockDir = resolveUvLockDir(dirs.slice(i), pDir, pyprojectDir);
       const hasRequirementsTxt = fs.existsSync(path.join(pDir, "requirements.txt"));
       const hasSetupPy = fs.existsSync(path.join(pDir, "setup.py"));
       const hasSetupCfg = fs.existsSync(path.join(pDir, "setup.cfg"));

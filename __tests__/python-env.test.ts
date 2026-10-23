@@ -668,6 +668,58 @@ enabled = true
       }
     });
 
+    it("should resolve workspace root and uv.lock correctly when detection is run from a deep subdirectory inside a workspace member", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-deep-subdir-temp");
+      const memberDir = path.join(tempDir, "packages/api");
+      const deepDir = path.join(memberDir, "src/handlers");
+      fs.mkdirSync(deepDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'api'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(deepDir, "handler.py"), "def handle(): pass\n");
+
+      try {
+        const memberEnv = resolvePythonEnvironment(memberDir);
+        const deepEnv = resolvePythonEnvironment(deepDir);
+
+        expect(deepEnv.hasPythonSource).toBe(true);
+        expect(deepEnv.pythonVersion).toBe("3.11");
+        expect(deepEnv.ruffVersion).toBe("0.4.2");
+        expect(deepEnv.pmInfo?.name).toBe("uv");
+        expect(deepEnv.pmInfo?.lockfile).toBe("uv.lock");
+        expect(deepEnv.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+
+        expect(deepEnv).toEqual(memberEnv);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject members = [] in [tool.uv.workspace] as an invalid workspace configuration", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-empty-members-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.uv.workspace]\nmembers = []\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should reject invalid [tool.uv.workspace] definitions (empty, missing members, or non-array members)", () => {
       const invalidWorkspaces = [
         "[tool.uv.workspace]\n",
