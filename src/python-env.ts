@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parse } from "smol-toml";
 
 export type PythonPackageManager = "uv" | "pip";
 
@@ -61,6 +62,63 @@ export interface ResolvedPythonEnvironment {
   pmInfo: PythonPackageManagerInfo | null;
 }
 
+export interface ParsedTomlSuccess {
+  success: true;
+  data: Record<string, unknown>;
+}
+
+export interface ParsedTomlError {
+  success: false;
+  error: Error;
+}
+
+export type ParsedToml = ParsedTomlSuccess | ParsedTomlError;
+
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
+/**
+ * Parses raw TOML content using smol-toml and explicitly classifies errors.
+ */
+export function parseToml(content: string): ParsedToml {
+  try {
+    const data = parse(content);
+    if (isObject(data)) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: new Error("Invalid TOML: root must be an object"),
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
+/**
+ * Reads and parses pyproject.toml in cwd using parseToml.
+ * Returns null if file does not exist, or ParsedToml result if file exists.
+ */
+export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | null {
+  const pyprojectPath = path.join(cwd, "pyproject.toml");
+  if (!fs.existsSync(pyprojectPath)) {
+    return null;
+  }
+  try {
+    const content = fs.readFileSync(pyprojectPath, "utf8");
+    return parseToml(content);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
 export function parsePythonVersionFromConstraint(raw: string): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
@@ -82,17 +140,15 @@ function readPythonVersionFile(cwd: string): string | undefined {
   }
 }
 
-function readPyprojectPythonVersion(cwd: string): string | undefined {
-  const pyprojectFile = path.join(cwd, "pyproject.toml");
-  if (!fs.existsSync(pyprojectFile)) return undefined;
-  try {
-    const content = fs.readFileSync(pyprojectFile, "utf8");
-    const reqMatch = content.match(/requires-python\s*=\s*["']([^"']+)["']/i);
-    if (reqMatch && reqMatch[1]) {
-      return parsePythonVersionFromConstraint(reqMatch[1]);
-    }
-  } catch {
-    // Ignore read errors
+function readPyprojectPythonVersion(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): string | undefined {
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success !== true) return undefined;
+  const project = parsed.data.project;
+  if (isObject(project) && typeof project["requires-python"] === "string") {
+    return parsePythonVersionFromConstraint(project["requires-python"]);
   }
   return undefined;
 }
@@ -112,10 +168,13 @@ function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
  * Resolves the target Python version from project configuration files (.python-version,
  * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
  */
-export function resolvePythonVersion(cwd: string = process.cwd()): string {
+export function resolvePythonVersion(
+  cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
+): string {
   return (
     readPythonVersionFile(cwd) ||
-    readPyprojectPythonVersion(cwd) ||
+    readPyprojectPythonVersion(cwd, pyprojectToml) ||
     readRuntimeTxtPythonVersion(cwd) ||
     DEFAULT_PYTHON_VERSION
   );
@@ -163,31 +222,29 @@ export function hasPythonSource(
   return false;
 }
 
-function getTomlTables(content: string): string[] {
-  const lines = content.split("\n");
-  const tables: string[] = [];
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/#.*/, "").trim();
-    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
-    if (match) {
-      tables.push(match[1].trim().toLowerCase());
-    }
-  }
-  return tables;
+function hasProjectTable(parsed: Record<string, unknown>): boolean {
+  if (!isObject(parsed.project)) return false;
+  const keys = Object.keys(parsed.project);
+  if (keys.length === 0) return true;
+  return keys.some((k) => k !== "optional-dependencies");
 }
 
-function hasUvProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
+function isUvProjectConfigPresent(parsed: Record<string, unknown>): boolean {
   return (
-    tables.includes("project") ||
-    tables.includes("build-system") ||
-    tables.includes("tool.uv.workspace")
+    hasProjectTable(parsed) ||
+    isObject(parsed["build-system"]) ||
+    (isObject(parsed.tool) &&
+      isObject((parsed.tool as Record<string, unknown>).uv) &&
+      isObject(((parsed.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace))
   );
 }
 
-function hasPipProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
-  return tables.includes("project") || tables.includes("build-system");
+function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
+  return isObject(parsed.tool) && "uv" in (parsed.tool as Record<string, unknown>);
+}
+
+function isPipProjectConfigPresent(parsed: Record<string, unknown>): boolean {
+  return hasProjectTable(parsed) || isObject(parsed["build-system"]);
 }
 
 function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
@@ -207,16 +264,14 @@ function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManager
   };
 }
 
-function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
+function detectUv(cwd: string, pyprojectToml?: ParsedToml | null): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
 
-  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
+  const hasValidPyproject =
+    pyprojectToml?.success === true && isUvProjectConfigPresent(pyprojectToml.data);
 
   const hasUvToolConfig =
-    pyprojectContent !== undefined &&
-    getTomlTables(pyprojectContent).some(
-      (t: string) => t === "tool.uv" || t.startsWith("tool.uv."),
-    );
+    pyprojectToml?.success === true && isUvToolConfigPresent(pyprojectToml.data);
 
   if (!hasUvLock && !hasUvToolConfig) return null;
 
@@ -249,12 +304,15 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
   };
 }
 
-function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
+function detectPip(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): PythonPackageManagerInfo | null {
   const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
   const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
   const hasProjectOrBuildSystem =
-    pyprojectContent !== undefined && hasPipProjectConfig(pyprojectContent);
+    pyprojectToml?.success === true && isPipProjectConfigPresent(pyprojectToml.data);
 
   const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
@@ -295,27 +353,72 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
   };
 }
 
-function stripToolRuffSections(content: string): string {
-  const lines = content.split("\n");
-  const filteredLines: string[] = [];
-  let inToolRuff = false;
-
-  for (const line of lines) {
-    const sectionMatch = line.match(/^\s*\[\s*([^\]]+)\s*\]/);
-    if (sectionMatch) {
-      const header = sectionMatch[1].trim().toLowerCase();
-      if (header === "tool.ruff" || header.startsWith("tool.ruff.")) {
-        inToolRuff = true;
-      } else {
-        inToolRuff = false;
-      }
+function findRuffVersionInToml(obj: unknown, keyPath: string[] = []): string | undefined {
+  if (typeof obj === "string") {
+    if (/^ruff\b/i.test(obj)) {
+      return extractRuffVersionSpecifier(obj);
     }
-    if (!inToolRuff) {
-      filteredLines.push(line);
+    return undefined;
+  }
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findRuffVersionInToml(item, keyPath);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  if (isObject(obj)) {
+    for (const [key, val] of Object.entries(obj)) {
+      if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
+        continue;
+      }
+
+      if (key.toLowerCase() === "ruff") {
+        if (typeof val === "string") {
+          const ver = extractRuffVersionSpecifier(val);
+          if (ver) return ver;
+        } else if (isObject(val) && typeof val.version === "string") {
+          const ver = extractRuffVersionSpecifier(val.version);
+          if (ver) return ver;
+        }
+      }
+
+      const found = findRuffVersionInToml(val, [...keyPath, key]);
+      if (found) return found;
     }
   }
 
-  return filteredLines.join("\n");
+  return undefined;
+}
+
+function hasRuffDeclarationInToml(obj: unknown, keyPath: string[] = []): boolean {
+  if (typeof obj === "string") {
+    return /\bruff\b/i.test(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.some((item) => hasRuffDeclarationInToml(item, keyPath));
+  }
+
+  if (isObject(obj)) {
+    for (const [key, val] of Object.entries(obj)) {
+      if (keyPath.length === 1 && keyPath[0] === "tool" && key.toLowerCase() === "ruff") {
+        continue;
+      }
+
+      if (key.toLowerCase() === "ruff") {
+        return true;
+      }
+
+      if (hasRuffDeclarationInToml(val, [...keyPath, key])) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export function hasPythonProject(cwd: string = process.cwd()): boolean {
@@ -323,18 +426,13 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     return true;
   }
 
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      if (hasUvProjectConfig(content)) {
-        return true;
-      }
-      if (isRuffDeclaredInProject(cwd)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
+  const pyprojectToml = readPyprojectToml(cwd);
+  if (pyprojectToml?.success === true) {
+    if (isUvProjectConfigPresent(pyprojectToml.data)) {
+      return true;
+    }
+    if (isRuffDeclaredInProject(cwd, undefined, pyprojectToml)) {
+      return true;
     }
   }
 
@@ -350,22 +448,15 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
 
 export function detectPythonPackageManager(
   cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
 ): PythonPackageManagerInfo | null {
   if (!hasPythonSource(cwd)) {
     return null;
   }
 
-  let pyprojectContent: string | undefined;
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      pyprojectContent = fs.readFileSync(pyprojectPath, "utf8");
-    } catch {
-      // Ignore read errors
-    }
-  }
+  const parsedToml = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
 
-  const detected = detectUv(cwd, pyprojectContent) || detectPip(cwd, pyprojectContent);
+  const detected = detectUv(cwd, parsedToml) || detectPip(cwd, parsedToml);
 
   if (detected) {
     return detected;
@@ -425,28 +516,13 @@ function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
   return undefined;
 }
 
-function resolveRuffVersionFromPyproject(cwd: string): string | undefined {
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (!fs.existsSync(pyprojectPath)) return undefined;
-  try {
-    const rawContent = fs.readFileSync(pyprojectPath, "utf8");
-    const strippedContent = stripToolRuffSections(rawContent).replace(/#.*/g, "");
-
-    const arrayMatch = strippedContent.match(/["'](ruff(?:[<>=~^!@].*?|))["']/i);
-    if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
-      const ver = extractRuffVersionSpecifier(arrayMatch[1]);
-      if (ver) return ver;
-    }
-
-    const keyValMatch = strippedContent.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
-    if (keyValMatch && keyValMatch[1]) {
-      const ver = extractRuffVersionSpecifier(keyValMatch[1]);
-      if (ver) return ver;
-    }
-  } catch {
-    // Ignore read error
-  }
-  return undefined;
+function resolveRuffVersionFromPyproject(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): string | undefined {
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success !== true) return undefined;
+  return findRuffVersionInToml(parsed.data);
 }
 
 function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
@@ -468,10 +544,13 @@ function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
   return undefined;
 }
 
-export function resolveRuffVersion(cwd: string = process.cwd()): string {
+export function resolveRuffVersion(
+  cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
+): string {
   return (
     resolveRuffVersionFromUvLock(cwd) ||
-    resolveRuffVersionFromPyproject(cwd) ||
+    resolveRuffVersionFromPyproject(cwd, pyprojectToml) ||
     resolveRuffVersionFromRequirements(cwd) ||
     ""
   );
@@ -480,22 +559,17 @@ export function resolveRuffVersion(cwd: string = process.cwd()): string {
 export function isRuffDeclaredInProject(
   cwd: string = process.cwd(),
   pmInfo?: PythonPackageManagerInfo,
+  pyprojectToml?: ParsedToml | null,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  const ver = resolveRuffVersion(cwd);
+  const ver = resolveRuffVersion(cwd, pyprojectToml);
   if (ver) return true;
 
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = stripToolRuffSections(content).replace(/#.*/g, "");
-      if (/\bruff\b/i.test(stripped)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success === true) {
+    if (hasRuffDeclarationInToml(parsed.data)) {
+      return true;
     }
   }
 
@@ -530,10 +604,12 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     };
   }
 
+  const pyprojectToml = readPyprojectToml(cwd);
+
   return {
     hasPythonSource: true,
-    pythonVersion: resolvePythonVersion(cwd),
-    ruffVersion: resolveRuffVersion(cwd),
-    pmInfo: detectPythonPackageManager(cwd),
+    pythonVersion: resolvePythonVersion(cwd, pyprojectToml),
+    ruffVersion: resolveRuffVersion(cwd, pyprojectToml),
+    pmInfo: detectPythonPackageManager(cwd, pyprojectToml),
   };
 }

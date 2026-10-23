@@ -9,6 +9,7 @@ import {
   hasPythonSource,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
+  parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
   resolvePythonVersion,
@@ -17,6 +18,304 @@ import {
 
 describe("Python Package Manager Detection & Ruff Version Resolution", () => {
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
+
+  describe("parseToml() and Standard TOML Parsing", () => {
+    describe("Valid TOML constructs", () => {
+      it("should parse a basic [project] table", () => {
+        const content = '[project]\nname = "my-package"\nversion = "1.0.0"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "my-package",
+            version: "1.0.0",
+          });
+        }
+      });
+
+      it("should parse a [build-system] table", () => {
+        const content =
+          '[build-system]\nrequires = ["flit_core>=3.2,<4"]\nbuild-backend = "flit_core.buildapi"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data["build-system"]).toEqual({
+            requires: ["flit_core>=3.2,<4"],
+            "build-backend": "flit_core.buildapi",
+          });
+        }
+      });
+
+      it("should parse a [tool.uv] table", () => {
+        const content = '[tool.uv]\ndev-dependencies = ["pytest>=7.0.0"]\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              "dev-dependencies": ["pytest>=7.0.0"],
+            },
+          });
+        }
+      });
+
+      it("should parse a valid [[tool.uv.index]] array table", () => {
+        const content =
+          '[[tool.uv.index]]\nname = "custom"\nurl = "https://pypi.example.com/simple"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              index: [
+                {
+                  name: "custom",
+                  url: "https://pypi.example.com/simple",
+                },
+              ],
+            },
+          });
+        }
+      });
+
+      it("should parse multiple array-table entries", () => {
+        const content = `
+[[tool.uv.index]]
+name = "first"
+url = "https://first.example.com"
+
+[[tool.uv.index]]
+name = "second"
+url = "https://second.example.com"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              index: [
+                { name: "first", url: "https://first.example.com" },
+                { name: "second", url: "https://second.example.com" },
+              ],
+            },
+          });
+        }
+      });
+
+      it("should parse nested tables and dotted keys", () => {
+        const content = `
+[tool.uv]
+dev-dependencies = ["ruff==0.4.2"]
+
+[tool.uv.sources]
+foo = { path = "pkgs/foo" }
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          const tool = res.data.tool as Record<string, unknown>;
+          const uv = tool.uv as Record<string, unknown>;
+          expect(uv.sources).toEqual({ foo: { path: "pkgs/foo" } });
+          expect(uv["dev-dependencies"]).toEqual(["ruff==0.4.2"]);
+        }
+      });
+
+      it("should parse comments following values", () => {
+        const content =
+          '[project]\nname = "demo" # inline comment\nversion = "0.1.0" # version comment\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "demo",
+            version: "0.1.0",
+          });
+        }
+      });
+
+      it("should handle # inside basic and literal strings without treating it as a comment", () => {
+        const content = `
+[project]
+name = "app#1"
+description = 'hash # inside literal string'
+url = "https://example.com/path#section"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "app#1",
+            description: "hash # inside literal string",
+            url: "https://example.com/path#section",
+          });
+        }
+      });
+
+      it("should parse multiline basic and literal strings", () => {
+        const content = `
+[project]
+readme = """
+# Header
+This is a multiline
+basic string with # character.
+"""
+license-text = '''
+Copyright (c) 2026
+All rights reserved # comment inside literal
+'''
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          const project = res.data.project as Record<string, unknown>;
+          expect(project.readme).toContain("# Header");
+          expect(project["license-text"]).toContain("Copyright (c) 2026");
+        }
+      });
+
+      it("should parse escaped quotation marks and backslashes in basic strings", () => {
+        const content = `
+[project]
+escaped = "quoted \\"hello\\" and backslash \\\\ path"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect((res.data.project as Record<string, unknown>).escaped).toBe(
+            'quoted "hello" and backslash \\ path',
+          );
+        }
+      });
+
+      it("should parse valid arrays and inline tables", () => {
+        const content = `
+[project]
+dependencies = ["a", "b", "c"]
+authors = [{ name = "Alice", email = "alice@example.com" }]
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            dependencies: ["a", "b", "c"],
+            authors: [{ name: "Alice", email: "alice@example.com" }],
+          });
+        }
+      });
+
+      it("should parse empty optional tables", () => {
+        const content = "[project]\n[build-system]\n[tool.uv]\n";
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({});
+          expect(res.data["build-system"]).toEqual({});
+          expect(res.data.tool).toEqual({ uv: {} });
+        }
+      });
+    });
+
+    describe("Invalid TOML syntax rejection", () => {
+      it("should reject unterminated basic strings", () => {
+        const content = '[project]\nname = "unterminated\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+        if (!res.success) {
+          expect(res.error).toBeInstanceOf(Error);
+        }
+      });
+
+      it("should reject unclosed arrays", () => {
+        const content = '[project]\ndependencies = ["a", "b"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject unclosed inline tables", () => {
+        const content = '[project]\nauthor = { name = "Alice"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject invalid table headers", () => {
+        const content = "[project\nname = 'invalid'\n";
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject duplicate keys prohibited by TOML specification", () => {
+        const content = '[project]\nname = "first"\nname = "second"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject invalid key-value syntax", () => {
+        const content = '[project]\nname == "invalid"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject malformed multiline strings", () => {
+        const content = '[project]\nreadme = """unclosed multiline string\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+    });
+
+    describe("Integration & Invariant Regression Tests", () => {
+      it("should not falsely treat commented-out table headers as active tables", () => {
+        const content = `
+# [project]
+# name = "commented"
+[tool.uv]
+dev-dependencies = ["pytest"]
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toBeUndefined();
+          expect(res.data.tool).toEqual({ uv: { "dev-dependencies": ["pytest"] } });
+        }
+      });
+
+      it("should not falsely extract table headers from multiline string values", () => {
+        const content = `
+[tool.uv]
+description = """
+[project]
+name = "string-content"
+[build-system]
+"""
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toBeUndefined();
+          expect(res.data["build-system"]).toBeUndefined();
+          expect((res.data.tool as Record<string, unknown>).uv).toBeDefined();
+        }
+      });
+
+      it("should successfully parse [[tool.uv.index]] configuration into structured object", () => {
+        const tempDir = path.join(fixturesDir, "uv-index-temp");
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          '[[tool.uv.index]]\nname = "internal"\nurl = "https://pypi.org/simple"\n',
+        );
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+    });
+  });
 
   describe("resolvePythonEnvironment()", () => {
     it("should return hasPythonSource=false and empty fields when no python source exists", () => {
@@ -225,7 +524,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
     });
-
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {
@@ -355,7 +653,10 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     it("should return false when pyproject.toml contains only [tool.ruff] configuration without dependency declaration", () => {
       const tempDir = path.join(fixturesDir, "tool-ruff-temp");
       fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n",
+      );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       try {
@@ -372,7 +673,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     });
   });
 
-
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));
@@ -380,9 +680,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("uv");
       expect(pmInfo?.lockfile).toBe("uv.lock");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommands).toEqual([
-        { executable: "uv", args: ["sync"] },
-      ]);
+      expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       expect(pmInfo?.execPrefix).toBe("uv run");
     });
 
@@ -453,9 +751,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -515,9 +811,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -538,9 +832,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBeUndefined();
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

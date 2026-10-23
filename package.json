@@ -18,6 +18,9 @@
     "version": "changeset version && npm install --package-lock-only && npm run build",
     "release": "changeset tag"
   },
+  "dependencies": {
+    "smol-toml": "^1.9.1"
+  },
   "devDependencies": {
     "@actions/core": "^3.0.1",
     "@actions/exec": "^3.0.0",
