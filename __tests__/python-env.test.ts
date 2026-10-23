@@ -425,7 +425,7 @@ name = "string-content"
       }
     });
 
-    it("should classify a pyproject.toml containing only [project.optional-dependencies] as a pip project", () => {
+    it("should classify a pyproject.toml containing only [project.optional-dependencies] as standalone pip", () => {
       const tempDir = path.join(fixturesDir, "opt-deps-only-cls-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -438,10 +438,7 @@ name = "string-content"
         const pmInfo = detectPythonPackageManager(tempDir);
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "pip", args: ["install", "-e", "."] },
-        ]);
+        expect(pmInfo?.isStandalone).toBe(true);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

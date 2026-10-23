@@ -222,9 +222,23 @@ export function hasPythonSource(
   return false;
 }
 
+function hasProjectTable(parsed: Record<string, unknown>): boolean {
+  if (!isObject(parsed.project)) return false;
+  const keys = Object.keys(parsed.project);
+  if (keys.length === 0) return true;
+  const subtableKeys = new Set([
+    "optional-dependencies",
+    "urls",
+    "scripts",
+    "gui-scripts",
+    "entry-points",
+  ]);
+  return keys.some((k) => !subtableKeys.has(k));
+}
+
 function isUvProjectConfigPresent(parsed: Record<string, unknown>): boolean {
   return (
-    isObject(parsed.project) ||
+    hasProjectTable(parsed) ||
     isObject(parsed["build-system"]) ||
     (isObject(parsed.tool) &&
       isObject((parsed.tool as Record<string, unknown>).uv) &&
@@ -237,7 +251,7 @@ function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
 }
 
 function isPipProjectConfigPresent(parsed: Record<string, unknown>): boolean {
-  return isObject(parsed.project) || isObject(parsed["build-system"]);
+  return hasProjectTable(parsed) || isObject(parsed["build-system"]);
 }
 
 function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
