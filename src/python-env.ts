@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parse } from "smol-toml";
 
 export type PythonPackageManager = "uv" | "pip";
 
@@ -61,6 +62,64 @@ export interface ResolvedPythonEnvironment {
   pmInfo: PythonPackageManagerInfo | null;
 }
 
+export interface ParsedTomlSuccess {
+  success: true;
+  data: Record<string, unknown>;
+  rawContent?: string;
+}
+
+export interface ParsedTomlError {
+  success: false;
+  error: Error;
+}
+
+export type ParsedToml = ParsedTomlSuccess | ParsedTomlError;
+
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
+/**
+ * Parses raw TOML content using smol-toml and explicitly classifies errors.
+ */
+export function parseToml(content: string): ParsedToml {
+  try {
+    const data = parse(content);
+    if (isObject(data)) {
+      return { success: true, data, rawContent: content };
+    }
+    return {
+      success: false,
+      error: new Error("Invalid TOML: root must be an object"),
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
+/**
+ * Reads and parses pyproject.toml in cwd using parseToml.
+ * Returns null if file does not exist, or ParsedToml result if file exists.
+ */
+export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | null {
+  const pyprojectPath = path.join(cwd, "pyproject.toml");
+  if (!fs.existsSync(pyprojectPath)) {
+    return null;
+  }
+  try {
+    const content = fs.readFileSync(pyprojectPath, "utf8");
+    return parseToml(content);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
 export function parsePythonVersionFromConstraint(raw: string): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
@@ -82,17 +141,15 @@ function readPythonVersionFile(cwd: string): string | undefined {
   }
 }
 
-function readPyprojectPythonVersion(cwd: string): string | undefined {
-  const pyprojectFile = path.join(cwd, "pyproject.toml");
-  if (!fs.existsSync(pyprojectFile)) return undefined;
-  try {
-    const content = fs.readFileSync(pyprojectFile, "utf8");
-    const reqMatch = content.match(/requires-python\s*=\s*["']([^"']+)["']/i);
-    if (reqMatch && reqMatch[1]) {
-      return parsePythonVersionFromConstraint(reqMatch[1]);
-    }
-  } catch {
-    // Ignore read errors
+function readPyprojectPythonVersion(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): string | undefined {
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success !== true) return undefined;
+  const project = parsed.data.project;
+  if (isObject(project) && typeof project["requires-python"] === "string") {
+    return parsePythonVersionFromConstraint(project["requires-python"]);
   }
   return undefined;
 }
@@ -112,10 +169,13 @@ function readRuntimeTxtPythonVersion(cwd: string): string | undefined {
  * Resolves the target Python version from project configuration files (.python-version,
  * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
  */
-export function resolvePythonVersion(cwd: string = process.cwd()): string {
+export function resolvePythonVersion(
+  cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
+): string {
   return (
     readPythonVersionFile(cwd) ||
-    readPyprojectPythonVersion(cwd) ||
+    readPyprojectPythonVersion(cwd, pyprojectToml) ||
     readRuntimeTxtPythonVersion(cwd) ||
     DEFAULT_PYTHON_VERSION
   );
@@ -163,31 +223,194 @@ export function hasPythonSource(
   return false;
 }
 
-function getTomlTables(content: string): string[] {
-  const lines = content.split("\n");
-  const tables: string[] = [];
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/#.*/, "").trim();
-    const match = line.match(/^\[\s*([^\]]+)\s*\]$/);
-    if (match) {
-      tables.push(match[1].trim().toLowerCase());
-    }
+function stripComment(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "";
+  let i = startIdx;
+  while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
+    res += " ";
+    i++;
   }
-  return tables;
+  return [res, i];
 }
 
-function hasUvProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
+function stripMultilineBasicString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "   ";
+  let i = startIdx + 3;
+
+  while (i < len) {
+    if (raw.slice(i, i + 3) === '"""') {
+      let backslashCount = 0;
+      let k = i - 1;
+      while (k >= startIdx + 3 && raw[k] === "\\") {
+        backslashCount++;
+        k--;
+      }
+      if (backslashCount % 2 === 0) {
+        res += "   ";
+        return [res, i + 3];
+      }
+    }
+
+    res += raw[i] === "\n" ? "\n" : " ";
+    i++;
+  }
+
+  return [res, i];
+}
+
+function stripMultilineLiteralString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = "   ";
+  let i = startIdx + 3;
+  while (i < len && raw.slice(i, i + 3) !== "'''") {
+    res += raw[i] === "\n" ? "\n" : " ";
+    i++;
+  }
+  if (i < len) {
+    res += "   ";
+    i += 3;
+  }
+  return [res, i];
+}
+
+function stripSinglelineBasicString(raw: string, startIdx: number, len: number): [string, number] {
+  let res = " ";
+  let i = startIdx + 1;
+
+  while (i < len && raw[i] !== "\n" && raw[i] !== "\r") {
+    if (raw[i] === '"') {
+      let backslashCount = 0;
+      let k = i - 1;
+      while (k >= startIdx + 1 && raw[k] === "\\") {
+        backslashCount++;
+        k--;
+      }
+      if (backslashCount % 2 === 0) {
+        res += " ";
+        return [res, i + 1];
+      }
+    }
+    res += " ";
+    i++;
+  }
+
+  return [res, i];
+}
+
+function stripSinglelineLiteralString(
+  raw: string,
+  startIdx: number,
+  len: number,
+): [string, number] {
+  let res = " ";
+  let i = startIdx + 1;
+  while (i < len && raw[i] !== "'" && raw[i] !== "\n" && raw[i] !== "\r") {
+    res += " ";
+    i++;
+  }
+  if (i < len && raw[i] === "'") {
+    res += " ";
+    i++;
+  }
+  return [res, i];
+}
+
+/**
+ * Strips comments and all TOML string literals (single-line basic/literal,
+ * multiline basic/literal) from raw TOML text, replacing their characters with spaces.
+ * This guarantees table headers like [project] inside multiline strings or comments
+ * are ignored when checking for actual TOML headers.
+ */
+export function stripTomlStringsAndComments(raw: string): string {
+  let result = "";
+  let i = 0;
+  const len = raw.length;
+
+  while (i < len) {
+    const ch = raw[i];
+
+    if (ch === "#") {
+      const [chunk, nextI] = stripComment(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (raw.slice(i, i + 3) === '"""') {
+      const [chunk, nextI] = stripMultilineBasicString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (raw.slice(i, i + 3) === "'''") {
+      const [chunk, nextI] = stripMultilineLiteralString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (ch === '"') {
+      const [chunk, nextI] = stripSinglelineBasicString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else if (ch === "'") {
+      const [chunk, nextI] = stripSinglelineLiteralString(raw, i, len);
+      result += chunk;
+      i = nextI;
+    } else {
+      result += ch;
+      i++;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Checks whether an explicit [project] table header is declared in pyproject.toml.
+ *
+ * In production paths (`readPyprojectToml` / `parseToml`), `rawContent` is attached to
+ * `ParsedTomlSuccess`, allowing authoritative verification of the explicit table header in stripped TOML.
+ *
+ * Fallback when `rawContent` is absent (synthetic test objects):
+ * Checks if `parsed.project` is empty or contains non-object primitive/array values.
+ */
+function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
+  if (!isObject(parsed.project)) return false;
+
+  if (typeof rawContent === "string") {
+    const stripped = stripTomlStringsAndComments(rawContent);
+    return /(?:^|\n)\s*\[\s*project\s*\]\s*(?:\n|$)/.test(stripped);
+  }
+
+  const entries = Object.entries(parsed.project);
+  if (entries.length === 0) return true;
+  return entries.some(([, val]) => !isObject(val));
+}
+
+/**
+ * Checks whether an explicit [build-system] table header is declared in pyproject.toml.
+ */
+function hasBuildSystemTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
+  if (!isObject(parsed["build-system"])) return false;
+
+  if (typeof rawContent === "string") {
+    const stripped = stripTomlStringsAndComments(rawContent);
+    return /(?:^|\n)\s*\[\s*build-system\s*\]\s*(?:\n|$)/.test(stripped);
+  }
+
+  const entries = Object.entries(parsed["build-system"]);
+  if (entries.length === 0) return true;
+  return entries.some(([, val]) => !isObject(val));
+}
+
+function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
   return (
-    tables.includes("project") ||
-    tables.includes("build-system") ||
-    tables.includes("tool.uv.workspace")
+    hasProjectTable(parsed, rawContent) ||
+    hasBuildSystemTable(parsed, rawContent) ||
+    (isObject(parsed.tool) &&
+      isObject((parsed.tool as Record<string, unknown>).uv) &&
+      isObject(((parsed.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace))
   );
 }
 
-function hasPipProjectConfig(content: string): boolean {
-  const tables = getTomlTables(content);
-  return tables.includes("project") || tables.includes("build-system");
+function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
+  return isObject(parsed.tool) && isObject((parsed.tool as Record<string, unknown>).uv);
+}
+
+function isPipProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
+  return hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent);
 }
 
 function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
@@ -207,16 +430,15 @@ function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManager
   };
 }
 
-function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
+function detectUv(cwd: string, pyprojectToml?: ParsedToml | null): PythonPackageManagerInfo | null {
   const hasUvLock = fs.existsSync(path.join(cwd, "uv.lock"));
 
-  const hasValidPyproject = pyprojectContent !== undefined && hasUvProjectConfig(pyprojectContent);
+  const hasValidPyproject =
+    pyprojectToml?.success === true &&
+    isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
 
   const hasUvToolConfig =
-    pyprojectContent !== undefined &&
-    getTomlTables(pyprojectContent).some(
-      (t: string) => t === "tool.uv" || t.startsWith("tool.uv."),
-    );
+    pyprojectToml?.success === true && isUvToolConfigPresent(pyprojectToml.data);
 
   if (!hasUvLock && !hasUvToolConfig) return null;
 
@@ -249,12 +471,16 @@ function detectUv(cwd: string, pyprojectContent?: string): PythonPackageManagerI
   };
 }
 
-function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManagerInfo | null {
+function detectPip(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): PythonPackageManagerInfo | null {
   const hasRequirements = fs.existsSync(path.join(cwd, "requirements.txt"));
   const hasSetupPy = fs.existsSync(path.join(cwd, "setup.py"));
   const hasSetupCfg = fs.existsSync(path.join(cwd, "setup.cfg"));
   const hasProjectOrBuildSystem =
-    pyprojectContent !== undefined && hasPipProjectConfig(pyprojectContent);
+    pyprojectToml?.success === true &&
+    isPipProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent);
 
   const isPipProject = hasRequirements || hasSetupPy || hasSetupCfg || hasProjectOrBuildSystem;
   if (!isPipProject) return null;
@@ -295,27 +521,221 @@ function detectPip(cwd: string, pyprojectContent?: string): PythonPackageManager
   };
 }
 
-function stripToolRuffSections(content: string): string {
-  const lines = content.split("\n");
-  const filteredLines: string[] = [];
-  let inToolRuff = false;
+const RUFF_SPECIFIER_REGEX = /^ruff\s*(?:\[[^\]]*\])?\s*(?:[=<>!~@;]|\s|$)/i;
 
-  for (const line of lines) {
-    const sectionMatch = line.match(/^\s*\[\s*([^\]]+)\s*\]/);
-    if (sectionMatch) {
-      const header = sectionMatch[1].trim().toLowerCase();
-      if (header === "tool.ruff" || header.startsWith("tool.ruff.")) {
-        inToolRuff = true;
-      } else {
-        inToolRuff = false;
+function inspectRuffInSpecifierArray(
+  arr: unknown[],
+): { declared: boolean; version?: string } | undefined {
+  for (const item of arr) {
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (RUFF_SPECIFIER_REGEX.test(trimmed)) {
+        return { declared: true, version: extractRuffVersionSpecifier(trimmed) };
+      }
+    } else if (isObject(item)) {
+      const pkgName =
+        typeof item.package === "string"
+          ? item.package
+          : typeof item.name === "string"
+            ? item.name
+            : undefined;
+      if (pkgName && pkgName.toLowerCase() === "ruff") {
+        const verStr = typeof item.version === "string" ? item.version : undefined;
+        return {
+          declared: true,
+          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
+        };
       }
     }
-    if (!inToolRuff) {
-      filteredLines.push(line);
+  }
+  return undefined;
+}
+
+function inspectRuffInDependencyMap(
+  map: Record<string, unknown>,
+): { declared: boolean; version?: string } | undefined {
+  for (const [key, val] of Object.entries(map)) {
+    if (key.toLowerCase() === "ruff") {
+      if (typeof val === "string") {
+        return { declared: true, version: extractRuffVersionSpecifier(val) };
+      }
+      if (isObject(val)) {
+        const verStr = typeof val.version === "string" ? val.version : undefined;
+        return {
+          declared: true,
+          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
+        };
+      }
+      return { declared: true };
     }
   }
+  return undefined;
+}
 
-  return filteredLines.join("\n");
+function inspectPep621Ruff(project: Record<string, unknown>) {
+  if (Array.isArray(project.dependencies)) {
+    const res = inspectRuffInSpecifierArray(project.dependencies);
+    if (res) return res;
+  }
+  if (isObject(project["optional-dependencies"])) {
+    for (const group of Object.values(project["optional-dependencies"])) {
+      if (Array.isArray(group)) {
+        const res = inspectRuffInSpecifierArray(group);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPep735Ruff(depGroups: Record<string, unknown>) {
+  for (const group of Object.values(depGroups)) {
+    if (Array.isArray(group)) {
+      const res = inspectRuffInSpecifierArray(group);
+      if (res) return res;
+    }
+  }
+  return undefined;
+}
+
+function inspectToolUvRuff(uv: Record<string, unknown>) {
+  for (const key of ["dev-dependencies", "override-dependencies", "constraint-dependencies"]) {
+    if (Array.isArray(uv[key])) {
+      const res = inspectRuffInSpecifierArray(uv[key] as unknown[]);
+      if (res) return res;
+    }
+  }
+  return undefined;
+}
+
+function inspectPoetryRuff(poetry: Record<string, unknown>) {
+  if (isObject(poetry.dependencies)) {
+    const res = inspectRuffInDependencyMap(poetry.dependencies);
+    if (res) return res;
+  }
+  if (isObject(poetry["dev-dependencies"])) {
+    const res = inspectRuffInDependencyMap(poetry["dev-dependencies"]);
+    if (res) return res;
+  }
+  if (isObject(poetry.group)) {
+    for (const grpObj of Object.values(poetry.group)) {
+      if (isObject(grpObj) && isObject(grpObj.dependencies)) {
+        const res = inspectRuffInDependencyMap(grpObj.dependencies);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPdmRuff(pdm: Record<string, unknown>) {
+  if (isObject(pdm["dev-dependencies"])) {
+    for (const grp of Object.values(pdm["dev-dependencies"])) {
+      if (Array.isArray(grp)) {
+        const res = inspectRuffInSpecifierArray(grp);
+        if (res) return res;
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectHatchRuff(hatch: Record<string, unknown>) {
+  if (isObject(hatch.envs)) {
+    for (const envObj of Object.values(hatch.envs)) {
+      if (isObject(envObj)) {
+        if (Array.isArray(envObj.dependencies)) {
+          const res = inspectRuffInSpecifierArray(envObj.dependencies);
+          if (res) return res;
+        }
+        if (Array.isArray(envObj["extra-dependencies"])) {
+          const res = inspectRuffInSpecifierArray(envObj["extra-dependencies"]);
+          if (res) return res;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectPixiRuff(pixi: Record<string, unknown>) {
+  if (isObject(pixi.dependencies)) {
+    const res = inspectRuffInDependencyMap(pixi.dependencies);
+    if (res) return res;
+  }
+  if (isObject(pixi["dev-dependencies"])) {
+    const res = inspectRuffInDependencyMap(pixi["dev-dependencies"]);
+    if (res) return res;
+  }
+  if (isObject(pixi.feature)) {
+    for (const featObj of Object.values(pixi.feature)) {
+      if (isObject(featObj)) {
+        if (isObject(featObj.dependencies)) {
+          const res = inspectRuffInDependencyMap(featObj.dependencies);
+          if (res) return res;
+        }
+        if (isObject(featObj["dev-dependencies"])) {
+          const res = inspectRuffInDependencyMap(featObj["dev-dependencies"]);
+          if (res) return res;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function inspectToolRuff(tool: Record<string, unknown>) {
+  if (isObject(tool.uv)) {
+    const res = inspectToolUvRuff(tool.uv);
+    if (res) return res;
+  }
+  if (isObject(tool.poetry)) {
+    const res = inspectPoetryRuff(tool.poetry);
+    if (res) return res;
+  }
+  if (isObject(tool.pdm)) {
+    const res = inspectPdmRuff(tool.pdm);
+    if (res) return res;
+  }
+  if (isObject(tool.hatch)) {
+    const res = inspectHatchRuff(tool.hatch);
+    if (res) return res;
+  }
+  if (isObject(tool.pixi)) {
+    const res = inspectPixiRuff(tool.pixi);
+    if (res) return res;
+  }
+  return undefined;
+}
+
+/**
+ * Inspects pyproject.toml data strictly in supported runtime/dev dependency declarations
+ * (PEP 621, PEP 735, tool.uv, Poetry, PDM, Hatch, Pixi). Note: build-system.requires is excluded
+ * because build backend requirements are build-time tools, not project linting workflow dependencies.
+ */
+export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
+  declared: boolean;
+  version?: string;
+} {
+  // 1. PEP 621 project.dependencies & project.optional-dependencies
+  if (isObject(parsed.project)) {
+    const res = inspectPep621Ruff(parsed.project);
+    if (res) return res;
+  }
+
+  // 2. PEP 735 dependency-groups
+  if (isObject(parsed["dependency-groups"])) {
+    const res = inspectPep735Ruff(parsed["dependency-groups"]);
+    if (res) return res;
+  }
+
+  // 3. tool table
+  if (isObject(parsed.tool)) {
+    const res = inspectToolRuff(parsed.tool);
+    if (res) return res;
+  }
+
+  return { declared: false };
 }
 
 export function hasPythonProject(cwd: string = process.cwd()): boolean {
@@ -323,18 +743,13 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     return true;
   }
 
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      if (hasUvProjectConfig(content)) {
-        return true;
-      }
-      if (isRuffDeclaredInProject(cwd)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
+  const pyprojectToml = readPyprojectToml(cwd);
+  if (pyprojectToml?.success === true) {
+    if (isUvProjectConfigPresent(pyprojectToml.data, pyprojectToml.rawContent)) {
+      return true;
+    }
+    if (isRuffDeclaredInProject(cwd, undefined, pyprojectToml)) {
+      return true;
     }
   }
 
@@ -350,22 +765,15 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
 
 export function detectPythonPackageManager(
   cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
 ): PythonPackageManagerInfo | null {
   if (!hasPythonSource(cwd)) {
     return null;
   }
 
-  let pyprojectContent: string | undefined;
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      pyprojectContent = fs.readFileSync(pyprojectPath, "utf8");
-    } catch {
-      // Ignore read errors
-    }
-  }
+  const parsedToml = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
 
-  const detected = detectUv(cwd, pyprojectContent) || detectPip(cwd, pyprojectContent);
+  const detected = detectUv(cwd, parsedToml) || detectPip(cwd, parsedToml);
 
   if (detected) {
     return detected;
@@ -382,9 +790,13 @@ export function detectPythonPackageManager(
 
 export function extractRuffVersionSpecifier(raw: string): string | undefined {
   if (!raw) return undefined;
-  let cleaned = raw
-    .trim()
+
+  // Remove environment markers after semicolon e.g. "ruff>=0.6; python_version>='3.10'" -> "ruff>=0.6"
+  const withoutMarkers = raw.split(";")[0].trim();
+
+  let cleaned = withoutMarkers
     .replace(/^ruff\b/i, "")
+    .replace(/\[[^\]]*\]/g, "") // remove extras like [extra]
     .replace(/['"]/g, "")
     .trim();
 
@@ -425,28 +837,14 @@ function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
   return undefined;
 }
 
-function resolveRuffVersionFromPyproject(cwd: string): string | undefined {
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (!fs.existsSync(pyprojectPath)) return undefined;
-  try {
-    const rawContent = fs.readFileSync(pyprojectPath, "utf8");
-    const strippedContent = stripToolRuffSections(rawContent).replace(/#.*/g, "");
-
-    const arrayMatch = strippedContent.match(/["'](ruff(?:[<>=~^!@].*?|))["']/i);
-    if (arrayMatch && arrayMatch[1] && arrayMatch[1].toLowerCase().startsWith("ruff")) {
-      const ver = extractRuffVersionSpecifier(arrayMatch[1]);
-      if (ver) return ver;
-    }
-
-    const keyValMatch = strippedContent.match(/^\s*ruff\s*=\s*["']([^"']+)["']/im);
-    if (keyValMatch && keyValMatch[1]) {
-      const ver = extractRuffVersionSpecifier(keyValMatch[1]);
-      if (ver) return ver;
-    }
-  } catch {
-    // Ignore read error
-  }
-  return undefined;
+function resolveRuffVersionFromPyproject(
+  cwd: string,
+  pyprojectToml?: ParsedToml | null,
+): string | undefined {
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success !== true) return undefined;
+  const dep = findRuffDependencyInToml(parsed.data);
+  return dep.version;
 }
 
 function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
@@ -468,10 +866,13 @@ function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
   return undefined;
 }
 
-export function resolveRuffVersion(cwd: string = process.cwd()): string {
+export function resolveRuffVersion(
+  cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
+): string {
   return (
     resolveRuffVersionFromUvLock(cwd) ||
-    resolveRuffVersionFromPyproject(cwd) ||
+    resolveRuffVersionFromPyproject(cwd, pyprojectToml) ||
     resolveRuffVersionFromRequirements(cwd) ||
     ""
   );
@@ -480,22 +881,18 @@ export function resolveRuffVersion(cwd: string = process.cwd()): string {
 export function isRuffDeclaredInProject(
   cwd: string = process.cwd(),
   pmInfo?: PythonPackageManagerInfo,
+  pyprojectToml?: ParsedToml | null,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  const ver = resolveRuffVersion(cwd);
+  const ver = resolveRuffVersion(cwd, pyprojectToml);
   if (ver) return true;
 
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      const content = fs.readFileSync(pyprojectPath, "utf8");
-      const stripped = stripToolRuffSections(content).replace(/#.*/g, "");
-      if (/\bruff\b/i.test(stripped)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
+  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
+  if (parsed?.success === true) {
+    const dep = findRuffDependencyInToml(parsed.data);
+    if (dep.declared) {
+      return true;
     }
   }
 
@@ -530,10 +927,12 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     };
   }
 
+  const pyprojectToml = readPyprojectToml(cwd);
+
   return {
     hasPythonSource: true,
-    pythonVersion: resolvePythonVersion(cwd),
-    ruffVersion: resolveRuffVersion(cwd),
-    pmInfo: detectPythonPackageManager(cwd),
+    pythonVersion: resolvePythonVersion(cwd, pyprojectToml),
+    ruffVersion: resolveRuffVersion(cwd, pyprojectToml),
+    pmInfo: detectPythonPackageManager(cwd, pyprojectToml),
   };
 }

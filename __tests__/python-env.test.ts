@@ -9,14 +9,794 @@ import {
   hasPythonSource,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
+  parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
   resolvePythonVersion,
   resolveRuffVersion,
+  stripTomlStringsAndComments,
 } from "../src/python-env.js";
 
 describe("Python Package Manager Detection & Ruff Version Resolution", () => {
   const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
+
+  describe("parseToml() and Standard TOML Parsing", () => {
+    describe("Valid TOML constructs", () => {
+      it("should parse a basic [project] table", () => {
+        const content = '[project]\nname = "my-package"\nversion = "1.0.0"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "my-package",
+            version: "1.0.0",
+          });
+        }
+      });
+
+      it("should parse a [build-system] table", () => {
+        const content =
+          '[build-system]\nrequires = ["flit_core>=3.2,<4"]\nbuild-backend = "flit_core.buildapi"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data["build-system"]).toEqual({
+            requires: ["flit_core>=3.2,<4"],
+            "build-backend": "flit_core.buildapi",
+          });
+        }
+      });
+
+      it("should parse a [tool.uv] table", () => {
+        const content = '[tool.uv]\ndev-dependencies = ["pytest>=7.0.0"]\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              "dev-dependencies": ["pytest>=7.0.0"],
+            },
+          });
+        }
+      });
+
+      it("should parse a valid [[tool.uv.index]] array table", () => {
+        const content =
+          '[[tool.uv.index]]\nname = "custom"\nurl = "https://pypi.example.com/simple"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              index: [
+                {
+                  name: "custom",
+                  url: "https://pypi.example.com/simple",
+                },
+              ],
+            },
+          });
+        }
+      });
+
+      it("should parse multiple array-table entries", () => {
+        const content = `
+[[tool.uv.index]]
+name = "first"
+url = "https://first.example.com"
+
+[[tool.uv.index]]
+name = "second"
+url = "https://second.example.com"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.tool).toEqual({
+            uv: {
+              index: [
+                { name: "first", url: "https://first.example.com" },
+                { name: "second", url: "https://second.example.com" },
+              ],
+            },
+          });
+        }
+      });
+
+      it("should parse nested tables and dotted keys", () => {
+        const content = `
+[tool.uv]
+dev-dependencies = ["ruff==0.4.2"]
+
+[tool.uv.sources]
+foo = { path = "pkgs/foo" }
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          const tool = res.data.tool as Record<string, unknown>;
+          const uv = tool.uv as Record<string, unknown>;
+          expect(uv.sources).toEqual({ foo: { path: "pkgs/foo" } });
+          expect(uv["dev-dependencies"]).toEqual(["ruff==0.4.2"]);
+        }
+      });
+
+      it("should parse comments following values", () => {
+        const content =
+          '[project]\nname = "demo" # inline comment\nversion = "0.1.0" # version comment\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "demo",
+            version: "0.1.0",
+          });
+        }
+      });
+
+      it("should handle # inside basic and literal strings without treating it as a comment", () => {
+        const content = `
+[project]
+name = "app#1"
+description = 'hash # inside literal string'
+url = "https://example.com/path#section"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            name: "app#1",
+            description: "hash # inside literal string",
+            url: "https://example.com/path#section",
+          });
+        }
+      });
+
+      it("should parse multiline basic and literal strings", () => {
+        const content = `
+[project]
+readme = """
+# Header
+This is a multiline
+basic string with # character.
+"""
+license-text = '''
+Copyright (c) 2026
+All rights reserved # comment inside literal
+'''
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          const project = res.data.project as Record<string, unknown>;
+          expect(project.readme).toContain("# Header");
+          expect(project["license-text"]).toContain("Copyright (c) 2026");
+        }
+      });
+
+      it("should parse escaped quotation marks and backslashes in basic strings", () => {
+        const content = `
+[project]
+escaped = "quoted \\"hello\\" and backslash \\\\ path"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect((res.data.project as Record<string, unknown>).escaped).toBe(
+            'quoted "hello" and backslash \\ path',
+          );
+        }
+      });
+
+      it("should parse valid arrays and inline tables", () => {
+        const content = `
+[project]
+dependencies = ["a", "b", "c"]
+authors = [{ name = "Alice", email = "alice@example.com" }]
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({
+            dependencies: ["a", "b", "c"],
+            authors: [{ name: "Alice", email: "alice@example.com" }],
+          });
+        }
+      });
+
+      it("should parse empty optional tables", () => {
+        const content = "[project]\n[build-system]\n[tool.uv]\n";
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toEqual({});
+          expect(res.data["build-system"]).toEqual({});
+          expect(res.data.tool).toEqual({ uv: {} });
+        }
+      });
+    });
+
+    describe("Invalid TOML syntax rejection", () => {
+      it("should reject unterminated basic strings", () => {
+        const content = '[project]\nname = "unterminated\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+        if (!res.success) {
+          expect(res.error).toBeInstanceOf(Error);
+        }
+      });
+
+      it("should reject unclosed arrays", () => {
+        const content = '[project]\ndependencies = ["a", "b"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject unclosed inline tables", () => {
+        const content = '[project]\nauthor = { name = "Alice"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject invalid table headers", () => {
+        const content = "[project\nname = 'invalid'\n";
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject duplicate keys prohibited by TOML specification", () => {
+        const content = '[project]\nname = "first"\nname = "second"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject invalid key-value syntax", () => {
+        const content = '[project]\nname == "invalid"\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+
+      it("should reject malformed multiline strings", () => {
+        const content = '[project]\nreadme = """unclosed multiline string\n';
+        const res = parseToml(content);
+        expect(res.success).toBe(false);
+      });
+    });
+
+    describe("Integration & Invariant Regression Tests", () => {
+      it("should strip comments and string contents correctly in stripTomlStringsAndComments", () => {
+        const content = `
+# [project]
+[tool.uv]
+description = """
+[project]
+name = "string-content"
+"""
+notes = '''
+[project]
+'''
+key = " [project] "
+lit = ' [project] '
+`;
+        const stripped = stripTomlStringsAndComments(content);
+        expect(stripped).not.toContain("[project]");
+        expect(stripped).toContain("[tool.uv]");
+      });
+
+      it("should correctly handle escaped quotation marks and backslashes in multiline basic strings during stripping", () => {
+        const content = `
+[tool.uv]
+description = """
+Escaped quote \\""" inside multiline string
+Fake header:
+[project]
+[build-system]
+Escaped backslash before quote \\\\
+"""
+# Real header after string closes:
+[project]
+name = "real-app"
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+
+        const stripped = stripTomlStringsAndComments(content);
+        // The fake [project] and [build-system] headers inside multiline string should be stripped
+        expect(stripped.indexOf("[project]")).toBe(stripped.lastIndexOf("[project]"));
+        expect(stripped).not.toContain("[build-system]");
+        expect(stripped).toContain("[project]");
+      });
+
+      it("should not falsely treat commented-out table headers as active tables", () => {
+        const content = `
+# [project]
+# name = "commented"
+[tool.uv]
+dev-dependencies = ["pytest"]
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toBeUndefined();
+          expect(res.data.tool).toEqual({ uv: { "dev-dependencies": ["pytest"] } });
+        }
+      });
+
+      it("should not falsely extract table headers from multiline string values", () => {
+        const content = `
+[tool.uv]
+description = """
+[project]
+name = "string-content"
+[build-system]
+"""
+`;
+        const res = parseToml(content);
+        expect(res.success).toBe(true);
+        if (res.success) {
+          expect(res.data.project).toBeUndefined();
+          expect(res.data["build-system"]).toBeUndefined();
+          expect((res.data.tool as Record<string, unknown>).uv).toBeDefined();
+        }
+      });
+
+      it("should classify pyproject.toml as standalone pip when [project] header appears only inside a multiline string", () => {
+        const tempDir = path.join(fixturesDir, "project-in-multiline-str-temp");
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          `[tool.uv]
+description = """
+[project]
+name = "fake"
+"""
+
+[project.optional-dependencies]
+dev = ["pytest"]
+`,
+        );
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+
+      it("should successfully parse [[tool.uv.index]] configuration into structured object", () => {
+        const tempDir = path.join(fixturesDir, "uv-index-temp");
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          '[[tool.uv.index]]\nname = "internal"\nurl = "https://pypi.org/simple"\n',
+        );
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+    });
+  });
+
+  describe("UV Configuration Table Type Validation Regression Tests", () => {
+    it("should not trigger UV detection when tool.uv is represented as a string", () => {
+      const tempDir = path.join(fixturesDir, "tool-uv-string-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[tool]\nuv = "example"\n');
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml containing only [project.custom] as standalone pip without explicit [project] header", () => {
+      const tempDir = path.join(fixturesDir, "project-custom-only-cls-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.custom]\nenabled = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml as standalone pip when [project.custom] exists and misleading [project] appears only in comment or multiline string", () => {
+      const tempDir = path.join(fixturesDir, "project-custom-misleading-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        `# [project]
+[tool.mytool]
+info = """
+[project]
+"""
+
+[project.custom]
+enabled = true
+`,
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not trigger UV detection when tool.uv is represented as other non-table primitive values", () => {
+      const nonTableValues = [
+        '[tool]\nuv = 123\n',
+        '[tool]\nuv = true\n',
+        '[tool]\nuv = ["a", "b"]\n',
+      ];
+
+      for (const [index, content] of nonTableValues.entries()) {
+        const tempDir = path.join(fixturesDir, `tool-uv-nontable-${index}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should trigger UV detection when [tool.uv] is a valid table", () => {
+      const tempDir = path.join(fixturesDir, "valid-tool-uv-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'app'\n\n[tool.uv]\ndev-dependencies = []\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should correctly detect uv with requirements.txt when tool.uv is a valid table without uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-tool-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv]\ndev-dependencies = []\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("Python Project Table Classification Regression Tests", () => {
+    it("should classify a pyproject.toml with valid [project] table containing metadata as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "project-metadata-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[project]\nname = "my-app"\nversion = "0.1.0"\n',
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml containing only [project.optional-dependencies] as standalone pip when no explicit [project] header is present", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-only-cls-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a pyproject.toml containing explicit [project] header alongside [project.optional-dependencies] as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "opt-deps-with-header-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\n\n[project.optional-dependencies]\ndev = ['pytest']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify an empty [project] table as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "empty-project-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve ruff declared in all supported dependency formats", () => {
+      const formats: [string, string, string][] = [
+        ["PEP 621 project.dependencies", "[project]\ndependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["PEP 621 project.optional-dependencies", "[project.optional-dependencies]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["PEP 735 dependency-groups", "[dependency-groups]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.uv.dev-dependencies", "[tool.uv]\ndev-dependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.poetry.dependencies", "[tool.poetry.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.poetry.dev-dependencies", "[tool.poetry.dev-dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.poetry group dependencies", "[tool.poetry.group.dev.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+        ["tool.pdm dev-dependencies", "[tool.pdm.dev-dependencies]\ndev = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.hatch envs dependencies", "[tool.hatch.envs.default]\ndependencies = ['ruff==0.4.2']\n", "0.4.2"],
+        ["tool.pixi dependencies", "[tool.pixi.dependencies]\nruff = '0.4.2'\n", "0.4.2"],
+      ];
+
+      for (const [label, content, expected] of formats) {
+        const tempDir = path.join(fixturesDir, `ruff-fmt-${label.replace(/[^a-z0-9]/gi, "-")}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          expect(resolveRuffVersion(tempDir)).toBe(expected);
+          expect(isRuffDeclaredInProject(tempDir)).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should ignore false-positive ruff occurrences in metadata, tool configs, or descriptions", () => {
+      const falsePositives: [string, string][] = [
+        ["unrelated tool config key", "[tool.mytool]\nruff = '0.4.2'\n"],
+        ["description mentioning ruff", "[project]\nname = 'pkg'\ndescription = 'a ruff plugin'\n"],
+        ["urls pointing to ruff", "[project.urls]\nHomepage = 'https://github.com/astral-sh/ruff'\n"],
+        ["scripts named ruff", "[project.scripts]\nruff = 'pkg.cli:main'\n"],
+        ["build-system requires build backend", "[build-system]\nrequires = ['flit_core>=3.2,<4', 'ruff==0.4.2']\n"],
+      ];
+
+      for (const [label, content] of falsePositives) {
+        const tempDir = path.join(fixturesDir, `ruff-fp-${label.replace(/[^a-z0-9]/gi, "-")}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          expect(resolveRuffVersion(tempDir)).toBe("");
+          expect(isRuffDeclaredInProject(tempDir)).toBe(false);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should classify a project with valid [build-system] table as a pip project", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system]\nrequires = ['flit_core']\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a project with only [build-system.custom] as standalone pip without top-level [build-system] header", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-custom-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system.custom]\nenabled = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a project as standalone pip when misleading [build-system] appears only in comment or multiline string", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-misleading-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        `# [build-system]
+[tool.mytool]
+info = """
+[build-system]
+"""
+
+[build-system.custom]
+enabled = true
+`,
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should accurately resolve ruff specifiers and reject ruff-lsp, ruff-tools, ruff-extra", () => {
+      const testCases: [string, boolean, string | undefined][] = [
+        ["ruff>=0.6", true, undefined],
+        ["Ruff>=0.6", true, undefined],
+        ["ruff==0.4.2", true, "0.4.2"],
+        ["ruff[extra]>=0.6", true, undefined],
+        ["ruff[extra]==0.4.2", true, "0.4.2"],
+        ["ruff>=0.6; python_version>='3.10'", true, undefined],
+        ["ruff==0.4.2; python_version>='3.10'", true, "0.4.2"],
+        ["ruff-lsp>=1.0", false, undefined],
+        ["ruff-tools", false, undefined],
+        ["ruff-extra", false, undefined],
+        ["ruff_lsp", false, undefined],
+      ];
+
+      for (const [spec, expectedDeclared, expectedVer] of testCases) {
+        const tempDir = path.join(
+          fixturesDir,
+          `ruff-spec-${spec.replace(/[^a-z0-9]/gi, "-")}-temp`,
+        );
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          `[project]\nname = "pkg"\nversion = "0.1.0"\ndependencies = ["${spec.replace(/"/g, '\\"')}"]\n`,
+        );
+
+        try {
+          expect(isRuffDeclaredInProject(tempDir), `Failed for spec: ${spec}`).toBe(
+            expectedDeclared,
+          );
+          expect(resolveRuffVersion(tempDir), `Failed version for spec: ${spec}`).toBe(
+            expectedVer || "",
+          );
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should handle malformed pyproject.toml alongside requirements.txt safely by falling back to requirements.txt pip detection", () => {
+      const tempDir = path.join(fixturesDir, "malformed-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project\nname = 'broken'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBeUndefined();
+        expect(pmInfo?.lockfile).toBe("requirements.txt");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "requirements.txt"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not falsely detect ruff dependency when [project] name is ruff or description mentions ruff", () => {
+      const tempDir = path.join(fixturesDir, "project-name-ruff-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[project]\nname = "ruff"\ndescription = "ruff helper tool"\n',
+      );
+
+      try {
+        expect(isRuffDeclaredInProject(tempDir)).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
 
   describe("resolvePythonEnvironment()", () => {
     it("should return hasPythonSource=false and empty fields when no python source exists", () => {
@@ -50,44 +830,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
 
       try {
         expect(hasPythonSource(tempDir)).toBe(true);
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should return standalone pip when pyproject.toml contains only [project.optional-dependencies] without main [project]", () => {
-      const tempDir = path.join(fixturesDir, "opt-deps-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[project.optional-dependencies]\ndev = ['pytest']\n",
-      );
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.isStandalone).toBe(true);
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should return standalone pip when pyproject.toml contains only [tool.uvicorn]", () => {
-      const tempDir = path.join(fixturesDir, "uvicorn-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[tool.uvicorn]\nreload = true\n",
-      );
-
-      try {
-        const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).not.toBeNull();
-        expect(pmInfo?.name).toBe("pip");
-        expect(pmInfo?.isStandalone).toBe(true);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -225,7 +967,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
     });
-
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {
@@ -355,7 +1096,10 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     it("should return false when pyproject.toml contains only [tool.ruff] configuration without dependency declaration", () => {
       const tempDir = path.join(fixturesDir, "tool-ruff-temp");
       fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.ruff]\nline-length = 88\n[tool.ruff.lint]\nselect = ['E']\n",
+      );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       try {
@@ -372,7 +1116,6 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
     });
   });
 
-
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
       const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));
@@ -380,9 +1123,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
       expect(pmInfo?.name).toBe("uv");
       expect(pmInfo?.lockfile).toBe("uv.lock");
       expect(pmInfo?.configFile).toBe("pyproject.toml");
-      expect(pmInfo?.installCommands).toEqual([
-        { executable: "uv", args: ["sync"] },
-      ]);
+      expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       expect(pmInfo?.execPrefix).toBe("uv run");
     });
 
@@ -453,9 +1194,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -515,9 +1254,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBe("uv.lock");
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -538,9 +1275,7 @@ describe("Python Package Manager Detection & Ruff Version Resolution", () => {
         expect(pmInfo?.name).toBe("uv");
         expect(pmInfo?.lockfile).toBeUndefined();
         expect(pmInfo?.configFile).toBe("pyproject.toml");
-        expect(pmInfo?.installCommands).toEqual([
-          { executable: "uv", args: ["sync"] },
-        ]);
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
