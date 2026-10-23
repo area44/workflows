@@ -363,10 +363,23 @@ function hasProjectTable(parsed: Record<string, unknown>, rawContent?: string): 
   return entries.some(([, val]) => !isObject(val));
 }
 
+function hasBuildSystemTable(parsed: Record<string, unknown>, rawContent?: string): boolean {
+  if (!isObject(parsed["build-system"])) return false;
+
+  if (typeof rawContent === "string") {
+    const stripped = stripTomlStringsAndComments(rawContent);
+    return /(?:^|\n)\s*\[\s*build-system\s*\]\s*(?:\n|$)/.test(stripped);
+  }
+
+  const entries = Object.entries(parsed["build-system"]);
+  if (entries.length === 0) return true;
+  return entries.some(([, val]) => !isObject(val));
+}
+
 function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
   return (
     hasProjectTable(parsed, rawContent) ||
-    isObject(parsed["build-system"]) ||
+    hasBuildSystemTable(parsed, rawContent) ||
     (isObject(parsed.tool) &&
       isObject((parsed.tool as Record<string, unknown>).uv) &&
       isObject(((parsed.tool as Record<string, unknown>).uv as Record<string, unknown>).workspace))
@@ -378,7 +391,7 @@ function isUvToolConfigPresent(parsed: Record<string, unknown>): boolean {
 }
 
 function isPipProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
-  return hasProjectTable(parsed, rawContent) || isObject(parsed["build-system"]);
+  return hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent);
 }
 
 function detectUvLockedProject(hasValidPyproject: boolean): PythonPackageManagerInfo {
@@ -489,13 +502,15 @@ function detectPip(
   };
 }
 
+const RUFF_SPECIFIER_REGEX = /^ruff\s*(?:\[[^\]]*\])?\s*(?:[=<>!~@;]|\s|$)/i;
+
 function inspectRuffInSpecifierArray(
   arr: unknown[],
 ): { declared: boolean; version?: string } | undefined {
   for (const item of arr) {
     if (typeof item === "string") {
       const trimmed = item.trim();
-      if (/^ruff\b/i.test(trimmed)) {
+      if (RUFF_SPECIFIER_REGEX.test(trimmed)) {
         return { declared: true, version: extractRuffVersionSpecifier(trimmed) };
       }
     } else if (isObject(item)) {
@@ -756,9 +771,13 @@ export function detectPythonPackageManager(
 
 export function extractRuffVersionSpecifier(raw: string): string | undefined {
   if (!raw) return undefined;
-  let cleaned = raw
-    .trim()
+
+  // Remove environment markers after semicolon e.g. "ruff>=0.6; python_version>='3.10'" -> "ruff>=0.6"
+  const withoutMarkers = raw.split(";")[0].trim();
+
+  let cleaned = withoutMarkers
     .replace(/^ruff\b/i, "")
+    .replace(/\[[^\]]*\]/g, "") // remove extras like [extra]
     .replace(/['"]/g, "")
     .trim();
 

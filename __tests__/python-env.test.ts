@@ -629,7 +629,7 @@ enabled = true
       }
     });
 
-    it("should classify a project with [build-system] as a pip project", () => {
+    it("should classify a project with valid [build-system] table as a pip project", () => {
       const tempDir = path.join(fixturesDir, "build-sys-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -648,6 +648,91 @@ enabled = true
         ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a project with only [build-system.custom] as standalone pip without top-level [build-system] header", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-custom-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[build-system.custom]\nenabled = true\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should classify a project as standalone pip when misleading [build-system] appears only in comment or multiline string", () => {
+      const tempDir = path.join(fixturesDir, "build-sys-misleading-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        `# [build-system]
+[tool.mytool]
+info = """
+[build-system]
+"""
+
+[build-system.custom]
+enabled = true
+`,
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should accurately resolve ruff specifiers and reject ruff-lsp, ruff-tools, ruff-extra", () => {
+      const testCases: [string, boolean, string | undefined][] = [
+        ["ruff>=0.6", true, undefined],
+        ["Ruff>=0.6", true, undefined],
+        ["ruff==0.4.2", true, "0.4.2"],
+        ["ruff[extra]>=0.6", true, undefined],
+        ["ruff[extra]==0.4.2", true, "0.4.2"],
+        ["ruff>=0.6; python_version>='3.10'", true, undefined],
+        ["ruff==0.4.2; python_version>='3.10'", true, "0.4.2"],
+        ["ruff-lsp>=1.0", false, undefined],
+        ["ruff-tools", false, undefined],
+        ["ruff-extra", false, undefined],
+        ["ruff_lsp", false, undefined],
+      ];
+
+      for (const [spec, expectedDeclared, expectedVer] of testCases) {
+        const tempDir = path.join(
+          fixturesDir,
+          `ruff-spec-${spec.replace(/[^a-z0-9]/gi, "-")}-temp`,
+        );
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(tempDir, "pyproject.toml"),
+          `[project]\nname = "pkg"\nversion = "0.1.0"\ndependencies = ["${spec.replace(/"/g, '\\"')}"]\n`,
+        );
+
+        try {
+          expect(isRuffDeclaredInProject(tempDir), `Failed for spec: ${spec}`).toBe(
+            expectedDeclared,
+          );
+          expect(resolveRuffVersion(tempDir), `Failed version for spec: ${spec}`).toBe(
+            expectedVer || "",
+          );
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
       }
     });
 
