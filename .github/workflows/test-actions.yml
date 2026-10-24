@@ -12,9 +12,6 @@ jobs:
   test-action:
     name: ${{ matrix.action }} (${{ matrix.runtime }}, ${{ matrix.pm }}, ${{ matrix.type }})
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ runner.temp }}/test_workspace
     strategy:
       fail-fast: false
       matrix:
@@ -155,7 +152,7 @@ jobs:
             has_python_source: "true"
             python_pm: pip
             python_version: "3.12"
-            ruff_version: "0.17.2"
+            ruff_version: ""
             verify_site: false
           - action: autofix
             runtime: node
@@ -206,7 +203,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Workspace
-        working-directory: ${{ github.workspace }}
         env:
           ACTION: ${{ matrix.action }}
           RUNTIME: ${{ matrix.runtime }}
@@ -215,21 +211,64 @@ jobs:
           FIXTURE: ${{ matrix.fixture }}
         run: |
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_DIR="${GITHUB_WORKSPACE}/__tests__/fixtures/${FIXTURE}"
+            FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
           else
-            FIXTURE_DIR="${GITHUB_WORKSPACE}/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           if [ ! -d "$FIXTURE_DIR" ]; then
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
 
-          TEST_WS="${RUNNER_TEMP}/test_workspace"
-          rm -rf "$TEST_WS"
-          mkdir -p "$TEST_WS"
-
           shopt -s dotglob
-          cp -r "$FIXTURE_DIR"/* "$TEST_WS"/
+          TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
+          mkdir -p "$TMP_FIX"
+          cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
+
+          TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
+          mkdir -p "$TMP_TESTS"
+          echo "$TMP_TESTS" > .stash_tests_path
+
+          [ -d __tests__ ] && mv __tests__ "$TMP_TESTS"/__tests__ || true
+
+          ROOT_ITEMS=(
+            package.json
+            package-lock.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            bun.lock
+            tsconfig.json
+            vite.config.ts
+            src
+            pages
+            docs
+            .node-version
+            .bun-version
+            .python-version
+            pyproject.toml
+            requirements.txt
+            uv.lock
+            uv.toml
+            runtime.txt
+            setup.py
+            setup.cfg
+          )
+
+          for item in "${ROOT_ITEMS[@]}"; do
+            if [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
+              mv "$item" "${item}.bak"
+            fi
+          done
+
+          ls -1A "$TMP_FIX" > .copied_fixture_files
+          while IFS= read -r item; do
+            if [ -n "$item" ] && [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
+              mv "$item" "${item}.bak"
+            fi
+          done < .copied_fixture_files
+
+          cp -r "$TMP_FIX"/* .
+          rm -rf "$TMP_FIX"
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -271,10 +310,17 @@ jobs:
           EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
           EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
-          if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="${GITHUB_WORKSPACE}/__tests__/fixtures/${FIXTURE}"
+          if [ -f .stash_tests_path ]; then
+            STASH_DIR=$(cat .stash_tests_path 2>/dev/null || true)
+            TESTS_ROOT="${STASH_DIR}/__tests__"
           else
-            FIXTURE_PATH="${GITHUB_WORKSPACE}/__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            TESTS_ROOT="__tests__"
+          fi
+
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
+          else
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
@@ -348,6 +394,8 @@ jobs:
             fi
           fi
 
+          echo "Verified fixture execution root for '${FIXTURE_PATH}'."
+
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
             EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
@@ -376,8 +424,33 @@ jobs:
             fi
           fi
 
-      - name: Clean Test Workspace
+      - name: Restore Workspace Root
         if: always()
-        working-directory: ${{ github.workspace }}
         run: |
-          rm -rf "${RUNNER_TEMP}/test_workspace"
+          shopt -s dotglob
+          if [ -f .copied_fixture_files ]; then
+            while IFS= read -r item; do
+              [ -n "$item" ] && rm -rf "$item"
+            done < .copied_fixture_files
+            rm -f .copied_fixture_files
+          fi
+
+          rm -rf node_modules dist .venv .ruff_cache *.egg-info
+
+          for bak in *.bak; do
+            if [ -e "$bak" ]; then
+              target="${bak%.bak}"
+              rm -rf "$target"
+              mv "$bak" "$target"
+            fi
+          done
+
+          if [ -f .stash_tests_path ]; then
+            STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
+            if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
+              rm -rf __tests__
+              mv "$STASH_PATH/__tests__" __tests__
+              rm -rf "$STASH_PATH"
+            fi
+            rm -f .stash_tests_path
+          fi
