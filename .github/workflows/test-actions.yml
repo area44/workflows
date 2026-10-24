@@ -227,6 +227,14 @@ jobs:
           mkdir -p "$TMP_FIX"
           cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
 
+          for reserved in pages autofix; do
+            if [ -e "$TMP_FIX/$reserved" ]; then
+              echo "Error: Fixture '${FIXTURE_DIR}' contains reserved local action directory '${reserved}'. Aborting setup to protect action source."
+              rm -rf "$TMP_FIX"
+              exit 1
+            fi
+          done
+
           TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
           mkdir -p "$TMP_TESTS"
           echo "$TMP_TESTS" > .stash_tests_path
@@ -259,17 +267,29 @@ jobs:
 
           touch .backed_up_files
           for item in "${ROOT_ITEMS[@]}"; do
-            if [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
-              mv "$item" "${item}.bak"
-              echo "$item" >> .backed_up_files
+            if [ -e "$item" ]; then
+              bak_item="${item}.test_bak_$$"
+              if [ -e "$bak_item" ]; then
+                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                rm -rf "$TMP_FIX"
+                exit 1
+              fi
+              mv "$item" "$bak_item"
+              echo "${item}|${bak_item}" >> .backed_up_files
             fi
           done
 
           ls -1A "$TMP_FIX" > .copied_fixture_files
           while IFS= read -r item; do
-            if [ -n "$item" ] && [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
-              mv "$item" "${item}.bak"
-              echo "$item" >> .backed_up_files
+            if [ -n "$item" ] && [ -e "$item" ]; then
+              bak_item="${item}.test_bak_$$"
+              if [ -e "$bak_item" ]; then
+                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                rm -rf "$TMP_FIX"
+                exit 1
+              fi
+              mv "$item" "$bak_item"
+              echo "${item}|${bak_item}" >> .backed_up_files
             fi
           done < .copied_fixture_files
 
@@ -455,10 +475,10 @@ jobs:
           fi
 
           if [ -f .backed_up_files ]; then
-            while IFS= read -r item; do
-              if [ -n "$item" ] && [ -e "${item}.bak" ]; then
-                rm -rf "$item"
-                mv "${item}.bak" "$item"
+            while IFS='|' read -r orig_item bak_item; do
+              if [ -n "$orig_item" ] && [ -n "$bak_item" ] && [ -e "$bak_item" ]; then
+                rm -rf "$orig_item"
+                mv "$bak_item" "$orig_item"
               fi
             done < .backed_up_files
             rm -f .backed_up_files
