@@ -1223,7 +1223,7 @@ enabled = true
       const resolved = resolvePythonEnvironment(path.join(fixturesDir, "uv"));
       expect(resolved.hasPythonSource).toBe(true);
       expect(resolved.pythonVersion).toBe("3.12");
-      expect(resolved.ruffVersion).toBe("");
+      expect(resolved.ruffVersion).toBe("0.17.2");
       expect(resolved.pmInfo?.name).toBe("uv");
     });
   });

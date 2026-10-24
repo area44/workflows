@@ -1,0 +1,6 @@
+main.py
+pyproject.toml
+conflicting_fixture.egg-info/PKG-INFO
+conflicting_fixture.egg-info/SOURCES.txt
+conflicting_fixture.egg-info/dependency_links.txt
+conflicting_fixture.egg-info/top_level.txt

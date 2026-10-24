@@ -443,7 +443,7 @@ export function resolveJsEnvironment(
 ): ResolvedJsEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectJsProjectEnvironment(cwd);
-  const pm = resolveJsPackageManager(project);
+  const pm = resolveJsPackageManager(project, parsedInputs);
   const runtime = resolveRuntime(parsedInputs, pm);
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
   const toolchain = resolveToolchain(toolchainInput, project);
@@ -792,7 +792,10 @@ export function getDevEngineRuntimeVersion(
   );
 }
 
-export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
+export function resolveJsPackageManager(
+  project: JsProjectEnvironment,
+  parsedInputs?: ParsedInputs,
+): JsPackageManagerInfo {
   if (project.packageJsonError) {
     core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
   } else if (project.packageJson) {
@@ -838,6 +841,11 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
     const selected = detectedLocks[0];
     core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
     return { name: selected.name, version: selected.version };
+  }
+
+  if (parsedInputs?.specifiedRuntime === "bun") {
+    core.info(`Package manager not specified, using bun@${DEFAULT_BUN_VERSION}`);
+    return { name: "bun", version: DEFAULT_BUN_VERSION };
   }
 
   core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);

@@ -141,7 +141,7 @@ jobs:
             has_python_source: "true"
             python_pm: uv
             python_version: "3.12"
-            ruff_version: ""
+            ruff_version: "0.17.2"
             verify_site: false
           - action: autofix
             runtime: node
@@ -163,7 +163,7 @@ jobs:
             has_python_source: "true"
             python_pm: uv
             python_version: "3.12"
-            ruff_version: ""
+            ruff_version: "0.17.2"
             verify_site: false
           - action: autofix
             runtime: node
@@ -196,13 +196,13 @@ jobs:
             has_python_source: "true"
             python_pm: uv
             python_version: "3.12"
-            ruff_version: ""
+            ruff_version: "0.17.2"
             verify_site: false
           - action: autofix
             runtime: bun
             pm: bun
             type: mixed
-            fixture: autofix/python/mixed
+            fixture: autofix/python/mixed-bun
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
@@ -230,17 +230,25 @@ jobs:
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
+
+          shopt -s dotglob
+          TMP_FIX="/tmp/fixture_copy_$$"
+          mkdir -p "$TMP_FIX"
+          cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
+
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
           [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
           [ -d src ] && mv src src.bak || true
+          [ -d __tests__ ] && mv __tests__ __tests__.bak || true
           if [ "$ACTION" != "pages" ]; then
             [ -d pages ] && mv pages pages.bak || true
           fi
-          shopt -s dotglob
-          cp -r "$FIXTURE_DIR"/* .
+
+          cp -r "$TMP_FIX"/* .
+          rm -rf "$TMP_FIX"
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -396,6 +404,9 @@ jobs:
           fi
           if [ -d src.bak ]; then
             mv src.bak src
+          fi
+          if [ -d __tests__.bak ]; then
+            mv __tests__.bak __tests__
           fi
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
