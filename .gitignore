@@ -5,4 +5,3 @@ node_modules
 *.egg
 .venv/
 .ruff_cache/
-dist/
