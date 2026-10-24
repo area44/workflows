@@ -1374,6 +1374,33 @@ enabled = true
       }
     });
 
+    it("should read version from runtime.txt if present", () => {
+      const tempDir = path.join(fixturesDir, "runtime-txt-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "runtime.txt"), "python-3.11.2\n");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print(1)\n");
+
+      try {
+        expect(resolvePythonVersion(tempDir)).toBe("3.11.2");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should prioritize .python-version over runtime.txt", () => {
+      const tempDir = path.join(fixturesDir, "version-priority-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".python-version"), "3.10\n");
+      fs.writeFileSync(path.join(tempDir, "runtime.txt"), "python-3.11.2\n");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print(1)\n");
+
+      try {
+        expect(resolvePythonVersion(tempDir)).toBe("3.10");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
       expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
     });

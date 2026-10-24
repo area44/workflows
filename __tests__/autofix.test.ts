@@ -97,6 +97,49 @@ describe("autofix", () => {
       }
     });
 
+    it("should propagate non-zero exit code when ruff format fails after ruff check succeeds", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-fmt-fail-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (_executable, args) => {
+        if (args?.[0] === "format") return 1;
+        return 0;
+      });
+
+      try {
+        await expect(executeRuffAutofix(tempDir)).rejects.toThrow('Ruff command "ruff format ." failed. Check Python and Ruff configuration.');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle uv sync failure during Python workflow execution", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/uv-fail-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
+        if (executable === "uv" && args?.[0] === "sync") return 1;
+        return 0;
+      });
+
+      try {
+        await run(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: tempDir }));
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Python command "uv sync" failed.'),
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should run Python workflow when Python source exists only under tests/ directory", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tests-only-temp");

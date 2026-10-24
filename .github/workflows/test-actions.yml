@@ -84,7 +84,7 @@ jobs:
             fixture: pages/bun/pnpm/basic
             verify_site: true
 
-          # Autofix action
+          # JS Autofix action
           - action: autofix
             runtime: node
             pm: npm
@@ -129,6 +129,85 @@ jobs:
             runtime: bun
             pm: pnpm
             type: basic
+            verify_site: false
+
+          # Python Autofix action
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-uv
+            fixture: autofix/python/uv
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-pip
+            fixture: autofix/python/pip
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-conflicting
+            fixture: autofix/python/conflicting
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-none
+            fixture: autofix/python/none
+            has_js_project: "false"
+            has_python_source: "false"
+            python_pm: ""
+            python_version: ""
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: mixed
+            fixture: autofix/python/mixed
+            has_js_project: "true"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: "0.4.2"
+            verify_site: false
+          - action: autofix
+            runtime: bun
+            pm: bun
+            type: python-uv
+            fixture: autofix/python/uv
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: bun
+            pm: bun
+            type: mixed
+            fixture: autofix/python/mixed
+            has_js_project: "true"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: "0.4.2"
             verify_site: false
     steps:
       - name: Checkout
@@ -160,6 +239,7 @@ jobs:
           if [ "$ACTION" != "pages" ]; then
             [ -d pages ] && mv pages pages.bak || true
           fi
+          shopt -s dotglob
           cp -r "$FIXTURE_DIR"/* .
 
       - name: Test Pages Action
@@ -191,6 +271,16 @@ jobs:
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
+          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-js-project }}
+          AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.has-python-source }}
+          AUTOFIX_PYTHON_PM: ${{ steps.autofix.outputs.python-package-manager }}
+          AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-version }}
+          AUTOFIX_RUFF_VER: ${{ steps.autofix.outputs.ruff-version }}
+          EXPECTED_HAS_JS_PROJECT: ${{ matrix.has_js_project }}
+          EXPECTED_HAS_PYTHON_SOURCE: ${{ matrix.has_python_source }}
+          EXPECTED_PYTHON_PM: ${{ matrix.python_pm }}
+          EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
+          EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
           if [ -n "$FIXTURE" ]; then
             FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
@@ -227,6 +317,48 @@ jobs:
             fi
           fi
 
+          if [[ "$ACTION" == "autofix" ]]; then
+            EXPECTED_HAS_JS="${EXPECTED_HAS_JS_PROJECT:-true}"
+            if [[ "$AUTOFIX_HAS_JS" != "$EXPECTED_HAS_JS" ]]; then
+              echo "Error: [${ACTION}] Has JS project mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected has-js-project: ${EXPECTED_HAS_JS}"
+              echo "  Actual has-js-project:   ${AUTOFIX_HAS_JS}"
+              exit 1
+            fi
+
+            EXPECTED_HAS_PY="${EXPECTED_HAS_PYTHON_SOURCE:-false}"
+            if [[ "$AUTOFIX_HAS_PYTHON" != "$EXPECTED_HAS_PY" ]]; then
+              echo "Error: [${ACTION}] Has Python source mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected has-python-source: ${EXPECTED_HAS_PY}"
+              echo "  Actual has-python-source:   ${AUTOFIX_HAS_PYTHON}"
+              exit 1
+            fi
+
+            EXPECTED_PY_PM="${EXPECTED_PYTHON_PM:-}"
+            if [[ "$AUTOFIX_PYTHON_PM" != "$EXPECTED_PY_PM" ]]; then
+              echo "Error: [${ACTION}] Python package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected python-package-manager: ${EXPECTED_PY_PM}"
+              echo "  Actual python-package-manager:   ${AUTOFIX_PYTHON_PM}"
+              exit 1
+            fi
+
+            EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
+            if [[ -n "$EXPECTED_PY_VER" && "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
+              echo "Error: [${ACTION}] Python version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected python-version: ${EXPECTED_PY_VER}"
+              echo "  Actual python-version:   ${AUTOFIX_PYTHON_VER}"
+              exit 1
+            fi
+
+            EXPECTED_RUFF="${EXPECTED_RUFF_VER:-}"
+            if [[ "$AUTOFIX_RUFF_VER" != "$EXPECTED_RUFF" ]]; then
+              echo "Error: [${ACTION}] Ruff version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected ruff-version: ${EXPECTED_RUFF}"
+              echo "  Actual ruff-version:   ${AUTOFIX_RUFF_VER}"
+              exit 1
+            fi
+          fi
+
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
             EXPECTED_SITE="https://${GITHUB_REPOSITORY_OWNER}.github.io"
@@ -258,7 +390,7 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version main.py pyproject.toml requirements.txt uv.lock uv.toml .python-version runtime.txt .venv .ruff_cache
           if [ -d pages.bak ]; then
             mv pages.bak pages
           fi
