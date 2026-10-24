@@ -48,7 +48,7 @@ export const DEFAULT_NPM_VERSION = "12";
 
 /** Default pnpm fallback version */
 // renovate: datasource=npm depName=pnpm
-export const DEFAULT_PNPM_VERSION = "12";
+export const DEFAULT_PNPM_VERSION = "12.15.0";
 
 /** Default Bun fallback version */
 // renovate: datasource=npm depName=bun

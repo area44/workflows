@@ -46,9 +46,9 @@ describe("resolve-environment", () => {
       expect(DEFAULT_NODE_VERSION).toBe("24");
       expect(DEFAULT_BUN_VERSION).toBe("1.4");
       expect(DEFAULT_NPM_VERSION).toBe("12");
-      expect(DEFAULT_PNPM_VERSION).toBe("12");
+      expect(DEFAULT_PNPM_VERSION).toBe("12.15.0");
       expect(getDefaultJsPackageManagerVersion("npm")).toBe("12");
-      expect(getDefaultJsPackageManagerVersion("pnpm")).toBe("12");
+      expect(getDefaultJsPackageManagerVersion("pnpm")).toBe("12.15.0");
       expect(getDefaultJsPackageManagerVersion("bun")).toBe("1.4");
     });
   });
