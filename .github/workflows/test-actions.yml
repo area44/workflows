@@ -229,16 +229,14 @@ jobs:
           mkdir -p "$TMP_TESTS"
           echo "$TMP_TESTS" > .stash_tests_path
 
-          [ -f package.json ] && mv package.json package.json.bak || true
-          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
-          [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
-          [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
-          [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          [ -d src ] && mv src src.bak || true
           [ -d __tests__ ] && mv __tests__ "$TMP_TESTS"/__tests__ || true
-          if [ "$ACTION" != "pages" ]; then
-            [ -d pages ] && mv pages pages.bak || true
-          fi
+
+          ls -1A "$TMP_FIX" > .copied_fixture_files
+          while IFS= read -r item; do
+            if [ -n "$item" ] && [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
+              mv "$item" "${item}.bak"
+            fi
+          done < .copied_fixture_files
 
           cp -r "$TMP_FIX"/* .
           rm -rf "$TMP_FIX"
@@ -398,13 +396,24 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version main.py pyproject.toml requirements.txt uv.lock uv.toml .python-version runtime.txt .venv .ruff_cache *.egg-info
-          if [ -d pages.bak ]; then
-            mv pages.bak pages
+          shopt -s dotglob
+          if [ -f .copied_fixture_files ]; then
+            while IFS= read -r item; do
+              [ -n "$item" ] && rm -rf "$item"
+            done < .copied_fixture_files
+            rm -f .copied_fixture_files
           fi
-          if [ -d src.bak ]; then
-            mv src.bak src
-          fi
+
+          rm -rf node_modules dist .venv .ruff_cache *.egg-info
+
+          for bak in *.bak; do
+            if [ -e "$bak" ]; then
+              target="${bak%.bak}"
+              rm -rf "$target"
+              mv "$bak" "$target"
+            fi
+          done
+
           if [ -f .stash_tests_path ]; then
             STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
             if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
@@ -413,19 +422,4 @@ jobs:
               rm -rf "$STASH_PATH"
             fi
             rm -f .stash_tests_path
-          fi
-          if [ -f package.json.bak ]; then
-            mv package.json.bak package.json
-          fi
-          if [ -f package-lock.json.bak ]; then
-            mv package-lock.json.bak package-lock.json
-          fi
-          if [ -f pnpm-lock.yaml.bak ]; then
-            mv pnpm-lock.yaml.bak pnpm-lock.yaml
-          fi
-          if [ -f pnpm-workspace.yaml.bak ]; then
-            mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
-          fi
-          if [ -f bun.lock.bak ]; then
-            mv bun.lock.bak bun.lock
           fi
