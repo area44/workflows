@@ -221,9 +221,13 @@ jobs:
           fi
 
           shopt -s dotglob
-          TMP_FIX="/tmp/fixture_copy_$$"
+          TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
           mkdir -p "$TMP_FIX"
           cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
+
+          TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
+          mkdir -p "$TMP_TESTS"
+          echo "$TMP_TESTS" > .stash_tests_path
 
           [ -f package.json ] && mv package.json package.json.bak || true
           [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
@@ -231,7 +235,7 @@ jobs:
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
           [ -d src ] && mv src src.bak || true
-          [ -d __tests__ ] && mv __tests__ /tmp/__tests__.bak || true
+          [ -d __tests__ ] && mv __tests__ "$TMP_TESTS"/__tests__ || true
           if [ "$ACTION" != "pages" ]; then
             [ -d pages ] && mv pages pages.bak || true
           fi
@@ -394,10 +398,15 @@ jobs:
           if [ -d src.bak ]; then
             mv src.bak src
           fi
-          if [ -d /tmp/__tests__.bak ]; then
+          if [ -f .stash_tests_path ]; then
+            STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
+            if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
+              mv "$STASH_PATH/__tests__" __tests__
+              rm -rf "$STASH_PATH"
+            fi
+            rm -f .stash_tests_path
+          elif [ -d /tmp/__tests__.bak ]; then
             mv /tmp/__tests__.bak __tests__
-          elif [ -d __tests__.bak ]; then
-            mv __tests__.bak __tests__
           fi
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json

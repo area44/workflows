@@ -71,7 +71,7 @@ runs:
         version: ${{ steps.resolve_environment.outputs.package-manager-version }}
         runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
         install: false
-        cache: false
+        cache: true
 
     - name: Setup Bun
       id: setup_bun
