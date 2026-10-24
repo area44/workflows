@@ -283,10 +283,17 @@ jobs:
           EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
           EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
-          if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
+          if [ -f .stash_tests_path ]; then
+            STASH_DIR=$(cat .stash_tests_path 2>/dev/null || true)
+            TESTS_ROOT="${STASH_DIR}/__tests__"
           else
-            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            TESTS_ROOT="__tests__"
+          fi
+
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
+          else
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
@@ -401,6 +408,7 @@ jobs:
           if [ -f .stash_tests_path ]; then
             STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
             if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
+              rm -rf __tests__
               mv "$STASH_PATH/__tests__" __tests__
               rm -rf "$STASH_PATH"
             fi

@@ -6,6 +6,6 @@
   "dependencies": {
     "astro": "^7.2.8"
   },
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@12.15.0",
   "type": "module"
 }
