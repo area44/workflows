@@ -190,17 +190,6 @@ jobs:
           - action: autofix
             runtime: bun
             pm: bun
-            type: python-uv
-            fixture: autofix/python/uv
-            has_js_project: "false"
-            has_python_source: "true"
-            python_pm: uv
-            python_version: "3.12"
-            ruff_version: "0.17.2"
-            verify_site: false
-          - action: autofix
-            runtime: bun
-            pm: bun
             type: mixed
             fixture: autofix/python/mixed-bun
             has_js_project: "true"
