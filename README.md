@@ -29,7 +29,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Build site artifact
+      - name: Build site
         uses: area44/workflows/pages@main
         with:
           # Optional: runtime: 'node@24'
