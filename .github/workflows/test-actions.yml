@@ -84,7 +84,7 @@ jobs:
             fixture: pages/bun/pnpm/basic
             verify_site: true
 
-          # Autofix action
+          # JS Autofix action
           - action: autofix
             runtime: node
             pm: npm
@@ -129,6 +129,74 @@ jobs:
             runtime: bun
             pm: pnpm
             type: basic
+            verify_site: false
+
+          # Python Autofix action
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-uv
+            fixture: autofix/python/uv
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: "0.17.2"
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-pip
+            fixture: autofix/python/pip
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-conflicting
+            fixture: autofix/python/conflicting
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: "0.17.2"
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: python-none
+            fixture: autofix/python/none
+            has_js_project: "false"
+            has_python_source: "false"
+            python_pm: ""
+            python_version: ""
+            ruff_version: ""
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: mixed
+            fixture: autofix/python/mixed
+            has_js_project: "true"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: "0.17.2"
+            verify_site: false
+          - action: autofix
+            runtime: bun
+            pm: bun
+            type: mixed
+            fixture: autofix/python/mixed-bun
+            has_js_project: "true"
+            has_python_source: "true"
+            python_pm: pip
+            python_version: "3.12"
+            ruff_version: "0.17.2"
             verify_site: false
     steps:
       - name: Checkout
@@ -151,16 +219,82 @@ jobs:
             echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR"
             exit 1
           fi
-          [ -f package.json ] && mv package.json package.json.bak || true
-          [ -f package-lock.json ] && mv package-lock.json package-lock.json.bak || true
-          [ -f pnpm-lock.yaml ] && mv pnpm-lock.yaml pnpm-lock.yaml.bak || true
-          [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
-          [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
-          [ -d src ] && mv src src.bak || true
-          if [ "$ACTION" != "pages" ]; then
-            [ -d pages ] && mv pages pages.bak || true
-          fi
-          cp -r "$FIXTURE_DIR"/* .
+
+          shopt -s dotglob
+          ls -1A > .initial_workspace_snapshot
+
+          TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
+          mkdir -p "$TMP_FIX"
+          cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
+
+          for reserved in pages autofix; do
+            if [ -e "$TMP_FIX/$reserved" ]; then
+              echo "Error: Fixture '${FIXTURE_DIR}' contains reserved local action directory '${reserved}'. Aborting setup to protect action source."
+              rm -rf "$TMP_FIX"
+              exit 1
+            fi
+          done
+
+          TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
+          mkdir -p "$TMP_TESTS"
+          echo "$TMP_TESTS" > .stash_tests_path
+
+          [ -d __tests__ ] && mv __tests__ "$TMP_TESTS"/__tests__ || true
+
+          ROOT_ITEMS=(
+            package.json
+            package-lock.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            bun.lock
+            tsconfig.json
+            vite.config.ts
+            astro.config.mjs
+            index.html
+            main.py
+            app.py
+            .node-version
+            .bun-version
+            .python-version
+            pyproject.toml
+            requirements.txt
+            uv.lock
+            uv.toml
+            runtime.txt
+            setup.py
+            setup.cfg
+          )
+
+          touch .backed_up_files
+          for item in "${ROOT_ITEMS[@]}"; do
+            if [ -e "$item" ]; then
+              bak_item="${item}.test_bak_$$"
+              if [ -e "$bak_item" ]; then
+                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                rm -rf "$TMP_FIX"
+                exit 1
+              fi
+              mv "$item" "$bak_item"
+              echo "${item}|${bak_item}" >> .backed_up_files
+            fi
+          done
+
+          ls -1A "$TMP_FIX" > .copied_fixture_files
+          while IFS= read -r item; do
+            if [ -n "$item" ] && [ -e "$item" ]; then
+              bak_item="${item}.test_bak_$$"
+              if [ -e "$bak_item" ]; then
+                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                rm -rf "$TMP_FIX"
+                exit 1
+              fi
+              mv "$item" "$bak_item"
+              echo "${item}|${bak_item}" >> .backed_up_files
+            fi
+          done < .copied_fixture_files
+
+          cp -r "$TMP_FIX"/* .
+          rm -rf "$TMP_FIX"
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -191,11 +325,28 @@ jobs:
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
+          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-js-project }}
+          AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.has-python-source }}
+          AUTOFIX_PYTHON_PM: ${{ steps.autofix.outputs.python-package-manager }}
+          AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-version }}
+          AUTOFIX_RUFF_VER: ${{ steps.autofix.outputs.ruff-version }}
+          EXPECTED_HAS_JS_PROJECT: ${{ matrix.has_js_project }}
+          EXPECTED_HAS_PYTHON_SOURCE: ${{ matrix.has_python_source }}
+          EXPECTED_PYTHON_PM: ${{ matrix.python_pm }}
+          EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
+          EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
-          if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="__tests__/fixtures/${FIXTURE}"
+          if [ -f .stash_tests_path ]; then
+            STASH_DIR=$(cat .stash_tests_path 2>/dev/null || true)
+            TESTS_ROOT="${STASH_DIR}/__tests__"
           else
-            FIXTURE_PATH="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+            TESTS_ROOT="__tests__"
+          fi
+
+          if [ -n "$FIXTURE" ]; then
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
+          else
+            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
@@ -226,6 +377,52 @@ jobs:
               exit 1
             fi
           fi
+
+          if [[ "$ACTION" == "autofix" ]]; then
+            EXPECTED_HAS_JS="${EXPECTED_HAS_JS_PROJECT:-true}"
+            if [[ "$AUTOFIX_HAS_JS" != "$EXPECTED_HAS_JS" ]]; then
+              echo "Error: [${ACTION}] Has JS project mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected has-js-project: ${EXPECTED_HAS_JS}"
+              echo "  Actual has-js-project:   ${AUTOFIX_HAS_JS}"
+              exit 1
+            fi
+
+            EXPECTED_HAS_PY="${EXPECTED_HAS_PYTHON_SOURCE:-false}"
+            if [[ "$AUTOFIX_HAS_PYTHON" != "$EXPECTED_HAS_PY" ]]; then
+              echo "Error: [${ACTION}] Has Python source mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected has-python-source: ${EXPECTED_HAS_PY}"
+              echo "  Actual has-python-source:   ${AUTOFIX_HAS_PYTHON}"
+              exit 1
+            fi
+
+            EXPECTED_PY_PM="${EXPECTED_PYTHON_PM:-}"
+            if [[ "$AUTOFIX_PYTHON_PM" != "$EXPECTED_PY_PM" ]]; then
+              echo "Error: [${ACTION}] Python package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected python-package-manager: ${EXPECTED_PY_PM}"
+              echo "  Actual python-package-manager:   ${AUTOFIX_PYTHON_PM}"
+              exit 1
+            fi
+
+            if [[ "$EXPECTED_PYTHON_VER" != "" || "$TYPE" == "python-none" ]]; then
+              EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
+              if [[ "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
+                echo "Error: [${ACTION}] Python version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+                echo "  Expected python-version: '${EXPECTED_PY_VER}'"
+                echo "  Actual python-version:   '${AUTOFIX_PYTHON_VER}'"
+                exit 1
+              fi
+            fi
+
+            EXPECTED_RUFF="${EXPECTED_RUFF_VER:-}"
+            if [[ "$AUTOFIX_RUFF_VER" != "$EXPECTED_RUFF" ]]; then
+              echo "Error: [${ACTION}] Ruff version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "  Expected ruff-version: ${EXPECTED_RUFF}"
+              echo "  Actual ruff-version:   ${AUTOFIX_RUFF_VER}"
+              exit 1
+            fi
+          fi
+
+          echo "Verified fixture execution root for '${FIXTURE_PATH}'."
 
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
@@ -258,25 +455,41 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version
-          if [ -d pages.bak ]; then
-            mv pages.bak pages
+          shopt -s dotglob
+          if [ -f .copied_fixture_files ]; then
+            while IFS= read -r item; do
+              [ -n "$item" ] && rm -rf "$item"
+            done < .copied_fixture_files
+            rm -f .copied_fixture_files
           fi
-          if [ -d src.bak ]; then
-            mv src.bak src
+
+          if [ -f .initial_workspace_snapshot ]; then
+            for artifact in node_modules dist .venv .ruff_cache *.egg-info; do
+              if [ -e "$artifact" ]; then
+                if ! grep -qxF "$artifact" .initial_workspace_snapshot 2>/dev/null; then
+                  rm -rf "$artifact"
+                fi
+              fi
+            done
+            rm -f .initial_workspace_snapshot
           fi
-          if [ -f package.json.bak ]; then
-            mv package.json.bak package.json
+
+          if [ -f .backed_up_files ]; then
+            while IFS='|' read -r orig_item bak_item; do
+              if [ -n "$orig_item" ] && [ -n "$bak_item" ] && [ -e "$bak_item" ]; then
+                rm -rf "$orig_item"
+                mv "$bak_item" "$orig_item"
+              fi
+            done < .backed_up_files
+            rm -f .backed_up_files
           fi
-          if [ -f package-lock.json.bak ]; then
-            mv package-lock.json.bak package-lock.json
-          fi
-          if [ -f pnpm-lock.yaml.bak ]; then
-            mv pnpm-lock.yaml.bak pnpm-lock.yaml
-          fi
-          if [ -f pnpm-workspace.yaml.bak ]; then
-            mv pnpm-workspace.yaml.bak pnpm-workspace.yaml
-          fi
-          if [ -f bun.lock.bak ]; then
-            mv bun.lock.bak bun.lock
+
+          if [ -f .stash_tests_path ]; then
+            STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
+            if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
+              rm -rf __tests__
+              mv "$STASH_PATH/__tests__" __tests__
+              rm -rf "$STASH_PATH"
+            fi
+            rm -f .stash_tests_path
           fi

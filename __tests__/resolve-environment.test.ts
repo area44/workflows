@@ -843,13 +843,13 @@ describe("resolve-environment", () => {
     it("should resolve runtime=bun when explicit runtime=bun is supplied even if package manager is pnpm", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ packageManager: "pnpm@11.21.0" }) as any,
+        JSON.stringify({ packageManager: "pnpm@12.15.0" }) as any,
       );
 
       const env = resolveEnvironment("bun");
 
       expect(env.js.runtime).toBe("bun");
-      expect(env.js.pm).toEqual({ name: "pnpm", version: "11.21.0" });
+      expect(env.js.pm).toEqual({ name: "pnpm", version: "12.15.0" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -884,7 +884,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
       {
@@ -914,7 +914,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: ">=1.0.0",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
       {
@@ -944,7 +944,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
     ];
@@ -1183,7 +1183,7 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
