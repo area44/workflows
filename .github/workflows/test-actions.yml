@@ -405,8 +405,6 @@ jobs:
               rm -rf "$STASH_PATH"
             fi
             rm -f .stash_tests_path
-          elif [ -d /tmp/__tests__.bak ]; then
-            mv /tmp/__tests__.bak __tests__
           fi
           if [ -f package.json.bak ]; then
             mv package.json.bak package.json
