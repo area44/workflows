@@ -7,6 +7,7 @@ import {
   detectPythonPackageManager,
   extractRuffVersionSpecifier,
   hasPythonSource,
+  isDirectoryMatchedByGlobs,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
   parseToml,
@@ -405,6 +406,245 @@ dev = ["pytest"]
       }
     });
 
+    it("should not leak parent root uv.toml to an independent child project with its own pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "parent-uv-toml-leak-temp");
+      const childDir = path.join(tempDir, "tools/standalone");
+      fs.mkdirSync(childDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://root.pypi.org'\n");
+      fs.writeFileSync(
+        path.join(childDir, "pyproject.toml"),
+        "[project]\nname = 'standalone-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(childDir, "tool.py"), "print('standalone')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(childDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve uv with requirements.txt when uv.toml and requirements.txt exist without pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-reqs-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).toEqual({
+          name: "uv",
+          configFile: "uv.toml",
+          installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+          execPrefix: "uv run",
+        });
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should handle malformed uv.toml safely without crashing", () => {
+      const tempDir = path.join(fixturesDir, "malformed-uv-toml-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip\nindex-url = 'broken'\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should throw actionable error when uv.lock is combined with uv.toml without valid pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-lock-uv-toml-orphaned-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ensure independent child project isolates Python version, Ruff version, and lockfiles from parent workspace", () => {
+      const tempDir = path.join(fixturesDir, "workspace-vs-independent-isolation-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      const independentDir = path.join(tempDir, "tools/standalone");
+
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.mkdirSync(independentDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+
+      // Workspace Root
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+
+      // Workspace Member (inherits 3.11 and ruff 0.4.2)
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
+
+      // Independent Child (not in workspace members, has own pyproject + python-version)
+      fs.writeFileSync(path.join(independentDir, ".python-version"), "3.9\n");
+      fs.writeFileSync(
+        path.join(independentDir, "pyproject.toml"),
+        "[project]\nname = 'standalone-tool'\nversion = '0.1.0'\ndependencies = ['requests']\n",
+      );
+      fs.writeFileSync(path.join(independentDir, "tool.py"), "print('tool')\n");
+
+      try {
+        const memberEnv = resolvePythonEnvironment(memberDir);
+        expect(memberEnv.pythonVersion).toBe("3.11");
+        expect(memberEnv.ruffVersion).toBe("0.4.2");
+        expect(memberEnv.pmInfo?.name).toBe("uv");
+        expect(memberEnv.pmInfo?.lockfile).toBe("uv.lock");
+
+        const independentEnv = resolvePythonEnvironment(independentDir);
+        expect(independentEnv.pythonVersion).toBe("3.9");
+        expect(independentEnv.ruffVersion).toBe("");
+        expect(independentEnv.pmInfo?.name).toBe("pip");
+        expect(independentEnv.pmInfo?.lockfile).toBeUndefined();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should respect workspace exclude patterns and not assign workspace lockfile to excluded packages", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-exclude-temp");
+      const memberDir = path.join(tempDir, "packages/included");
+      const excludedDir = path.join(tempDir, "packages/excluded");
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.mkdirSync(excludedDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\nexclude = ['packages/excluded']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(memberDir, "mem.py"), "print('mem')\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'included-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(excludedDir, "ex.py"), "print('ex')\n");
+      fs.writeFileSync(
+        path.join(excludedDir, "pyproject.toml"),
+        "[project]\nname = 'excluded-pkg'\nversion = '0.1.0'\n",
+      );
+
+      try {
+        const memberPmInfo = detectPythonPackageManager(memberDir);
+        expect(memberPmInfo?.name).toBe("uv");
+        expect(memberPmInfo?.lockfile).toBe("uv.lock");
+
+        const excludedPmInfo = detectPythonPackageManager(excludedDir);
+        expect(excludedPmInfo?.name).toBe("pip");
+        expect(excludedPmInfo?.lockfile).toBeUndefined();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject workspace candidate directory if it lacks a pyproject.toml package manifest", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-no-manifest-temp");
+      const candidateDir = path.join(tempDir, "packages/no-manifest");
+      fs.mkdirSync(candidateDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(candidateDir, "sub.py"), "print('no manifest')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(candidateDir);
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve workspace members defined via [tool.uv.workspace] in pyproject.toml when child has own manifest", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-isolated-temp");
+      const subDir = path.join(tempDir, "apps/web");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['apps/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(subDir, "pyproject.toml"),
+        "[project]\nname = 'web-app'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(subDir, "app.py"), "print('web')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not assign root uv.lock to an independent child project that has its own manifest and is not a workspace member", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-non-member-temp");
+      const subDir = path.join(tempDir, "services/billing");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-workspace'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(subDir, "pyproject.toml"),
+        "[project]\nname = 'billing-service'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(subDir, "service.py"), "print('billing')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should classify a pyproject.toml containing only [project.custom] as standalone pip without explicit [project] header", () => {
       const tempDir = path.join(fixturesDir, "project-custom-only-cls-temp");
       fs.mkdirSync(tempDir, { recursive: true });
@@ -512,6 +752,176 @@ enabled = true
         expect(pmInfo?.configFile).toBe("pyproject.toml");
         expect(pmInfo?.installCommands).toEqual([
           { executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true", () => {
+      const configOnlyTomls = [
+        "[tool.uv]\noverride-dependencies = ['foo']\n",
+        "[tool.uv]\ndefault-groups = ['dev']\n",
+        "[tool.uv]\npackage = false\n",
+        "[tool.uv]\nmanaged = true\n",
+      ];
+
+      for (const [idx, content] of configOnlyTomls.entries()) {
+        const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+
+          const resolved = resolvePythonEnvironment(tempDir);
+          expect(resolved.hasPythonSource).toBe(true);
+          expect(resolved.pmInfo?.name).toBe("pip");
+          expect(resolved.pmInfo?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should resolve workspace member environment end-to-end via public resolvePythonEnvironment()", () => {
+      const tempDir = path.join(fixturesDir, "resolve-env-workspace-temp");
+      const pkgDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('sub')\n");
+      fs.writeFileSync(
+        path.join(pkgDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+
+      try {
+        const resolved = resolvePythonEnvironment(pkgDir);
+        expect(resolved.hasPythonSource).toBe(true);
+        expect(resolved.pythonVersion).toBe("3.11");
+        expect(resolved.ruffVersion).toBe("0.4.2");
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should resolve workspace root and uv.lock correctly when detection is run from a deep subdirectory inside a workspace member", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-deep-subdir-temp");
+      const memberDir = path.join(tempDir, "packages/api");
+      const deepDir = path.join(memberDir, "src/handlers");
+      fs.mkdirSync(deepDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nrequires-python = '>=3.11'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n\n[dependency-groups]\ndev = ['ruff==0.4.2']\n",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "uv.lock"),
+        'version = 1\n\n[[package]]\nname = "ruff"\nversion = "0.4.2"\n',
+      );
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'api'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(deepDir, "handler.py"), "def handle(): pass\n");
+
+      try {
+        const memberEnv = resolvePythonEnvironment(memberDir);
+        const deepEnv = resolvePythonEnvironment(deepDir);
+
+        expect(deepEnv.hasPythonSource).toBe(true);
+        expect(deepEnv.pythonVersion).toBe("3.11");
+        expect(deepEnv.ruffVersion).toBe("0.4.2");
+        expect(deepEnv.pmInfo?.name).toBe("uv");
+        expect(deepEnv.pmInfo?.lockfile).toBe("uv.lock");
+        expect(deepEnv.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+
+        expect(deepEnv).toEqual(memberEnv);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject members = [] in [tool.uv.workspace] as an invalid workspace configuration", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-empty-members-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.uv.workspace]\nmembers = []\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should reject invalid [tool.uv.workspace] definitions (empty, missing members, or non-array members)", () => {
+      const invalidWorkspaces = [
+        "[tool.uv.workspace]\n",
+        "[tool.uv.workspace]\nfoo = 'bar'\n",
+        "[tool.uv.workspace]\nmembers = 'not-an-array'\n",
+        "[tool.uv.workspace]\nmembers = [123]\n",
+      ];
+
+      for (const [idx, content] of invalidWorkspaces.entries()) {
+        const tempDir = path.join(fixturesDir, `invalid-ws-${idx}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
+
+          fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+          expect(() => detectPythonPackageManager(tempDir)).toThrow(
+            "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+          );
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("should resolve nested directory with requirements.txt relative paths correctly", () => {
+      const tempDir = path.join(fixturesDir, "nested-reqs-rel-path-temp");
+      const subDir = path.join(tempDir, "sub/deep");
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      fs.writeFileSync(path.join(subDir, "app.py"), "print('app')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(subDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "../../requirements.txt"] },
+        ]);
+
+        const resolved = resolvePythonEnvironment(subDir);
+        expect(resolved.hasPythonSource).toBe(true);
+        expect(resolved.pmInfo?.name).toBe("pip");
+        expect(resolved.pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-r", "../../requirements.txt"] },
         ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1113,6 +1523,176 @@ enabled = true
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
     it("should define priority order as uv > pip", () => {
       expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
+    });
+  });
+
+  describe("isDirectoryMatchedByGlobs() Glob Matching Unit Tests", () => {
+    it("should match single wildcard glob patterns like packages/*", () => {
+      expect(isDirectoryMatchedByGlobs("packages/sub", ["packages/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/app", ["packages/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/sub/deep", ["packages/*"])).toBe(false);
+      expect(isDirectoryMatchedByGlobs("other/sub", ["packages/*"])).toBe(false);
+    });
+
+    it("should match double wildcard glob patterns like packages/**", () => {
+      expect(isDirectoryMatchedByGlobs("packages/sub", ["packages/**"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("packages/sub/deep", ["packages/**"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("other/sub", ["packages/**"])).toBe(false);
+    });
+
+    it("should normalize Windows path backslashes and leading dot-slash", () => {
+      expect(isDirectoryMatchedByGlobs("packages\\sub\\app", ["packages/*/*"])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("./packages/sub", ["packages/*"])).toBe(true);
+    });
+
+    it("should handle root directory dot matching", () => {
+      expect(isDirectoryMatchedByGlobs(".", ["."])).toBe(true);
+      expect(isDirectoryMatchedByGlobs("", ["."])).toBe(true);
+    });
+  });
+
+  describe("uv.toml and Parent Directory Context Regression Tests", () => {
+    it("should throw actionable error when uv.toml and uv.lock are present without pyproject.toml", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-lock-no-pyproject-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "dev-dependencies = ['pytest']\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+
+      try {
+        expect(() => detectPythonPackageManager(tempDir)).toThrow(
+          "Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml' project or workspace configuration ('[project]', '[build-system]', or '[tool.uv.workspace]'). 'uv sync' requires a valid 'pyproject.toml' file.",
+        );
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should select workspace root uv.toml when both workspace root and member have uv.toml", () => {
+      const tempDir = path.join(fixturesDir, "ws-root-and-member-uv-toml-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-ws'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://root.pypi.org'\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "uv.toml"), "[pip]\nindex-url = 'https://member.pypi.org'\n");
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
+
+      try {
+        const resolved = resolvePythonEnvironment(memberDir);
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ignore member-local uv.toml when workspace root does not have a uv.toml", () => {
+      const tempDir = path.join(fixturesDir, "ws-member-only-uv-toml-temp");
+      const memberDir = path.join(tempDir, "packages/sub");
+      fs.mkdirSync(memberDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-ws'\nversion = '0.1.0'\n\n[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(memberDir, "pyproject.toml"),
+        "[project]\nname = 'sub'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(memberDir, "uv.toml"), "[pip]\nindex-url = 'https://member.pypi.org'\n");
+      fs.writeFileSync(path.join(memberDir, "sub.py"), "print('sub')\n");
+
+      try {
+        const resolved = resolvePythonEnvironment(memberDir);
+        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
+        expect(resolved.pmInfo?.configFile).toBe("pyproject.toml");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should detect uv workspace member in sub-directory with root pyproject.toml and uv.lock", () => {
+      const tempDir = path.join(fixturesDir, "uv-workspace-member-temp");
+      const pkgDir = path.join(tempDir, "packages/subpkg");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), ""); // mock repo boundary
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[tool.uv.workspace]\nmembers = ['packages/*']\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(path.join(pkgDir, "sub.py"), "print('subpkg')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(pkgDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+        expect(pmInfo?.lockfile).toBe("uv.lock");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not mix parent uv.lock into independent child pip project if parent is not a uv workspace root", () => {
+      const tempDir = path.join(fixturesDir, "non-workspace-child-pip-temp");
+      const pkgDir = path.join(tempDir, "tools/cli");
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, ".git"), "");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'root-pkg'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      fs.writeFileSync(
+        path.join(pkgDir, "pyproject.toml"),
+        "[project]\nname = 'child-cli'\nversion = '0.1.0'\n",
+      );
+      fs.writeFileSync(path.join(pkgDir, "cli.py"), "print('cli')\n");
+
+      try {
+        const pmInfo = detectPythonPackageManager(pkgDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.configFile).toBe("pyproject.toml");
+        expect(pmInfo?.lockfile).toBeUndefined();
+        expect(pmInfo?.installCommands).toEqual([
+          { executable: "pip", args: ["install", "-e", "."] },
+        ]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should ignore configuration-only uv.toml containing only index and sources tables", () => {
+      const tempDir = path.join(fixturesDir, "uv-toml-config-only-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "uv.toml"),
+        "[[index]]\nname = 'custom'\nurl = 'https://pypi.org/simple'\n\n[sources]\nfoo = { path = 'pkgs/foo' }\n",
+      );
+
+      try {
+        const pmInfo = detectPythonPackageManager(tempDir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
+        expect(pmInfo?.isStandalone).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
