@@ -811,7 +811,7 @@ describe("resolve-environment", () => {
     });
 
     it("should throw validation error when explicit runtime bun@1.4 is used with npm package manager", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package-lock.json");
+      vi.spyOn(fs, "existsSync").mockReturnValue(false);
       expect(() => resolveEnvironment("bun@1.4")).toThrow(
         "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager",
       );

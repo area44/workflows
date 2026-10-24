@@ -242,7 +242,7 @@ jobs:
           [ -f pnpm-workspace.yaml ] && mv pnpm-workspace.yaml pnpm-workspace.yaml.bak || true
           [ -f bun.lock ] && mv bun.lock bun.lock.bak || true
           [ -d src ] && mv src src.bak || true
-          [ -d __tests__ ] && mv __tests__ __tests__.bak || true
+          [ -d __tests__ ] && mv __tests__ /tmp/__tests__.bak || true
           if [ "$ACTION" != "pages" ]; then
             [ -d pages ] && mv pages pages.bak || true
           fi
@@ -398,14 +398,16 @@ jobs:
       - name: Restore Workspace Root
         if: always()
         run: |
-          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version main.py pyproject.toml requirements.txt uv.lock uv.toml .python-version runtime.txt .venv .ruff_cache
+          rm -rf node_modules package.json package-lock.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock dist astro.config.mjs vite.config.ts index.html src .node-version main.py pyproject.toml requirements.txt uv.lock uv.toml .python-version runtime.txt .venv .ruff_cache *.egg-info
           if [ -d pages.bak ]; then
             mv pages.bak pages
           fi
           if [ -d src.bak ]; then
             mv src.bak src
           fi
-          if [ -d __tests__.bak ]; then
+          if [ -d /tmp/__tests__.bak ]; then
+            mv /tmp/__tests__.bak __tests__
+          elif [ -d __tests__.bak ]; then
             mv __tests__.bak __tests__
           fi
           if [ -f package.json.bak ]; then

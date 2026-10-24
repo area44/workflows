@@ -6,3 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "mixed-bun-fixture"
 version = "0.1.0"
 dependencies = ["ruff==0.4.2"]
+
+[tool.setuptools]
+py-modules = ["main"]

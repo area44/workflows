@@ -5,5 +5,8 @@
   "packageManager": "bun@1.2.0",
   "scripts": {
     "format": "echo 'formatting js'"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
   }
 }
