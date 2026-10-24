@@ -185,7 +185,7 @@ jobs:
             has_python_source: "true"
             python_pm: pip
             python_version: "3.12"
-            ruff_version: "0.4.2"
+            ruff_version: "0.17.2"
             verify_site: false
           - action: autofix
             runtime: bun
@@ -196,7 +196,7 @@ jobs:
             has_python_source: "true"
             python_pm: pip
             python_version: "3.12"
-            ruff_version: "0.4.2"
+            ruff_version: "0.17.2"
             verify_site: false
     steps:
       - name: Checkout
