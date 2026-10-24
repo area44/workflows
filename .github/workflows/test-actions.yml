@@ -221,6 +221,8 @@ jobs:
           fi
 
           shopt -s dotglob
+          ls -1A > .initial_workspace_snapshot
+
           TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
           mkdir -p "$TMP_FIX"
           cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
@@ -381,12 +383,14 @@ jobs:
               exit 1
             fi
 
-            EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
-            if [[ -n "$EXPECTED_PY_VER" && "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
-              echo "Error: [${ACTION}] Python version mismatch stage failed for fixture '${FIXTURE_PATH}'."
-              echo "  Expected python-version: ${EXPECTED_PY_VER}"
-              echo "  Actual python-version:   ${AUTOFIX_PYTHON_VER}"
-              exit 1
+            if [[ "$EXPECTED_PYTHON_VER" != "" || "$TYPE" == "python-none" ]]; then
+              EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
+              if [[ "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
+                echo "Error: [${ACTION}] Python version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+                echo "  Expected python-version: '${EXPECTED_PY_VER}'"
+                echo "  Actual python-version:   '${AUTOFIX_PYTHON_VER}'"
+                exit 1
+              fi
             fi
 
             EXPECTED_RUFF="${EXPECTED_RUFF_VER:-}"
@@ -439,7 +443,16 @@ jobs:
             rm -f .copied_fixture_files
           fi
 
-          rm -rf node_modules dist .venv .ruff_cache *.egg-info
+          if [ -f .initial_workspace_snapshot ]; then
+            for artifact in node_modules dist .venv .ruff_cache *.egg-info; do
+              if [ -e "$artifact" ]; then
+                if ! grep -qxF "$artifact" .initial_workspace_snapshot 2>/dev/null; then
+                  rm -rf "$artifact"
+                fi
+              fi
+            done
+            rm -f .initial_workspace_snapshot
+          fi
 
           if [ -f .backed_up_files ]; then
             while IFS= read -r item; do
