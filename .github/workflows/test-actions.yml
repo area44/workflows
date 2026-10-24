@@ -239,9 +239,10 @@ jobs:
             bun.lock
             tsconfig.json
             vite.config.ts
-            src
-            pages
-            docs
+            astro.config.mjs
+            index.html
+            main.py
+            app.py
             .node-version
             .bun-version
             .python-version
@@ -254,9 +255,11 @@ jobs:
             setup.cfg
           )
 
+          touch .backed_up_files
           for item in "${ROOT_ITEMS[@]}"; do
             if [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
               mv "$item" "${item}.bak"
+              echo "$item" >> .backed_up_files
             fi
           done
 
@@ -264,6 +267,7 @@ jobs:
           while IFS= read -r item; do
             if [ -n "$item" ] && [ -e "$item" ] && [ ! -e "${item}.bak" ]; then
               mv "$item" "${item}.bak"
+              echo "$item" >> .backed_up_files
             fi
           done < .copied_fixture_files
 
@@ -437,13 +441,15 @@ jobs:
 
           rm -rf node_modules dist .venv .ruff_cache *.egg-info
 
-          for bak in *.bak; do
-            if [ -e "$bak" ]; then
-              target="${bak%.bak}"
-              rm -rf "$target"
-              mv "$bak" "$target"
-            fi
-          done
+          if [ -f .backed_up_files ]; then
+            while IFS= read -r item; do
+              if [ -n "$item" ] && [ -e "${item}.bak" ]; then
+                rm -rf "$item"
+                mv "${item}.bak" "$item"
+              fi
+            done < .backed_up_files
+            rm -f .backed_up_files
+          fi
 
           if [ -f .stash_tests_path ]; then
             STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
