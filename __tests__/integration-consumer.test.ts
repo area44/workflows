@@ -1,8 +1,20 @@
+/**
+ * Consumer Project Module Integration Suite
+ *
+ * Scope & Architecture:
+ * This test suite validates module-level integration between domain modules in `src/`
+ * (resolveEnvironment, resolveSiteVariables, resolveBuildCommandToParse, selectAutofixScripts)
+ * and the consumer project fixture (`__tests__/fixtures/consumer-project/`).
+ *
+ * Direct module imports are used here for fast local unit/component validation.
+ * Full composite action-level execution is verified in CI via `.github/workflows/test-actions.yml`.
+ */
+
 import * as core from "@actions/core";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   inspectJsProjectEnvironment,
@@ -17,7 +29,7 @@ import { resolveEnvironment, writeOutput } from "../src/resolve-environment.js";
 
 vi.mock("@actions/core");
 
-describe("Consumer Project Integration Suite", () => {
+describe("Consumer Project Module Integration Suite", () => {
   const originalCwd = process.cwd();
   const originalEnv = { ...process.env };
   const consumerFixturePath = path.resolve(

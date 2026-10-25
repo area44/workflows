@@ -277,7 +277,7 @@ jobs:
           fi
 
           if [ -n "$FIXTURE" ]; then
-            if [ -d "$FIXTURE" ] || [[ "$FIXTURE" == tests/* ]]; then
+            if [[ "$FIXTURE" == /* ]]; then
               FIXTURE_PATH="$FIXTURE"
             else
               FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
@@ -386,6 +386,14 @@ jobs:
               echo "Error: [${ACTION}] Artifact verification stage failed for fixture '${FIXTURE_PATH}'."
               echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
               exit 1
+            fi
+
+            if [[ "$TYPE" == "consumer-integration" ]]; then
+              if ! grep -q "AREA44 Consumer App" "dist/index.html"; then
+                echo "Error: [${ACTION}] Consumer artifact content verification failed for fixture '${FIXTURE_PATH}'."
+                echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Consumer App'."
+                exit 1
+              fi
             fi
           fi
 

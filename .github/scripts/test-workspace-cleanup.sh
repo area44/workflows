@@ -43,7 +43,7 @@ if [[ "$MODE" == "setup" ]]; then
   fi
 
   if [ -n "$FIXTURE" ]; then
-    if [[ "$FIXTURE" == /* ]] || [ -d "$FIXTURE" ]; then
+    if [[ "$FIXTURE" == /* ]]; then
       FIXTURE_DIR="$FIXTURE"
     else
       FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"

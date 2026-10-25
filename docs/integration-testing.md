@@ -1,6 +1,6 @@
 # Consumer Integration Testing Guide
 
-This document explains the purpose, architecture, execution, and extension of end-to-end integration testing for `area44/workflows` using the temporary consumer project fixture.
+This document explains the purpose, architecture, boundaries, execution, and extension of integration testing for `area44/workflows` using the temporary consumer project fixture.
 
 ## Overview & Architecture
 
@@ -21,75 +21,72 @@ The fixture represents a real-world multi-language (JS + Python) consumer applic
 
 ---
 
+## Testing Boundaries & Architecture
+
+Integration validation is divided into two distinct levels to balance speed and execution fidelity:
+
+### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
+
+- **Execution Boundary**: Directly imports TypeScript source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`) in Vitest.
+- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against temporary clones of `__tests__/fixtures/consumer-project/`.
+
+### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
+
+- **Execution Boundary**: Invokes the local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
+- **Purpose**: End-to-end execution of the composite action pipeline:
+  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` copies `__tests__/fixtures/consumer-project` into the workspace root while stashing `__tests__` (preventing test files from polluting matrix runs).
+  - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code.
+  - **Output & Content Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the generated `dist/index.html` contains consumer-specific content (`"AREA44 Consumer App"`).
+  - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
+
+---
+
 ## Running Integration Tests Locally
 
-Integration tests run using Vitest (`vp test`) and execute inside isolated temporary directories to prevent mutating the repository state.
-
-### Run All Tests
+### Run Full Test Suite
 
 ```bash
 npm test
 ```
 
-### Run Consumer Integration Suite Only
+### Run Consumer Integration Module Tests
 
 ```bash
 npm test __tests__/integration-consumer.test.ts
 ```
 
----
+### Run Workspace Cleanup Script Validation
 
-## Running Integration Tests in CI
-
-In GitHub Actions, integration tests run as part of the action verification matrix in `.github/workflows/test-actions.yml`.
-
-### Matrix Integration Mechanics
-
-1. **Workspace Setup**: `.github/scripts/test-workspace-cleanup.sh setup` copies `__tests__/fixtures/consumer-project` into the workspace root while stashing existing repository test directories (preventing test files from polluting other matrix runs).
-2. **Action Execution**: The workflow invokes `./pages` or `./autofix` using local relative paths.
-3. **Output & Artifact Verification**: Outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and generated build artifacts (`dist/index.html`) are validated.
-4. **Workspace Cleanup**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories.
+```bash
+npm test __tests__/workspace-cleanup.test.ts
+```
 
 ---
 
 ## Targeting the Branch Under Test
 
-To ensure changes under review are tested before merging:
+To ensure changes under review in pull requests are tested before merging:
 
-- Integration tests reference local action definitions (`./pages` and `./autofix`) rather than remote refs (`area44/workflows/pages@main`).
-- Unit and integration test suites in `__tests__/` import directly from source modules in `src/`.
-
----
-
-## Adding a New Integration Scenario
-
-1. **Add Fixture Assets or Scenarios**:
-   - For JavaScript/Python consumer scenarios, add or update files in `__tests__/fixtures/consumer-project/`.
-   - For distinct environment matrices, add a subfolder under `__tests__/fixtures/`.
-
-2. **Add Unit/Integration Assertions**:
-   - Add test cases in `__tests__/integration-consumer.test.ts` exercising environment resolution, variable resolution, or build/autofix execution.
-
-3. **Add CI Matrix Case**:
-   - Add a matrix entry under `include:` in `.github/workflows/test-actions.yml` pointing to your fixture path.
+- Action-level CI tests reference local relative action definitions (`./pages` and `./autofix`) rather than remote refs (`area44/workflows/pages@main`).
+- Unit and module integration test suites in `__tests__/` import directly from source modules in `src/`.
 
 ---
 
-## GitHub-Hosted Runner Requirements & Limitations
+## GitHub-Hosted Runner Integration Constraints
 
-Some integration steps require a real GitHub Actions runner environment:
+Certain integration steps depend on GitHub-hosted runner infrastructure and permissions:
 
-- **Pages Artifact Upload (`actions/upload-pages-artifact`)**: Requires GitHub Pages permissions and GitHub runner environment tokens.
+- **GitHub Pages Artifact Upload (`actions/upload-pages-artifact`)**: Requires GitHub Pages permissions and runner environment tokens (`id-token: write`).
 - **Autofix CI Push (`autofix-ci/action`)**: Requires `github.workflow == 'autofix.ci'` and `contents: write` permissions.
 
-These GitHub-hosted steps are executed and verified during CI workflow runs on GitHub Actions runners.
+These external steps are guarded by workflow conditions and run during GitHub Actions CI workflow execution.
 
 ---
 
-## Cleanup & Safety Guarantees
+## Workspace Safety & Cleanup Guarantees
 
 All workspace state mutations during matrix setup are tracked in `.test_workspace_state/`:
 
-- Pre-existing files are safely backed up before fixture installation.
+- Pre-existing workspace items are safely backed up before fixture installation.
 - Installed files and generated build/cache artifacts are tracked in manifests.
-- Restoration verifies manifest integrity before deleting or moving files.
+- Restoration validates path boundaries and manifest integrity before deleting or moving files.
