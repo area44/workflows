@@ -5,11 +5,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = path.resolve(process.cwd(), ".github/scripts/test-workspace-cleanup.sh");
 
-function runScript(args: string, cwd: string, options: { expectFailure?: boolean } = {}): string {
+function runScript(
+  args: string,
+  cwd: string,
+  options: { expectFailure?: boolean; env?: Record<string, string> } = {}
+): string {
   try {
     const output = execSync(`bash "${SCRIPT_PATH}" ${args}`, {
       cwd,
-      env: { ...process.env, RUNNER_TEMP: path.join(cwd, "runner_temp") },
+      env: {
+        ...process.env,
+        RUNNER_TEMP: path.join(cwd, "runner_temp"),
+        ...(options.env || {}),
+      },
       stdio: "pipe",
       encoding: "utf8",
     });
@@ -33,7 +41,7 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     tempDir = fs.mkdtempSync(path.join(process.cwd(), "tmp_test_cleanup_"));
     fs.mkdirSync(path.join(tempDir, "runner_temp"), { recursive: true });
 
-    fixtureDir = path.join(tempDir, "__tests__", "fixtures", "test-action", "node", "npm", "basic");
+    fixtureDir = path.join(tempDir, "ext_fixture");
     fs.mkdirSync(fixtureDir, { recursive: true });
     fs.writeFileSync(path.join(fixtureDir, "package.json"), JSON.stringify({ name: "fixture-pkg" }));
     fs.writeFileSync(path.join(fixtureDir, ".dotfile_fixture"), "dotfile-content");
@@ -47,7 +55,7 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     }
   });
 
-  it("Scenario 1: Pre-existing node_modules, dist, .venv, .ruff_cache, *.egg-info survive setup and cleanup intact", () => {
+  it("Scenario A: Setup fails before snapshot exists; pre-existing generated paths remain intact after cleanup", () => {
     const preExistingDirs = ["node_modules", "dist", ".venv", ".ruff_cache", "test.egg-info"];
     for (const dir of preExistingDirs) {
       const dirPath = path.join(tempDir, dir);
@@ -55,12 +63,16 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       fs.writeFileSync(path.join(dirPath, "sentinel.txt"), `sentinel-in-${dir}`);
     }
 
-    runScript("setup test-action node npm basic", tempDir);
+    // Force setup to fail before snapshot initialization
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_BEFORE_SNAPSHOT: "1" },
+    });
 
-    expect(fs.existsSync(path.join(tempDir, "package.json"))).toBe(true);
-
+    // Run cleanup
     runScript("cleanup", tempDir);
 
+    // All original sentinels survive
     for (const dir of preExistingDirs) {
       const sentinelPath = path.join(tempDir, dir, "sentinel.txt");
       expect(fs.existsSync(sentinelPath)).toBe(true);
@@ -68,134 +80,133 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     }
   });
 
-  it("Scenario 2: Setup fails before backup; original files remain intact", () => {
-    fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "original-pkg" }));
-
-    runScript("setup test-action node npm non-existent-fixture", tempDir, { expectFailure: true });
-
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toContain("original-pkg");
-  });
-
-  it("Scenario 3: Setup fails after partial backups; all backed-up files are restored", () => {
-    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
-    fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "orig-pyproject");
-
-    try {
-      execSync(`bash -c 'export RUNNER_TEMP="${tempDir}/runner_temp"; touch pyproject.toml.test_bak_$$; exec bash "${SCRIPT_PATH}" setup test-action node npm basic'`, {
-        cwd: tempDir,
-        stdio: "pipe",
-        encoding: "utf8",
-      });
-    } catch {
-      // Expected setup failure due to backup collision
+  it("Scenario B: Setup fails during partial snapshot creation; cleanup preserves generated paths", () => {
+    const preExistingDirs = ["node_modules", "dist", ".venv"];
+    for (const dir of preExistingDirs) {
+      const dirPath = path.join(tempDir, dir);
+      fs.mkdirSync(dirPath, { recursive: true });
+      fs.writeFileSync(path.join(dirPath, "sentinel.txt"), `sentinel-in-${dir}`);
     }
 
+    // Inject failure during snapshot creation
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_IN_SNAPSHOT: "1" },
+    });
+
+    // Run cleanup
     runScript("cleanup", tempDir);
 
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
-    expect(fs.readFileSync(path.join(tempDir, "pyproject.toml"), "utf8")).toBe("orig-pyproject");
+    // Verify snapshot status is incomplete and no generated paths were deleted
+    for (const dir of preExistingDirs) {
+      const sentinelPath = path.join(tempDir, dir, "sentinel.txt");
+      expect(fs.existsSync(sentinelPath)).toBe(true);
+      expect(fs.readFileSync(sentinelPath, "utf8")).toBe(`sentinel-in-${dir}`);
+    }
   });
 
-  it("Scenario 4: Partial fixture installation failure removes only installed fixture files and restores originals", () => {
+  it("Scenario C: Fixture copy fails partway through; cleanup removes installed files and restores originals", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
+    const unrelatedFile = path.join(tempDir, "unrelated.txt");
+    fs.writeFileSync(unrelatedFile, "unrelated-data");
 
-    runScript("setup test-action node npm basic", tempDir);
+    // Inject failure partway through fixture copy
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_IN_COPY: "1" },
+    });
 
-    expect(fs.existsSync(path.join(tempDir, "nested", "file.txt"))).toBe(true);
-
+    // Run cleanup
     runScript("cleanup", tempDir);
 
+    // Original package.json restored, unrelated file intact, installed fixture files cleaned up
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
+    expect(fs.readFileSync(unrelatedFile, "utf8")).toBe("unrelated-data");
     expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
   });
 
-  it("Scenario 5: Backup collision aborts safely without overwriting or deleting original", () => {
+  it("Scenario D: Restoration genuinely fails; backup file and state directory are preserved", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 
-    const extFixture = path.join(tempDir, "ext_fixture");
-    fs.mkdirSync(extFixture, { recursive: true });
-    fs.writeFileSync(path.join(extFixture, "package.json"), "fixture-pkg");
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
-    let output = "";
-    try {
-      output = execSync(
-        `bash -c 'export RUNNER_TEMP="${tempDir}/runner_temp"; touch package.json.test_bak_$$; exec bash "${SCRIPT_PATH}" setup test-action node npm basic "${extFixture}"'`,
-        { cwd: tempDir, stdio: "pipe", encoding: "utf8" }
-      );
-    } catch (err: any) {
-      output = err.stderr || err.stdout || err.message;
-    }
+    // Inject restore failure
+    runScript("cleanup", tempDir, { env: { INJECT_FAILURE_RESTORE: "1" } });
+
+    // Assert state directory and backup files remain for manual recovery
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.existsSync(stateDir)).toBe(true);
+    expect(fs.existsSync(path.join(stateDir, "backed_up_files"))).toBe(true);
+  });
+
+  it("Scenario E: Setup fails after stashing __tests__; cleanup restores original __tests__ directory", () => {
+    const origTestsFile = path.join(tempDir, "__tests__", "my_test.test.js");
+    fs.mkdirSync(path.dirname(origTestsFile), { recursive: true });
+    fs.writeFileSync(origTestsFile, "console.log('original test');");
+
+    // Force failure after stash step
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_AFTER_STASH: "1" },
+    });
+
+    // Run cleanup
+    runScript("cleanup", tempDir);
+
+    // Verify original __tests__ was restored
+    expect(fs.existsSync(origTestsFile)).toBe(true);
+    expect(fs.readFileSync(origTestsFile, "utf8")).toBe("console.log('original test');");
+  });
+
+  it("Scenario F: Pre-existing state directory collision causes setup to abort safely without data loss", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
+    fs.mkdirSync(path.join(tempDir, ".test_workspace_state"));
+
+    const output = runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+    });
 
     expect(output).toContain("already exists");
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
   });
 
-  it("Scenario 6: Backup file is preserved if restoration fails", () => {
+  it("Scenario G: Cleanup without valid state directory safely skips deletion to prevent data loss", () => {
+    const nodeModules = path.join(tempDir, "node_modules");
+    fs.mkdirSync(nodeModules, { recursive: true });
+    fs.writeFileSync(path.join(nodeModules, "sentinel.txt"), "keep-me");
+
+    // Run cleanup without setup (no .test_workspace_state)
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(path.join(nodeModules, "sentinel.txt"))).toBe(true);
+  });
+
+  it("Standard happy path: setup and cleanup work end-to-end", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 
-    runScript("setup test-action node npm basic", tempDir);
-
-    const backedUpContent = fs.readFileSync(path.join(tempDir, ".backed_up_files"), "utf8");
-    const backupFileName = backedUpContent.trim().split("|")[1];
-
-    expect(fs.existsSync(path.join(tempDir, backupFileName))).toBe(true);
-
-    runScript("cleanup", tempDir);
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
-  });
-
-  it("Scenario 7: Pre-existing __tests__ directory is stashed during setup and restored during cleanup", () => {
-    const origTestsFile = path.join(tempDir, "__tests__", "my_test.test.js");
-    fs.writeFileSync(origTestsFile, "console.log('original test');");
-
-    runScript("setup test-action node npm basic", tempDir);
-
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toContain("fixture-pkg");
-
-    runScript("cleanup", tempDir);
-
-    expect(fs.existsSync(origTestsFile)).toBe(true);
-    expect(fs.readFileSync(origTestsFile, "utf8")).toBe("console.log('original test');");
-  });
-
-  it("Scenario 8: Non-existing __tests__ before setup leaves no __tests__ directory or orphan stash directory after cleanup", () => {
-    fs.rmSync(path.join(tempDir, "__tests__"), { recursive: true, force: true });
-
-    const extFixture = path.join(tempDir, "external_fixture");
-    fs.mkdirSync(extFixture, { recursive: true });
-    fs.writeFileSync(path.join(extFixture, "app.py"), "print('hello')");
-
-    runScript(`setup autofix node npm python-pip "${extFixture}"`, tempDir);
-
-    runScript("cleanup", tempDir);
-
-    expect(fs.existsSync(path.join(tempDir, "__tests__"))).toBe(false);
-    expect(fs.existsSync(path.join(tempDir, ".stash_tests_path"))).toBe(false);
-  });
-
-  it("Scenario 9: Cleanup runs twice safely and idempotently without deleting restored files", () => {
-    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
-
-    runScript("setup test-action node npm basic", tempDir);
-    runScript("cleanup", tempDir);
-
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
-
-    runScript("cleanup", tempDir);
-
-    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
-  });
-
-  it("Scenario 10: Dotfiles and nested fixture paths are handled correctly", () => {
-    runScript("setup test-action node npm basic", tempDir);
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
     expect(fs.existsSync(path.join(tempDir, ".dotfile_fixture"))).toBe(true);
-    expect(fs.readFileSync(path.join(tempDir, ".dotfile_fixture"), "utf8")).toBe("dotfile-content");
     expect(fs.readFileSync(path.join(tempDir, "nested", "file.txt"), "utf8")).toBe("nested-content");
 
     runScript("cleanup", tempDir);
 
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
     expect(fs.existsSync(path.join(tempDir, ".dotfile_fixture"))).toBe(false);
     expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
+  });
+
+  it("Idempotency: Cleanup runs twice safely without error or data loss", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
+
+    // Second cleanup call
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
   });
 });

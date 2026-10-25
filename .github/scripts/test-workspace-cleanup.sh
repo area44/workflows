@@ -7,6 +7,17 @@ set -euo pipefail
 #   cleanup
 
 MODE="${1:-}"
+STATE_DIR="${TEST_WORKSPACE_STATE_DIR:-.test_workspace_state}"
+
+# Helper to validate that a path is safe and stays within CWD (no leading / or .. traversal)
+validate_path() {
+  local p="$1"
+  if [[ -z "$p" || "$p" == /* || "$p" == *".."* ]]; then
+    echo "Error: Refusing to operate on unsafe or out-of-bounds path: '$p'" >&2
+    return 1
+  fi
+  return 0
+}
 
 if [[ "$MODE" == "setup" ]]; then
   ACTION="${2:-}"
@@ -14,6 +25,12 @@ if [[ "$MODE" == "setup" ]]; then
   PM="${4:-}"
   TYPE="${5:-}"
   FIXTURE="${6:-}"
+
+  # Guard state directory collision
+  if [ -e "$STATE_DIR" ]; then
+    echo "Error: State directory '$STATE_DIR' already exists. Aborting setup to prevent state collision." >&2
+    exit 1
+  fi
 
   if [ -n "$FIXTURE" ]; then
     if [[ "$FIXTURE" == /* ]]; then
@@ -30,9 +47,54 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   fi
 
+  mkdir -p "$STATE_DIR" || { echo "Error: Failed to create state directory '$STATE_DIR'." >&2; exit 1; }
+
+  if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
+    echo "Injected failure before snapshot initialization." >&2
+    exit 1
+  fi
+
   shopt -s dotglob
 
-  # 1. Create temporary fixture directory safely
+  # 1. Track __tests__ stash state safely
+  TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
+  if mkdir -p "$TMP_TESTS"; then
+    echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
+  else
+    echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
+    exit 1
+  fi
+
+  if [ -d __tests__ ]; then
+    echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"
+    mv __tests__ "$TMP_TESTS"/__tests__ || {
+      echo "Error: Failed to stash __tests__ directory." >&2
+      exit 1
+    }
+  else
+    echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
+  fi
+
+  if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
+    echo "Injected failure after stashing __tests__." >&2
+    exit 1
+  fi
+
+  # 2. Snapshot pre-existing items in current working directory
+  touch "$STATE_DIR/snapshot_pre_existing_items"
+  for item in *; do
+    if [ "$item" != "*" ] && [ -e "$item" ] && [ "$item" != "$STATE_DIR" ]; then
+      if [ "${INJECT_FAILURE_IN_SNAPSHOT:-0}" -eq 1 ]; then
+        echo "Injected failure during snapshot creation." >&2
+        exit 1
+      fi
+      echo "$item" >> "$STATE_DIR/snapshot_pre_existing_items"
+    fi
+  done
+
+  echo "SNAPSHOT_STATUS=complete" > "$STATE_DIR/snapshot.status"
+
+  # 3. Create temporary fixture directory safely
   TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
   mkdir -p "$TMP_FIX" || { echo "Error: Failed to create temp fixture directory." >&2; exit 1; }
 
@@ -51,40 +113,9 @@ if [[ "$MODE" == "setup" ]]; then
     fi
   done
 
-  # 2. Track __tests__ stash state safely
-  # Store stash dir location and whether original __tests__ directory existed
-  TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
-  if mkdir -p "$TMP_TESTS"; then
-    echo "$TMP_TESTS" > .stash_tests_path
-  else
-    echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
-    rm -rf "$TMP_FIX"
-    exit 1
-  fi
-
-  if [ -d __tests__ ]; then
-    echo "true" > .tests_existed_before_setup
-    mv __tests__ "$TMP_TESTS"/__tests__ || {
-      echo "Error: Failed to stash __tests__ directory." >&2
-      rm -rf "$TMP_FIX" "$TMP_TESTS"
-      rm -f .stash_tests_path .tests_existed_before_setup
-      exit 1
-    }
-  else
-    echo "false" > .tests_existed_before_setup
-  fi
-
-  # 3. Initialize state manifests safely
-  touch .backed_up_files
-  touch .installed_fixture_files
-  touch .snapshot_pre_existing_items
-
-  # Snapshot pre-existing items in the current working directory before copying fixture
-  for item in *; do
-    if [ "$item" != "*" ] && [ -e "$item" ]; then
-      echo "$item" >> .snapshot_pre_existing_items
-    fi
-  done
+  # 4. Initialize backup and installation manifests
+  touch "$STATE_DIR/backed_up_files"
+  touch "$STATE_DIR/installed_fixture_files"
 
   ROOT_ITEMS=(
     package.json
@@ -123,37 +154,50 @@ if [[ "$MODE" == "setup" ]]; then
         rm -rf "$TMP_FIX"
         exit 1
       }
-      echo "${item}|${bak_item}" >> .backed_up_files
+      echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
     fi
   done
 
-  # 4. Install fixture files safely and record each installation
-  if ls -1A "$TMP_FIX" > .fixture_items_list 2>/dev/null; then
+  # 5. Install fixture files safely and record each installation
+  COUNT=0
+  if ls -1A "$TMP_FIX" > "$STATE_DIR/fixture_items_list" 2>/dev/null; then
     while IFS= read -r item; do
       [ -z "$item" ] && continue
+      COUNT=$((COUNT + 1))
+
+      if [ "${INJECT_FAILURE_IN_COPY:-0}" -eq 1 ] && [ "$COUNT" -gt 1 ]; then
+        echo "Injected failure partway through copying fixture files." >&2
+        rm -f "$STATE_DIR/fixture_items_list"
+        rm -rf "$TMP_FIX"
+        exit 1
+      fi
+
       if [ -e "$item" ]; then
         bak_item="${item}.test_bak_$$"
         if [ -e "$bak_item" ]; then
           echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss." >&2
+          rm -f "$STATE_DIR/fixture_items_list"
           rm -rf "$TMP_FIX"
           exit 1
         fi
         mv "$item" "$bak_item" || {
           echo "Error: Failed to back up conflicting root item '${item}'." >&2
+          rm -f "$STATE_DIR/fixture_items_list"
           rm -rf "$TMP_FIX"
           exit 1
         }
-        echo "${item}|${bak_item}" >> .backed_up_files
+        echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
       fi
 
       cp -r "$TMP_FIX/$item" . || {
         echo "Error: Failed to install fixture item '${item}'." >&2
+        rm -f "$STATE_DIR/fixture_items_list"
         rm -rf "$TMP_FIX"
         exit 1
       }
-      echo "$item" >> .installed_fixture_files
-    done < .fixture_items_list
-    rm -f .fixture_items_list
+      echo "$item" >> "$STATE_DIR/installed_fixture_files"
+    done < "$STATE_DIR/fixture_items_list"
+    rm -f "$STATE_DIR/fixture_items_list"
   fi
 
   rm -rf "$TMP_FIX"
@@ -162,74 +206,96 @@ if [[ "$MODE" == "setup" ]]; then
 elif [[ "$MODE" == "cleanup" ]]; then
   shopt -s dotglob
 
-  # 1. Remove fixture installed files recorded during setup
-  if [ -f .installed_fixture_files ]; then
-    while IFS= read -r item; do
-      if [ -n "$item" ]; then
-        rm -rf "$item"
-      fi
-    done < .installed_fixture_files
-    rm -f .installed_fixture_files
+  # If state directory does not exist, cleanup cannot establish ownership state. Abort path deletion safely.
+  if [ ! -d "$STATE_DIR" ]; then
+    echo "Notice: Workspace state directory '$STATE_DIR' is missing or incomplete. Skipping path deletion to prevent data loss." >&2
+    exit 0
   fi
 
-  # 2. Clean up workflow-generated paths/artifacts ONLY if they were NOT pre-existing before setup
-  GENERATED_PATHS=(node_modules dist .venv .ruff_cache *.egg-info)
-  for pattern in "${GENERATED_PATHS[@]}"; do
-    for path in $pattern; do
-      # Avoid glob literal when no match
-      [ "$path" == "$pattern" ] && [ ! -e "$path" ] && continue
-      [ ! -e "$path" ] && continue
+  HAD_RESTORE_FAILURE=false
 
-      # Check if path was pre-existing before setup
-      IS_PRE_EXISTING=false
-      if [ -f .snapshot_pre_existing_items ]; then
-        if grep -Fqx "$path" .snapshot_pre_existing_items 2>/dev/null; then
-          IS_PRE_EXISTING=true
+  # 1. Remove fixture installed files recorded during setup
+  if [ -f "$STATE_DIR/installed_fixture_files" ]; then
+    while IFS= read -r item; do
+      if [ -n "$item" ] && validate_path "$item"; then
+        rm -rf "$item"
+      fi
+    done < "$STATE_DIR/installed_fixture_files"
+  fi
+
+  # 2. Clean up workflow-generated paths/artifacts ONLY if snapshot status is 'complete'
+  SNAPSHOT_COMPLETE=false
+  if [ -f "$STATE_DIR/snapshot.status" ]; then
+    if grep -Fqx "SNAPSHOT_STATUS=complete" "$STATE_DIR/snapshot.status" 2>/dev/null; then
+      SNAPSHOT_COMPLETE=true
+    fi
+  fi
+
+  if [ "$SNAPSHOT_COMPLETE" == "true" ]; then
+    GENERATED_PATHS=(node_modules dist .venv .ruff_cache *.egg-info)
+    for pattern in "${GENERATED_PATHS[@]}"; do
+      for path in $pattern; do
+        [ "$path" == "$pattern" ] && [ ! -e "$path" ] && continue
+        [ ! -e "$path" ] && continue
+        [ "$path" == "$STATE_DIR" ] && continue
+
+        # Verify path was NOT pre-existing before setup
+        IS_PRE_EXISTING=false
+        if [ -f "$STATE_DIR/snapshot_pre_existing_items" ]; then
+          if grep -Fqx "$path" "$STATE_DIR/snapshot_pre_existing_items" 2>/dev/null; then
+            IS_PRE_EXISTING=true
+          fi
         fi
-      fi
 
-      if [ "$IS_PRE_EXISTING" == "false" ]; then
-        rm -rf "$path"
-      fi
+        if [ "$IS_PRE_EXISTING" == "false" ] && validate_path "$path"; then
+          rm -rf "$path"
+        fi
+      done
     done
-  done
+  else
+    echo "Notice: Snapshot is missing or incomplete. Preserving generated paths to prevent data loss." >&2
+  fi
 
-  # 3. Restore backed up root items recorded in .backed_up_files
-  if [ -f .backed_up_files ]; then
-    # Read backed_up_files in reverse order or standard order safely
+  # 3. Restore backed up root items recorded in backed_up_files
+  if [ -f "$STATE_DIR/backed_up_files" ]; then
     while IFS='|' read -r orig_item bak_item; do
       if [ -n "$orig_item" ] && [ -n "$bak_item" ]; then
-        if [ -e "$bak_item" ]; then
-          # Ensure current path is removed before restoring backup
+        if validate_path "$orig_item" && validate_path "$bak_item" && [ -e "$bak_item" ]; then
+          # Check for failure injection during restore
+          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
+            echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
+            HAD_RESTORE_FAILURE=true
+            continue
+          fi
+
           rm -rf "$orig_item"
           if ! mv "$bak_item" "$orig_item"; then
             echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
+            HAD_RESTORE_FAILURE=true
           fi
         fi
       fi
-    done < .backed_up_files
-    rm -f .backed_up_files
+    done < "$STATE_DIR/backed_up_files"
   fi
 
-  # Remove state manifests
-  rm -f .snapshot_pre_existing_items .fixture_items_list
-
   # 4. Restore stashed __tests__ directory
-  if [ -f .stash_tests_path ]; then
-    STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
-    TESTS_EXISTED="true"
-    if [ -f .tests_existed_before_setup ]; then
-      TESTS_EXISTED=$(cat .tests_existed_before_setup 2>/dev/null || true)
-    fi
+  if [ -f "$STATE_DIR/stash.info" ]; then
+    STASH_PATH=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
+    TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
 
     if [ "$TESTS_EXISTED" == "true" ]; then
       if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
-        rm -rf __tests__
-        if mv "$STASH_PATH/__tests__" __tests__; then
-          rm -rf "$STASH_PATH"
-          rm -f .stash_tests_path .tests_existed_before_setup
+        if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
+          echo "Error: Injected failure restoring stashed __tests__." >&2
+          HAD_RESTORE_FAILURE=true
         else
-          echo "Error: Failed to restore stashed __tests__ from '$STASH_PATH'. Preserving stash directory for recovery." >&2
+          rm -rf __tests__
+          if mv "$STASH_PATH/__tests__" __tests__; then
+            rm -rf "$STASH_PATH"
+          else
+            echo "Error: Failed to restore stashed __tests__ from '$STASH_PATH'. Preserving stash directory for recovery." >&2
+            HAD_RESTORE_FAILURE=true
+          fi
         fi
       fi
     else
@@ -238,8 +304,14 @@ elif [[ "$MODE" == "cleanup" ]]; then
       if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH" ]; then
         rm -rf "$STASH_PATH"
       fi
-      rm -f .stash_tests_path .tests_existed_before_setup
     fi
+  fi
+
+  # Only remove STATE_DIR if all restorations succeeded
+  if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
+    rm -rf "$STATE_DIR"
+  else
+    echo "Warning: Restoration encountered failures. Preserving state directory '$STATE_DIR' for recovery." >&2
   fi
 
   exit 0

@@ -252,8 +252,8 @@ jobs:
           EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
           EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
-          if [ -f .stash_tests_path ]; then
-            STASH_DIR=$(cat .stash_tests_path 2>/dev/null || true)
+          if [ -d .test_workspace_state ] && [ -f .test_workspace_state/stash.info ]; then
+            STASH_DIR=$(grep "^stash_tests_path=" .test_workspace_state/stash.info 2>/dev/null | cut -d'=' -f2- || true)
             TESTS_ROOT="${STASH_DIR}/__tests__"
           else
             TESTS_ROOT="__tests__"
