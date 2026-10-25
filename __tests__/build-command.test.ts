@@ -4,7 +4,9 @@ import * as io from "@actions/io";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import YAML from "yaml";
 import {
   parseCommand,
   resolveBuildCommandToParse,
@@ -29,36 +31,77 @@ describe("build-command", () => {
   });
 
   describe("Action Launch Contract & Action.yml Structure for Pages", () => {
-    it("should confirm pages/action.yml launches dist/build-command.mjs with node unconditionally", () => {
+    it("should validate composite action contract structure, inputs, outputs, and execution guards in pages/action.yml", () => {
       const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
       const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      const action = YAML.parse(actionYmlContent);
 
-      expect(actionYmlContent).toContain("run: node \"$ACTION_PATH/../dist/build-command.mjs\"");
-      expect(actionYmlContent).not.toContain("bun \"$ACTION_PATH/../dist/build-command.mjs\"");
-      expect(actionYmlContent).not.toContain("if [ \"$RUNTIME\" = \"bun\" ]");
-    });
+      expect(action.name).toBe("Build and Upload GitHub Pages Site");
+      expect(action.runs.using).toBe("composite");
 
-    it("should confirm pages/action.yml launches all internal entrypoints with node", () => {
-      const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
-      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      // Inputs contract
+      expect(action.inputs.path).toEqual({
+        description: expect.any(String),
+        required: false,
+        default: "dist",
+      });
+      expect(action.inputs.runtime).toEqual({
+        description: expect.any(String),
+        required: false,
+      });
+      expect(action.inputs["build-command"]).toEqual({
+        description: expect.any(String),
+        required: false,
+      });
 
-      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/resolve-environment.mjs\"");
-      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/site-variables.mjs\"");
-      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/build-command.mjs\"");
-    });
+      // Outputs contract with exact expression mappings
+      expect(action.outputs["node-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.node-version }}",
+      );
+      expect(action.outputs["bun-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.bun-version }}",
+      );
+      expect(action.outputs["package-manager"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager }}",
+      );
+      expect(action.outputs["package-manager-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager-version }}",
+      );
+      expect(action.outputs.runtime.value).toBe(
+        "${{ steps.resolve_environment.outputs.runtime }}",
+      );
+      expect(action.outputs.toolchain.value).toBe(
+        "${{ steps.resolve_environment.outputs.toolchain }}",
+      );
+      expect(action.outputs["vp-version"].value).toBe("${{ steps.setup_vp.outputs.version }}");
 
-    it("should confirm pages/action.yml enforces resolve_environment, dependency installation, and build_site outcome guards", () => {
-      const actionYmlPath = path.resolve(process.cwd(), "pages/action.yml");
-      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      // Steps verification
+      const steps = action.runs.steps;
+      expect(Array.isArray(steps)).toBe(true);
 
-      expect(actionYmlContent).toContain("id: resolve_environment");
-      expect(actionYmlContent).toContain("id: install_dependencies");
-      expect(actionYmlContent).toContain("id: setup_vp");
-      expect(actionYmlContent).toContain("id: build_site");
+      const resolveEnvStep = steps.find((s: any) => s.id === "resolve_environment");
+      expect(resolveEnvStep).toBeDefined();
+      expect(resolveEnvStep.run).toContain('node "$ACTION_PATH/../dist/resolve-environment.mjs"');
 
-      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
-      expect(actionYmlContent).toContain("steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success'");
-      expect(actionYmlContent).toContain("steps.build_site.outcome == 'success'");
+      const siteVarsStep = steps.find((s: any) => s.id === "set_site_variables");
+      expect(siteVarsStep).toBeDefined();
+      expect(siteVarsStep.run).toContain('node "$ACTION_PATH/../dist/site-variables.mjs"');
+      expect(siteVarsStep.if).toContain("steps.resolve_environment.outcome == 'success'");
+
+      const buildSiteStep = steps.find((s: any) => s.id === "build_site");
+      expect(buildSiteStep).toBeDefined();
+      expect(buildSiteStep.run).toContain('node "$ACTION_PATH/../dist/build-command.mjs"');
+      expect(buildSiteStep.if).toContain("steps.resolve_environment.outcome == 'success'");
+      expect(buildSiteStep.if).toContain(
+        "steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success'",
+      );
+
+      // Upload artifact step guard
+      const uploadStep = steps.find((s: any) => s.uses?.startsWith("actions/upload-pages-artifact"));
+      expect(uploadStep).toBeDefined();
+      expect(uploadStep.if).toContain("steps.resolve_environment.outcome == 'success'");
+      expect(uploadStep.if).toContain("steps.build_site.outcome == 'success'");
+      expect(uploadStep.with.path).toBe("${{ steps.build_site.outputs.path }}");
     });
   });
 
@@ -258,7 +301,7 @@ describe("build-command", () => {
       );
     });
 
-    it("should handle failing build command with non-zero exit code without logging full user command string", async () => {
+    it("should handle failing build command with non-zero exit code without logging full user command string and without setting path output", async () => {
       process.env.BUILD_COMMAND = "npm run build --secret my-secret";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
@@ -270,6 +313,7 @@ describe("build-command", () => {
         "Build command execution failed with exit code 2.",
       );
       expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("my-secret"));
+      expect(core.setOutput).not.toHaveBeenCalledWith("path", expect.anything());
     });
 
     it("should handle exec throwing an exception and report actionable error message without user arguments", async () => {
@@ -317,22 +361,37 @@ describe("build-command", () => {
     });
 
     it("should validate and set step output 'path' to trimmed BUILD_PATH when specified", async () => {
-      const customDir = path.join(process.cwd(), "tmp_custom_out_dir");
-      if (!fs.existsSync(customDir)) {
-        fs.mkdirSync(customDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(customDir, "index.html"), "<h1>Custom Output</h1>");
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-custom-"));
+      fs.writeFileSync(path.join(tempDir, "index.html"), "<h1>Custom Output</h1>");
 
       try {
-        process.env.BUILD_PATH = "  tmp_custom_out_dir  ";
+        process.env.BUILD_PATH = `  ${tempDir}  `;
         vi.mocked(exec.exec).mockResolvedValue(0);
 
         const exitCode = await runBuildCommand({ exitOnFailure: false });
 
         expect(exitCode).toBe(0);
-        expect(core.setOutput).toHaveBeenCalledWith("path", "tmp_custom_out_dir");
+        expect(core.setOutput).toHaveBeenCalledWith("path", tempDir);
       } finally {
-        fs.rmSync(customDir, { recursive: true, force: true });
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should validate and set step output 'path' to relative BUILD_PATH", async () => {
+      const tempDir = fs.mkdtempSync(path.join(process.cwd(), "tmp_rel_build_out_"));
+      const relPath = path.relative(process.cwd(), tempDir);
+      fs.writeFileSync(path.join(tempDir, "index.html"), "<h1>Relative Build Output</h1>");
+
+      try {
+        process.env.BUILD_PATH = relPath;
+        vi.mocked(exec.exec).mockResolvedValue(0);
+
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(0);
+        expect(core.setOutput).toHaveBeenCalledWith("path", relPath);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
@@ -351,14 +410,11 @@ describe("build-command", () => {
     });
 
     it("should fail when build command succeeds but configured output directory is empty", async () => {
-      const emptyDir = path.join(process.cwd(), "tmp_empty_dist_test");
-      if (!fs.existsSync(emptyDir)) {
-        fs.mkdirSync(emptyDir, { recursive: true });
-      }
+      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-empty-"));
 
       try {
         process.env.BUILD_COMMAND = "npm run build";
-        process.env.BUILD_PATH = "tmp_empty_dist_test";
+        process.env.BUILD_PATH = emptyDir;
 
         vi.mocked(exec.exec).mockResolvedValue(0);
 
@@ -366,10 +422,10 @@ describe("build-command", () => {
 
         expect(exitCode).toBe(1);
         expect(core.setFailed).toHaveBeenCalledWith(
-          "Build output validation failed: Configured build output directory 'tmp_empty_dist_test' is empty.",
+          `Build output validation failed: Configured build output directory '${emptyDir}' is empty.`,
         );
       } finally {
-        fs.rmdirSync(emptyDir);
+        fs.rmSync(emptyDir, { recursive: true, force: true });
       }
     });
   });
@@ -497,26 +553,49 @@ describe("build-command", () => {
     });
 
     it("should throw error if output path is a file rather than a directory", () => {
-      const testFile = path.join(process.cwd(), "tmp_file_not_dir.txt");
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-file-"));
+      const testFile = path.join(tempDir, "file.txt");
       fs.writeFileSync(testFile, "hello");
 
       try {
-        expect(() => validateBuildOutput("tmp_file_not_dir.txt")).toThrow("Configured build output path 'tmp_file_not_dir.txt' is not a directory.");
+        expect(() => validateBuildOutput(testFile)).toThrow(`Configured build output path '${testFile}' is not a directory.`);
       } finally {
-        fs.rmSync(testFile, { force: true });
+        fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
     it("should throw error if output directory exists but is empty", () => {
-      const testDir = path.join(process.cwd(), "tmp_empty_output_dir");
-      if (!fs.existsSync(testDir)) {
-        fs.mkdirSync(testDir, { recursive: true });
-      }
+      const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-empty-"));
 
       try {
-        expect(() => validateBuildOutput("tmp_empty_output_dir")).toThrow("Configured build output directory 'tmp_empty_output_dir' is empty.");
+        expect(() => validateBuildOutput(testDir)).toThrow(`Configured build output directory '${testDir}' is empty.`);
       } finally {
-        fs.rmdirSync(testDir);
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should validate relative output path against explicit temporary working directory", () => {
+      const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cwd-"));
+      const relOutDir = "custom-relative-dist";
+      const absOutDir = path.join(tempCwd, relOutDir);
+
+      fs.mkdirSync(absOutDir, { recursive: true });
+      fs.writeFileSync(path.join(absOutDir, "index.html"), "<h1>Test Relative</h1>");
+
+      try {
+        expect(validateBuildOutput(relOutDir, tempCwd)).toBe(relOutDir);
+
+        expect(() => validateBuildOutput("missing-relative-dir", tempCwd)).toThrow(
+          "Configured build output directory 'missing-relative-dir' does not exist.",
+        );
+
+        const emptyRelDir = "empty-relative-dir";
+        fs.mkdirSync(path.join(tempCwd, emptyRelDir), { recursive: true });
+        expect(() => validateBuildOutput(emptyRelDir, tempCwd)).toThrow(
+          "Configured build output directory 'empty-relative-dir' is empty.",
+        );
+      } finally {
+        fs.rmSync(tempCwd, { recursive: true, force: true });
       }
     });
 
@@ -539,27 +618,24 @@ describe("build-command", () => {
     });
 
     it("should succeed if output directory exists and is non-empty", () => {
-      const testDir = path.join(process.cwd(), "tmp_valid_output_dir");
-      if (!fs.existsSync(testDir)) {
-        fs.mkdirSync(testDir, { recursive: true });
-      }
+      const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-valid-"));
       fs.writeFileSync(path.join(testDir, "index.html"), "<h1>Test</h1>");
 
       try {
-        expect(() => validateBuildOutput("tmp_valid_output_dir")).not.toThrow();
+        expect(() => validateBuildOutput(testDir)).not.toThrow();
       } finally {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
     });
 
     it("should succeed if output directory contains nested files and subdirectories", () => {
-      const testDir = path.join(process.cwd(), "tmp_nested_output_dir");
+      const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-nested-"));
       const nestedSubDir = path.join(testDir, "assets");
       fs.mkdirSync(nestedSubDir, { recursive: true });
       fs.writeFileSync(path.join(nestedSubDir, "app.js"), "console.log('test')");
 
       try {
-        expect(() => validateBuildOutput("tmp_nested_output_dir")).not.toThrow();
+        expect(() => validateBuildOutput(testDir)).not.toThrow();
       } finally {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
