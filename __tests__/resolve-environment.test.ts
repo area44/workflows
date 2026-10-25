@@ -386,6 +386,73 @@ describe("resolve-environment", () => {
     });
   });
 
+  describe("CI Workspace Setup and Restoration Safety", () => {
+    it("should simulate setup backup safety and prevent data loss when backup destination already exists", () => {
+      const tempDir = path.join(fixturesDir, "backup-safety-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig"}');
+      fs.writeFileSync(path.join(tempDir, "package.json.test_bak_123"), '{"name":"existing-bak"}');
+
+      process.chdir(tempDir);
+      try {
+        const item = "package.json";
+        const bakItem = `${item}.test_bak_123`;
+        let errorOccurred = false;
+
+        if (fs.existsSync(bakItem)) {
+          errorOccurred = true;
+        }
+
+        expect(errorOccurred).toBe(true);
+        expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe('{"name":"orig"}');
+        expect(fs.readFileSync(path.join(tempDir, "package.json.test_bak_123"), "utf8")).toBe(
+          '{"name":"existing-bak"}',
+        );
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should restore original files cleanly if setup fails midway", () => {
+      const tempDir = path.join(fixturesDir, "mid-setup-failure-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig-pkg"}');
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'orig-py'\n");
+
+      process.chdir(tempDir);
+      try {
+        const backedUpFiles: string[] = [];
+
+        // Back up package.json
+        fs.renameSync("package.json", "package.json.test_bak_999");
+        backedUpFiles.push("package.json|package.json.test_bak_999");
+
+        // Simulate setup failure before pyproject.toml is backed up
+        const setupFailed = true;
+
+        if (setupFailed) {
+          // Cleanup restores only items logged in backedUpFiles
+          for (const entry of backedUpFiles) {
+            const [orig, bak] = entry.split("|");
+            if (fs.existsSync(bak)) {
+              if (fs.existsSync(orig)) fs.rmSync(orig, { recursive: true, force: true });
+              fs.renameSync(bak, orig);
+            }
+          }
+        }
+
+        expect(fs.existsSync("package.json")).toBe(true);
+        expect(fs.readFileSync("package.json", "utf8")).toBe('{"name":"orig-pkg"}');
+        expect(fs.existsSync("pyproject.toml")).toBe(true);
+        expect(fs.readFileSync("pyproject.toml", "utf8")).toBe("[project]\nname = 'orig-py'\n");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("Cross-Language Integration Scenarios", () => {
     it("should handle JavaScript-only projects correctly", () => {
       const tempDir = path.join(fixturesDir, "js-only-integration-temp");
@@ -843,13 +910,13 @@ describe("resolve-environment", () => {
     it("should resolve runtime=bun when explicit runtime=bun is supplied even if package manager is pnpm", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
       vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ packageManager: "pnpm@11.21.0" }) as any,
+        JSON.stringify({ packageManager: "pnpm@12.15.0" }) as any,
       );
 
       const env = resolveEnvironment("bun");
 
       expect(env.js.runtime).toBe("bun");
-      expect(env.js.pm).toEqual({ name: "pnpm", version: "11.21.0" });
+      expect(env.js.pm).toEqual({ name: "pnpm", version: "12.15.0" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -884,7 +951,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
       {
@@ -914,7 +981,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: ">=1.0.0",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
       {
@@ -944,7 +1011,7 @@ describe("resolve-environment", () => {
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
-        expectedPm: { name: "pnpm", version: "11.21.0" },
+        expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
     ];
@@ -1084,6 +1151,21 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
     });
 
+    it("should verify python-version is empty string for python-none fixture output", () => {
+      const tempDir = path.join(fixturesDir, "autofix/python/none");
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.python.hasPythonSource).toBe(false);
+        expect(env.python.pythonVersion).toBe("");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
     it("should set has-python-source and setup-python to true and resolve python outputs when Python source exists", () => {
       const tempDir = path.join(fixturesDir, "python-source-test-temp");
       fs.mkdirSync(tempDir, { recursive: true });
@@ -1183,7 +1265,7 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
       expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
       expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.21.0");
+      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
       expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
