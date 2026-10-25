@@ -9,11 +9,21 @@ set -euo pipefail
 MODE="${1:-}"
 STATE_DIR="${TEST_WORKSPACE_STATE_DIR:-.test_workspace_state}"
 
-# Helper to validate that a path is safe and stays within CWD (no leading / or .. traversal)
+# Helper to validate that a relative workspace path is safe and stays within CWD
 validate_path() {
   local p="$1"
   if [[ -z "$p" || "$p" == /* || "$p" == *".."* ]]; then
     echo "Error: Refusing to operate on unsafe or out-of-bounds path: '$p'" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Helper to validate stash path
+validate_stash_path() {
+  local p="$1"
+  if [[ -z "$p" || "$p" != *"tests_stash_"* ]]; then
+    echo "Error: Refusing to operate on invalid stash path: '$p'" >&2
     return 1
   fi
   return 0
@@ -221,10 +231,23 @@ elif [[ "$MODE" == "cleanup" ]]; then
     exit 0
   fi
 
+  HAD_MANIFEST_ERROR=false
   HAD_RESTORE_FAILURE=false
 
-  # 1. Remove fixture installed files recorded during setup
+  # Pre-validate installed_fixture_files manifest
   if [ -f "$STATE_DIR/installed_fixture_files" ]; then
+    while IFS= read -r item; do
+      [ -z "$item" ] && continue
+      if ! validate_path "$item"; then
+        echo "Error: Installed fixture manifest contains invalid path '$item'. Failing closed." >&2
+        HAD_MANIFEST_ERROR=true
+        break
+      fi
+    done < "$STATE_DIR/installed_fixture_files"
+  fi
+
+  # 1. Remove fixture installed files recorded during setup (only if manifest validation passed)
+  if [ "$HAD_MANIFEST_ERROR" == "false" ] && [ -f "$STATE_DIR/installed_fixture_files" ]; then
     while IFS= read -r item; do
       if [ -n "$item" ] && validate_path "$item"; then
         rm -rf "$item"
@@ -240,7 +263,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
     fi
   fi
 
-  if [ "$SNAPSHOT_COMPLETE" == "true" ]; then
+  if [ "$SNAPSHOT_COMPLETE" == "true" ] && [ "$HAD_MANIFEST_ERROR" == "false" ]; then
     GENERATED_PATHS=(node_modules dist .venv .ruff_cache *.egg-info)
     for pattern in "${GENERATED_PATHS[@]}"; do
       for path in $pattern; do
@@ -262,26 +285,30 @@ elif [[ "$MODE" == "cleanup" ]]; then
       done
     done
   else
-    echo "Notice: Snapshot is missing or incomplete. Preserving generated paths to prevent data loss." >&2
+    echo "Notice: Snapshot is missing, incomplete, or state is invalid. Preserving generated paths to prevent data loss." >&2
   fi
 
   # 3. Restore backed up root items recorded in backed_up_files
   if [ -f "$STATE_DIR/backed_up_files" ]; then
     while IFS='|' read -r orig_item bak_item; do
-      if [ -n "$orig_item" ] && [ -n "$bak_item" ]; then
-        if validate_path "$orig_item" && validate_path "$bak_item" && [ -e "$bak_item" ]; then
-          # Check for failure injection during restore
-          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
-            echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
-            HAD_RESTORE_FAILURE=true
-            continue
-          fi
+      [ -z "$orig_item" ] && continue
+      if [ -z "$bak_item" ] || ! validate_path "$orig_item" || ! validate_path "$bak_item"; then
+        echo "Error: Invalid backup mapping in backed_up_files: '$orig_item|$bak_item'." >&2
+        HAD_RESTORE_FAILURE=true
+        continue
+      fi
 
-          rm -rf "$orig_item"
-          if ! mv "$bak_item" "$orig_item"; then
-            echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
-            HAD_RESTORE_FAILURE=true
-          fi
+      if [ -e "$bak_item" ]; then
+        if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
+          echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
+          HAD_RESTORE_FAILURE=true
+          continue
+        fi
+
+        rm -rf "$orig_item"
+        if ! mv "$bak_item" "$orig_item"; then
+          echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
+          HAD_RESTORE_FAILURE=true
         fi
       fi
     done < "$STATE_DIR/backed_up_files"
@@ -292,8 +319,8 @@ elif [[ "$MODE" == "cleanup" ]]; then
     STASH_PATH=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
     TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
 
-    if [ "$TESTS_EXISTED" == "true" ]; then
-      if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
+    if [[ "$TESTS_EXISTED" == "true" ]]; then
+      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH" && [ -d "$STASH_PATH/__tests__" ]; then
         if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
           echo "Error: Injected failure restoring stashed __tests__." >&2
           HAD_RESTORE_FAILURE=true
@@ -306,21 +333,27 @@ elif [[ "$MODE" == "cleanup" ]]; then
             HAD_RESTORE_FAILURE=true
           fi
         fi
+      else
+        echo "Error: Invalid or missing stashed __tests__ directory at '$STASH_PATH'." >&2
+        HAD_RESTORE_FAILURE=true
       fi
-    else
+    elif [[ "$TESTS_EXISTED" == "false" ]]; then
       # __tests__ did not exist before setup. Remove any test-created __tests__ directory safely.
       rm -rf __tests__
-      if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH" ]; then
+      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH" && [ -d "$STASH_PATH" ]; then
         rm -rf "$STASH_PATH"
       fi
+    else
+      echo "Error: Invalid or missing tests_existed_before_setup state in stash.info: '$TESTS_EXISTED'. Preserving __tests__." >&2
+      HAD_RESTORE_FAILURE=true
     fi
   fi
 
-  # Only remove STATE_DIR if all restorations succeeded
-  if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
+  # Only remove STATE_DIR if all restorations and manifest checks succeeded
+  if [ "$HAD_RESTORE_FAILURE" == "false" ] && [ "$HAD_MANIFEST_ERROR" == "false" ]; then
     rm -rf "$STATE_DIR"
   else
-    echo "Warning: Restoration encountered failures. Preserving state directory '$STATE_DIR' for recovery." >&2
+    echo "Warning: Cleanup or restoration encountered errors. Preserving state directory '$STATE_DIR' for recovery." >&2
   fi
 
   exit 0
