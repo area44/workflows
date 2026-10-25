@@ -1084,6 +1084,21 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
     });
 
+    it("should verify python-version is empty string for python-none fixture output", () => {
+      const tempDir = path.join(fixturesDir, "autofix/python/none");
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.python.hasPythonSource).toBe(false);
+        expect(env.python.pythonVersion).toBe("");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
     it("should set has-python-source and setup-python to true and resolve python outputs when Python source exists", () => {
       const tempDir = path.join(fixturesDir, "python-source-test-temp");
       fs.mkdirSync(tempDir, { recursive: true });
