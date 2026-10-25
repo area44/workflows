@@ -14,7 +14,7 @@ function runScript(
   let failed = false;
 
   try {
-    output = execSync(`bash "${SCRIPT_PATH}" ${args}`, {
+    output = execSync(`bash "${SCRIPT_PATH}" ${args} 2>&1`, {
       cwd,
       env: {
         ...process.env,
@@ -133,8 +133,12 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
 
     runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
-    runScript("cleanup", tempDir, { env: { INJECT_FAILURE_RESTORE: "1" } });
+    const output = runScript("cleanup", tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_RESTORE: "1" },
+    });
 
+    expect(output).toContain("Injected failure restoring");
     const stateDir = path.join(tempDir, ".test_workspace_state");
     expect(fs.existsSync(stateDir)).toBe(true);
     expect(fs.existsSync(path.join(stateDir, "backed_up_files"))).toBe(true);
@@ -173,8 +177,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     fs.mkdirSync(nodeModules, { recursive: true });
     fs.writeFileSync(path.join(nodeModules, "sentinel.txt"), "keep-me");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir);
 
+    expect(output).toContain("missing or incomplete");
     expect(fs.existsSync(path.join(nodeModules, "sentinel.txt"))).toBe(true);
   });
 
@@ -182,22 +187,39 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
 
     const preExistingDir = path.join(tempDir, "node_modules");
     fs.mkdirSync(preExistingDir, { recursive: true });
     fs.writeFileSync(path.join(preExistingDir, "sentinel.txt"), "sentinel");
 
-    // Write malformed path with traversal in installed_fixture_files
     fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "../unsafe_path\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
-    // Unsafe deletion refused, pre-existing path preserved, state dir preserved
+    expect(output).toContain("Unsafe item in installed_fixture_files");
     expect(fs.existsSync(path.join(preExistingDir, "sentinel.txt"))).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("preserves tests directory when stash.info contains missing or invalid tests_existed_before_setup", () => {
+  it("does not delete generated paths when snapshot metadata is incomplete or inconsistent", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=incomplete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+
+    const generatedDir = path.join(tempDir, "node_modules");
+    fs.mkdirSync(generatedDir, { recursive: true });
+    fs.writeFileSync(path.join(generatedDir, "generated.txt"), "gen");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Snapshot is missing, incomplete, or state is invalid");
+    expect(fs.existsSync(path.join(generatedDir, "generated.txt"))).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("preserves tests directory when stash metadata is invalid", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
 
@@ -205,27 +227,59 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     fs.mkdirSync(testsDir, { recursive: true });
     fs.writeFileSync(path.join(testsDir, "my_test.test.js"), "content");
 
-    // Write stash.info with invalid tests_existed_before_setup value
     fs.writeFileSync(
       path.join(stateDir, "stash.info"),
       `stash_tests_path=${path.join(tempDir, "runner_temp", "tests_stash_123")}\ntests_existed_before_setup=invalid_value\n`
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Invalid tests_existed_before_setup value");
     expect(fs.existsSync(path.join(testsDir, "my_test.test.js"))).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("rejects unsafe paths or invalid backup mappings in backed_up_files manifest", () => {
+  it("does not delete unrelated tests content when state claims tests directory did not exist before setup", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
 
-    // Write malformed backup mapping (missing pipe delimiter or absolute path)
+    const testsDir = path.join(tempDir, "__tests__");
+    fs.mkdirSync(testsDir, { recursive: true });
+    fs.writeFileSync(path.join(testsDir, "unrelated.test.js"), "unrelated");
+
+    // Malformed stash info missing required keys
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "malformed_key=value\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Invalid or missing stash.info");
+    expect(fs.existsSync(path.join(testsDir, "unrelated.test.js"))).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects unsafe paths and invalid backup mappings before restoration", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
     fs.writeFileSync(path.join(stateDir, "backed_up_files"), "/etc/passwd|package.json.test_bak_123\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Backup original item must be top-level root path");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("preserves original files when backup is missing or mapping is inconsistent", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "package.json|package.json.test_bak_99999\n");
+    fs.writeFileSync(path.join(tempDir, "package.json"), "current-content");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Missing backup destination 'package.json.test_bak_99999'");
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("current-content");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
