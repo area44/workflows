@@ -138,8 +138,22 @@ describe("site-variables", () => {
       expect(core.exportVariable).not.toHaveBeenCalled();
     });
 
-    it("should handle missing GITHUB_ACTION_PATH by falling back gracefully", () => {
+    it("should fall back to ACTION_PATH when GITHUB_ACTION_PATH is missing", () => {
       delete process.env.GITHUB_ACTION_PATH;
+      process.env.ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
+      process.env.GITHUB_REPOSITORY = "owner/project-repo";
+      process.env.GITHUB_REPOSITORY_OWNER = "owner";
+
+      setSiteVariables();
+
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://owner.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/project-repo/");
+      expect(core.exportVariable).toHaveBeenCalledWith("BASE_URL", "/project-repo/");
+    });
+
+    it("should handle missing GITHUB_ACTION_PATH and ACTION_PATH by falling back gracefully", () => {
+      delete process.env.GITHUB_ACTION_PATH;
+      delete process.env.ACTION_PATH;
       process.env.GITHUB_REPOSITORY = "owner/project-repo";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 

@@ -2,7 +2,9 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
@@ -87,8 +89,7 @@ describe("autofix", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp lockfile dir " + Math.random().toString(36).substring(2, 9));
-      fs.mkdirSync(tempDir, { recursive: true });
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-lock-"));
     });
 
     afterEach(() => {
@@ -99,9 +100,8 @@ describe("autofix", () => {
 
     it("should propagate non-zero exit code when ruff format fails after ruff check succeeds", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-fmt-fail-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      const ruffTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-ruff-fmt-"));
+      fs.writeFileSync(path.join(ruffTempDir, "main.py"), "print('hello')\n");
 
       vi.mocked(exec.exec).mockImplementation(async (_executable, args) => {
         if (args?.[0] === "format") return 1;
@@ -109,19 +109,18 @@ describe("autofix", () => {
       });
 
       try {
-        await expect(executeRuffAutofix(tempDir)).rejects.toThrow('Ruff command "ruff format ." failed. Check Python and Ruff configuration.');
+        await expect(executeRuffAutofix(ruffTempDir)).rejects.toThrow('Ruff command "ruff format ." failed. Check Python and Ruff configuration.');
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(ruffTempDir, { recursive: true, force: true });
       }
     });
 
     it("should handle uv sync failure during Python workflow execution", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/uv-fail-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
-      fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
+      const uvTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-uv-fail-"));
+      fs.writeFileSync(path.join(uvTempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(uvTempDir, "pyproject.toml"), "[project]\nname = 'demo'\nversion = '0.1.0'\n");
+      fs.writeFileSync(path.join(uvTempDir, "uv.lock"), "version = 1\n");
 
       vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
         if (executable === "uv" && args?.[0] === "sync") return 1;
@@ -129,32 +128,32 @@ describe("autofix", () => {
       });
 
       try {
-        await run(tempDir);
+        await run(uvTempDir);
 
-        expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: uvTempDir }));
         expect(core.setFailed).toHaveBeenCalledWith(
           expect.stringContaining('Python command "uv sync" failed.'),
         );
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(uvTempDir, { recursive: true, force: true });
       }
     });
 
     it("should run Python workflow when Python source exists only under tests/ directory", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tests-only-temp");
-      fs.mkdirSync(path.join(tempDir, "tests"), { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "tests/test_foo.py"), "def test_foo(): pass\n");
+      const testsTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-tests-only-"));
+      fs.mkdirSync(path.join(testsTempDir, "tests"), { recursive: true });
+      fs.writeFileSync(path.join(testsTempDir, "tests/test_foo.py"), "def test_foo(): pass\n");
 
       try {
-        await run(tempDir);
+        await run(testsTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: testsTempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: testsTempDir }));
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(testsTempDir, { recursive: true, force: true });
       }
     });
 
@@ -243,8 +242,7 @@ describe("autofix", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp install dir " + Math.random().toString(36).substring(2, 9));
-      fs.mkdirSync(tempDir, { recursive: true });
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-install-"));
     });
 
     afterEach(() => {
@@ -400,31 +398,29 @@ describe("autofix", () => {
 
     it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/mixed-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { check: "npm run check" } }));
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('mixed')\n");
-      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+      const mixedTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-mixed-"));
+      fs.writeFileSync(path.join(mixedTempDir, "package.json"), JSON.stringify({ scripts: { check: "npm run check" } }));
+      fs.writeFileSync(path.join(mixedTempDir, "main.py"), "print('mixed')\n");
+      fs.writeFileSync(path.join(mixedTempDir, "requirements.txt"), "requests==2.31.0\n");
 
       try {
-        await run(tempDir);
+        await run(mixedTempDir);
 
         expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
-        expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: mixedTempDir }));
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
-        expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: tempDir }));
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: mixedTempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: mixedTempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: mixedTempDir }));
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(mixedTempDir, { recursive: true, force: true });
       }
     });
 
     it("should run Ruff lint before Ruff format in Python repository", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-order-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      const orderTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-order-"));
+      fs.writeFileSync(path.join(orderTempDir, "main.py"), "print('hello')\n");
 
       const executedCommands: string[] = [];
       vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
@@ -433,69 +429,65 @@ describe("autofix", () => {
       });
 
       try {
-        await executeRuffAutofix(tempDir);
+        await executeRuffAutofix(orderTempDir);
 
         expect(executedCommands).toEqual(["ruff check --fix .", "ruff format ."]);
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(orderTempDir, { recursive: true, force: true });
       }
     });
 
     it("should not execute Ruff commands in a non-Python repository", async () => {
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/non-py-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "README.md"), "# Hello");
+      const nonPyTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-nonpy-"));
+      fs.writeFileSync(path.join(nonPyTempDir, "README.md"), "# Hello");
 
       try {
-        await executeRuffAutofix(tempDir);
+        await executeRuffAutofix(nonPyTempDir);
 
         expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(nonPyTempDir, { recursive: true, force: true });
       }
     });
 
     it("should throw error when ruff executable is not available in PATH", async () => {
       vi.spyOn(io, "which").mockResolvedValue("");
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/no-ruff-bin-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      const noRuffTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-noruff-"));
+      fs.writeFileSync(path.join(noRuffTempDir, "main.py"), "print('hello')\n");
 
       try {
-        await expect(executeRuffAutofix(tempDir)).rejects.toThrow("Required Python binary 'ruff' is not available in PATH.");
+        await expect(executeRuffAutofix(noRuffTempDir)).rejects.toThrow("Required Python binary 'ruff' is not available in PATH.");
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(noRuffTempDir, { recursive: true, force: true });
       }
     });
 
     it("should propagate non-zero ruff exit code as Error", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-fail-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      const ruffFailTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-ruff-fail-"));
+      fs.writeFileSync(path.join(ruffFailTempDir, "main.py"), "print('hello')\n");
 
       vi.mocked(exec.exec).mockResolvedValueOnce(1);
 
       try {
-        await expect(executeRuffAutofix(tempDir)).rejects.toThrow('Ruff command "ruff check --fix ." failed. Check Python and Ruff configuration.');
+        await expect(executeRuffAutofix(ruffFailTempDir)).rejects.toThrow('Ruff command "ruff check --fix ." failed. Check Python and Ruff configuration.');
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(ruffFailTempDir, { recursive: true, force: true });
       }
     });
 
     it("should execute Ruff in specified working directory", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/ruff-cwd-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      const cwdTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-cwd-"));
+      fs.writeFileSync(path.join(cwdTempDir, "main.py"), "print('hello')\n");
 
       try {
-        await executeRuffAutofix(tempDir);
+        await executeRuffAutofix(cwdTempDir);
 
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
-        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: tempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: cwdTempDir }));
+        expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: cwdTempDir }));
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(cwdTempDir, { recursive: true, force: true });
       }
     });
 
@@ -531,49 +523,46 @@ describe("autofix", () => {
     });
 
     it("should run Python workflow in Python-only repository without package.json when Python source exists", async () => {
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/py-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('py-only')\n");
+      const pyOnlyTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-pyonly-"));
+      fs.writeFileSync(path.join(pyOnlyTempDir, "main.py"), "print('py-only')\n");
 
       try {
-        await run(tempDir);
+        await run(pyOnlyTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(pyOnlyTempDir, { recursive: true, force: true });
       }
     });
 
     it("should not run Python workflow for repository with only pyproject.toml and no .py files", async () => {
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/pyproject-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
+      const pyprojectOnlyTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-pyproj-"));
+      fs.writeFileSync(path.join(pyprojectOnlyTempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
       try {
-        await run(tempDir);
+        await run(pyprojectOnlyTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
         expect(exec.exec).not.toHaveBeenCalled();
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(pyprojectOnlyTempDir, { recursive: true, force: true });
       }
     });
 
     it("should not run Python workflow for repository with only [tool.ruff] configuration and no .py files", async () => {
-      const tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/python/tool-ruff-only-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
+      const toolRuffOnlyTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-toolruff-"));
+      fs.writeFileSync(path.join(toolRuffOnlyTempDir, "pyproject.toml"), "[tool.ruff]\nline-length = 88\n");
 
       try {
-        await run(tempDir);
+        await run(toolRuffOnlyTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected Python package manager"));
         expect(exec.exec).not.toHaveBeenCalled();
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(toolRuffOnlyTempDir, { recursive: true, force: true });
       }
     });
 
@@ -915,11 +904,7 @@ describe("autofix", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = path.join(
-        originalCwd,
-        "__tests__/fixtures/autofix/temp matrix dir " + Math.random().toString(36).substring(2, 9),
-      );
-      fs.mkdirSync(tempDir, { recursive: true });
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-matrix-"));
     });
 
     afterEach(() => {
@@ -928,33 +913,65 @@ describe("autofix", () => {
       }
     });
 
-    it("should confirm autofix/action.yml launches dist/autofix.mjs with node unconditionally", () => {
+    it("should validate composite action contract structure, inputs, outputs, and execution guards in autofix/action.yml", () => {
       const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
       const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      const action = YAML.parse(actionYmlContent);
 
-      expect(actionYmlContent).toContain("run: node \"$ACTION_PATH/../dist/autofix.mjs\"");
-      expect(actionYmlContent).not.toContain("bun \"$ACTION_PATH/../dist/autofix.mjs\"");
-      expect(actionYmlContent).not.toContain("if [ \"$RUNTIME\" = \"bun\" ]");
-    });
+      expect(action.name).toBe("Autofix");
+      expect(action.runs.using).toBe("composite");
 
-    it("should confirm autofix/action.yml launches all internal entrypoints with node", () => {
-      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
-      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      // Inputs
+      expect(action.inputs).toHaveProperty("runtime");
 
-      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/resolve-environment.mjs\"");
-      expect(actionYmlContent).toContain("node \"$ACTION_PATH/../dist/autofix.mjs\"");
-    });
+      // Outputs
+      expect(action.outputs).toHaveProperty("node-version");
+      expect(action.outputs).toHaveProperty("bun-version");
+      expect(action.outputs).toHaveProperty("package-manager");
+      expect(action.outputs).toHaveProperty("package-manager-version");
+      expect(action.outputs).toHaveProperty("runtime");
+      expect(action.outputs).toHaveProperty("has-js-project");
+      expect(action.outputs).toHaveProperty("has-python-source");
+      expect(action.outputs).toHaveProperty("python-version");
+      expect(action.outputs).toHaveProperty("python-package-manager");
+      expect(action.outputs).toHaveProperty("ruff-version");
 
-    it("should confirm autofix/action.yml enforces step IDs and outcome conditions for resolve_environment and run_autofix", () => {
-      const actionYmlPath = path.resolve(originalCwd, "autofix/action.yml");
-      const actionYmlContent = fs.readFileSync(actionYmlPath, "utf8");
+      // Steps
+      const steps = action.runs.steps;
+      expect(Array.isArray(steps)).toBe(true);
 
-      expect(actionYmlContent).toContain("id: resolve_environment");
-      expect(actionYmlContent).toContain("id: run_autofix");
-      expect(actionYmlContent).toContain("steps.resolve_environment.outcome == 'success'");
-      expect(actionYmlContent).toContain("steps.run_autofix.outcome == 'success'");
-      expect(actionYmlContent).toContain("NODE_SETUP_OUTCOME:");
-      expect(actionYmlContent).toContain("RUFF_SETUP_OUTCOME:");
+      const resolveEnvStep = steps.find((s: any) => s.id === "resolve_environment");
+      expect(resolveEnvStep).toBeDefined();
+      expect(resolveEnvStep.run).toContain('node "$ACTION_PATH/../dist/resolve-environment.mjs"');
+
+      const setupUvStep = steps.find((s: any) => s.id === "setup_uv");
+      expect(setupUvStep).toBeDefined();
+      expect(setupUvStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+      expect(setupUvStep.if).toContain("steps.resolve_environment.outputs.python-package-manager == 'uv'");
+
+      const setupPyStep = steps.find((s: any) => s.id === "setup_python");
+      expect(setupPyStep).toBeDefined();
+      expect(setupPyStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+      expect(setupPyStep.if).toContain("steps.resolve_environment.outputs.python-package-manager != 'uv'");
+
+      const setupRuffStep = steps.find((s: any) => s.id === "setup_ruff");
+      expect(setupRuffStep).toBeDefined();
+      expect(setupRuffStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+
+      const runAutofixStep = steps.find((s: any) => s.id === "run_autofix");
+      expect(runAutofixStep).toBeDefined();
+      expect(runAutofixStep.run).toContain('node "$ACTION_PATH/../dist/autofix.mjs"');
+      expect(runAutofixStep.env).toHaveProperty("NODE_SETUP_OUTCOME");
+      expect(runAutofixStep.env).toHaveProperty("BUN_SETUP_OUTCOME");
+      expect(runAutofixStep.env).toHaveProperty("PNPM_SETUP_OUTCOME");
+      expect(runAutofixStep.env).toHaveProperty("UV_SETUP_OUTCOME");
+      expect(runAutofixStep.env).toHaveProperty("PY_SETUP_OUTCOME");
+      expect(runAutofixStep.env).toHaveProperty("RUFF_SETUP_OUTCOME");
+
+      const autofixCiStep = steps.find((s: any) => s.uses?.startsWith("autofix-ci/action"));
+      expect(autofixCiStep).toBeDefined();
+      expect(autofixCiStep.if).toContain("github.workflow == 'autofix.ci'");
+      expect(autofixCiStep.if).toContain("steps.run_autofix.outcome == 'success'");
     });
 
     it("should succeed when both JS and Python workflows succeed in a mixed project", async () => {
@@ -1118,8 +1135,7 @@ describe("autofix", () => {
     let tempDir: string;
 
     beforeEach(() => {
-      tempDir = path.join(originalCwd, "__tests__/fixtures/autofix/temp safety dir " + Math.random().toString(36).substring(2, 9));
-      fs.mkdirSync(tempDir, { recursive: true });
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-safety-"));
     });
 
     afterEach(() => {
