@@ -33,11 +33,17 @@ ROOT_ITEMS=(
   runtime.txt
   setup.py
   setup.cfg
+  src
+  README.md
 )
 
-# Helper to check if a root item is in the allowlist
+# Helper to check if a root item is allowed for backup/restoration
 is_allowed_root_item() {
   local item="${1:-}"
+  # Forbid empty or reserved root paths
+  if [[ -z "$item" || "$item" == "." || "$item" == ".." || "$item" == *"/"* || "$item" == ".git" || "$item" == ".github" || "$item" == "$STATE_DIR" || "$item" == "pages" || "$item" == "autofix" ]]; then
+    return 1
+  fi
   for allowed in "${ROOT_ITEMS[@]}"; do
     if [[ "$item" == "$allowed" ]]; then
       return 0
