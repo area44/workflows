@@ -378,10 +378,9 @@ describe("build-command", () => {
     });
 
     it("should validate and set step output 'path' to relative BUILD_PATH", async () => {
-      const relPath = "tmp_relative_build_out";
-      const fullPath = path.join(process.cwd(), relPath);
-      fs.mkdirSync(fullPath, { recursive: true });
-      fs.writeFileSync(path.join(fullPath, "index.html"), "<h1>Relative Build Output</h1>");
+      const tempDir = fs.mkdtempSync(path.join(process.cwd(), "tmp_rel_build_out_"));
+      const relPath = path.relative(process.cwd(), tempDir);
+      fs.writeFileSync(path.join(tempDir, "index.html"), "<h1>Relative Build Output</h1>");
 
       try {
         process.env.BUILD_PATH = relPath;
@@ -392,7 +391,7 @@ describe("build-command", () => {
         expect(exitCode).toBe(0);
         expect(core.setOutput).toHaveBeenCalledWith("path", relPath);
       } finally {
-        fs.rmSync(fullPath, { recursive: true, force: true });
+        fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
