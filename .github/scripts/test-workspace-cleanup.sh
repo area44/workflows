@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# test-workspace-cleanup.sh: Ownership-aware, failure-safe setup and cleanup for GitHub Actions test matrix runs.
+# test-workspace-cleanup.sh: Ownership-aware, crash-safe setup and cleanup for GitHub Actions test matrix runs.
 # Commands:
 #   setup   <action> <runtime> <pm> <type> [fixture]
 #   cleanup
@@ -191,14 +191,16 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   }
 
-  echo "SETUP_PHASE=INIT" > "$STATE_DIR/phase.status"
+  echo "SETUP_PHASE=PHASE_INIT" > "$STATE_DIR/phase.status"
 
   if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
     echo "Injected failure before snapshot initialization." >&2
     exit 1
   fi
 
-  # 1. Track __tests__ stash state safely with exclusive directory ownership
+  # 1. Stash __tests__
+  echo "SETUP_PHASE=PHASE_STASHING" > "$STATE_DIR/phase.status"
+
   TMP_TESTS_BASE="${RUNNER_TEMP:-/tmp}"
   mkdir -p "$TMP_TESTS_BASE"
   TMP_TESTS=$(mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX") || {
@@ -217,7 +219,7 @@ if [[ "$MODE" == "setup" ]]; then
     echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
   fi
 
-  echo "SETUP_PHASE=STASH" > "$STATE_DIR/phase.status"
+  echo "SETUP_PHASE=PHASE_STASHED" > "$STATE_DIR/phase.status"
 
   if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
     echo "Injected failure after stashing __tests__." >&2
@@ -225,6 +227,7 @@ if [[ "$MODE" == "setup" ]]; then
   fi
 
   # 2. Snapshot pre-existing items in current working directory
+  echo "SETUP_PHASE=PHASE_SNAPSHOTING" > "$STATE_DIR/phase.status"
   touch "$STATE_DIR/snapshot_pre_existing_items"
   for item in *; do
     if [ "$item" != "*" ] && [ -e "$item" ] && [ "$item" != "$STATE_DIR" ]; then
@@ -237,9 +240,10 @@ if [[ "$MODE" == "setup" ]]; then
   done
 
   echo "SNAPSHOT_STATUS=complete" > "$STATE_DIR/snapshot.status"
-  echo "SETUP_PHASE=SNAPSHOT" > "$STATE_DIR/phase.status"
+  echo "SETUP_PHASE=PHASE_SNAPSHOTTED" > "$STATE_DIR/phase.status"
 
   # 3. Initialize backup, installation, and ownership manifests
+  echo "SETUP_PHASE=PHASE_BACKING_UP" > "$STATE_DIR/phase.status"
   touch "$STATE_DIR/backed_up_files"
   touch "$STATE_DIR/installed_fixture_files"
   touch "$STATE_DIR/fixture_ownership_manifest"
@@ -265,9 +269,10 @@ if [[ "$MODE" == "setup" ]]; then
     fi
   done
 
-  echo "SETUP_PHASE=BACKUP" > "$STATE_DIR/phase.status"
+  echo "SETUP_PHASE=PHASE_BACKED_UP" > "$STATE_DIR/phase.status"
 
   # 4. Install fixture files safely and record each installation
+  echo "SETUP_PHASE=PHASE_INSTALLING" > "$STATE_DIR/phase.status"
   COUNT=0
   if ls -1A "$TMP_FIX" > "$STATE_DIR/fixture_items_list" 2>/dev/null; then
     while IFS= read -r item; do
@@ -305,52 +310,70 @@ if [[ "$MODE" == "setup" ]]; then
     rm -f "$STATE_DIR/fixture_items_list"
   fi
 
-  echo "SETUP_PHASE=COMPLETE" > "$STATE_DIR/phase.status"
+  echo "SETUP_PHASE=PHASE_COMPLETE" > "$STATE_DIR/phase.status"
   exit 0
 
 elif [[ "$MODE" == "cleanup" ]]; then
   shopt -s dotglob
 
-  # If state directory does not exist, cleanup cannot establish ownership state. Abort path deletion safely.
+  # If state directory does not exist, cleanup cannot establish ownership state. Return 0.
   if [ ! -d "$STATE_DIR" ]; then
-    echo "Notice: Workspace state directory '$STATE_DIR' is missing or incomplete. Skipping path deletion to prevent data loss." >&2
+    echo "Notice: Workspace state directory '$STATE_DIR' is missing. Skipping cleanup." >&2
     exit 0
   fi
 
   VALIDATION_FAILED=false
 
-  # Determine setup phase
+  # Determine and validate setup phase value strictly
   SETUP_PHASE=""
   if [ -f "$STATE_DIR/phase.status" ]; then
-    SETUP_PHASE=$(grep "^SETUP_PHASE=" "$STATE_DIR/phase.status" 2>/dev/null | cut -d'=' -f2- || true)
-  fi
-
-  if [ -z "$SETUP_PHASE" ]; then
-    if [ -f "$STATE_DIR/stash.info" ] || [ -f "$STATE_DIR/snapshot.status" ] || [ -f "$STATE_DIR/backed_up_files" ]; then
-      echo "Error: State directory exists with recovery metadata but missing or malformed phase.status. Failing closed." >&2
+    lines_count=$(wc -l < "$STATE_DIR/phase.status" 2>/dev/null || echo 0)
+    if [ "$lines_count" -gt 1 ]; then
+      echo "Error: Conflicting phase status entries in phase.status. Failing closed." >&2
       VALIDATION_FAILED=true
     else
-      echo "Notice: State directory missing phase status and recovery metadata. Failing closed." >&2
-      VALIDATION_FAILED=true
+      SETUP_PHASE=$(grep "^SETUP_PHASE=" "$STATE_DIR/phase.status" 2>/dev/null | cut -d'=' -f2- || true)
     fi
   fi
 
-  # Validate mandatory phase metadata
-  if [[ "$SETUP_PHASE" == "STASH" || "$SETUP_PHASE" == "SNAPSHOT" || "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
+  VALID_PHASES=("PHASE_INIT" "PHASE_STASHING" "PHASE_STASHED" "PHASE_SNAPSHOTING" "PHASE_SNAPSHOTTED" "PHASE_BACKING_UP" "PHASE_BACKED_UP" "PHASE_INSTALLING" "PHASE_COMPLETE")
+
+  is_valid_phase=false
+  for vp in "${VALID_PHASES[@]}"; do
+    if [[ "$SETUP_PHASE" == "$vp" ]]; then
+      is_valid_phase=true
+      break
+    fi
+  done
+
+  if [[ "$is_valid_phase" != "true" ]]; then
+    echo "Error: State directory exists with invalid or unknown SETUP_PHASE '$SETUP_PHASE'. Failing closed." >&2
+    VALIDATION_FAILED=true
+  fi
+
+  # Mandatory phase metadata check based on phase reached
+  if [[ "$SETUP_PHASE" == "PHASE_STASHING" || "$SETUP_PHASE" == "PHASE_STASHED" || "$SETUP_PHASE" == "PHASE_SNAPSHOTING" || "$SETUP_PHASE" == "PHASE_SNAPSHOTTED" || "$SETUP_PHASE" == "PHASE_BACKING_UP" || "$SETUP_PHASE" == "PHASE_BACKED_UP" || "$SETUP_PHASE" == "PHASE_INSTALLING" || "$SETUP_PHASE" == "PHASE_COMPLETE" ]]; then
     if [ ! -f "$STATE_DIR/stash.info" ]; then
       echo "Error: Missing mandatory 'stash.info' for setup phase '$SETUP_PHASE'. Failing closed." >&2
       VALIDATION_FAILED=true
     fi
   fi
 
-  if [[ "$SETUP_PHASE" == "SNAPSHOT" || "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
-    if [ ! -f "$STATE_DIR/snapshot.status" ] || [ ! -f "$STATE_DIR/snapshot_pre_existing_items" ]; then
-      echo "Error: Missing mandatory snapshot metadata for setup phase '$SETUP_PHASE'. Failing closed." >&2
+  if [[ "$SETUP_PHASE" == "PHASE_SNAPSHOTING" || "$SETUP_PHASE" == "PHASE_SNAPSHOTTED" || "$SETUP_PHASE" == "PHASE_BACKING_UP" || "$SETUP_PHASE" == "PHASE_BACKED_UP" || "$SETUP_PHASE" == "PHASE_INSTALLING" || "$SETUP_PHASE" == "PHASE_COMPLETE" ]]; then
+    if [ ! -f "$STATE_DIR/snapshot_pre_existing_items" ]; then
+      echo "Error: Missing mandatory 'snapshot_pre_existing_items' for setup phase '$SETUP_PHASE'. Failing closed." >&2
       VALIDATION_FAILED=true
     fi
   fi
 
-  if [[ "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
+  if [[ "$SETUP_PHASE" == "PHASE_SNAPSHOTTED" || "$SETUP_PHASE" == "PHASE_BACKING_UP" || "$SETUP_PHASE" == "PHASE_BACKED_UP" || "$SETUP_PHASE" == "PHASE_INSTALLING" || "$SETUP_PHASE" == "PHASE_COMPLETE" ]]; then
+    if [ ! -f "$STATE_DIR/snapshot.status" ]; then
+      echo "Error: Missing mandatory 'snapshot.status' for setup phase '$SETUP_PHASE'. Failing closed." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
+  if [[ "$SETUP_PHASE" == "PHASE_BACKING_UP" || "$SETUP_PHASE" == "PHASE_BACKED_UP" || "$SETUP_PHASE" == "PHASE_INSTALLING" || "$SETUP_PHASE" == "PHASE_COMPLETE" ]]; then
     if [ ! -f "$STATE_DIR/backed_up_files" ] || [ ! -f "$STATE_DIR/installed_fixture_files" ] || [ ! -f "$STATE_DIR/fixture_ownership_manifest" ]; then
       echo "Error: Missing mandatory backup or ownership metadata for setup phase '$SETUP_PHASE'. Failing closed." >&2
       VALIDATION_FAILED=true
@@ -492,9 +515,17 @@ elif [[ "$MODE" == "cleanup" ]]; then
         VALIDATION_FAILED=true
       else
         stashed_tests="${STASH_PATH}/__tests__"
-        if [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; then
-          echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
-          VALIDATION_FAILED=true
+        # In PHASE_STASHING, __tests__ could either be in workspace or already moved into stash
+        if [[ "$SETUP_PHASE" == "PHASE_STASHING" ]]; then
+          if [ ! -d "$stashed_tests" ] && [ ! -d "__tests__" ]; then
+            echo "Error: Neither stashed __tests__ nor workspace __tests__ exist during PHASE_STASHING." >&2
+            VALIDATION_FAILED=true
+          fi
+        else
+          if [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; then
+            echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
+            VALIDATION_FAILED=true
+          fi
         fi
       fi
     elif [[ "$TESTS_EXISTED" == "false" ]]; then
@@ -511,8 +542,8 @@ elif [[ "$MODE" == "cleanup" ]]; then
   # --- PHASE 2: DESTRUCTIVE EXECUTION PHASE (ONLY RUN IF ALL VALIDATIONS PASSED) ---
 
   if [ "$VALIDATION_FAILED" == "true" ]; then
-    echo "Notice: Aborting cleanup execution due to manifest validation failures. Preserving workspace and recovery state." >&2
-    exit 0
+    echo "Error: Aborting cleanup execution due to manifest validation failures. Preserving workspace and recovery state." >&2
+    exit 1
   fi
 
   HAD_RESTORE_FAILURE=false
@@ -564,7 +595,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
 
       rm -rf "$orig_item"
       if ! mv "$bak_item" "$orig_item"; then
-        echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
+        echo "Error: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
         HAD_RESTORE_FAILURE=true
       fi
     fi
@@ -578,12 +609,17 @@ elif [[ "$MODE" == "cleanup" ]]; then
         echo "Error: Injected failure restoring stashed __tests__." >&2
         HAD_RESTORE_FAILURE=true
       else
-        rm -rf __tests__
-        if mv "$stashed_tests" .; then
+        if [ -d "$stashed_tests" ]; then
+          rm -rf __tests__
+          if mv "$stashed_tests" .; then
+            rm -rf "$STASH_PATH"
+          else
+            echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
+            HAD_RESTORE_FAILURE=true
+          fi
+        elif [ -d __tests__ ]; then
+          echo "Notice: __tests__ directory already in workspace." >&2
           rm -rf "$STASH_PATH"
-        else
-          echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
-          HAD_RESTORE_FAILURE=true
         fi
       fi
     elif [[ "$TESTS_EXISTED" == "false" ]]; then
@@ -597,11 +633,11 @@ elif [[ "$MODE" == "cleanup" ]]; then
   # Only remove STATE_DIR if all restorations succeeded
   if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
     rm -rf "$STATE_DIR"
+    exit 0
   else
-    echo "Warning: Restoration encountered errors. Preserving state directory '$STATE_DIR' for recovery." >&2
+    echo "Error: Restoration encountered errors. Preserving state directory '$STATE_DIR' for recovery." >&2
+    exit 1
   fi
-
-  exit 0
 
 else
   echo "Usage: $0 {setup|cleanup} [args...]" >&2

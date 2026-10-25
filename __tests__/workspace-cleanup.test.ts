@@ -128,13 +128,17 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
   });
 
-  it("preserves recovery state when restoration fails", () => {
+  it("preserves recovery state and exits nonzero when restoration fails", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 
     runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
-    runScript("cleanup", tempDir, { env: { INJECT_FAILURE_RESTORE: "1" } });
+    const output = runScript("cleanup", tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_RESTORE: "1" },
+    });
 
+    expect(output).toContain("Error:");
     const stateDir = path.join(tempDir, ".test_workspace_state");
     expect(fs.existsSync(stateDir)).toBe(true);
     expect(fs.existsSync(path.join(stateDir, "backed_up_files"))).toBe(true);
@@ -178,10 +182,15 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(path.join(nodeModules, "sentinel.txt"))).toBe(true);
   });
 
-  it("rejects malformed manifests before deleting workspace content", () => {
+  it("rejects malformed manifests and exits nonzero before deleting workspace content", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
     fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     const preExistingDir = path.join(tempDir, "node_modules");
     fs.mkdirSync(preExistingDir, { recursive: true });
@@ -190,14 +199,15 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     // Write malformed path with traversal in installed_fixture_files
     fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "../unsafe_path\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Unsafe deletion refused, pre-existing path preserved, state dir preserved
     expect(fs.existsSync(path.join(preExistingDir, "sentinel.txt"))).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("rejects forged entry in installed_fixture_files and preserves pre-existing root file", () => {
+  it("rejects forged entry in installed_fixture_files, exits nonzero, and preserves pre-existing root file", () => {
     const preExistingFile = path.join(tempDir, "pre_existing_unrelated.txt");
     fs.writeFileSync(preExistingFile, "do-not-delete");
 
@@ -207,15 +217,16 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     // Forge installed_fixture_files by adding preExistingFile to it
     fs.appendFileSync(path.join(stateDir, "installed_fixture_files"), "pre_existing_unrelated.txt\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Forged entry fails ownership validation against fixture_ownership_manifest: pre-existing file must NOT be deleted!
     expect(fs.existsSync(preExistingFile)).toBe(true);
     expect(fs.readFileSync(preExistingFile, "utf8")).toBe("do-not-delete");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("rejects mixed valid and forged entries in installed_fixture_files without deleting valid entries", () => {
+  it("rejects mixed valid and forged entries in installed_fixture_files without deleting valid entries and exits nonzero", () => {
     runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
     const stateDir = path.join(tempDir, ".test_workspace_state");
@@ -225,28 +236,30 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     // Append forged entry to installed_fixture_files which also has valid installed items (e.g., package.json)
     fs.appendFileSync(path.join(stateDir, "installed_fixture_files"), "forged.txt\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Validation fails closed, so neither forged.txt nor legitimate installed items are deleted, state dir preserved
     expect(fs.existsSync(preExistingFile)).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("fails closed when required recovery metadata file is missing for reached phase", () => {
+  it("fails closed and exits nonzero when required recovery metadata file is missing for reached phase", () => {
     runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
 
     const stateDir = path.join(tempDir, ".test_workspace_state");
 
-    // Test missing stash.info after successful setup (phase COMPLETE)
+    // Test missing stash.info after successful setup (phase PHASE_COMPLETE)
     fs.rmSync(path.join(stateDir, "stash.info"));
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Cleanup fails closed, state directory and workspace contents preserved
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
-  it("fails closed when each phase-mandatory metadata file is removed", () => {
+  it("fails closed and exits nonzero when each phase-mandatory metadata file is removed", () => {
     const metadataFiles = [
       "stash.info",
       "snapshot.status",
@@ -266,8 +279,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
 
         fs.rmSync(path.join(subStateDir, metadataFile));
 
-        runScript("cleanup", subTempDir);
+        const output = runScript("cleanup", subTempDir, { expectFailure: true });
 
+        expect(output).toContain("Error:");
         expect(fs.existsSync(subStateDir)).toBe(true);
       } finally {
         fs.rmSync(subTempDir, { recursive: true, force: true });
@@ -275,9 +289,62 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     }
   });
 
+  it("fails closed and exits nonzero when phase.status has an unknown phase value", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_UNKNOWN_INVALID\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: State directory exists with invalid or unknown SETUP_PHASE");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when phase.status has conflicting status entries", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(stateDir, "phase.status"),
+      "SETUP_PHASE=PHASE_INIT\nSETUP_PHASE=PHASE_COMPLETE\n"
+    );
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Conflicting phase status entries in phase.status");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("handles crash boundary during stashing phase safely without losing stashed __tests__", () => {
+    const origTestsFile = path.join(tempDir, "__tests__", "my_test.test.js");
+    fs.mkdirSync(path.dirname(origTestsFile), { recursive: true });
+    fs.writeFileSync(origTestsFile, "test-code");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_AFTER_STASH: "1" },
+    });
+
+    // Verify phase was recorded as PHASE_STASHED
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.readFileSync(path.join(stateDir, "phase.status"), "utf8")).toContain("PHASE_STASHED");
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(origTestsFile)).toBe(true);
+    expect(fs.readFileSync(origTestsFile, "utf8")).toBe("test-code");
+  });
+
   it("rejects nested paths in installed_fixture_files before deleting any fixture files", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "installed.txt\n");
 
     const installedFile = path.join(tempDir, "installed.txt");
     fs.writeFileSync(installedFile, "installed-data");
@@ -288,8 +355,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       "installed.txt\nnested/dir/file.txt\n"
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Nested path rejected, line 1 installed.txt NOT deleted!
     expect(fs.existsSync(installedFile)).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
@@ -298,6 +366,7 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("preserves tests directory when stash.info contains missing or invalid tests_existed_before_setup", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_STASHED\n");
 
     const testsDir = path.join(tempDir, "__tests__");
     fs.mkdirSync(testsDir, { recursive: true });
@@ -309,8 +378,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       `stash_tests_path=${path.join(tempDir, "runner_temp", "tests_stash_123")}\ntests_existed_before_setup=invalid_value\n`
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     expect(fs.existsSync(path.join(testsDir, "my_test.test.js"))).toBe(true);
     expect(fs.existsSync(stateDir)).toBe(true);
   });
@@ -318,6 +388,7 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects out-of-bounds or malformed stash paths during cleanup", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_STASHED\n");
 
     // Write stash.info with an out-of-bounds stash path (e.g. /etc/tests_stash_123)
     fs.writeFileSync(
@@ -325,8 +396,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       `stash_tests_path=/etc/tests_stash_123\ntests_existed_before_setup=true\n`
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // State directory preserved for recovery because stash path validation failed
     expect(fs.existsSync(stateDir)).toBe(true);
   });
@@ -334,6 +406,7 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects a stash path that is a symbolic link during cleanup", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_STASHED\n");
 
     const runnerTemp = path.join(tempDir, "runner_temp");
     const realDir = path.join(runnerTemp, "tests_stash_real_123");
@@ -347,8 +420,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       `stash_tests_path=${symlinkStash}\ntests_existed_before_setup=true\n`
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Symlink stash refused, state directory preserved for recovery
     expect(fs.existsSync(stateDir)).toBe(true);
   });
@@ -373,30 +447,50 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects unsafe paths or invalid backup mappings in backed_up_files manifest", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     // Write malformed backup mapping (missing pipe delimiter or absolute path)
     fs.writeFileSync(path.join(stateDir, "backed_up_files"), "/etc/passwd|package.json.test_bak_123\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
   it("rejects unallowed root items or mismatched backup patterns in backed_up_files manifest", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     // Write unallowed root item or mismatched backup filename
     fs.writeFileSync(path.join(stateDir, "backed_up_files"), "unallowed_file.txt|package.json.test_bak_123\n");
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
   it("atomically refuses restoration if any mapping in backed_up_files is invalid", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     // Create a valid backup file for package.json and modified package.json
     fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
@@ -408,8 +502,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       "package.json|package.json.test_bak_100\nmalicious_file.txt|malicious_file.txt.test_bak_100\n"
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Atomic validation fails on line 2, so line 1 IS NOT restored or mutated!
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
     expect(fs.existsSync(path.join(tempDir, "package.json.test_bak_100"))).toBe(true);
@@ -419,6 +514,12 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects backup filename that matches via regex dot wildcard instead of literal dot", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
     fs.writeFileSync(path.join(tempDir, "packageXjson.test_bak_100"), "backup-pkg");
@@ -429,8 +530,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       "package.json|packageXjson.test_bak_100\n"
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     // Literal check fails (X != .), package.json is NOT restored/mutated, state is preserved
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
     expect(fs.existsSync(stateDir)).toBe(true);
@@ -439,6 +541,12 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects duplicate original or backup item entries in backed_up_files", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
     fs.writeFileSync(path.join(tempDir, "package.json.test_bak_100"), "backup-pkg-1");
@@ -450,8 +558,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       "package.json|package.json.test_bak_100\npackage.json|package.json.test_bak_200\n"
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
@@ -459,6 +568,12 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
   it("rejects nested backup paths in backed_up_files manifest", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
 
     fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
 
@@ -467,8 +582,9 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
       "package.json|package.json.test_bak_100/nested\n"
     );
 
-    runScript("cleanup", tempDir);
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
 
+    expect(output).toContain("Error:");
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
