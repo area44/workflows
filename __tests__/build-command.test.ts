@@ -40,19 +40,40 @@ describe("build-command", () => {
       expect(action.runs.using).toBe("composite");
 
       // Inputs contract
-      expect(action.inputs).toHaveProperty("path");
-      expect(action.inputs.path.default).toBe("dist");
-      expect(action.inputs).toHaveProperty("runtime");
-      expect(action.inputs).toHaveProperty("build-command");
+      expect(action.inputs.path).toEqual({
+        description: expect.any(String),
+        required: false,
+        default: "dist",
+      });
+      expect(action.inputs.runtime).toEqual({
+        description: expect.any(String),
+        required: false,
+      });
+      expect(action.inputs["build-command"]).toEqual({
+        description: expect.any(String),
+        required: false,
+      });
 
-      // Outputs contract
-      expect(action.outputs).toHaveProperty("node-version");
-      expect(action.outputs).toHaveProperty("bun-version");
-      expect(action.outputs).toHaveProperty("package-manager");
-      expect(action.outputs).toHaveProperty("package-manager-version");
-      expect(action.outputs).toHaveProperty("runtime");
-      expect(action.outputs).toHaveProperty("toolchain");
-      expect(action.outputs).toHaveProperty("vp-version");
+      // Outputs contract with exact expression mappings
+      expect(action.outputs["node-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.node-version }}",
+      );
+      expect(action.outputs["bun-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.bun-version }}",
+      );
+      expect(action.outputs["package-manager"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager }}",
+      );
+      expect(action.outputs["package-manager-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager-version }}",
+      );
+      expect(action.outputs.runtime.value).toBe(
+        "${{ steps.resolve_environment.outputs.runtime }}",
+      );
+      expect(action.outputs.toolchain.value).toBe(
+        "${{ steps.resolve_environment.outputs.toolchain }}",
+      );
+      expect(action.outputs["vp-version"].value).toBe("${{ steps.setup_vp.outputs.version }}");
 
       // Steps verification
       const steps = action.runs.steps;
@@ -356,6 +377,25 @@ describe("build-command", () => {
       }
     });
 
+    it("should validate and set step output 'path' to relative BUILD_PATH", async () => {
+      const relPath = "tmp_relative_build_out";
+      const fullPath = path.join(process.cwd(), relPath);
+      fs.mkdirSync(fullPath, { recursive: true });
+      fs.writeFileSync(path.join(fullPath, "index.html"), "<h1>Relative Build Output</h1>");
+
+      try {
+        process.env.BUILD_PATH = relPath;
+        vi.mocked(exec.exec).mockResolvedValue(0);
+
+        const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+        expect(exitCode).toBe(0);
+        expect(core.setOutput).toHaveBeenCalledWith("path", relPath);
+      } finally {
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      }
+    });
+
     it("should fail when build command succeeds but configured output directory does not exist", async () => {
       process.env.BUILD_COMMAND = "pnpm run build";
       process.env.BUILD_PATH = "non_existent_output_folder_99";
@@ -532,6 +572,31 @@ describe("build-command", () => {
         expect(() => validateBuildOutput(testDir)).toThrow(`Configured build output directory '${testDir}' is empty.`);
       } finally {
         fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should validate relative output path against explicit temporary working directory", () => {
+      const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cwd-"));
+      const relOutDir = "custom-relative-dist";
+      const absOutDir = path.join(tempCwd, relOutDir);
+
+      fs.mkdirSync(absOutDir, { recursive: true });
+      fs.writeFileSync(path.join(absOutDir, "index.html"), "<h1>Test Relative</h1>");
+
+      try {
+        expect(validateBuildOutput(relOutDir, tempCwd)).toBe(relOutDir);
+
+        expect(() => validateBuildOutput("missing-relative-dir", tempCwd)).toThrow(
+          "Configured build output directory 'missing-relative-dir' does not exist.",
+        );
+
+        const emptyRelDir = "empty-relative-dir";
+        fs.mkdirSync(path.join(tempCwd, emptyRelDir), { recursive: true });
+        expect(() => validateBuildOutput(emptyRelDir, tempCwd)).toThrow(
+          "Configured build output directory 'empty-relative-dir' is empty.",
+        );
+      } finally {
+        fs.rmSync(tempCwd, { recursive: true, force: true });
       }
     });
 

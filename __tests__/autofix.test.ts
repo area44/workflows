@@ -921,20 +921,43 @@ describe("autofix", () => {
       expect(action.name).toBe("Autofix");
       expect(action.runs.using).toBe("composite");
 
-      // Inputs
-      expect(action.inputs).toHaveProperty("runtime");
+      // Inputs contract
+      expect(action.inputs.runtime).toEqual({
+        description: expect.any(String),
+        required: false,
+      });
 
-      // Outputs
-      expect(action.outputs).toHaveProperty("node-version");
-      expect(action.outputs).toHaveProperty("bun-version");
-      expect(action.outputs).toHaveProperty("package-manager");
-      expect(action.outputs).toHaveProperty("package-manager-version");
-      expect(action.outputs).toHaveProperty("runtime");
-      expect(action.outputs).toHaveProperty("has-js-project");
-      expect(action.outputs).toHaveProperty("has-python-source");
-      expect(action.outputs).toHaveProperty("python-version");
-      expect(action.outputs).toHaveProperty("python-package-manager");
-      expect(action.outputs).toHaveProperty("ruff-version");
+      // Outputs contract with exact expression mappings
+      expect(action.outputs["node-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.node-version }}",
+      );
+      expect(action.outputs["bun-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.bun-version }}",
+      );
+      expect(action.outputs["package-manager"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager }}",
+      );
+      expect(action.outputs["package-manager-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.package-manager-version }}",
+      );
+      expect(action.outputs.runtime.value).toBe(
+        "${{ steps.resolve_environment.outputs.runtime }}",
+      );
+      expect(action.outputs["has-js-project"].value).toBe(
+        "${{ steps.resolve_environment.outputs.has-js-project }}",
+      );
+      expect(action.outputs["has-python-source"].value).toBe(
+        "${{ steps.resolve_environment.outputs.has-python-source }}",
+      );
+      expect(action.outputs["python-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.python-version }}",
+      );
+      expect(action.outputs["python-package-manager"].value).toBe(
+        "${{ steps.resolve_environment.outputs.python-package-manager }}",
+      );
+      expect(action.outputs["ruff-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.ruff-version }}",
+      );
 
       // Steps
       const steps = action.runs.steps;
