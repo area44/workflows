@@ -67,7 +67,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
     });
   });
 
-  describe("Directory Creation Safety & Isolation", () => {
+  describe("Directory Creation Safety & Overwrite Protection", () => {
     it("writes consumer project files into a target directory safely", () => {
       const target = path.join(tempDir, "my_project");
       createConsumerProject(target);
@@ -106,6 +106,24 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       // Succeeds when allowNonEmpty is true
       createConsumerProject(target, { allowNonEmpty: true });
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
+      expect(fs.readFileSync(path.join(target, "pre_existing.txt"), "utf8")).toBe("pre-existing content");
+    });
+
+    it("refuses to overwrite colliding generated files even when allowNonEmpty is true unless overwrite is true", () => {
+      const target = path.join(tempDir, "colliding");
+      fs.mkdirSync(target, { recursive: true });
+      fs.writeFileSync(path.join(target, "package.json"), "original-package-json");
+
+      expect(() => createConsumerProject(target, { allowNonEmpty: true })).toThrow(
+        "Refusing to overwrite existing generated files",
+      );
+
+      // Colliding file remains untouched
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe("original-package-json");
+
+      // Succeeds when overwrite: true is passed
+      createConsumerProject(target, { allowNonEmpty: true, overwrite: true });
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe("original-package-json");
     });
 
     it("refuses to write if target path exists and is a file", () => {
@@ -157,6 +175,23 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       // With flag, CLI succeeds
       execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { encoding: "utf8" });
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
+    });
+
+    it("refuses to overwrite colliding files via CLI unless --overwrite is passed", () => {
+      const target = path.join(tempDir, "cli_colliding");
+      fs.mkdirSync(target, { recursive: true });
+      fs.writeFileSync(path.join(target, "package.json"), "pre-existing-json");
+
+      // With --allow-non-empty alone, it fails because package.json collides
+      expect(() => {
+        execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { stdio: "pipe" });
+      }).toThrow();
+
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe("pre-existing-json");
+
+      // With --overwrite, it succeeds
+      execSync(`node "${generatorScript}" "${target}" --allow-non-empty --overwrite`, { encoding: "utf8" });
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe("pre-existing-json");
     });
   });
 });

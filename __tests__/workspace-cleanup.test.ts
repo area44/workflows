@@ -233,6 +233,28 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("rejects a stash path that is a symbolic link during cleanup", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    const runnerTemp = path.join(tempDir, "runner_temp");
+    const realDir = path.join(runnerTemp, "tests_stash_real_123");
+    fs.mkdirSync(realDir, { recursive: true });
+
+    const symlinkStash = path.join(runnerTemp, "tests_stash_symlink_123");
+    fs.symlinkSync(realDir, symlinkStash);
+
+    fs.writeFileSync(
+      path.join(stateDir, "stash.info"),
+      `stash_tests_path=${symlinkStash}\ntests_existed_before_setup=true\n`
+    );
+
+    runScript("cleanup", tempDir);
+
+    // Symlink stash refused, state directory preserved for recovery
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("never reuses or deletes pre-existing PID-based stash directory", () => {
     const runnerTemp = path.join(tempDir, "runner_temp");
     const preExistingStash = path.join(runnerTemp, "tests_stash_99999");
@@ -256,6 +278,18 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
 
     // Write malformed backup mapping (missing pipe delimiter or absolute path)
     fs.writeFileSync(path.join(stateDir, "backed_up_files"), "/etc/passwd|package.json.test_bak_123\n");
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects unallowed root items or mismatched backup patterns in backed_up_files manifest", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    // Write unallowed root item or mismatched backup filename
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "unallowed_file.txt|package.json.test_bak_123\n");
 
     runScript("cleanup", tempDir);
 

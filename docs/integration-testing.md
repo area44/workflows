@@ -6,8 +6,16 @@ This document explains the purpose, architecture, boundaries, execution, and fix
 
 To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` generates consumer projects dynamically in temporary directories using a single canonical generator module:
 
-- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single source of truth defining file contents, templates, CLI target validation, and non-empty directory safeguards. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory>`).
+- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single source of truth defining file contents, templates, CLI target validation, and non-empty/overwrite safeguards. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory>`).
 - **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical JS generator module so unit tests and Node scripts share identical generation logic without drift.
+
+### Target Directory & Overwrite Protection
+
+To prevent accidental data loss:
+
+- **Explicit Target Required**: The CLI refuses to execute without an explicit target directory argument (forbidding implicit `process.cwd()` execution).
+- **`allowNonEmpty` Option / `--allow-non-empty` Flag**: Allows generating into a non-empty directory if pre-existing files are unrelated (e.g. `pre_existing.txt`).
+- **`overwrite` Option / `--overwrite` Flag**: Explicitly permits overwriting files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`). Even when `allowNonEmpty` is true, colliding files will NOT be overwritten unless `overwrite` is explicitly enabled.
 
 ### Generated Project Structure
 
@@ -86,5 +94,6 @@ All temporary consumer projects created during unit/integration tests and CI mat
 
 - **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions (0700). An `EXIT` trap guarantees that staging directories are cleaned up automatically.
 - **Exclusive Stash Ownership**: Setup creates a unique test stash directory using `mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX"`. It never reuses or overwrites pre-existing PID-based directories.
-- **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks within `${RUNNER_TEMP:-/tmp}` and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
+- **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks (`pwd -P`) within `${RUNNER_TEMP:-/tmp}`, rejects symbolic links (`[ -L "$p" ]`), and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
+- **Backup Manifest Validation**: `cleanup` strictly validates records in `backed_up_files`. `orig_item` is checked against an explicit allowlist (`ROOT_ITEMS`), `bak_item` must match `${orig_item}.test_bak_*`, duplicate entries are rejected, and invalid mappings fail closed.
 - **Workspace State Protection**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. If validation or restoration fails, state and suspect directories are preserved for manual recovery.

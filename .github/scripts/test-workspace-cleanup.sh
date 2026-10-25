@@ -11,9 +11,44 @@ STATE_DIR="${TEST_WORKSPACE_STATE_DIR:-.test_workspace_state}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+ROOT_ITEMS=(
+  package.json
+  package-lock.json
+  pnpm-lock.yaml
+  pnpm-workspace.yaml
+  bun.lock
+  tsconfig.json
+  vite.config.ts
+  astro.config.mjs
+  index.html
+  main.py
+  app.py
+  .node-version
+  .bun-version
+  .python-version
+  pyproject.toml
+  requirements.txt
+  uv.lock
+  uv.toml
+  runtime.txt
+  setup.py
+  setup.cfg
+)
+
+# Helper to check if a root item is in the allowlist
+is_allowed_root_item() {
+  local item="${1:-}"
+  for allowed in "${ROOT_ITEMS[@]}"; do
+    if [[ "$item" == "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Helper to validate that a relative workspace path is safe and stays within CWD
 validate_path() {
-  local p="$1"
+  local p="${1:-}"
   if [[ -z "$p" || "$p" == /* || "$p" == *".."* ]]; then
     echo "Error: Refusing to operate on unsafe or out-of-bounds path: '$p'" >&2
     return 1
@@ -31,10 +66,28 @@ validate_stash_path() {
     return 1
   fi
 
+  # Reject symbolic link stash path
+  if [ -L "$p" ]; then
+    echo "Error: Refusing to operate on stash path '$p' because it is a symbolic link." >&2
+    return 1
+  fi
+
+  if [ ! -d "$p" ]; then
+    echo "Error: Stash directory '$p' does not exist or is not a directory." >&2
+    return 1
+  fi
+
   local base_real
   base_real=$(cd "$base" 2>/dev/null && pwd -P || true)
   if [[ -z "$base_real" ]]; then
     echo "Error: Runner temp base directory '$base' does not exist." >&2
+    return 1
+  fi
+
+  local p_real
+  p_real=$(cd "$p" 2>/dev/null && pwd -P || true)
+  if [[ -z "$p_real" ]]; then
+    echo "Error: Failed to resolve canonical physical path for '$p'." >&2
     return 1
   fi
 
@@ -49,6 +102,11 @@ validate_stash_path() {
   parent_real=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P || true)
   if [[ "$parent_real" != "$base_real" ]]; then
     echo "Error: Stash path '$p' (parent '$parent_real') is outside approved base directory '$base_real'." >&2
+    return 1
+  fi
+
+  if [[ "$p_real" != "${base_real}/${dir_name}" ]]; then
+    echo "Error: Canonical stash path '$p_real' does not match expected path '${base_real}/${dir_name}'." >&2
     return 1
   fi
 
@@ -180,30 +238,6 @@ if [[ "$MODE" == "setup" ]]; then
   touch "$STATE_DIR/backed_up_files"
   touch "$STATE_DIR/installed_fixture_files"
 
-  ROOT_ITEMS=(
-    package.json
-    package-lock.json
-    pnpm-lock.yaml
-    pnpm-workspace.yaml
-    bun.lock
-    tsconfig.json
-    vite.config.ts
-    astro.config.mjs
-    index.html
-    main.py
-    app.py
-    .node-version
-    .bun-version
-    .python-version
-    pyproject.toml
-    requirements.txt
-    uv.lock
-    uv.toml
-    runtime.txt
-    setup.py
-    setup.cfg
-  )
-
   for item in "${ROOT_ITEMS[@]}"; do
     if [ -e "$item" ]; then
       bak_item="${item}.test_bak_$$"
@@ -327,13 +361,34 @@ elif [[ "$MODE" == "cleanup" ]]; then
 
   # 3. Restore backed up root items recorded in backed_up_files
   if [ -f "$STATE_DIR/backed_up_files" ]; then
+    declare -A seen_orig_items=()
     while IFS='|' read -r orig_item bak_item; do
       [ -z "$orig_item" ] && continue
+
       if [ -z "$bak_item" ] || ! validate_path "$orig_item" || ! validate_path "$bak_item"; then
         echo "Error: Invalid backup mapping in backed_up_files: '$orig_item|$bak_item'." >&2
         HAD_RESTORE_FAILURE=true
         continue
       fi
+
+      if ! is_allowed_root_item "$orig_item"; then
+        echo "Error: Unallowed root item in backed_up_files: '$orig_item'." >&2
+        HAD_RESTORE_FAILURE=true
+        continue
+      fi
+
+      if [[ "$bak_item" != "${orig_item}.test_bak_"* ]]; then
+        echo "Error: Mismatched backup filename pattern for '$orig_item': '$bak_item'." >&2
+        HAD_RESTORE_FAILURE=true
+        continue
+      fi
+
+      if [ -n "${seen_orig_items[$orig_item]:-}" ]; then
+        echo "Error: Duplicate backup entry for '$orig_item' in backed_up_files." >&2
+        HAD_RESTORE_FAILURE=true
+        continue
+      fi
+      seen_orig_items["$orig_item"]=1
 
       if [ -e "$bak_item" ]; then
         if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
@@ -357,18 +412,24 @@ elif [[ "$MODE" == "cleanup" ]]; then
     TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
 
     if [[ "$TESTS_EXISTED" == "true" ]]; then
-      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH" && [ -d "$STASH_PATH/__tests__" ]; then
-        if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
-          echo "Error: Injected failure restoring stashed __tests__." >&2
-          HAD_RESTORE_FAILURE=true
-        else
-          rm -rf __tests__
-          if mv "$STASH_PATH/__tests__" .; then
-            rm -rf "$STASH_PATH"
-          else
-            echo "Error: Failed to restore stashed __tests__ from '$STASH_PATH'. Preserving stash directory for recovery." >&2
+      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH"; then
+        stashed_tests="${STASH_PATH}/__tests__"
+        if [ -d "$stashed_tests" ] && [ ! -L "$stashed_tests" ]; then
+          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
+            echo "Error: Injected failure restoring stashed __tests__." >&2
             HAD_RESTORE_FAILURE=true
+          else
+            rm -rf __tests__
+            if mv "$stashed_tests" .; then
+              rm -rf "$STASH_PATH"
+            else
+              echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
+              HAD_RESTORE_FAILURE=true
+            fi
           fi
+        else
+          echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
+          HAD_RESTORE_FAILURE=true
         fi
       else
         echo "Error: Invalid or missing stashed __tests__ directory at '$STASH_PATH'." >&2

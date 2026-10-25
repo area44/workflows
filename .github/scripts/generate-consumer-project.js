@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
  * @property {string} [ruffVersion]
  * @property {string} [markerContent]
  * @property {boolean} [allowNonEmpty]
+ * @property {boolean} [overwrite]
  */
 
 /**
@@ -112,19 +113,33 @@ export function createConsumerProject(targetDir, options = {}) {
     if (!stat.isDirectory()) {
       throw new Error(`Target path '${resolvedTarget}' exists and is not a directory.`);
     }
-    if (!options.allowNonEmpty) {
-      const existing = fs.readdirSync(resolvedTarget);
-      if (existing.length > 0) {
-        throw new Error(
-          `Refusing to generate consumer project into non-empty directory '${resolvedTarget}'.`
-        );
-      }
-    }
   } else {
     fs.mkdirSync(resolvedTarget, { recursive: true });
   }
 
   const files = generateConsumerProjectFiles(options);
+
+  // Safety checks against non-empty target directories and colliding files
+  const existingItems = fs.readdirSync(resolvedTarget);
+  if (existingItems.length > 0) {
+    if (!options.allowNonEmpty && !options.overwrite) {
+      throw new Error(
+        `Refusing to generate consumer project into non-empty directory '${resolvedTarget}'.`
+      );
+    }
+
+    if (!options.overwrite) {
+      const colliding = Object.keys(files).filter((filename) =>
+        fs.existsSync(path.join(resolvedTarget, filename))
+      );
+      if (colliding.length > 0) {
+        throw new Error(
+          `Refusing to overwrite existing generated files in '${resolvedTarget}': ${colliding.join(", ")}. Pass 'overwrite: true' or '--overwrite' to allow.`
+        );
+      }
+    }
+  }
+
   for (const [filename, content] of Object.entries(files)) {
     fs.writeFileSync(path.join(resolvedTarget, filename), content, "utf8");
   }
@@ -136,12 +151,15 @@ export function createConsumerProject(targetDir, options = {}) {
 const currentScriptPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentScriptPath)) {
   const targetDir = process.argv[2];
-  if (!targetDir) {
-    console.error("Error: Missing target directory argument. Usage: generate-consumer-project.js <target-directory>");
+  if (!targetDir || targetDir.startsWith("-")) {
+    console.error(
+      "Error: Missing target directory argument. Usage: generate-consumer-project.js <target-directory> [--allow-non-empty] [--overwrite]"
+    );
     process.exit(1);
   }
 
   const allowNonEmpty = process.argv.includes("--allow-non-empty");
-  createConsumerProject(targetDir, { allowNonEmpty });
+  const overwrite = process.argv.includes("--overwrite");
+  createConsumerProject(targetDir, { allowNonEmpty, overwrite });
   console.log(`Successfully generated consumer project in ${path.resolve(targetDir)}`);
 }
