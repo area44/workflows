@@ -305,12 +305,12 @@ elif [[ "$MODE" == "cleanup" ]]; then
   HAD_MANIFEST_ERROR=false
   HAD_RESTORE_FAILURE=false
 
-  # Pre-validate installed_fixture_files manifest
+  # Pre-validate installed_fixture_files manifest atomically before any deletion
   if [ -f "$STATE_DIR/installed_fixture_files" ]; then
     while IFS= read -r item; do
       [ -z "$item" ] && continue
-      if ! validate_path "$item"; then
-        echo "Error: Installed fixture manifest contains invalid path '$item'. Failing closed." >&2
+      if ! validate_path "$item" || [[ "$item" == *"/"* ]]; then
+        echo "Error: Installed fixture manifest contains invalid or nested path '$item'. Failing closed." >&2
         HAD_MANIFEST_ERROR=true
         break
       fi
@@ -359,51 +359,98 @@ elif [[ "$MODE" == "cleanup" ]]; then
     echo "Notice: Snapshot is missing, incomplete, or state is invalid. Preserving generated paths to prevent data loss." >&2
   fi
 
-  # 3. Restore backed up root items recorded in backed_up_files
+  # 3. Restore backed up root items recorded in backed_up_files (ATOMIC PRE-VALIDATION)
   if [ -f "$STATE_DIR/backed_up_files" ]; then
+    valid_orig_items=()
+    valid_bak_items=()
     declare -A seen_orig_items=()
-    while IFS='|' read -r orig_item bak_item; do
-      [ -z "$orig_item" ] && continue
+    declare -A seen_bak_items=()
 
-      if [ -z "$bak_item" ] || ! validate_path "$orig_item" || ! validate_path "$bak_item"; then
-        echo "Error: Invalid backup mapping in backed_up_files: '$orig_item|$bak_item'." >&2
+    # Phase 1: Atomically validate all records in backed_up_files
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -z "$line" ] && continue
+
+      # Must contain exactly one pipe delimiter
+      if [[ "$line" != *"|"* ]] || [[ "$line" == *"|"*'|'* ]]; then
+        echo "Error: Malformed record in backed_up_files (invalid delimiter): '$line'." >&2
         HAD_RESTORE_FAILURE=true
-        continue
+        break
+      fi
+
+      IFS='|' read -r orig_item bak_item <<< "$line"
+
+      if [ -z "$orig_item" ] || [ -z "$bak_item" ]; then
+        echo "Error: Missing item in backup mapping: '$line'." >&2
+        HAD_RESTORE_FAILURE=true
+        break
+      fi
+
+      if ! validate_path "$orig_item" || [[ "$orig_item" == *"/"* ]]; then
+        echo "Error: Unsafe original path in backup mapping: '$orig_item'." >&2
+        HAD_RESTORE_FAILURE=true
+        break
+      fi
+
+      if ! validate_path "$bak_item" || [[ "$bak_item" == *"/"* ]]; then
+        echo "Error: Unsafe backup path in backup mapping: '$bak_item'." >&2
+        HAD_RESTORE_FAILURE=true
+        break
       fi
 
       if ! is_allowed_root_item "$orig_item"; then
         echo "Error: Unallowed root item in backed_up_files: '$orig_item'." >&2
         HAD_RESTORE_FAILURE=true
-        continue
+        break
       fi
 
-      if [[ "$bak_item" != "${orig_item}.test_bak_"* ]]; then
+      # Backup path suffix must contain only numbers and match expected pattern
+      if [[ ! "$bak_item" =~ ^${orig_item}\.test_bak_[0-9]+$ ]]; then
         echo "Error: Mismatched backup filename pattern for '$orig_item': '$bak_item'." >&2
         HAD_RESTORE_FAILURE=true
-        continue
+        break
       fi
 
       if [ -n "${seen_orig_items[$orig_item]:-}" ]; then
-        echo "Error: Duplicate backup entry for '$orig_item' in backed_up_files." >&2
+        echo "Error: Duplicate original item entry for '$orig_item' in backed_up_files." >&2
         HAD_RESTORE_FAILURE=true
-        continue
+        break
       fi
+
+      if [ -n "${seen_bak_items[$bak_item]:-}" ]; then
+        echo "Error: Duplicate backup item entry for '$bak_item' in backed_up_files." >&2
+        HAD_RESTORE_FAILURE=true
+        break
+      fi
+
       seen_orig_items["$orig_item"]=1
-
-      if [ -e "$bak_item" ]; then
-        if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
-          echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
-          HAD_RESTORE_FAILURE=true
-          continue
-        fi
-
-        rm -rf "$orig_item"
-        if ! mv "$bak_item" "$orig_item"; then
-          echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
-          HAD_RESTORE_FAILURE=true
-        fi
-      fi
+      seen_bak_items["$bak_item"]=1
+      valid_orig_items+=("$orig_item")
+      valid_bak_items+=("$bak_item")
     done < "$STATE_DIR/backed_up_files"
+
+    # Phase 2: Perform restoration ONLY if atomic pre-validation passed with zero errors
+    if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
+      for i in "${!valid_orig_items[@]}"; do
+        orig_item="${valid_orig_items[$i]}"
+        bak_item="${valid_bak_items[$i]}"
+
+        if [ -e "$bak_item" ]; then
+          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
+            echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
+            HAD_RESTORE_FAILURE=true
+            continue
+          fi
+
+          rm -rf "$orig_item"
+          if ! mv "$bak_item" "$orig_item"; then
+            echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
+            HAD_RESTORE_FAILURE=true
+          fi
+        fi
+      done
+    else
+      echo "Notice: Aborting backup restoration due to manifest validation failures. Preserving backup files for recovery." >&2
+    fi
   fi
 
   # 4. Restore stashed __tests__ directory

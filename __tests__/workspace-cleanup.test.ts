@@ -197,6 +197,26 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("rejects nested paths in installed_fixture_files before deleting any fixture files", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    const installedFile = path.join(tempDir, "installed.txt");
+    fs.writeFileSync(installedFile, "installed-data");
+
+    // installed_fixture_files has valid line 1, but nested line 2
+    fs.writeFileSync(
+      path.join(stateDir, "installed_fixture_files"),
+      "installed.txt\nnested/dir/file.txt\n"
+    );
+
+    runScript("cleanup", tempDir);
+
+    // Nested path rejected, line 1 installed.txt NOT deleted!
+    expect(fs.existsSync(installedFile)).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("preserves tests directory when stash.info contains missing or invalid tests_existed_before_setup", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });
@@ -293,6 +313,65 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
 
     runScript("cleanup", tempDir);
 
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("atomically refuses restoration if any mapping in backed_up_files is invalid", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    // Create a valid backup file for package.json and modified package.json
+    fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
+    fs.writeFileSync(path.join(tempDir, "package.json.test_bak_100"), "backup-pkg");
+
+    // backed_up_files has valid line 1, but invalid line 2 (unallowed root item)
+    fs.writeFileSync(
+      path.join(stateDir, "backed_up_files"),
+      "package.json|package.json.test_bak_100\nmalicious_file.txt|malicious_file.txt.test_bak_100\n"
+    );
+
+    runScript("cleanup", tempDir);
+
+    // Atomic validation fails on line 2, so line 1 IS NOT restored or mutated!
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
+    expect(fs.existsSync(path.join(tempDir, "package.json.test_bak_100"))).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects duplicate original or backup item entries in backed_up_files", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
+    fs.writeFileSync(path.join(tempDir, "package.json.test_bak_100"), "backup-pkg-1");
+    fs.writeFileSync(path.join(tempDir, "package.json.test_bak_200"), "backup-pkg-2");
+
+    // Duplicate orig_item "package.json"
+    fs.writeFileSync(
+      path.join(stateDir, "backed_up_files"),
+      "package.json|package.json.test_bak_100\npackage.json|package.json.test_bak_200\n"
+    );
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects nested backup paths in backed_up_files manifest", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
+
+    fs.writeFileSync(
+      path.join(stateDir, "backed_up_files"),
+      "package.json|package.json.test_bak_100/nested\n"
+    );
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 

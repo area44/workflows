@@ -88,12 +88,12 @@ npm test __tests__/workspace-cleanup.test.ts
 
 ---
 
-## Temporary Directory Ownership & Workspace Safety Guarantees
+## Temporary Directory Ownership & Atomic Manifest Guarantees
 
-All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership and deterministic cleanup:
+All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership, atomic manifest pre-validation, and deterministic cleanup:
 
 - **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions (0700). An `EXIT` trap guarantees that staging directories are cleaned up automatically.
 - **Exclusive Stash Ownership**: Setup creates a unique test stash directory using `mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX"`. It never reuses or overwrites pre-existing PID-based directories.
 - **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks (`pwd -P`) within `${RUNNER_TEMP:-/tmp}`, rejects symbolic links (`[ -L "$p" ]`), and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
-- **Backup Manifest Validation**: `cleanup` strictly validates records in `backed_up_files`. `orig_item` is checked against an explicit allowlist (`ROOT_ITEMS`), `bak_item` must match `${orig_item}.test_bak_*`, duplicate entries are rejected, and invalid mappings fail closed.
-- **Workspace State Protection**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. If validation or restoration fails, state and suspect directories are preserved for manual recovery.
+- **Atomic Manifest Pre-Validation**: `cleanup` pre-validates `installed_fixture_files` and `backed_up_files` atomically before executing any `rm` or `mv` operations. `orig_item` is strictly checked against the `ROOT_ITEMS` allowlist, `bak_item` must match `${orig_item}.test_bak_[0-9]+$`, duplicate mappings are rejected, and nested path components are forbidden. If any mapping in a manifest fails pre-validation, restoration is aborted entirely and setup/cleanup fails closed.
+- **Workspace Recovery Guarantees**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. If validation or restoration fails, state and backup files are preserved for manual recovery.
