@@ -47,54 +47,9 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   fi
 
-  mkdir -p "$STATE_DIR" || { echo "Error: Failed to create state directory '$STATE_DIR'." >&2; exit 1; }
-
-  if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
-    echo "Injected failure before snapshot initialization." >&2
-    exit 1
-  fi
-
   shopt -s dotglob
 
-  # 1. Track __tests__ stash state safely
-  TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
-  if mkdir -p "$TMP_TESTS"; then
-    echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
-  else
-    echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
-    exit 1
-  fi
-
-  if [ -d __tests__ ]; then
-    echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"
-    mv __tests__ "$TMP_TESTS"/__tests__ || {
-      echo "Error: Failed to stash __tests__ directory." >&2
-      exit 1
-    }
-  else
-    echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
-  fi
-
-  if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
-    echo "Injected failure after stashing __tests__." >&2
-    exit 1
-  fi
-
-  # 2. Snapshot pre-existing items in current working directory
-  touch "$STATE_DIR/snapshot_pre_existing_items"
-  for item in *; do
-    if [ "$item" != "*" ] && [ -e "$item" ] && [ "$item" != "$STATE_DIR" ]; then
-      if [ "${INJECT_FAILURE_IN_SNAPSHOT:-0}" -eq 1 ]; then
-        echo "Injected failure during snapshot creation." >&2
-        exit 1
-      fi
-      echo "$item" >> "$STATE_DIR/snapshot_pre_existing_items"
-    fi
-  done
-
-  echo "SNAPSHOT_STATUS=complete" > "$STATE_DIR/snapshot.status"
-
-  # 3. Create temporary fixture directory safely
+  # Copy fixture into temporary directory BEFORE stashing __tests__
   TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
   mkdir -p "$TMP_FIX" || { echo "Error: Failed to create temp fixture directory." >&2; exit 1; }
 
@@ -113,7 +68,61 @@ if [[ "$MODE" == "setup" ]]; then
     fi
   done
 
-  # 4. Initialize backup and installation manifests
+  mkdir -p "$STATE_DIR" || {
+    echo "Error: Failed to create state directory '$STATE_DIR'." >&2
+    rm -rf "$TMP_FIX"
+    exit 1
+  }
+
+  if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
+    echo "Injected failure before snapshot initialization." >&2
+    rm -rf "$TMP_FIX"
+    exit 1
+  fi
+
+  # 1. Track __tests__ stash state safely
+  TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
+  if mkdir -p "$TMP_TESTS"; then
+    echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
+  else
+    echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
+    rm -rf "$TMP_FIX"
+    exit 1
+  fi
+
+  if [ -d __tests__ ]; then
+    echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"
+    mv __tests__ "$TMP_TESTS"/ || {
+      echo "Error: Failed to stash __tests__ directory." >&2
+      rm -rf "$TMP_FIX"
+      exit 1
+    }
+  else
+    echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
+  fi
+
+  if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
+    echo "Injected failure after stashing __tests__." >&2
+    rm -rf "$TMP_FIX"
+    exit 1
+  fi
+
+  # 2. Snapshot pre-existing items in current working directory
+  touch "$STATE_DIR/snapshot_pre_existing_items"
+  for item in *; do
+    if [ "$item" != "*" ] && [ -e "$item" ] && [ "$item" != "$STATE_DIR" ]; then
+      if [ "${INJECT_FAILURE_IN_SNAPSHOT:-0}" -eq 1 ]; then
+        echo "Injected failure during snapshot creation." >&2
+        rm -rf "$TMP_FIX"
+        exit 1
+      fi
+      echo "$item" >> "$STATE_DIR/snapshot_pre_existing_items"
+    fi
+  done
+
+  echo "SNAPSHOT_STATUS=complete" > "$STATE_DIR/snapshot.status"
+
+  # 3. Initialize backup and installation manifests
   touch "$STATE_DIR/backed_up_files"
   touch "$STATE_DIR/installed_fixture_files"
 
@@ -158,7 +167,7 @@ if [[ "$MODE" == "setup" ]]; then
     fi
   done
 
-  # 5. Install fixture files safely and record each installation
+  # 4. Install fixture files safely and record each installation
   COUNT=0
   if ls -1A "$TMP_FIX" > "$STATE_DIR/fixture_items_list" 2>/dev/null; then
     while IFS= read -r item; do
@@ -290,7 +299,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
           HAD_RESTORE_FAILURE=true
         else
           rm -rf __tests__
-          if mv "$STASH_PATH/__tests__" __tests__; then
+          if mv "$STASH_PATH/__tests__" .; then
             rm -rf "$STASH_PATH"
           else
             echo "Error: Failed to restore stashed __tests__ from '$STASH_PATH'. Preserving stash directory for recovery." >&2

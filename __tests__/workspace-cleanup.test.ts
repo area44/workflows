@@ -16,7 +16,7 @@ function runScript(
       env: {
         ...process.env,
         RUNNER_TEMP: path.join(cwd, "runner_temp"),
-        ...(options.env || {}),
+        ...options.env,
       },
       stdio: "pipe",
       encoding: "utf8",
