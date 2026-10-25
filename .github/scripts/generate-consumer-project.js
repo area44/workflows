@@ -59,6 +59,14 @@ dependencies = [
   "ruff==${ruffVersion}",
 ]
 
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
 [tool.ruff]
 line-length = 88
 `;
