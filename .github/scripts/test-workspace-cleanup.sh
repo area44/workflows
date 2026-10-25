@@ -46,9 +46,21 @@ if [[ "$MODE" == "setup" ]]; then
 
   shopt -s dotglob
 
-  # Prepare temporary directory for fixture setup BEFORE stashing __tests__
-  TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
-  mkdir -p "$TMP_FIX" || { echo "Error: Failed to create temp fixture directory." >&2; exit 1; }
+  # Prepare isolated temporary staging directory with exclusive ownership
+  TMP_FIX_BASE="${RUNNER_TEMP:-/tmp}"
+  mkdir -p "$TMP_FIX_BASE"
+  TMP_FIX=$(mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX") || {
+    echo "Error: Failed to create safe temporary fixture directory." >&2
+    exit 1
+  }
+
+  # Ensure temporary staging directory owned by this invocation is always cleaned up on exit
+  cleanup_staging_dir() {
+    if [ -n "${TMP_FIX:-}" ] && [ -d "$TMP_FIX" ]; then
+      rm -rf "$TMP_FIX"
+    fi
+  }
+  trap cleanup_staging_dir EXIT
 
   IS_DYNAMIC_CONSUMER=false
   FIXTURE_DIR=""
@@ -60,7 +72,6 @@ if [[ "$MODE" == "setup" ]]; then
   if [[ "$IS_DYNAMIC_CONSUMER" == "true" ]]; then
     node "$REPO_ROOT/.github/scripts/generate-consumer-project.js" "$TMP_FIX" || {
       echo "Error: Failed to generate dynamic consumer project." >&2
-      rm -rf "$TMP_FIX"
       exit 1
     }
   else
@@ -76,13 +87,11 @@ if [[ "$MODE" == "setup" ]]; then
 
     if [ ! -d "$FIXTURE_DIR" ]; then
       echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR" >&2
-      rm -rf "$TMP_FIX"
       exit 1
     fi
 
     cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/ || {
       echo "Error: Failed to copy fixture into temp dir." >&2
-      rm -rf "$TMP_FIX"
       exit 1
     }
   fi
@@ -91,20 +100,17 @@ if [[ "$MODE" == "setup" ]]; then
   for reserved in pages autofix; do
     if [ -e "$TMP_FIX/$reserved" ]; then
       echo "Error: Fixture '${FIXTURE_DIR}' contains reserved local action directory '${reserved}'. Aborting setup to protect action source." >&2
-      rm -rf "$TMP_FIX"
       exit 1
     fi
   done
 
   mkdir -p "$STATE_DIR" || {
     echo "Error: Failed to create state directory '$STATE_DIR'." >&2
-    rm -rf "$TMP_FIX"
     exit 1
   }
 
   if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
     echo "Injected failure before snapshot initialization." >&2
-    rm -rf "$TMP_FIX"
     exit 1
   fi
 
@@ -114,7 +120,6 @@ if [[ "$MODE" == "setup" ]]; then
     echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
   else
     echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
-    rm -rf "$TMP_FIX"
     exit 1
   fi
 
@@ -122,7 +127,6 @@ if [[ "$MODE" == "setup" ]]; then
     echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"
     mv __tests__ "$TMP_TESTS"/ || {
       echo "Error: Failed to stash __tests__ directory." >&2
-      rm -rf "$TMP_FIX"
       exit 1
     }
   else
@@ -131,7 +135,6 @@ if [[ "$MODE" == "setup" ]]; then
 
   if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
     echo "Injected failure after stashing __tests__." >&2
-    rm -rf "$TMP_FIX"
     exit 1
   fi
 
@@ -141,7 +144,6 @@ if [[ "$MODE" == "setup" ]]; then
     if [ "$item" != "*" ] && [ -e "$item" ] && [ "$item" != "$STATE_DIR" ]; then
       if [ "${INJECT_FAILURE_IN_SNAPSHOT:-0}" -eq 1 ]; then
         echo "Injected failure during snapshot creation." >&2
-        rm -rf "$TMP_FIX"
         exit 1
       fi
       echo "$item" >> "$STATE_DIR/snapshot_pre_existing_items"
@@ -183,12 +185,10 @@ if [[ "$MODE" == "setup" ]]; then
       bak_item="${item}.test_bak_$$"
       if [ -e "$bak_item" ]; then
         echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss." >&2
-        rm -rf "$TMP_FIX"
         exit 1
       fi
       mv "$item" "$bak_item" || {
         echo "Error: Failed to back up '${item}'." >&2
-        rm -rf "$TMP_FIX"
         exit 1
       }
       echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
@@ -205,7 +205,6 @@ if [[ "$MODE" == "setup" ]]; then
       if [ "${INJECT_FAILURE_IN_COPY:-0}" -eq 1 ] && [ "$COUNT" -gt 1 ]; then
         echo "Injected failure partway through copying fixture files." >&2
         rm -f "$STATE_DIR/fixture_items_list"
-        rm -rf "$TMP_FIX"
         exit 1
       fi
 
@@ -214,13 +213,11 @@ if [[ "$MODE" == "setup" ]]; then
         if [ -e "$bak_item" ]; then
           echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss." >&2
           rm -f "$STATE_DIR/fixture_items_list"
-          rm -rf "$TMP_FIX"
           exit 1
         fi
         mv "$item" "$bak_item" || {
           echo "Error: Failed to back up conflicting root item '${item}'." >&2
           rm -f "$STATE_DIR/fixture_items_list"
-          rm -rf "$TMP_FIX"
           exit 1
         }
         echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
@@ -229,7 +226,6 @@ if [[ "$MODE" == "setup" ]]; then
       cp -r "$TMP_FIX/$item" . || {
         echo "Error: Failed to install fixture item '${item}'." >&2
         rm -f "$STATE_DIR/fixture_items_list"
-        rm -rf "$TMP_FIX"
         exit 1
       }
       echo "$item" >> "$STATE_DIR/installed_fixture_files"
@@ -237,7 +233,6 @@ if [[ "$MODE" == "setup" ]]; then
     rm -f "$STATE_DIR/fixture_items_list"
   fi
 
-  rm -rf "$TMP_FIX"
   exit 0
 
 elif [[ "$MODE" == "cleanup" ]]; then

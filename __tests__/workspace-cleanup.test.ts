@@ -244,6 +244,21 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
   });
 
+  it("executes setup and cleanup for dynamic consumer project cleanly", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
+
+    runScript("setup pages node npm consumer-integration consumer-project", tempDir);
+
+    expect(fs.existsSync(path.join(tempDir, "package.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "index.html"))).toBe(true);
+    expect(fs.readFileSync(path.join(tempDir, "index.html"), "utf8")).toContain("AREA44 Workflows Consumer Project");
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
+    expect(fs.existsSync(path.join(tempDir, "index.html"))).toBe(false);
+  });
+
   it("remains safe when cleanup is invoked twice", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 

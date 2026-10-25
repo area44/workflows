@@ -4,10 +4,10 @@ This document explains the purpose, architecture, boundaries, execution, and fix
 
 ## Overview & Architecture
 
-To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` generates consumer projects dynamically in temporary directories using dedicated helpers and scripts:
+To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` generates consumer projects dynamically in temporary directories using a single canonical generator module:
 
-- **TypeScript Helper (`__tests__/helpers/consumer-project.ts`)**: `createConsumerProject(targetDir, options)` creates a minimal, realistic multi-language consumer project in a specified temporary directory.
-- **Generation Script (`.github/scripts/generate-consumer-project.js`)**: Executable Node.js script generating the canonical consumer project structure for CI matrix runs and CLI helper invocations.
+- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single source of truth defining file contents, templates, and safety checks.
+- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical JS generator module so unit tests and Node scripts share identical generation logic without drift.
 
 ### Generated Project Structure
 
@@ -45,7 +45,7 @@ Integration validation is divided into two distinct levels to balance speed and 
 
 - **Execution Boundary**: Invokes the local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
 - **Purpose**: End-to-end execution of the composite action pipeline:
-  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` generates a dynamic consumer project into a temporary workspace directory while stashing `__tests__` (preventing test files from polluting matrix runs).
+  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` generates a dynamic consumer project into an isolated temporary staging directory created safely via `mktemp -d` while stashing `__tests__` (preventing test files from polluting matrix runs).
   - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code against the generated project.
   - **Output & Artifact Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the build copies the source file to `dist/index.html` containing the consumer fixture marker (`"AREA44 Workflows Consumer Project"`).
   - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
@@ -58,6 +58,12 @@ Integration validation is divided into two distinct levels to balance speed and 
 
 ```bash
 npm test
+```
+
+### Run Consumer Generator Tests
+
+```bash
+npm test __tests__/generate-consumer-project.test.ts
 ```
 
 ### Run Consumer Integration Module Tests
@@ -74,10 +80,10 @@ npm test __tests__/workspace-cleanup.test.ts
 
 ---
 
-## Workspace Safety & Cleanup Guarantees
+## Temporary Directory Ownership & Workspace Safety Guarantees
 
-All temporary consumer projects created during unit/integration tests and CI matrix runs enforce deterministic cleanup:
+All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership and deterministic cleanup:
 
-- Local module tests create isolated temporary directories via `fs.mkdtempSync` and guarantee teardown in `afterEach` hooks using `try/finally` patterns.
-- Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation.
-- Cleanup validates manifest paths and stash boundaries before removing generated artifacts or restoring pre-existing files.
+- **Exclusive Directory Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions (0700). It never reuses existing directory paths based on PID.
+- **Automatic Staging Cleanup**: A shell `trap` guarantees that temporary staging directories created during setup are removed upon exit, even if project generation or workspace setup fails prematurely.
+- **Workspace State Protection**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. Cleanup validates manifest paths and stash boundaries before removing generated artifacts or restoring pre-existing files.

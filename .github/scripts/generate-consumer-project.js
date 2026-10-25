@@ -9,6 +9,7 @@ import path from "node:path";
  * @property {string} [pythonVersion]
  * @property {string} [ruffVersion]
  * @property {string} [markerContent]
+ * @property {boolean} [allowNonEmpty]
  */
 
 /**
@@ -99,7 +100,18 @@ if __name__ == "__main__":
  * @returns {string}
  */
 export function createConsumerProject(targetDir, options = {}) {
-  if (!fs.existsSync(targetDir)) {
+  if (fs.existsSync(targetDir)) {
+    const stat = fs.statSync(targetDir);
+    if (!stat.isDirectory()) {
+      throw new Error(`Target path '${targetDir}' exists and is not a directory.`);
+    }
+    if (!options.allowNonEmpty) {
+      const existing = fs.readdirSync(targetDir);
+      if (existing.length > 0) {
+        throw new Error(`Refusing to generate consumer project into non-empty directory '${targetDir}'.`);
+      }
+    }
+  } else {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
@@ -114,6 +126,6 @@ export function createConsumerProject(targetDir, options = {}) {
 // CLI entrypoint when run directly
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename || "")) {
   const targetDir = process.argv[2] || process.cwd();
-  createConsumerProject(targetDir);
+  createConsumerProject(targetDir, { allowNonEmpty: true });
   console.log(`Successfully generated consumer project in ${path.resolve(targetDir)}`);
 }
