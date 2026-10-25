@@ -43,6 +43,12 @@ jobs:
             verify_site: true
           - action: pages
             runtime: node
+            pm: npm
+            type: consumer-integration
+            fixture: consumer-project
+            verify_site: true
+          - action: pages
+            runtime: node
             pm: pnpm
             type: basic
             fixture: pages/node/pnpm/basic
@@ -140,6 +146,17 @@ jobs:
             has_js_project: "false"
             has_python_source: "true"
             python_pm: uv
+            python_version: "3.12"
+            ruff_version: "0.17.2"
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
+            type: consumer-integration
+            fixture: consumer-project
+            has_js_project: "true"
+            has_python_source: "true"
+            python_pm: pip
             python_version: "3.12"
             ruff_version: "0.17.2"
             verify_site: false
@@ -260,7 +277,11 @@ jobs:
           fi
 
           if [ -n "$FIXTURE" ]; then
-            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
+            if [[ "$FIXTURE" == /* ]]; then
+              FIXTURE_PATH="$FIXTURE"
+            else
+              FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
+            fi
           else
             FIXTURE_PATH="${TESTS_ROOT}/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
           fi
@@ -365,6 +386,14 @@ jobs:
               echo "Error: [${ACTION}] Artifact verification stage failed for fixture '${FIXTURE_PATH}'."
               echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
               exit 1
+            fi
+
+            if [[ "$TYPE" == "consumer-integration" ]]; then
+              if ! grep -q "AREA44 Workflows Consumer Project" "dist/index.html"; then
+                echo "Error: [${ACTION}] Consumer artifact content verification failed for fixture '${FIXTURE_PATH}'."
+                echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Workflows Consumer Project'."
+                exit 1
+              fi
             fi
           fi
 
