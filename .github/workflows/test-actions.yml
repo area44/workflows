@@ -221,11 +221,10 @@ jobs:
           fi
 
           shopt -s dotglob
-          ls -1A > .initial_workspace_snapshot
 
           TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
           mkdir -p "$TMP_FIX"
-          cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/
+          cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/ || { echo "Error: Failed to copy fixture into temp dir."; rm -rf "$TMP_FIX"; exit 1; }
 
           for reserved in pages autofix; do
             if [ -e "$TMP_FIX/$reserved" ]; then
@@ -239,7 +238,12 @@ jobs:
           mkdir -p "$TMP_TESTS"
           echo "$TMP_TESTS" > .stash_tests_path
 
-          [ -d __tests__ ] && mv __tests__ "$TMP_TESTS"/__tests__ || true
+          if [ -d __tests__ ]; then
+            mv __tests__ "$TMP_TESTS"/__tests__ || { echo "Error: Failed to stash __tests__ directory."; exit 1; }
+          fi
+
+          touch .backed_up_files
+          touch .installed_fixture_files
 
           ROOT_ITEMS=(
             package.json
@@ -265,35 +269,38 @@ jobs:
             setup.cfg
           )
 
-          touch .backed_up_files
           for item in "${ROOT_ITEMS[@]}"; do
             if [ -e "$item" ]; then
               bak_item="${item}.test_bak_$$"
               if [ -e "$bak_item" ]; then
-                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss."
                 rm -rf "$TMP_FIX"
                 exit 1
               fi
-              mv "$item" "$bak_item"
+              mv "$item" "$bak_item" || { echo "Error: Failed to back up '${item}'."; rm -rf "$TMP_FIX"; exit 1; }
               echo "${item}|${bak_item}" >> .backed_up_files
             fi
           done
 
-          ls -1A "$TMP_FIX" > .copied_fixture_files
+          ls -1A "$TMP_FIX" > .fixture_items_list
           while IFS= read -r item; do
-            if [ -n "$item" ] && [ -e "$item" ]; then
+            [ -z "$item" ] && continue
+            if [ -e "$item" ]; then
               bak_item="${item}.test_bak_$$"
               if [ -e "$bak_item" ]; then
-                echo "Error: Backup destination '${bak_item}' already exists. Aborting setup to prevent data loss."
+                echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss."
                 rm -rf "$TMP_FIX"
                 exit 1
               fi
-              mv "$item" "$bak_item"
+              mv "$item" "$bak_item" || { echo "Error: Failed to back up conflicting root item '${item}'."; rm -rf "$TMP_FIX"; exit 1; }
               echo "${item}|${bak_item}" >> .backed_up_files
             fi
-          done < .copied_fixture_files
 
-          cp -r "$TMP_FIX"/* .
+            cp -r "$TMP_FIX/$item" . || { echo "Error: Failed to install fixture item '${item}'."; rm -rf "$TMP_FIX"; exit 1; }
+            echo "$item" >> .installed_fixture_files
+          done < .fixture_items_list
+
+          rm -f .fixture_items_list
           rm -rf "$TMP_FIX"
 
       - name: Test Pages Action
@@ -456,29 +463,21 @@ jobs:
         if: always()
         run: |
           shopt -s dotglob
-          if [ -f .copied_fixture_files ]; then
+
+          if [ -f .installed_fixture_files ]; then
             while IFS= read -r item; do
               [ -n "$item" ] && rm -rf "$item"
-            done < .copied_fixture_files
-            rm -f .copied_fixture_files
+            done < .installed_fixture_files
+            rm -f .installed_fixture_files
           fi
 
-          if [ -f .initial_workspace_snapshot ]; then
-            for artifact in node_modules dist .venv .ruff_cache *.egg-info; do
-              if [ -e "$artifact" ]; then
-                if ! grep -qxF "$artifact" .initial_workspace_snapshot 2>/dev/null; then
-                  rm -rf "$artifact"
-                fi
-              fi
-            done
-            rm -f .initial_workspace_snapshot
-          fi
+          rm -rf node_modules dist .venv .ruff_cache *.egg-info .fixture_items_list
 
           if [ -f .backed_up_files ]; then
             while IFS='|' read -r orig_item bak_item; do
               if [ -n "$orig_item" ] && [ -n "$bak_item" ] && [ -e "$bak_item" ]; then
                 rm -rf "$orig_item"
-                mv "$bak_item" "$orig_item"
+                mv "$bak_item" "$orig_item" || echo "Warning: Failed to move '$bak_item' back to '$orig_item'. Keeping backup file."
               fi
             done < .backed_up_files
             rm -f .backed_up_files
@@ -488,8 +487,7 @@ jobs:
             STASH_PATH=$(cat .stash_tests_path 2>/dev/null || true)
             if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH/__tests__" ]; then
               rm -rf __tests__
-              mv "$STASH_PATH/__tests__" __tests__
-              rm -rf "$STASH_PATH"
+              mv "$STASH_PATH/__tests__" __tests__ && rm -rf "$STASH_PATH" || echo "Warning: Failed to restore stashed __tests__."
             fi
             rm -f .stash_tests_path
           fi

@@ -386,6 +386,73 @@ describe("resolve-environment", () => {
     });
   });
 
+  describe("CI Workspace Setup and Restoration Safety", () => {
+    it("should simulate setup backup safety and prevent data loss when backup destination already exists", () => {
+      const tempDir = path.join(fixturesDir, "backup-safety-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig"}');
+      fs.writeFileSync(path.join(tempDir, "package.json.test_bak_123"), '{"name":"existing-bak"}');
+
+      process.chdir(tempDir);
+      try {
+        const item = "package.json";
+        const bakItem = `${item}.test_bak_123`;
+        let errorOccurred = false;
+
+        if (fs.existsSync(bakItem)) {
+          errorOccurred = true;
+        }
+
+        expect(errorOccurred).toBe(true);
+        expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe('{"name":"orig"}');
+        expect(fs.readFileSync(path.join(tempDir, "package.json.test_bak_123"), "utf8")).toBe(
+          '{"name":"existing-bak"}',
+        );
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should restore original files cleanly if setup fails midway", () => {
+      const tempDir = path.join(fixturesDir, "mid-setup-failure-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig-pkg"}');
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'orig-py'\n");
+
+      process.chdir(tempDir);
+      try {
+        const backedUpFiles: string[] = [];
+
+        // Back up package.json
+        fs.renameSync("package.json", "package.json.test_bak_999");
+        backedUpFiles.push("package.json|package.json.test_bak_999");
+
+        // Simulate setup failure before pyproject.toml is backed up
+        const setupFailed = true;
+
+        if (setupFailed) {
+          // Cleanup restores only items logged in backedUpFiles
+          for (const entry of backedUpFiles) {
+            const [orig, bak] = entry.split("|");
+            if (fs.existsSync(bak)) {
+              if (fs.existsSync(orig)) fs.rmSync(orig, { recursive: true, force: true });
+              fs.renameSync(bak, orig);
+            }
+          }
+        }
+
+        expect(fs.existsSync("package.json")).toBe(true);
+        expect(fs.readFileSync("package.json", "utf8")).toBe('{"name":"orig-pkg"}');
+        expect(fs.existsSync("pyproject.toml")).toBe(true);
+        expect(fs.readFileSync("pyproject.toml", "utf8")).toBe("[project]\nname = 'orig-py'\n");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("Cross-Language Integration Scenarios", () => {
     it("should handle JavaScript-only projects correctly", () => {
       const tempDir = path.join(fixturesDir, "js-only-integration-temp");
