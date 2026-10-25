@@ -22,7 +22,7 @@ describe("Consumer Project Integration Suite", () => {
   const originalEnv = { ...process.env };
   const consumerFixturePath = path.resolve(
     originalCwd,
-    "tests/integration/fixtures/consumer-project",
+    "__tests__/fixtures/consumer-project",
   );
 
   let tempDir: string;

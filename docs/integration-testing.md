@@ -6,7 +6,7 @@ This document explains the purpose, architecture, execution, and extension of en
 
 To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` maintains an isolated, lightweight consumer fixture at:
 
-`tests/integration/fixtures/consumer-project/`
+`__tests__/fixtures/consumer-project/`
 
 ### Fixture Structure
 
@@ -45,7 +45,7 @@ In GitHub Actions, integration tests run as part of the action verification matr
 
 ### Matrix Integration Mechanics
 
-1. **Workspace Setup**: `.github/scripts/test-workspace-cleanup.sh setup` copies `tests/integration/fixtures/consumer-project` into the workspace root while stashing existing repository test directories.
+1. **Workspace Setup**: `.github/scripts/test-workspace-cleanup.sh setup` copies `__tests__/fixtures/consumer-project` into the workspace root while stashing existing repository test directories (preventing test files from polluting other matrix runs).
 2. **Action Execution**: The workflow invokes `./pages` or `./autofix` using local relative paths.
 3. **Output & Artifact Verification**: Outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and generated build artifacts (`dist/index.html`) are validated.
 4. **Workspace Cleanup**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories.
@@ -64,8 +64,8 @@ To ensure changes under review are tested before merging:
 ## Adding a New Integration Scenario
 
 1. **Add Fixture Assets or Scenarios**:
-   - For JavaScript/Python consumer scenarios, add or update files in `tests/integration/fixtures/consumer-project/`.
-   - For distinct environment matrices, add a subfolder under `tests/integration/fixtures/`.
+   - For JavaScript/Python consumer scenarios, add or update files in `__tests__/fixtures/consumer-project/`.
+   - For distinct environment matrices, add a subfolder under `__tests__/fixtures/`.
 
 2. **Add Unit/Integration Assertions**:
    - Add test cases in `__tests__/integration-consumer.test.ts` exercising environment resolution, variable resolution, or build/autofix execution.

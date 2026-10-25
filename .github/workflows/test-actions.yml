@@ -45,7 +45,7 @@ jobs:
             runtime: node
             pm: npm
             type: consumer-integration
-            fixture: tests/integration/fixtures/consumer-project
+            fixture: consumer-project
             verify_site: true
           - action: pages
             runtime: node
@@ -153,7 +153,7 @@ jobs:
             runtime: node
             pm: npm
             type: consumer-integration
-            fixture: tests/integration/fixtures/consumer-project
+            fixture: consumer-project
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
