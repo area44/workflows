@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "mkdir -p dist && echo '<!DOCTYPE html><html><body><h1>AREA44 Consumer App</h1></body></html>' > dist/index.html",
+    "build": "mkdir -p dist && cp index.html dist/index.html",
     "lint": "node -e \"console.log('Linting JS...')\"",
     "format": "node -e \"console.log('Formatting JS...')\""
   },

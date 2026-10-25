@@ -10,9 +10,9 @@ To ensure that composite actions (`pages` and `autofix`) function correctly when
 
 ### Fixture Structure
 
-- **`package.json`**: Defines standard Node.js package metadata, scripts (`build`, `lint`, `format`), and package manager declaration (`npm@10.8.2`).
+- **`package.json`**: Defines standard Node.js package metadata, scripts (`"build": "mkdir -p dist && cp index.html dist/index.html"`, `lint`, `format`), and package manager declaration (`npm@10.8.2`).
 - **`package-lock.json`**: Lockfile for reproducible npm installation.
-- **`index.html`**: HTML static asset entrypoint for build verification.
+- **`index.html`**: HTML static asset source containing `"AREA44 Workflows Consumer Project"`.
 - **`pyproject.toml`**: Python project configuration with `ruff` dependency specification.
 - **`requirements.txt`**: Pinned Python dependency manifest (`ruff==0.17.2`).
 - **`main.py`**: Python source code file to exercise Python linting and formatting workflows.
@@ -27,7 +27,7 @@ Integration validation is divided into two distinct levels to balance speed and 
 
 ### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
 
-- **Execution Boundary**: Directly imports TypeScript source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`) in Vitest.
+- **Execution Boundary**: Directly imports TypeScript source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`) in Vitest via `vite-plus/test`.
 - **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against temporary clones of `__tests__/fixtures/consumer-project/`.
 
 ### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
@@ -36,7 +36,7 @@ Integration validation is divided into two distinct levels to balance speed and 
 - **Purpose**: End-to-end execution of the composite action pipeline:
   - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` copies `__tests__/fixtures/consumer-project` into the workspace root while stashing `__tests__` (preventing test files from polluting matrix runs).
   - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code.
-  - **Output & Content Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the generated `dist/index.html` contains consumer-specific content (`"AREA44 Consumer App"`).
+  - **Output & Artifact Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the build copies the source file to `dist/index.html` containing the consumer fixture title (`"AREA44 Workflows Consumer Project"`).
   - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
 
 ---

@@ -389,9 +389,9 @@ jobs:
             fi
 
             if [[ "$TYPE" == "consumer-integration" ]]; then
-              if ! grep -q "AREA44 Consumer App" "dist/index.html"; then
+              if ! grep -q "AREA44 Workflows Consumer Project" "dist/index.html"; then
                 echo "Error: [${ACTION}] Consumer artifact content verification failed for fixture '${FIXTURE_PATH}'."
-                echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Consumer App'."
+                echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Workflows Consumer Project'."
                 exit 1
               fi
             fi
