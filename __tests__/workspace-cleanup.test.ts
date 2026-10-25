@@ -338,6 +338,26 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("rejects backup filename that matches via regex dot wildcard instead of literal dot", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
+    fs.writeFileSync(path.join(tempDir, "packageXjson.test_bak_100"), "backup-pkg");
+
+    // backed_up_files mapping tries to map orig_item 'package.json' to 'packageXjson.test_bak_100'
+    fs.writeFileSync(
+      path.join(stateDir, "backed_up_files"),
+      "package.json|packageXjson.test_bak_100\n"
+    );
+
+    runScript("cleanup", tempDir);
+
+    // Literal check fails (X != .), package.json is NOT restored/mutated, state is preserved
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("rejects duplicate original or backup item entries in backed_up_files", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });

@@ -302,31 +302,25 @@ elif [[ "$MODE" == "cleanup" ]]; then
     exit 0
   fi
 
-  HAD_MANIFEST_ERROR=false
-  HAD_RESTORE_FAILURE=false
+  VALIDATION_FAILED=false
 
-  # Pre-validate installed_fixture_files manifest atomically before any deletion
+  # --- PHASE 1: ATOMIC VALIDATION PHASE (NO DESTRUCTIVE MUTATIONS) ---
+
+  # 1. Pre-validate installed_fixture_files manifest
+  valid_installed_fixture_items=()
   if [ -f "$STATE_DIR/installed_fixture_files" ]; then
-    while IFS= read -r item; do
+    while IFS= read -r item || [ -n "$item" ]; do
       [ -z "$item" ] && continue
       if ! validate_path "$item" || [[ "$item" == *"/"* ]]; then
         echo "Error: Installed fixture manifest contains invalid or nested path '$item'. Failing closed." >&2
-        HAD_MANIFEST_ERROR=true
+        VALIDATION_FAILED=true
         break
       fi
+      valid_installed_fixture_items+=("$item")
     done < "$STATE_DIR/installed_fixture_files"
   fi
 
-  # 1. Remove fixture installed files recorded during setup (only if manifest validation passed)
-  if [ "$HAD_MANIFEST_ERROR" == "false" ] && [ -f "$STATE_DIR/installed_fixture_files" ]; then
-    while IFS= read -r item; do
-      if [ -n "$item" ] && validate_path "$item"; then
-        rm -rf "$item"
-      fi
-    done < "$STATE_DIR/installed_fixture_files"
-  fi
-
-  # 2. Clean up workflow-generated paths/artifacts ONLY if snapshot status is 'complete'
+  # 2. Pre-validate snapshot status
   SNAPSHOT_COMPLETE=false
   if [ -f "$STATE_DIR/snapshot.status" ]; then
     if grep -Fqx "SNAPSHOT_STATUS=complete" "$STATE_DIR/snapshot.status" 2>/dev/null; then
@@ -334,7 +328,130 @@ elif [[ "$MODE" == "cleanup" ]]; then
     fi
   fi
 
-  if [ "$SNAPSHOT_COMPLETE" == "true" ] && [ "$HAD_MANIFEST_ERROR" == "false" ]; then
+  # 3. Pre-validate backed_up_files manifest
+  valid_orig_items=()
+  valid_bak_items=()
+  declare -A seen_orig_items=()
+  declare -A seen_bak_items=()
+
+  if [ -f "$STATE_DIR/backed_up_files" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -z "$line" ] && continue
+
+      # Must contain exactly one pipe delimiter
+      if [[ "$line" != *"|"* ]] || [[ "$line" == *"|"*'|'* ]]; then
+        echo "Error: Malformed record in backed_up_files (invalid delimiter): '$line'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      IFS='|' read -r orig_item bak_item <<< "$line"
+
+      if [ -z "$orig_item" ] || [ -z "$bak_item" ]; then
+        echo "Error: Missing item in backup mapping: '$line'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      if ! validate_path "$orig_item" || [[ "$orig_item" == *"/"* ]]; then
+        echo "Error: Unsafe original path in backup mapping: '$orig_item'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      if ! validate_path "$bak_item" || [[ "$bak_item" == *"/"* ]]; then
+        echo "Error: Unsafe backup path in backup mapping: '$bak_item'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      if ! is_allowed_root_item "$orig_item"; then
+        echo "Error: Unallowed root item in backed_up_files: '$orig_item'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      # Backup path literal suffix check: must equal `${orig_item}.test_bak_<digits>`
+      bak_prefix="${orig_item}.test_bak_"
+      if [[ "$bak_item" != "$bak_prefix"* ]]; then
+        echo "Error: Mismatched backup filename prefix for '$orig_item': '$bak_item'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      pid_suffix="${bak_item#"$bak_prefix"}"
+      if [[ -z "$pid_suffix" || "$pid_suffix" =~ [^0-9] ]]; then
+        echo "Error: Mismatched backup filename suffix for '$orig_item': '$bak_item'." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      if [ -n "${seen_orig_items[$orig_item]:-}" ]; then
+        echo "Error: Duplicate original item entry for '$orig_item' in backed_up_files." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      if [ -n "${seen_bak_items[$bak_item]:-}" ]; then
+        echo "Error: Duplicate backup item entry for '$bak_item' in backed_up_files." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
+      seen_orig_items["$orig_item"]=1
+      seen_bak_items["$bak_item"]=1
+      valid_orig_items+=("$orig_item")
+      valid_bak_items+=("$bak_item")
+    done < "$STATE_DIR/backed_up_files"
+  fi
+
+  # 4. Pre-validate stash info
+  STASH_PATH=""
+  TESTS_EXISTED=""
+  if [ -f "$STATE_DIR/stash.info" ]; then
+    STASH_PATH=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
+    TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
+
+    if [[ "$TESTS_EXISTED" == "true" ]]; then
+      if [ -z "$STASH_PATH" ] || ! validate_stash_path "$STASH_PATH"; then
+        echo "Error: Invalid or unverified stashed __tests__ directory path at '$STASH_PATH'." >&2
+        VALIDATION_FAILED=true
+      else
+        stashed_tests="${STASH_PATH}/__tests__"
+        if [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; then
+          echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
+          VALIDATION_FAILED=true
+        fi
+      fi
+    elif [[ "$TESTS_EXISTED" == "false" ]]; then
+      if [ -n "$STASH_PATH" ] && ! validate_stash_path "$STASH_PATH"; then
+        echo "Error: Invalid stash path at '$STASH_PATH'." >&2
+        VALIDATION_FAILED=true
+      fi
+    else
+      echo "Error: Invalid or missing tests_existed_before_setup state in stash.info: '$TESTS_EXISTED'." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
+  # --- PHASE 2: DESTRUCTIVE EXECUTION PHASE (ONLY RUN IF ALL VALIDATIONS PASSED) ---
+
+  if [ "$VALIDATION_FAILED" == "true" ]; then
+    echo "Notice: Aborting cleanup execution due to manifest validation failures. Preserving workspace and recovery state." >&2
+    exit 0
+  fi
+
+  HAD_RESTORE_FAILURE=false
+
+  # Step 1: Remove installed fixture files
+  for item in "${valid_installed_fixture_items[@]}"; do
+    if [ -n "$item" ] && validate_path "$item"; then
+      rm -rf "$item"
+    fi
+  done
+
+  # Step 2: Clean up workflow-generated paths/artifacts ONLY if snapshot status is 'complete'
+  if [ "$SNAPSHOT_COMPLETE" == "true" ]; then
     GENERATED_PATHS=(node_modules dist .venv .ruff_cache *.egg-info)
     for pattern in "${GENERATED_PATHS[@]}"; do
       for path in $pattern; do
@@ -356,149 +473,58 @@ elif [[ "$MODE" == "cleanup" ]]; then
       done
     done
   else
-    echo "Notice: Snapshot is missing, incomplete, or state is invalid. Preserving generated paths to prevent data loss." >&2
+    echo "Notice: Snapshot is missing or incomplete. Preserving generated paths to prevent data loss." >&2
   fi
 
-  # 3. Restore backed up root items recorded in backed_up_files (ATOMIC PRE-VALIDATION)
-  if [ -f "$STATE_DIR/backed_up_files" ]; then
-    valid_orig_items=()
-    valid_bak_items=()
-    declare -A seen_orig_items=()
-    declare -A seen_bak_items=()
+  # Step 3: Restore backed up root items
+  for i in "${!valid_orig_items[@]}"; do
+    orig_item="${valid_orig_items[$i]}"
+    bak_item="${valid_bak_items[$i]}"
 
-    # Phase 1: Atomically validate all records in backed_up_files
-    while IFS= read -r line || [ -n "$line" ]; do
-      [ -z "$line" ] && continue
-
-      # Must contain exactly one pipe delimiter
-      if [[ "$line" != *"|"* ]] || [[ "$line" == *"|"*'|'* ]]; then
-        echo "Error: Malformed record in backed_up_files (invalid delimiter): '$line'." >&2
+    if [ -e "$bak_item" ]; then
+      if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
+        echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
         HAD_RESTORE_FAILURE=true
-        break
+        continue
       fi
 
-      IFS='|' read -r orig_item bak_item <<< "$line"
-
-      if [ -z "$orig_item" ] || [ -z "$bak_item" ]; then
-        echo "Error: Missing item in backup mapping: '$line'." >&2
+      rm -rf "$orig_item"
+      if ! mv "$bak_item" "$orig_item"; then
+        echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
         HAD_RESTORE_FAILURE=true
-        break
       fi
-
-      if ! validate_path "$orig_item" || [[ "$orig_item" == *"/"* ]]; then
-        echo "Error: Unsafe original path in backup mapping: '$orig_item'." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      if ! validate_path "$bak_item" || [[ "$bak_item" == *"/"* ]]; then
-        echo "Error: Unsafe backup path in backup mapping: '$bak_item'." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      if ! is_allowed_root_item "$orig_item"; then
-        echo "Error: Unallowed root item in backed_up_files: '$orig_item'." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      # Backup path suffix must contain only numbers and match expected pattern
-      if [[ ! "$bak_item" =~ ^${orig_item}\.test_bak_[0-9]+$ ]]; then
-        echo "Error: Mismatched backup filename pattern for '$orig_item': '$bak_item'." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      if [ -n "${seen_orig_items[$orig_item]:-}" ]; then
-        echo "Error: Duplicate original item entry for '$orig_item' in backed_up_files." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      if [ -n "${seen_bak_items[$bak_item]:-}" ]; then
-        echo "Error: Duplicate backup item entry for '$bak_item' in backed_up_files." >&2
-        HAD_RESTORE_FAILURE=true
-        break
-      fi
-
-      seen_orig_items["$orig_item"]=1
-      seen_bak_items["$bak_item"]=1
-      valid_orig_items+=("$orig_item")
-      valid_bak_items+=("$bak_item")
-    done < "$STATE_DIR/backed_up_files"
-
-    # Phase 2: Perform restoration ONLY if atomic pre-validation passed with zero errors
-    if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
-      for i in "${!valid_orig_items[@]}"; do
-        orig_item="${valid_orig_items[$i]}"
-        bak_item="${valid_bak_items[$i]}"
-
-        if [ -e "$bak_item" ]; then
-          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ] || [ "${INJECT_FAILURE_RESTORE_ITEM:-}" == "$orig_item" ]; then
-            echo "Error: Injected failure restoring '$bak_item' to '$orig_item'." >&2
-            HAD_RESTORE_FAILURE=true
-            continue
-          fi
-
-          rm -rf "$orig_item"
-          if ! mv "$bak_item" "$orig_item"; then
-            echo "Warning: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
-            HAD_RESTORE_FAILURE=true
-          fi
-        fi
-      done
-    else
-      echo "Notice: Aborting backup restoration due to manifest validation failures. Preserving backup files for recovery." >&2
     fi
-  fi
+  done
 
-  # 4. Restore stashed __tests__ directory
-  if [ -f "$STATE_DIR/stash.info" ]; then
-    STASH_PATH=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
-    TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
-
+  # Step 4: Restore stashed __tests__ directory
+  if [ -n "$STASH_PATH" ]; then
     if [[ "$TESTS_EXISTED" == "true" ]]; then
-      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH"; then
-        stashed_tests="${STASH_PATH}/__tests__"
-        if [ -d "$stashed_tests" ] && [ ! -L "$stashed_tests" ]; then
-          if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
-            echo "Error: Injected failure restoring stashed __tests__." >&2
-            HAD_RESTORE_FAILURE=true
-          else
-            rm -rf __tests__
-            if mv "$stashed_tests" .; then
-              rm -rf "$STASH_PATH"
-            else
-              echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
-              HAD_RESTORE_FAILURE=true
-            fi
-          fi
+      stashed_tests="${STASH_PATH}/__tests__"
+      if [ "${INJECT_FAILURE_RESTORE:-0}" -eq 1 ]; then
+        echo "Error: Injected failure restoring stashed __tests__." >&2
+        HAD_RESTORE_FAILURE=true
+      else
+        rm -rf __tests__
+        if mv "$stashed_tests" .; then
+          rm -rf "$STASH_PATH"
         else
-          echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
+          echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
           HAD_RESTORE_FAILURE=true
         fi
-      else
-        echo "Error: Invalid or missing stashed __tests__ directory at '$STASH_PATH'." >&2
-        HAD_RESTORE_FAILURE=true
       fi
     elif [[ "$TESTS_EXISTED" == "false" ]]; then
-      # __tests__ did not exist before setup. Remove any test-created __tests__ directory safely.
       rm -rf __tests__
-      if [ -n "$STASH_PATH" ] && validate_stash_path "$STASH_PATH" && [ -d "$STASH_PATH" ]; then
+      if [ -d "$STASH_PATH" ]; then
         rm -rf "$STASH_PATH"
       fi
-    else
-      echo "Error: Invalid or missing tests_existed_before_setup state in stash.info: '$TESTS_EXISTED'. Preserving __tests__." >&2
-      HAD_RESTORE_FAILURE=true
     fi
   fi
 
-  # Only remove STATE_DIR if all restorations and manifest checks succeeded
-  if [ "$HAD_RESTORE_FAILURE" == "false" ] && [ "$HAD_MANIFEST_ERROR" == "false" ]; then
+  # Only remove STATE_DIR if all restorations succeeded
+  if [ "$HAD_RESTORE_FAILURE" == "false" ]; then
     rm -rf "$STATE_DIR"
   else
-    echo "Warning: Cleanup or restoration encountered errors. Preserving state directory '$STATE_DIR' for recovery." >&2
+    echo "Warning: Restoration encountered errors. Preserving state directory '$STATE_DIR' for recovery." >&2
   fi
 
   exit 0
