@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -115,6 +116,47 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
         "exists and is not a directory",
       );
       expect(fs.readFileSync(filePath, "utf8")).toBe("file data");
+    });
+  });
+
+  describe("CLI Invocation Safety", () => {
+    const generatorScript = path.resolve(process.cwd(), ".github/scripts/generate-consumer-project.js");
+
+    it("fails with error code 1 when CLI is invoked without a target directory argument", () => {
+      let failed = false;
+      let output = "";
+      try {
+        execSync(`node "${generatorScript}"`, { encoding: "utf8", stdio: "pipe" });
+      } catch (err: any) {
+        failed = true;
+        output = err.stderr || err.stdout || err.message;
+      }
+
+      expect(failed).toBe(true);
+      expect(output).toContain("Missing target directory argument");
+    });
+
+    it("generates project files when target directory is explicitly provided to CLI", () => {
+      const target = path.join(tempDir, "cli_target");
+      execSync(`node "${generatorScript}" "${target}"`, { encoding: "utf8" });
+
+      expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
+      expect(fs.existsSync(path.join(target, "index.html"))).toBe(true);
+    });
+
+    it("supports --allow-non-empty flag in CLI execution", () => {
+      const target = path.join(tempDir, "cli_non_empty");
+      fs.mkdirSync(target, { recursive: true });
+      fs.writeFileSync(path.join(target, "existing.txt"), "data");
+
+      // Without flag, CLI fails
+      expect(() => {
+        execSync(`node "${generatorScript}" "${target}"`, { stdio: "pipe" });
+      }).toThrow();
+
+      // With flag, CLI succeeds
+      execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { encoding: "utf8" });
+      expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     });
   });
 });

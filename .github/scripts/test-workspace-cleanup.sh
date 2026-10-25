@@ -21,13 +21,37 @@ validate_path() {
   return 0
 }
 
-# Helper to validate stash path
+# Helper to validate stash path strictly within runner temp base and pattern
 validate_stash_path() {
-  local p="$1"
-  if [[ -z "$p" || "$p" != *"tests_stash_"* ]]; then
-    echo "Error: Refusing to operate on invalid stash path: '$p'" >&2
+  local p="${1:-}"
+  local base="${RUNNER_TEMP:-/tmp}"
+
+  if [[ -z "$p" || "$p" != /* || "$p" == *".."* ]]; then
+    echo "Error: Refusing to operate on unsafe or non-absolute stash path: '$p'" >&2
     return 1
   fi
+
+  local base_real
+  base_real=$(cd "$base" 2>/dev/null && pwd -P || true)
+  if [[ -z "$base_real" ]]; then
+    echo "Error: Runner temp base directory '$base' does not exist." >&2
+    return 1
+  fi
+
+  local dir_name
+  dir_name=$(basename "$p")
+  if [[ "$dir_name" != tests_stash_* ]]; then
+    echo "Error: Stash directory '$p' does not follow expected 'tests_stash_*' naming pattern." >&2
+    return 1
+  fi
+
+  local parent_real
+  parent_real=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P || true)
+  if [[ "$parent_real" != "$base_real" ]]; then
+    echo "Error: Stash path '$p' (parent '$parent_real') is outside approved base directory '$base_real'." >&2
+    return 1
+  fi
+
   return 0
 }
 
@@ -114,14 +138,14 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   fi
 
-  # 1. Track __tests__ stash state safely
-  TMP_TESTS="${RUNNER_TEMP:-/tmp}/tests_stash_$$"
-  if mkdir -p "$TMP_TESTS"; then
-    echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
-  else
-    echo "Error: Failed to create stash directory '$TMP_TESTS'." >&2
+  # 1. Track __tests__ stash state safely with exclusive directory ownership
+  TMP_TESTS_BASE="${RUNNER_TEMP:-/tmp}"
+  mkdir -p "$TMP_TESTS_BASE"
+  TMP_TESTS=$(mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX") || {
+    echo "Error: Failed to create safe stash directory." >&2
     exit 1
-  fi
+  }
+  echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
 
   if [ -d __tests__ ]; then
     echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"

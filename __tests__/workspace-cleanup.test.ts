@@ -217,6 +217,39 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("rejects out-of-bounds or malformed stash paths during cleanup", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+
+    // Write stash.info with an out-of-bounds stash path (e.g. /etc/tests_stash_123)
+    fs.writeFileSync(
+      path.join(stateDir, "stash.info"),
+      `stash_tests_path=/etc/tests_stash_123\ntests_existed_before_setup=true\n`
+    );
+
+    runScript("cleanup", tempDir);
+
+    // State directory preserved for recovery because stash path validation failed
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("never reuses or deletes pre-existing PID-based stash directory", () => {
+    const runnerTemp = path.join(tempDir, "runner_temp");
+    const preExistingStash = path.join(runnerTemp, "tests_stash_99999");
+    fs.mkdirSync(preExistingStash, { recursive: true });
+    fs.writeFileSync(path.join(preExistingStash, "sentinel.txt"), "donotdelete");
+
+    runScript("setup pages node npm consumer-integration consumer-project", tempDir);
+
+    // Pre-existing stash directory is untouched
+    expect(fs.existsSync(path.join(preExistingStash, "sentinel.txt"))).toBe(true);
+
+    runScript("cleanup", tempDir);
+
+    // Pre-existing stash directory remains intact after cleanup
+    expect(fs.existsSync(path.join(preExistingStash, "sentinel.txt"))).toBe(true);
+  });
+
   it("rejects unsafe paths or invalid backup mappings in backed_up_files manifest", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });

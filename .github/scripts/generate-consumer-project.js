@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * @typedef {Object} ConsumerProjectOptions
@@ -100,32 +101,47 @@ if __name__ == "__main__":
  * @returns {string}
  */
 export function createConsumerProject(targetDir, options = {}) {
-  if (fs.existsSync(targetDir)) {
-    const stat = fs.statSync(targetDir);
+  if (!targetDir || typeof targetDir !== "string") {
+    throw new Error("Target directory path must be a non-empty string.");
+  }
+
+  const resolvedTarget = path.resolve(targetDir);
+
+  if (fs.existsSync(resolvedTarget)) {
+    const stat = fs.statSync(resolvedTarget);
     if (!stat.isDirectory()) {
-      throw new Error(`Target path '${targetDir}' exists and is not a directory.`);
+      throw new Error(`Target path '${resolvedTarget}' exists and is not a directory.`);
     }
     if (!options.allowNonEmpty) {
-      const existing = fs.readdirSync(targetDir);
+      const existing = fs.readdirSync(resolvedTarget);
       if (existing.length > 0) {
-        throw new Error(`Refusing to generate consumer project into non-empty directory '${targetDir}'.`);
+        throw new Error(
+          `Refusing to generate consumer project into non-empty directory '${resolvedTarget}'.`
+        );
       }
     }
   } else {
-    fs.mkdirSync(targetDir, { recursive: true });
+    fs.mkdirSync(resolvedTarget, { recursive: true });
   }
 
   const files = generateConsumerProjectFiles(options);
   for (const [filename, content] of Object.entries(files)) {
-    fs.writeFileSync(path.join(targetDir, filename), content, "utf8");
+    fs.writeFileSync(path.join(resolvedTarget, filename), content, "utf8");
   }
 
-  return targetDir;
+  return resolvedTarget;
 }
 
 // CLI entrypoint when run directly
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename || "")) {
-  const targetDir = process.argv[2] || process.cwd();
-  createConsumerProject(targetDir, { allowNonEmpty: true });
+const currentScriptPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentScriptPath)) {
+  const targetDir = process.argv[2];
+  if (!targetDir) {
+    console.error("Error: Missing target directory argument. Usage: generate-consumer-project.js <target-directory>");
+    process.exit(1);
+  }
+
+  const allowNonEmpty = process.argv.includes("--allow-non-empty");
+  createConsumerProject(targetDir, { allowNonEmpty });
   console.log(`Successfully generated consumer project in ${path.resolve(targetDir)}`);
 }
