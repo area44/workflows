@@ -8,6 +8,8 @@ set -euo pipefail
 
 MODE="${1:-}"
 STATE_DIR="${TEST_WORKSPACE_STATE_DIR:-.test_workspace_state}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Helper to validate that a relative workspace path is safe and stays within CWD
 validate_path() {
@@ -42,32 +44,48 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   fi
 
-  if [ -n "$FIXTURE" ]; then
-    if [[ "$FIXTURE" == /* ]]; then
-      FIXTURE_DIR="$FIXTURE"
-    else
-      FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
-    fi
-  else
-    FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
-  fi
-
-  if [ ! -d "$FIXTURE_DIR" ]; then
-    echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR" >&2
-    exit 1
-  fi
-
   shopt -s dotglob
 
-  # Copy fixture into temporary directory BEFORE stashing __tests__
+  # Prepare temporary directory for fixture setup BEFORE stashing __tests__
   TMP_FIX="${RUNNER_TEMP:-/tmp}/fixture_copy_$$"
   mkdir -p "$TMP_FIX" || { echo "Error: Failed to create temp fixture directory." >&2; exit 1; }
 
-  cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/ || {
-    echo "Error: Failed to copy fixture into temp dir." >&2
-    rm -rf "$TMP_FIX"
-    exit 1
-  }
+  IS_DYNAMIC_CONSUMER=false
+  FIXTURE_DIR=""
+  if [[ "$FIXTURE" == "consumer-project" || "$TYPE" == "consumer-integration" ]]; then
+    IS_DYNAMIC_CONSUMER=true
+    FIXTURE_DIR="consumer-project (dynamic)"
+  fi
+
+  if [[ "$IS_DYNAMIC_CONSUMER" == "true" ]]; then
+    node "$REPO_ROOT/.github/scripts/generate-consumer-project.js" "$TMP_FIX" || {
+      echo "Error: Failed to generate dynamic consumer project." >&2
+      rm -rf "$TMP_FIX"
+      exit 1
+    }
+  else
+    if [ -n "$FIXTURE" ]; then
+      if [[ "$FIXTURE" == /* ]]; then
+        FIXTURE_DIR="$FIXTURE"
+      else
+        FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
+      fi
+    else
+      FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
+    fi
+
+    if [ ! -d "$FIXTURE_DIR" ]; then
+      echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR" >&2
+      rm -rf "$TMP_FIX"
+      exit 1
+    fi
+
+    cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/ || {
+      echo "Error: Failed to copy fixture into temp dir." >&2
+      rm -rf "$TMP_FIX"
+      exit 1
+    }
+  fi
 
   # Guard reserved local action directories
   for reserved in pages autofix; do

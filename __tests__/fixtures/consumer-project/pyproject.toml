@@ -1,9 +1,0 @@
-[project]
-name = "consumer-app"
-version = "0.1.0"
-dependencies = [
-  "ruff==0.17.2",
-]
-
-[tool.ruff]
-line-length = 88

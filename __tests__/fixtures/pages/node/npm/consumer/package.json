@@ -1,9 +1,0 @@
-{
-  "name": "isolated-consumer-app",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "mkdir -p dist && echo '<html><body>Consumer App</body></html>' > dist/index.html"
-  },
-  "packageManager": "npm@10.2.0"
-}
