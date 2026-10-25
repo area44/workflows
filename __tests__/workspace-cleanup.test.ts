@@ -197,6 +197,84 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("rejects forged entry in installed_fixture_files and preserves pre-existing root file", () => {
+    const preExistingFile = path.join(tempDir, "pre_existing_unrelated.txt");
+    fs.writeFileSync(preExistingFile, "do-not-delete");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    // Forge installed_fixture_files by adding preExistingFile to it
+    fs.appendFileSync(path.join(stateDir, "installed_fixture_files"), "pre_existing_unrelated.txt\n");
+
+    runScript("cleanup", tempDir);
+
+    // Forged entry fails ownership validation against fixture_ownership_manifest: pre-existing file must NOT be deleted!
+    expect(fs.existsSync(preExistingFile)).toBe(true);
+    expect(fs.readFileSync(preExistingFile, "utf8")).toBe("do-not-delete");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects mixed valid and forged entries in installed_fixture_files without deleting valid entries", () => {
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    const preExistingFile = path.join(tempDir, "forged.txt");
+    fs.writeFileSync(preExistingFile, "forged-content");
+
+    // Append forged entry to installed_fixture_files which also has valid installed items (e.g., package.json)
+    fs.appendFileSync(path.join(stateDir, "installed_fixture_files"), "forged.txt\n");
+
+    runScript("cleanup", tempDir);
+
+    // Validation fails closed, so neither forged.txt nor legitimate installed items are deleted, state dir preserved
+    expect(fs.existsSync(preExistingFile)).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed when required recovery metadata file is missing for reached phase", () => {
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+
+    // Test missing stash.info after successful setup (phase COMPLETE)
+    fs.rmSync(path.join(stateDir, "stash.info"));
+
+    runScript("cleanup", tempDir);
+
+    // Cleanup fails closed, state directory and workspace contents preserved
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed when each phase-mandatory metadata file is removed", () => {
+    const metadataFiles = [
+      "stash.info",
+      "snapshot.status",
+      "snapshot_pre_existing_items",
+      "backed_up_files",
+      "installed_fixture_files",
+      "fixture_ownership_manifest",
+    ];
+
+    for (const metadataFile of metadataFiles) {
+      const subTempDir = fs.mkdtempSync(path.join(process.cwd(), "tmp_test_cleanup_sub_"));
+      fs.mkdirSync(path.join(subTempDir, "runner_temp"), { recursive: true });
+
+      try {
+        runScript(`setup autofix node npm python-pip "${fixtureDir}"`, subTempDir);
+        const subStateDir = path.join(subTempDir, ".test_workspace_state");
+
+        fs.rmSync(path.join(subStateDir, metadataFile));
+
+        runScript("cleanup", subTempDir);
+
+        expect(fs.existsSync(subStateDir)).toBe(true);
+      } finally {
+        fs.rmSync(subTempDir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it("rejects nested paths in installed_fixture_files before deleting any fixture files", () => {
     const stateDir = path.join(tempDir, ".test_workspace_state");
     fs.mkdirSync(stateDir, { recursive: true });

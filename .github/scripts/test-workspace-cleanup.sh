@@ -191,6 +191,8 @@ if [[ "$MODE" == "setup" ]]; then
     exit 1
   }
 
+  echo "SETUP_PHASE=INIT" > "$STATE_DIR/phase.status"
+
   if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
     echo "Injected failure before snapshot initialization." >&2
     exit 1
@@ -215,6 +217,8 @@ if [[ "$MODE" == "setup" ]]; then
     echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
   fi
 
+  echo "SETUP_PHASE=STASH" > "$STATE_DIR/phase.status"
+
   if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
     echo "Injected failure after stashing __tests__." >&2
     exit 1
@@ -233,10 +237,18 @@ if [[ "$MODE" == "setup" ]]; then
   done
 
   echo "SNAPSHOT_STATUS=complete" > "$STATE_DIR/snapshot.status"
+  echo "SETUP_PHASE=SNAPSHOT" > "$STATE_DIR/phase.status"
 
-  # 3. Initialize backup and installation manifests
+  # 3. Initialize backup, installation, and ownership manifests
   touch "$STATE_DIR/backed_up_files"
   touch "$STATE_DIR/installed_fixture_files"
+  touch "$STATE_DIR/fixture_ownership_manifest"
+
+  if ls -1A "$TMP_FIX" > "$STATE_DIR/fixture_ownership_manifest" 2>/dev/null; then
+    :
+  else
+    touch "$STATE_DIR/fixture_ownership_manifest"
+  fi
 
   for item in "${ROOT_ITEMS[@]}"; do
     if [ -e "$item" ]; then
@@ -252,6 +264,8 @@ if [[ "$MODE" == "setup" ]]; then
       echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
     fi
   done
+
+  echo "SETUP_PHASE=BACKUP" > "$STATE_DIR/phase.status"
 
   # 4. Install fixture files safely and record each installation
   COUNT=0
@@ -291,6 +305,7 @@ if [[ "$MODE" == "setup" ]]; then
     rm -f "$STATE_DIR/fixture_items_list"
   fi
 
+  echo "SETUP_PHASE=COMPLETE" > "$STATE_DIR/phase.status"
   exit 0
 
 elif [[ "$MODE" == "cleanup" ]]; then
@@ -304,9 +319,60 @@ elif [[ "$MODE" == "cleanup" ]]; then
 
   VALIDATION_FAILED=false
 
+  # Determine setup phase
+  SETUP_PHASE=""
+  if [ -f "$STATE_DIR/phase.status" ]; then
+    SETUP_PHASE=$(grep "^SETUP_PHASE=" "$STATE_DIR/phase.status" 2>/dev/null | cut -d'=' -f2- || true)
+  fi
+
+  if [ -z "$SETUP_PHASE" ]; then
+    if [ -f "$STATE_DIR/stash.info" ] || [ -f "$STATE_DIR/snapshot.status" ] || [ -f "$STATE_DIR/backed_up_files" ]; then
+      echo "Error: State directory exists with recovery metadata but missing or malformed phase.status. Failing closed." >&2
+      VALIDATION_FAILED=true
+    else
+      echo "Notice: State directory missing phase status and recovery metadata. Failing closed." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
+  # Validate mandatory phase metadata
+  if [[ "$SETUP_PHASE" == "STASH" || "$SETUP_PHASE" == "SNAPSHOT" || "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
+    if [ ! -f "$STATE_DIR/stash.info" ]; then
+      echo "Error: Missing mandatory 'stash.info' for setup phase '$SETUP_PHASE'. Failing closed." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
+  if [[ "$SETUP_PHASE" == "SNAPSHOT" || "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
+    if [ ! -f "$STATE_DIR/snapshot.status" ] || [ ! -f "$STATE_DIR/snapshot_pre_existing_items" ]; then
+      echo "Error: Missing mandatory snapshot metadata for setup phase '$SETUP_PHASE'. Failing closed." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
+  if [[ "$SETUP_PHASE" == "BACKUP" || "$SETUP_PHASE" == "COMPLETE" ]]; then
+    if [ ! -f "$STATE_DIR/backed_up_files" ] || [ ! -f "$STATE_DIR/installed_fixture_files" ] || [ ! -f "$STATE_DIR/fixture_ownership_manifest" ]; then
+      echo "Error: Missing mandatory backup or ownership metadata for setup phase '$SETUP_PHASE'. Failing closed." >&2
+      VALIDATION_FAILED=true
+    fi
+  fi
+
   # --- PHASE 1: ATOMIC VALIDATION PHASE (NO DESTRUCTIVE MUTATIONS) ---
 
-  # 1. Pre-validate installed_fixture_files manifest
+  # 1. Pre-validate fixture ownership manifest and installed_fixture_files
+  declare -A valid_fixture_owners=()
+  if [ -f "$STATE_DIR/fixture_ownership_manifest" ]; then
+    while IFS= read -r owner_item || [ -n "$owner_item" ]; do
+      [ -z "$owner_item" ] && continue
+      if ! validate_path "$owner_item" || [[ "$owner_item" == *"/"* ]]; then
+        echo "Error: Fixture ownership manifest contains invalid item '$owner_item'. Failing closed." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+      valid_fixture_owners["$owner_item"]=1
+    done < "$STATE_DIR/fixture_ownership_manifest"
+  fi
+
   valid_installed_fixture_items=()
   if [ -f "$STATE_DIR/installed_fixture_files" ]; then
     while IFS= read -r item || [ -n "$item" ]; do
@@ -316,6 +382,14 @@ elif [[ "$MODE" == "cleanup" ]]; then
         VALIDATION_FAILED=true
         break
       fi
+
+      # Ownership check: item MUST be recorded in valid_fixture_owners
+      if [ -z "${valid_fixture_owners[$item]:-}" ]; then
+        echo "Error: Installed fixture file '$item' is not present in fixture ownership manifest. Failing closed." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
       valid_installed_fixture_items+=("$item")
     done < "$STATE_DIR/installed_fixture_files"
   fi
