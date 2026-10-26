@@ -1528,7 +1528,7 @@ enabled = true
   describe("isRuffDeclaredInProject()", () => {
     it("should detect ruff declared in pyproject.toml or requirements.txt", () => {
       expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-uv-${Date.now()}`), { type: "python-uv" }))).toBe(true);
-      expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-pip-${Date.now()}`), { type: "python-pip" }))).toBe(true);
+      expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-pip-${Date.now()}`), { type: "python-pip", ruffVersion: "0.17.2" }))).toBe(true);
       expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }))).toBe(false);
     });
 
