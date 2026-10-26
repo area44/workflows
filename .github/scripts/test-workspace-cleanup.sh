@@ -647,7 +647,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
             VALIDATION_FAILED=true
           fi
         else
-          if ([ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]) && [ -z "${restored_items["__tests__"]:-}" ] && [ ! -d "__tests__" ]; then
+          if { [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; } && [ -z "${restored_items["__tests__"]:-}" ] && [ ! -d "__tests__" ]; then
             echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
             VALIDATION_FAILED=true
           fi
