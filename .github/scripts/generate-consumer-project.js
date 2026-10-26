@@ -36,25 +36,33 @@ export function normalizePythonProjectName(name) {
  */
 
 /**
- * Generates consumer project file contents as a map of filename -> string.
- * @param {ConsumerProjectOptions} [options]
- * @returns {Record<string, string>}
+ * Resolves JavaScript configuration options for scenario generation.
+ * @param {ConsumerProjectOptions} options
  */
-export function generateConsumerProjectFiles(options = {}) {
+function resolveJsOptions(options) {
+  const type = options.type || "basic";
   const action = options.action || "";
   const runtime = options.runtime || "node";
   const rawPm = options.pm || options.packageManager || "npm";
   const pmType = rawPm.startsWith("pnpm") ? "pnpm" : rawPm.startsWith("bun") ? "bun" : "npm";
-  const type = options.type || "basic";
+
+  let hasJs = true;
+  if (typeof options.hasJsProject === "boolean") {
+    hasJs = options.hasJsProject;
+  } else if (typeof options.hasJsProject === "string") {
+    hasJs = options.hasJsProject !== "false";
+  } else if (type.startsWith("python-")) {
+    hasJs = false;
+  }
 
   const packageManager = rawPm.includes("@")
     ? rawPm
     : type === "minimal"
     ? undefined
     : pmType === "pnpm"
-    ? "pnpm@9.0.0"
+    ? "pnpm@12.15.0"
     : pmType === "bun"
-    ? "bun@1.1.0"
+    ? "bun@1.4.0"
     : "npm@10.8.2";
 
   const toolchain =
@@ -66,27 +74,17 @@ export function generateConsumerProjectFiles(options = {}) {
       : action === "pages" && type !== "consumer-integration" && options.fixture !== "consumer-project"
       ? "astro"
       : "none");
-  const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
-  const name =
-    options.name ||
-    (options.type || options.action || options.toolchain
-      ? type === "vite-plus"
-        ? "test-vite-plus"
-        : `test-${action || "project"}-${runtime}-${pmType}-${type}`
-      : "consumer-project");
-  const pyProjectName = normalizePythonProjectName(name);
 
-  // JS project resolution
-  let hasJs = true;
-  if (typeof options.hasJsProject === "boolean") {
-    hasJs = options.hasJsProject;
-  } else if (typeof options.hasJsProject === "string") {
-    hasJs = options.hasJsProject !== "false";
-  } else if (type.startsWith("python-")) {
-    hasJs = false;
-  }
+  return { hasJs, action, runtime, rawPm, pmType, type, packageManager, toolchain };
+}
 
-  // Python source resolution
+/**
+ * Resolves Python configuration options for scenario generation.
+ * @param {ConsumerProjectOptions} options
+ * @param {string} type
+ * @param {string} action
+ */
+function resolvePythonOptions(options, type, action) {
   let hasPython = true;
   if (typeof options.hasPythonSource === "boolean") {
     hasPython = options.hasPythonSource;
@@ -106,7 +104,6 @@ export function generateConsumerProjectFiles(options = {}) {
     hasPython = false;
   }
 
-  // Python package manager resolution
   let pythonPm = options.pythonPm;
   if (!pythonPm) {
     if (type === "python-uv" || type === "python-conflicting") {
@@ -126,135 +123,188 @@ export function generateConsumerProjectFiles(options = {}) {
 
   const ruffVersion = options.ruffVersion !== undefined ? options.ruffVersion : "0.17.2";
 
+  return { hasPython, pythonPm, ruffVersion };
+}
+
+/**
+ * Generates JavaScript files for a given scenario.
+ * @param {Record<string, string>} files
+ * @param {ConsumerProjectOptions} options
+ * @param {ReturnType<typeof resolveJsOptions>} jsOpt
+ */
+function buildJsFiles(files, options, jsOpt) {
+  const { action, runtime, pmType, type, packageManager, toolchain } = jsOpt;
+  const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
+  const name =
+    options.name ||
+    (options.type || options.action || options.toolchain
+      ? type === "vite-plus"
+        ? "test-vite-plus"
+        : `test-${action || "project"}-${runtime}-${pmType}-${type}`
+      : "consumer-project");
+
+  /** @type {Record<string, string>} */
+  let scripts = {};
+  /** @type {Record<string, string>} */
+  let devDependencies = {};
+
+  if (
+    type === "consumer-integration" ||
+    options.fixture === "consumer-project" ||
+    (!action && !options.toolchain && type === "basic")
+  ) {
+    scripts = {
+      build: "mkdir -p dist && cp index.html dist/index.html",
+      lint: 'node -e "console.log(\'Linting JS...\')"',
+      format: 'node -e "console.log(\'Formatting JS...\')"',
+    };
+    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+  } else if (toolchain === "vite-plus" || type === "vite-plus") {
+    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    devDependencies = { "vite-plus": "^1.4.0" };
+    files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
+    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+  } else if (toolchain === "vite" || type === "vite") {
+    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
+    files["index.html"] = `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
+    files["src/main.ts"] = `console.log('vite app');\n`;
+  } else if (
+    action === "pages" ||
+    toolchain === "astro" ||
+    (action === "pages" && (type === "basic" || type === "minimal"))
+  ) {
+    scripts = { build: "mkdir -p dist && cp src/pages/index.astro dist/index.html" };
+    files["astro.config.mjs"] = `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
+    files["src/pages/index.astro"] = `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+  } else if (action === "autofix") {
+    scripts = {
+      format: 'node -e "console.log(\'Formatting JS...\')"',
+      lint: 'node -e "console.log(\'Linting JS...\')"',
+    };
+  } else {
+    scripts = {
+      build: "mkdir -p dist && cp index.html dist/index.html",
+      lint: 'node -e "console.log(\'Linting JS...\')"',
+      format: 'node -e "console.log(\'Formatting JS...\')"',
+    };
+    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+  }
+
+  const packageJson = {
+    name,
+    version: "1.0.0",
+    private: true,
+    type: "module",
+    scripts,
+    ...(Object.keys(devDependencies).length > 0 ? { devDependencies } : {}),
+    ...(runtime === "bun" && pmType === "pnpm"
+      ? { devEngines: { runtime: { name: "bun", version: ">=1.0.0" } } }
+      : {}),
+    ...(packageManager ? { packageManager } : {}),
+  };
+
+  files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
+
+  if (pmType === "npm") {
+    const packageLockJson = {
+      name,
+      version: "1.0.0",
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        "": {
+          name,
+          version: "1.0.0",
+          license: "MIT",
+        },
+      },
+    };
+    files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
+  } else if (pmType === "pnpm") {
+    files["pnpm-lock.yaml"] = "lockfileVersion: '6.0'\n";
+    if (type === "basic" || type === "minimal") {
+      files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
+    }
+  } else if (pmType === "bun") {
+    files["bun.lock"] = "";
+  }
+
+  if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
+    files[".node-version"] = "24.19.0\n";
+  }
+}
+
+/**
+ * Generates Python files for a given scenario.
+ * @param {Record<string, string>} files
+ * @param {ConsumerProjectOptions} options
+ * @param {ReturnType<typeof resolvePythonOptions>} pyOpt
+ * @param {string} pyProjectName
+ */
+function buildPythonFiles(files, options, pyOpt, pyProjectName) {
+  const { pythonPm, ruffVersion } = pyOpt;
+  const type = options.type || "basic";
+
+  const mainPy = `def main() -> None:\n    print("AREA44 consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
+  files["main.py"] = mainPy;
+
+  const pyDeps = [];
+  if (ruffVersion) {
+    pyDeps.push(`ruff==${ruffVersion}`);
+  }
+
+  const pyprojectToml =
+    `[project]\nname = "${pyProjectName}"\nversion = "0.1.0"\n` +
+    (pyDeps.length > 0 ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n` : "\n") +
+    `[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["*"]\n\n[tool.ruff]\nline-length = 88\n`;
+
+  files["pyproject.toml"] = pyprojectToml;
+
+  if (pythonPm === "uv" || type === "python-uv" || type === "python-conflicting") {
+    files["uv.lock"] = 'version = 1\nrequires-python = ">=3.12"\n';
+  }
+
+  if (
+    pythonPm === "pip" ||
+    type === "python-pip" ||
+    type === "python-conflicting" ||
+    type === "mixed" ||
+    type === "mixed-bun" ||
+    type === "consumer-integration"
+  ) {
+    files["requirements.txt"] = ruffVersion ? `ruff==${ruffVersion}\n` : "requests==2.31.0\n";
+  }
+}
+
+/**
+ * Generates consumer project file contents as a map of filename -> string.
+ * @param {ConsumerProjectOptions} [options]
+ * @returns {Record<string, string>}
+ */
+export function generateConsumerProjectFiles(options = {}) {
+  const jsOpt = resolveJsOptions(options);
+  const pyOpt = resolvePythonOptions(options, jsOpt.type, jsOpt.action);
+
+  const name =
+    options.name ||
+    (options.type || options.action || options.toolchain
+      ? jsOpt.type === "vite-plus"
+        ? "test-vite-plus"
+        : `test-${jsOpt.action || "project"}-${jsOpt.runtime}-${jsOpt.pmType}-${jsOpt.type}`
+      : "consumer-project");
+  const pyProjectName = normalizePythonProjectName(name);
+
   /** @type {Record<string, string>} */
   const files = {};
 
-  if (hasJs) {
-    /** @type {Record<string, string>} */
-    let scripts = {};
-    /** @type {Record<string, string>} */
-    let devDependencies = {};
-
-    if (
-      type === "consumer-integration" ||
-      options.fixture === "consumer-project" ||
-      (!action && !options.toolchain && type === "basic")
-    ) {
-      scripts = {
-        build: "mkdir -p dist && cp index.html dist/index.html",
-        lint: 'node -e "console.log(\'Linting JS...\')"',
-        format: 'node -e "console.log(\'Formatting JS...\')"',
-      };
-      files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
-    } else if (
-      action === "pages" ||
-      toolchain === "astro" ||
-      (action === "pages" && (type === "basic" || type === "minimal"))
-    ) {
-      scripts = { build: "astro build", lint: "echo lint", format: "echo format" };
-      devDependencies = { astro: "^4.0.0" };
-      files["astro.config.mjs"] = `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
-      files["src/pages/index.astro"] = `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
-    } else if (toolchain === "vite" || type === "vite") {
-      scripts = { build: "vite build" };
-      devDependencies = { vite: "^5.0.0" };
-      files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
-      files["index.html"] = `<!DOCTYPE html>\n<html>\n  <body>\n    <div id="app"></div>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
-      files["src/main.ts"] = `console.log('vite app');\n`;
-    } else if (toolchain === "vite-plus" || type === "vite-plus") {
-      scripts = { build: "vp build" };
-      devDependencies = { "vite-plus": "^1.4.0" };
-      files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
-      files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
-    } else if (action === "autofix") {
-      scripts = {
-        format: 'node -e "console.log(\'Formatting JS...\')"',
-        lint: 'node -e "console.log(\'Linting JS...\')"',
-      };
-    } else {
-      scripts = {
-        build: "mkdir -p dist && cp index.html dist/index.html",
-        lint: 'node -e "console.log(\'Linting JS...\')"',
-        format: 'node -e "console.log(\'Formatting JS...\')"',
-      };
-      files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
-    }
-
-    const packageJson = {
-      name,
-      version: "1.0.0",
-      private: true,
-      type: "module",
-      scripts,
-      ...(Object.keys(devDependencies).length > 0 ? { devDependencies } : {}),
-      ...(runtime === "bun" && pmType === "pnpm"
-        ? { devEngines: { runtime: { name: "bun", version: ">=1.0.0" } } }
-        : {}),
-      ...(packageManager ? { packageManager } : {}),
-    };
-
-    files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
-
-    if (pmType === "npm") {
-      const packageLockJson = {
-        name,
-        version: "1.0.0",
-        lockfileVersion: 3,
-        requires: true,
-        packages: {
-          "": {
-            name,
-            version: "1.0.0",
-            license: "MIT",
-          },
-        },
-      };
-      files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
-    } else if (pmType === "pnpm") {
-      files["pnpm-lock.yaml"] = "lockfileVersion: '6.0'\n";
-      if (type === "basic" || type === "minimal") {
-        files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
-      }
-    } else if (pmType === "bun") {
-      files["bun.lock"] = "# bun lockfile v1\n";
-    }
-
-    if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
-      files[".node-version"] = "24.19.0\n";
-    }
+  if (jsOpt.hasJs) {
+    buildJsFiles(files, options, jsOpt);
   }
 
-  if (hasPython) {
-    const mainPy = `def main() -> None:\n    print("AREA44 consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
-    files["main.py"] = mainPy;
-
-    const pyDeps = [];
-    if (ruffVersion) {
-      pyDeps.push(`ruff==${ruffVersion}`);
-    }
-
-    const pyprojectToml =
-      `[project]\nname = "${pyProjectName}"\nversion = "0.1.0"\n` +
-      (pyDeps.length > 0 ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n` : "\n") +
-      `[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["*"]\n\n[tool.ruff]\nline-length = 88\n`;
-
-    files["pyproject.toml"] = pyprojectToml;
-
-    if (pythonPm === "uv" || type === "python-uv" || type === "python-conflicting") {
-      files["uv.lock"] = "version = 1\n";
-    }
-
-    if (
-      pythonPm === "pip" ||
-      type === "python-pip" ||
-      type === "python-conflicting" ||
-      type === "mixed" ||
-      type === "mixed-bun" ||
-      type === "consumer-integration"
-    ) {
-      files["requirements.txt"] = ruffVersion ? `ruff==${ruffVersion}\n` : "requests==2.31.0\n";
-    }
-  } else if (type === "python-none") {
+  if (pyOpt.hasPython) {
+    buildPythonFiles(files, options, pyOpt, pyProjectName);
+  } else if (jsOpt.type === "python-none") {
     files["README.md"] = "# Python None Project\n";
   }
 
