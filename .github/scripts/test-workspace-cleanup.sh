@@ -119,6 +119,14 @@ validate_stash_path() {
   return 0
 }
 
+# Helper to append to journal atomically
+log_journal() {
+  local entry="${1:-}"
+  if [ -d "$STATE_DIR" ]; then
+    echo "$entry" >> "$STATE_DIR/journal.log"
+  fi
+}
+
 if [[ "$MODE" == "setup" ]]; then
   ACTION="${2:-}"
   RUNTIME="${3:-}"
@@ -184,7 +192,7 @@ if [[ "$MODE" == "setup" ]]; then
     }
   fi
 
-  # Guard reserved local action directories
+  # Guard reserved local action directories and unallowed fixture root items that collide with existing workspace items
   for reserved in pages autofix; do
     if [ -e "$TMP_FIX/$reserved" ]; then
       echo "Error: Fixture '${FIXTURE_DIR}' contains reserved local action directory '${reserved}'. Aborting setup to protect action source." >&2
@@ -192,11 +200,26 @@ if [[ "$MODE" == "setup" ]]; then
     fi
   done
 
+  # Validate fixture root item collision against is_allowed_root_item BEFORE mutating workspace
+  if ls -1A "$TMP_FIX" >/dev/null 2>&1; then
+    for item in "$TMP_FIX"/*; do
+      [ ! -e "$item" ] && continue
+      base_item=$(basename "$item")
+      if [ -e "$base_item" ]; then
+        if ! is_allowed_root_item "$base_item"; then
+          echo "Error: Fixture item '$base_item' collides with existing workspace item but is not in ROOT_ITEMS allowlist. Aborting setup to prevent unsafe backup." >&2
+          exit 1
+        fi
+      fi
+    done
+  fi
+
   mkdir -p "$STATE_DIR" || {
     echo "Error: Failed to create state directory '$STATE_DIR'." >&2
     exit 1
   }
 
+  touch "$STATE_DIR/journal.log"
   echo "SETUP_PHASE=PHASE_INIT" > "$STATE_DIR/phase.status"
 
   if [ "${INJECT_FAILURE_BEFORE_SNAPSHOT:-0}" -eq 1 ]; then
@@ -215,6 +238,8 @@ if [[ "$MODE" == "setup" ]]; then
   }
   echo "stash_tests_path=$TMP_TESTS" > "$STATE_DIR/stash.info"
 
+  log_journal "STASH_PENDING|$TMP_TESTS"
+
   if [ -d __tests__ ]; then
     echo "tests_existed_before_setup=true" >> "$STATE_DIR/stash.info"
     mv __tests__ "$TMP_TESTS"/ || {
@@ -225,6 +250,7 @@ if [[ "$MODE" == "setup" ]]; then
     echo "tests_existed_before_setup=false" >> "$STATE_DIR/stash.info"
   fi
 
+  log_journal "STASH_DONE|$TMP_TESTS"
   echo "SETUP_PHASE=PHASE_STASHED" > "$STATE_DIR/phase.status"
 
   if [ "${INJECT_FAILURE_AFTER_STASH:-0}" -eq 1 ]; then
@@ -267,11 +293,21 @@ if [[ "$MODE" == "setup" ]]; then
         echo "Error: Backup destination '${bak_item}' already exists for '${item}'. Aborting setup to prevent data loss." >&2
         exit 1
       fi
+      log_journal "BACKUP_PENDING|${item}|${bak_item}"
+      if [ "${INJECT_FAILURE_BEFORE_BACKUP_MOVE:-0}" -eq 1 ]; then
+        echo "Injected failure before backup move." >&2
+        exit 1
+      fi
       mv "$item" "$bak_item" || {
         echo "Error: Failed to back up '${item}'." >&2
         exit 1
       }
+      if [ "${INJECT_FAILURE_AFTER_BACKUP_MOVE:-0}" -eq 1 ]; then
+        echo "Injected failure after backup move but before recording completion." >&2
+        exit 1
+      fi
       echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
+      log_journal "BACKUP_DONE|${item}|${bak_item}"
     fi
   done
 
@@ -298,20 +334,29 @@ if [[ "$MODE" == "setup" ]]; then
           rm -f "$STATE_DIR/fixture_items_list"
           exit 1
         fi
+        log_journal "BACKUP_PENDING|${item}|${bak_item}"
         mv "$item" "$bak_item" || {
           echo "Error: Failed to back up conflicting root item '${item}'." >&2
           rm -f "$STATE_DIR/fixture_items_list"
           exit 1
         }
         echo "${item}|${bak_item}" >> "$STATE_DIR/backed_up_files"
+        log_journal "BACKUP_DONE|${item}|${bak_item}"
       fi
 
+      log_journal "INSTALL_PENDING|${item}"
       cp -r "$TMP_FIX/$item" . || {
         echo "Error: Failed to install fixture item '${item}'." >&2
         rm -f "$STATE_DIR/fixture_items_list"
         exit 1
       }
+      if [ "${INJECT_FAILURE_AFTER_COPY_FILE:-0}" -eq 1 ]; then
+        echo "Injected failure after copying fixture item but before recording installation." >&2
+        rm -f "$STATE_DIR/fixture_items_list"
+        exit 1
+      fi
       echo "$item" >> "$STATE_DIR/installed_fixture_files"
+      log_journal "INSTALL_DONE|${item}"
     done < "$STATE_DIR/fixture_items_list"
     rm -f "$STATE_DIR/fixture_items_list"
   fi
@@ -402,6 +447,20 @@ elif [[ "$MODE" == "cleanup" ]]; then
     done < "$STATE_DIR/fixture_ownership_manifest"
   fi
 
+  # Include pending install items from journal if interrupted during installation
+  if [ -f "$STATE_DIR/journal.log" ]; then
+    while IFS='|' read -r j_type j_arg1 j_arg2 || [ -n "$j_type" ]; do
+      if [[ "$j_type" == "INSTALL_PENDING" || "$j_type" == "INSTALL_DONE" ]]; then
+        if [ -n "$j_arg1" ] && validate_path "$j_arg1" && [[ "$j_arg1" != *"/"* ]]; then
+          if [ -n "${valid_fixture_owners[$j_arg1]:-}" ] && [ -e "$j_arg1" ]; then
+            # Ensure it is recorded in installed list
+            :
+          fi
+        fi
+      fi
+    done < "$STATE_DIR/journal.log"
+  fi
+
   valid_installed_fixture_items=()
   if [ -f "$STATE_DIR/installed_fixture_files" ]; then
     while IFS= read -r item || [ -n "$item" ]; do
@@ -423,6 +482,27 @@ elif [[ "$MODE" == "cleanup" ]]; then
     done < "$STATE_DIR/installed_fixture_files"
   fi
 
+  # Also add any INSTALL_PENDING items from journal that exist in workspace and match ownership
+  if [ -f "$STATE_DIR/journal.log" ]; then
+    while IFS='|' read -r j_type j_arg1 j_arg2 || [ -n "$j_type" ]; do
+      if [[ "$j_type" == "INSTALL_PENDING" ]] && [ -n "$j_arg1" ]; then
+        if validate_path "$j_arg1" && [[ "$j_arg1" != *"/"* ]] && [ -n "${valid_fixture_owners[$j_arg1]:-}" ] && [ -e "$j_arg1" ]; then
+          # Check if not already added
+          already_added=false
+          for existing_inst in "${valid_installed_fixture_items[@]}"; do
+            if [[ "$existing_inst" == "$j_arg1" ]]; then
+              already_added=true
+              break
+            fi
+          done
+          if [[ "$already_added" == "false" ]]; then
+            valid_installed_fixture_items+=("$j_arg1")
+          fi
+        fi
+      fi
+    done < "$STATE_DIR/journal.log"
+  fi
+
   # 2. Pre-validate snapshot status
   SNAPSHOT_COMPLETE=false
   if [ -f "$STATE_DIR/snapshot.status" ]; then
@@ -431,11 +511,21 @@ elif [[ "$MODE" == "cleanup" ]]; then
     fi
   fi
 
-  # 3. Pre-validate backed_up_files manifest
+  # 3. Pre-validate backed_up_files manifest and journal entries
   valid_orig_items=()
   valid_bak_items=()
   declare -A seen_orig_items=()
   declare -A seen_bak_items=()
+  declare -A restored_items=()
+
+  # Read completed restorations from journal for repeated cleanup idempotency
+  if [ -f "$STATE_DIR/journal.log" ]; then
+    while IFS='|' read -r j_type j_orig j_bak || [ -n "$j_type" ]; do
+      if [[ "$j_type" == "RESTORE_DONE" ]] && [ -n "$j_orig" ]; then
+        restored_items["$j_orig"]=1
+      fi
+    done < "$STATE_DIR/journal.log"
+  fi
 
   if [ -f "$STATE_DIR/backed_up_files" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
@@ -501,11 +591,40 @@ elif [[ "$MODE" == "cleanup" ]]; then
         break
       fi
 
+      # Verify presence of backup file if restoration was not already completed in a previous pass
+      if [ ! -e "$bak_item" ] && [ -z "${restored_items[$orig_item]:-}" ]; then
+        echo "Error: Expected backup file '$bak_item' for '$orig_item' is missing. Failing closed." >&2
+        VALIDATION_FAILED=true
+        break
+      fi
+
       seen_orig_items["$orig_item"]=1
       seen_bak_items["$bak_item"]=1
       valid_orig_items+=("$orig_item")
       valid_bak_items+=("$bak_item")
     done < "$STATE_DIR/backed_up_files"
+  fi
+
+  # Check journal for BACKUP_PENDING/BACKUP_DONE records that might not be in backed_up_files (interrupted setup)
+  if [ -f "$STATE_DIR/journal.log" ]; then
+    while IFS='|' read -r j_type j_orig j_bak || [ -n "$j_type" ]; do
+      if [[ "$j_type" == "BACKUP_PENDING" || "$j_type" == "BACKUP_DONE" ]]; then
+        if [ -n "$j_orig" ] && [ -n "$j_bak" ] && [ -z "${seen_orig_items[$j_orig]:-}" ]; then
+          if validate_path "$j_orig" && validate_path "$j_bak" && is_allowed_root_item "$j_orig"; then
+            if [ -e "$j_bak" ]; then
+              seen_orig_items["$j_orig"]=1
+              seen_bak_items["$j_bak"]=1
+              valid_orig_items+=("$j_orig")
+              valid_bak_items+=("$j_bak")
+            elif [ ! -e "$j_orig" ] && [ -z "${restored_items[$j_orig]:-}" ]; then
+              echo "Error: Journal records pending backup for '$j_orig' to '$j_bak', but backup file is missing and original item is gone. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+          fi
+        fi
+      fi
+    done < "$STATE_DIR/journal.log"
   fi
 
   # 4. Pre-validate stash info
@@ -523,12 +642,12 @@ elif [[ "$MODE" == "cleanup" ]]; then
         stashed_tests="${STASH_PATH}/__tests__"
         # In PHASE_STASHING, __tests__ could either be in workspace or already moved into stash
         if [[ "$SETUP_PHASE" == "PHASE_STASHING" ]]; then
-          if [ ! -d "$stashed_tests" ] && [ ! -d "__tests__" ]; then
+          if [ ! -d "$stashed_tests" ] && [ ! -d "__tests__" ] && [ -z "${restored_items["__tests__"]:-}" ]; then
             echo "Error: Neither stashed __tests__ nor workspace __tests__ exist during PHASE_STASHING." >&2
             VALIDATION_FAILED=true
           fi
         else
-          if [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; then
+          if ([ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]) && [ -z "${restored_items["__tests__"]:-}" ] && [ ! -d "__tests__" ]; then
             echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
             VALIDATION_FAILED=true
           fi
@@ -600,7 +719,9 @@ elif [[ "$MODE" == "cleanup" ]]; then
       fi
 
       rm -rf "$orig_item"
-      if ! mv "$bak_item" "$orig_item"; then
+      if mv "$bak_item" "$orig_item"; then
+        log_journal "RESTORE_DONE|${orig_item}|${bak_item}"
+      else
         echo "Error: Failed to restore backup '$bak_item' to '$orig_item'. Preserving backup file for recovery." >&2
         HAD_RESTORE_FAILURE=true
       fi
@@ -618,6 +739,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
         if [ -d "$stashed_tests" ]; then
           rm -rf __tests__
           if mv "$stashed_tests" .; then
+            log_journal "RESTORE_DONE|__tests__|${stashed_tests}"
             rm -rf "$STASH_PATH"
           else
             echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2

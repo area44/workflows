@@ -604,6 +604,82 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
   });
 
+  it("recovers safely from interruption after moving original item but before recording completion", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_AFTER_BACKUP_MOVE: "1" },
+    });
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    // Cleanup uses journal log to locate pending backup and restore package.json
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(path.join(tempDir, "package.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
+  });
+
+  it("recovers safely from interruption after copying fixture item but before recording installation", () => {
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_AFTER_COPY_FILE: "1" },
+    });
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    // Cleanup uses journal log and fixture ownership manifest to clean up pending installed files
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(path.join(tempDir, ".dotfile_fixture"))).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, "nested"))).toBe(false);
+  });
+
+  it("fails closed and exits nonzero when a backup manifest entry backup file is missing", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "current-pkg");
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_BACKED_UP\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    // Missing backup file package.json.test_bak_999
+    fs.writeFileSync(
+      path.join(stateDir, "backed_up_files"),
+      "package.json|package.json.test_bak_999\n"
+    );
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Expected backup file 'package.json.test_bak_999' for 'package.json' is missing");
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("current-pkg");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("rejects setup and exits nonzero when fixture item collides with root item outside ROOT_ITEMS allowlist", () => {
+    const unallowedFixtureDir = path.join(tempDir, "unallowed_fixture");
+    fs.mkdirSync(unallowedFixtureDir, { recursive: true });
+    fs.writeFileSync(path.join(unallowedFixtureDir, "unallowed_root_file.txt"), "fixture-content");
+
+    fs.writeFileSync(path.join(tempDir, "unallowed_root_file.txt"), "workspace-content");
+
+    const output = runScript(`setup autofix node npm python-pip "${unallowedFixtureDir}"`, tempDir, {
+      expectFailure: true,
+    });
+
+    expect(output).toContain("collides with existing workspace item but is not in ROOT_ITEMS allowlist");
+    // Original workspace file is untouched and no backup file created!
+    expect(fs.readFileSync(path.join(tempDir, "unallowed_root_file.txt"), "utf8")).toBe("workspace-content");
+    expect(fs.readdirSync(tempDir).filter((f) => f.includes("test_bak"))).toHaveLength(0);
+  });
+
   it("executes setup and cleanup for dynamic consumer project cleanly", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 
