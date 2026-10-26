@@ -119,6 +119,35 @@ validate_stash_path() {
   return 0
 }
 
+# Helper to validate stash path format without requiring folder existence
+validate_stash_path_format() {
+  local p="${1:-}"
+  local base="${RUNNER_TEMP:-/tmp}"
+
+  if [[ -z "$p" || "$p" != /* || "$p" == *".."* ]]; then
+    echo "Error: Refusing to operate on unsafe or non-absolute stash path: '$p'" >&2
+    return 1
+  fi
+
+  local dir_name
+  dir_name=$(basename "$p")
+  if [[ "$dir_name" != tests_stash_* ]]; then
+    echo "Error: Stash directory '$p' does not follow expected 'tests_stash_*' naming pattern." >&2
+    return 1
+  fi
+
+  local parent_real
+  parent_real=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P || true)
+  local base_real
+  base_real=$(cd "$base" 2>/dev/null && pwd -P || true)
+  if [[ -z "$base_real" || -z "$parent_real" || "$parent_real" != "$base_real" ]]; then
+    echo "Error: Stash path '$p' is outside approved base directory '$base'." >&2
+    return 1
+  fi
+
+  return 0
+}
+
 # Helper to append to journal atomically
 log_journal() {
   local entry="${1:-}"
@@ -436,6 +465,14 @@ elif [[ "$MODE" == "cleanup" ]]; then
   declare -A journal_pending_backups=()
   declare -A journal_done_backups=()
 
+  # Get stash info for RESTORE_DONE reconciliation
+  STASH_PATH_INFO=""
+  TESTS_EXISTED_INFO=""
+  if [ -f "$STATE_DIR/stash.info" ]; then
+    STASH_PATH_INFO=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
+    TESTS_EXISTED_INFO=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
+  fi
+
   if [ -f "$STATE_DIR/journal.log" ]; then
     while IFS= read -r j_line || [ -n "$j_line" ]; do
       [ -z "$j_line" ] && continue
@@ -449,6 +486,11 @@ elif [[ "$MODE" == "cleanup" ]]; then
         STASH_PENDING|STASH_DONE)
           if [ "$pipe_count" -ne 1 ] || [ -z "$j_arg1" ] || [ -n "$j_arg2" ]; then
             echo "Error: Malformed '$j_type' entry in journal.log (invalid field count or empty path). Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          if ! validate_stash_path_format "$j_arg1"; then
+            echo "Error: Unsafe stash path in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
             VALIDATION_FAILED=true
             break
           fi
@@ -471,12 +513,40 @@ elif [[ "$MODE" == "cleanup" ]]; then
             VALIDATION_FAILED=true
             break
           fi
-          if ! validate_path "$j_arg1" || [[ "$j_arg1" == *"/"* ]]; then
-            echo "Error: Unsafe original path in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
-            VALIDATION_FAILED=true
-            break
-          fi
-          if [[ "$j_type" != "RESTORE_DONE" || "$j_arg1" != "__tests__" ]]; then
+          if [[ "$j_arg1" == "__tests__" ]]; then
+            if [[ "$j_type" != "RESTORE_DONE" ]]; then
+              echo "Error: Unallowed journal entry type '$j_type' for '__tests__'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            if [[ "$TESTS_EXISTED_INFO" == "false" ]]; then
+              echo "Error: RESTORE_DONE for '__tests__' recorded when tests_existed_before_setup=false. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            stashed_expected="${STASH_PATH_INFO}/__tests__"
+            if [[ "$j_arg2" != "$stashed_expected" ]]; then
+              echo "Error: RESTORE_DONE path for '__tests__' ('$j_arg2') does not match stash.info stashed path ('$stashed_expected'). Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            if ! validate_stash_path_format "$STASH_PATH_INFO"; then
+              echo "Error: Unsafe stash path format in stash.info for RESTORE_DONE: '$STASH_PATH_INFO'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            # Physical verification: Either stashed __tests__ exists in stash OR restored __tests__ exists in workspace
+            if [ ! -d "$j_arg2" ] && [ ! -d "__tests__" ]; then
+              echo "Error: RESTORE_DONE recorded for '__tests__', but neither stashed directory nor workspace '__tests__' exists. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+          else
+            if ! validate_path "$j_arg1" || [[ "$j_arg1" == *"/"* ]]; then
+              echo "Error: Unsafe original path in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
             if ! validate_path "$j_arg2" || [[ "$j_arg2" == *"/"* ]]; then
               echo "Error: Unsafe backup path in journal.log '$j_type' record: '$j_arg2'. Failing closed." >&2
               VALIDATION_FAILED=true
@@ -493,7 +563,22 @@ elif [[ "$MODE" == "cleanup" ]]; then
               VALIDATION_FAILED=true
               break
             fi
+            pid_suffix="${j_arg2#"$bak_prefix"}"
+            if [[ -z "$pid_suffix" || "$pid_suffix" =~ [^0-9] ]]; then
+              echo "Error: Mismatched backup filename suffix in journal.log '$j_type' record for '$j_arg1': '$j_arg2'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            # Physical verification for RESTORE_DONE: Either orig_item exists in workspace OR bak_item exists
+            if [[ "$j_type" == "RESTORE_DONE" ]]; then
+              if [ ! -e "$j_arg1" ] && [ ! -e "$j_arg2" ]; then
+                echo "Error: RESTORE_DONE recorded for '$j_arg1', but neither original item nor backup file '$j_arg2' exists. Failing closed." >&2
+                VALIDATION_FAILED=true
+                break
+              fi
+            fi
           fi
+
           if [[ "$j_type" == "RESTORE_DONE" ]]; then
             restored_items["$j_arg1"]="$j_arg2"
           elif [[ "$j_type" == "BACKUP_PENDING" ]]; then

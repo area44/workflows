@@ -820,6 +820,103 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("fails closed and exits nonzero when RESTORE_DONE path in journal for __tests__ does not match stash.info", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    const runnerTemp = path.join(tempDir, "runner_temp");
+    const validStash = path.join(runnerTemp, "tests_stash_123");
+    fs.mkdirSync(path.join(validStash, "__tests__"), { recursive: true });
+
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(
+      path.join(stateDir, "stash.info"),
+      `stash_tests_path=${validStash}\ntests_existed_before_setup=true\n`
+    );
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    // Mismatched stash path in RESTORE_DONE
+    const mismatchedPath = path.join(runnerTemp, "tests_stash_mismatched_999", "__tests__");
+    fs.writeFileSync(path.join(stateDir, "journal.log"), `RESTORE_DONE|__tests__|${mismatchedPath}\n`);
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("does not match stash.info stashed path");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when RESTORE_DONE is logged for __tests__ but neither stashed nor workspace __tests__ exists", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    const runnerTemp = path.join(tempDir, "runner_temp");
+    const validStash = path.join(runnerTemp, "tests_stash_123");
+
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(
+      path.join(stateDir, "stash.info"),
+      `stash_tests_path=${validStash}\ntests_existed_before_setup=true\n`
+    );
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    const expectedStashed = path.join(validStash, "__tests__");
+    fs.writeFileSync(path.join(stateDir, "journal.log"), `RESTORE_DONE|__tests__|${expectedStashed}\n`);
+
+    // Ensure neither workspace __tests__ nor stashed __tests__ exists
+    if (fs.existsSync(path.join(tempDir, "__tests__"))) {
+      fs.rmSync(path.join(tempDir, "__tests__"), { recursive: true, force: true });
+    }
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("neither stashed directory nor workspace '__tests__' exists");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when backup filename has non-numeric suffix in journal", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "BACKUP_DONE|package.json|package.json.test_bak_nonnumeric\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Mismatched backup filename suffix in journal.log");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when RESTORE_DONE is logged for root item but neither original nor backup file exists", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "RESTORE_DONE|package.json|package.json.test_bak_123\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("neither original item nor backup file 'package.json.test_bak_123' exists");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("remains safe when cleanup is invoked twice", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 
