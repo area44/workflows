@@ -222,12 +222,12 @@ function buildJsFiles(files, options, jsOpt) {
     };
     files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
   } else if (pmType === "pnpm") {
-    files["pnpm-lock.yaml"] = "lockfileVersion: '6.0'\n";
+    files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
     if (type === "basic" || type === "minimal") {
       files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
     }
   } else if (pmType === "bun") {
-    files["bun.lock"] = "";
+    files["bun.lock"] = `# bun lockfile v1\n# https://bun.sh/docs/install/lockfile\n\n{\n  "lockfileVersion": 1,\n  "workspaces": {\n    "": {\n      "name": "${name}"\n    }\n  },\n  "packages": {}\n}\n`;
   }
 
   if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
