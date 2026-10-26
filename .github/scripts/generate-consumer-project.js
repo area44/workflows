@@ -176,12 +176,13 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
     };
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
-    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    scripts = { build: "vp build" };
     devDependencies = { "vite-plus": "^1.4.0" };
     files["vite.config.ts"] = `export default {};\n`;
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (toolchain === "vite" || type === "vite") {
-    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    scripts = { build: "vite build" };
+    devDependencies = { vite: "^6.0.0" };
     files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
     files["index.html"] = `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
     files["src/main.ts"] = `console.log('vite app');\n`;
@@ -190,7 +191,8 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
     toolchain === "astro" ||
     (action === "pages" && (type === "basic" || type === "minimal"))
   ) {
-    scripts = { build: "mkdir -p dist && cp src/pages/index.astro dist/index.html" };
+    scripts = { build: "astro build" };
+    devDependencies = { astro: "^5.0.0" };
     files["astro.config.mjs"] = `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
     files["src/pages/index.astro"] = `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (action === "autofix") {
@@ -210,36 +212,72 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
   return { scripts, devDependencies };
 }
 
+// Pre-generated canonical lockfile templates loaded lazily from lockfile-templates.json
+let lockfileTemplates = null;
+function getLockfileTemplates() {
+  if (!lockfileTemplates) {
+    const templatePath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "lockfile-templates.json"
+    );
+    if (fs.existsSync(templatePath)) {
+      try {
+        lockfileTemplates = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+      } catch (err) {
+        lockfileTemplates = {};
+      }
+    } else {
+      lockfileTemplates = {};
+    }
+  }
+  return lockfileTemplates;
+}
+
 /**
  * Builds JS lockfiles.
  * @param {Record<string, string>} files
  * @param {string} name
  * @param {string} pmType
  * @param {string} type
+ * @param {string} toolchain
  */
-function buildJsLockfile(files, name, pmType, type) {
+function buildJsLockfile(files, name, pmType, type, toolchain) {
+  const templates = getLockfileTemplates();
+  const templateKey = `${toolchain || "none"}:${pmType}`;
+  const lockfileContent = templates[templateKey];
+
   if (pmType === "npm") {
-    const packageLockJson = {
-      name,
-      version: "1.0.0",
-      lockfileVersion: 3,
-      requires: true,
-      packages: {
-        "": {
-          name,
-          version: "1.0.0",
-          license: "MIT",
+    if (lockfileContent) {
+      files["package-lock.json"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    } else {
+      const packageLockJson = {
+        name,
+        version: "1.0.0",
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          "": {
+            name,
+            version: "1.0.0",
+            license: "MIT",
+          },
         },
-      },
-    };
-    files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
+      };
+      files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
+    }
   } else if (pmType === "pnpm") {
-    files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
+    if (lockfileContent) {
+      files["pnpm-lock.yaml"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    } else {
+      files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
+    }
     if (type === "basic" || type === "minimal") {
       files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
     }
   } else if (pmType === "bun") {
-    files["bun.lock"] = "";
+    if (lockfileContent) {
+      files["bun.lock"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    }
   }
 }
 
@@ -250,7 +288,7 @@ function buildJsLockfile(files, name, pmType, type) {
  * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
 function buildJsFiles(files, options, jsOpt) {
-  const { action, runtime, pmType, type, packageManager } = jsOpt;
+  const { action, runtime, pmType, type, packageManager, toolchain } = jsOpt;
   const name =
     options.name ||
     (options.type || options.action || options.toolchain
@@ -275,7 +313,7 @@ function buildJsFiles(files, options, jsOpt) {
   };
 
   files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
-  buildJsLockfile(files, name, pmType, type);
+  buildJsLockfile(files, name, pmType, type, toolchain);
 
   if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
     files[".node-version"] = "24.19.0\n";
