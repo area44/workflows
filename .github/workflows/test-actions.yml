@@ -21,67 +21,57 @@ jobs:
             runtime: node
             pm: npm
             type: basic
-            fixture: pages/node/npm/basic
             verify_site: true
           - action: pages
             runtime: node
             pm: npm
             type: minimal
-            fixture: pages/node/npm/minimal
             verify_site: true
           - action: pages
             runtime: node
             pm: npm
             type: vite
-            fixture: pages/node/npm/vite
             verify_site: true
           - action: pages
             runtime: node
             pm: npm
             type: consumer-integration
-            fixture: consumer-project
             verify_site: true
           - action: pages
             runtime: node
             pm: pnpm
             type: basic
-            fixture: pages/node/pnpm/basic
-            verify_site: true
-          - action: pages
-            runtime: node
-            pm: pnpm
-            type: minimal
-            fixture: pages/node/pnpm/minimal
             verify_site: true
           - action: pages
             runtime: node
             pm: pnpm
             type: minimal
-            fixture: vite-plus/node/pnpm/minimal
+            verify_site: true
+          - action: pages
+            runtime: node
+            pm: pnpm
+            type: vite-plus
+            toolchain: vite-plus
             verify_site: true
           - action: pages
             runtime: node
             pm: bun
             type: basic
-            fixture: pages/node/bun/basic
             verify_site: true
           - action: pages
             runtime: bun
             pm: bun
             type: basic
-            fixture: pages/bun/bun/basic
             verify_site: true
           - action: pages
             runtime: bun
             pm: bun
             type: minimal
-            fixture: pages/bun/bun/minimal
             verify_site: true
           - action: pages
             runtime: bun
             pm: pnpm
             type: basic
-            fixture: pages/bun/pnpm/basic
             verify_site: true
 
           # JS Autofix action
@@ -136,7 +126,6 @@ jobs:
             runtime: node
             pm: npm
             type: python-uv
-            fixture: autofix/python/uv
             has_js_project: "false"
             has_python_source: "true"
             python_pm: uv
@@ -147,7 +136,6 @@ jobs:
             runtime: node
             pm: npm
             type: consumer-integration
-            fixture: consumer-project
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
@@ -158,7 +146,6 @@ jobs:
             runtime: node
             pm: npm
             type: python-pip
-            fixture: autofix/python/pip
             has_js_project: "false"
             has_python_source: "true"
             python_pm: pip
@@ -169,7 +156,6 @@ jobs:
             runtime: node
             pm: npm
             type: python-conflicting
-            fixture: autofix/python/conflicting
             has_js_project: "false"
             has_python_source: "true"
             python_pm: uv
@@ -180,7 +166,6 @@ jobs:
             runtime: node
             pm: npm
             type: python-none
-            fixture: autofix/python/none
             has_js_project: "false"
             has_python_source: "false"
             python_pm: ""
@@ -191,7 +176,6 @@ jobs:
             runtime: node
             pm: npm
             type: mixed
-            fixture: autofix/python/mixed
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
@@ -202,7 +186,6 @@ jobs:
             runtime: bun
             pm: bun
             type: mixed
-            fixture: autofix/python/mixed-bun
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
@@ -219,9 +202,8 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
-          FIXTURE: ${{ matrix.fixture }}
         run: |
-          bash .github/scripts/test-workspace-cleanup.sh setup "$ACTION" "$RUNTIME" "$PM" "$TYPE" "$FIXTURE"
+          bash .github/scripts/test-workspace-cleanup.sh setup "$ACTION" "$RUNTIME" "$PM" "$TYPE"
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -243,7 +225,6 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
-          FIXTURE: ${{ matrix.fixture }}
           PAGES_PM: ${{ steps.pages.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
@@ -251,6 +232,7 @@ jobs:
           AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
           PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
+          EXPECTED_TOOLCHAIN_INPUT: ${{ matrix.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
           AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-js-project }}
           AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.has-python-source }}
@@ -263,25 +245,11 @@ jobs:
           EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
           EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
-          if [ -d .test_workspace_state ] && [ -f .test_workspace_state/stash.info ]; then
-            STASH_DIR=$(grep "^stash_tests_path=" .test_workspace_state/stash.info 2>/dev/null | cut -d'=' -f2- || true)
-            TESTS_ROOT="${STASH_DIR}/__tests__"
-          else
-            TESTS_ROOT="__tests__"
-          fi
+          SCENARIO_NAME="${ACTION} (${RUNTIME}, ${PM}, ${TYPE})"
 
-          if [ -n "$FIXTURE" ]; then
-            if [[ "$FIXTURE" == /* ]]; then
-              FIXTURE_PATH="$FIXTURE"
-            else
-              FIXTURE_PATH="${TESTS_ROOT}/fixtures/${FIXTURE}"
-            fi
-          else
-            FIXTURE_PATH="${TESTS_ROOT}/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
-          fi
           DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
-            echo "Error: [${ACTION}] Package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
+            echo "Error: [${ACTION}] Package manager mismatch stage failed for scenario '${SCENARIO_NAME}'."
             echo "  Expected package manager: ${EXPECTED_PM}"
             echo "  Detected package manager: ${DETECTED_PM}"
             exit 1
@@ -289,7 +257,7 @@ jobs:
 
           DETECTED_RUNTIME="${PAGES_RUNTIME}${AUTOFIX_RUNTIME}"
           if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
-            echo "Error: [${ACTION}] Runtime mismatch stage failed for fixture '${FIXTURE_PATH}'."
+            echo "Error: [${ACTION}] Runtime mismatch stage failed for scenario '${SCENARIO_NAME}'."
             echo "  Expected runtime: ${EXPECTED_RUNTIME}"
             echo "  Detected runtime: ${DETECTED_RUNTIME}"
             exit 1
@@ -297,12 +265,12 @@ jobs:
 
           if [[ "$ACTION" == "pages" ]]; then
             EXPECTED_TOOLCHAIN="vite"
-            if [[ "$FIXTURE" == "vite-plus/node/pnpm/minimal" ]]; then
+            if [[ "$TYPE" == "vite-plus" || "$EXPECTED_TOOLCHAIN_INPUT" == "vite-plus" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
             fi
             DETECTED_TOOLCHAIN="${PAGES_TOOLCHAIN}"
             if [[ "$DETECTED_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
-              echo "Error: [${ACTION}] Toolchain mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Toolchain mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected toolchain: ${EXPECTED_TOOLCHAIN}"
               echo "  Detected toolchain: ${DETECTED_TOOLCHAIN}"
               exit 1
@@ -312,7 +280,7 @@ jobs:
           if [[ "$ACTION" == "autofix" ]]; then
             EXPECTED_HAS_JS="${EXPECTED_HAS_JS_PROJECT:-true}"
             if [[ "$AUTOFIX_HAS_JS" != "$EXPECTED_HAS_JS" ]]; then
-              echo "Error: [${ACTION}] Has JS project mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Has JS project mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected has-js-project: ${EXPECTED_HAS_JS}"
               echo "  Actual has-js-project:   ${AUTOFIX_HAS_JS}"
               exit 1
@@ -320,7 +288,7 @@ jobs:
 
             EXPECTED_HAS_PY="${EXPECTED_HAS_PYTHON_SOURCE:-false}"
             if [[ "$AUTOFIX_HAS_PYTHON" != "$EXPECTED_HAS_PY" ]]; then
-              echo "Error: [${ACTION}] Has Python source mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Has Python source mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected has-python-source: ${EXPECTED_HAS_PY}"
               echo "  Actual has-python-source:   ${AUTOFIX_HAS_PYTHON}"
               exit 1
@@ -328,7 +296,7 @@ jobs:
 
             EXPECTED_PY_PM="${EXPECTED_PYTHON_PM:-}"
             if [[ "$AUTOFIX_PYTHON_PM" != "$EXPECTED_PY_PM" ]]; then
-              echo "Error: [${ACTION}] Python package manager mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Python package manager mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected python-package-manager: ${EXPECTED_PY_PM}"
               echo "  Actual python-package-manager:   ${AUTOFIX_PYTHON_PM}"
               exit 1
@@ -337,7 +305,7 @@ jobs:
             if [[ "$EXPECTED_PYTHON_VER" != "" || "$TYPE" == "python-none" ]]; then
               EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
               if [[ "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
-                echo "Error: [${ACTION}] Python version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+                echo "Error: [${ACTION}] Python version mismatch stage failed for scenario '${SCENARIO_NAME}'."
                 echo "  Expected python-version: '${EXPECTED_PY_VER}'"
                 echo "  Actual python-version:   '${AUTOFIX_PYTHON_VER}'"
                 exit 1
@@ -346,14 +314,14 @@ jobs:
 
             EXPECTED_RUFF="${EXPECTED_RUFF_VER:-}"
             if [[ "$AUTOFIX_RUFF_VER" != "$EXPECTED_RUFF" ]]; then
-              echo "Error: [${ACTION}] Ruff version mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Ruff version mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected ruff-version: ${EXPECTED_RUFF}"
               echo "  Actual ruff-version:   ${AUTOFIX_RUFF_VER}"
               exit 1
             fi
           fi
 
-          echo "Verified fixture execution root for '${FIXTURE_PATH}'."
+          echo "Verified scenario execution root for '${SCENARIO_NAME}'."
 
           if [[ "$VERIFY_SITE" == "true" ]]; then
             REPO_NAME="${GITHUB_REPOSITORY#*/}"
@@ -364,27 +332,27 @@ jobs:
               EXPECTED_BASE="/${REPO_NAME}/"
             fi
             if [[ "$SITE" != "$EXPECTED_SITE" ]]; then
-              echo "Error: [${ACTION}] Site URL mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Site URL mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected SITE: ${EXPECTED_SITE}"
               echo "  Actual SITE:   ${SITE}"
               exit 1
             fi
             if [[ "$BASE" != "$EXPECTED_BASE" ]]; then
-              echo "Error: [${ACTION}] Base URL mismatch stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Base URL mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected BASE: ${EXPECTED_BASE}"
               echo "  Actual BASE:   ${BASE}"
               exit 1
             fi
 
             if [[ ! -f "dist/index.html" ]]; then
-              echo "Error: [${ACTION}] Artifact verification stage failed for fixture '${FIXTURE_PATH}'."
+              echo "Error: [${ACTION}] Artifact verification stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
               exit 1
             fi
 
             if [[ "$TYPE" == "consumer-integration" ]]; then
               if ! grep -q "AREA44 Workflows Consumer Project" "dist/index.html"; then
-                echo "Error: [${ACTION}] Consumer artifact content verification failed for fixture '${FIXTURE_PATH}'."
+                echo "Error: [${ACTION}] Consumer artifact content verification failed for scenario '${SCENARIO_NAME}'."
                 echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Workflows Consumer Project'."
                 exit 1
               fi

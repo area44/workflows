@@ -58,7 +58,8 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
     it("applies custom project name consistently across package.json, package-lock.json, and pyproject.toml", () => {
       const files = generateConsumerProjectFiles({
         name: "custom-app",
-        packageManager: "pnpm@9.1.0",
+        pm: "npm@10.8.2",
+        packageManager: "npm@10.8.2",
         ruffVersion: "0.18.0",
         markerContent: "Custom Consumer Marker",
       });
@@ -72,7 +73,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(lock.packages[""].name).toBe("custom-app");
       expect(pyproject.project.name).toBe("custom-app");
 
-      expect(pkg.packageManager).toBe("pnpm@9.1.0");
+      expect(pkg.packageManager).toBe("npm@10.8.2");
       expect(files["index.html"]).toContain("Custom Consumer Marker");
       expect(files["pyproject.toml"]).toContain("ruff==0.18.0");
       expect(files["requirements.txt"]).toBe("ruff==0.18.0\n");
@@ -97,6 +98,42 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(lock.name).toBe("@area44/my-custom_app!");
       expect(lock.packages[""].name).toBe("@area44/my-custom_app!");
       expect(pyproject.project.name).toBe("area44-my-custom-app");
+    });
+
+    it("supports generateConsumerProjectFiles with specific action, runtime, pm, and type scenario combinations", () => {
+      // Pages Astro project scenario
+      const pagesFiles = generateConsumerProjectFiles({
+        action: "pages",
+        runtime: "node",
+        pm: "pnpm@12.15.0",
+        type: "basic",
+      });
+      expect(pagesFiles).toHaveProperty("astro.config.mjs");
+      expect(pagesFiles).toHaveProperty("src/pages/index.astro");
+      expect(pagesFiles).toHaveProperty("pnpm-lock.yaml");
+      expect(pagesFiles).not.toHaveProperty("main.py");
+
+      // Python UV autofix scenario
+      const uvFiles = generateConsumerProjectFiles({
+        action: "autofix",
+        type: "python-uv",
+      });
+      expect(uvFiles).toHaveProperty("main.py");
+      expect(uvFiles).toHaveProperty("pyproject.toml");
+      expect(uvFiles).toHaveProperty("uv.lock");
+      expect(uvFiles).not.toHaveProperty("package.json");
+
+      // Vite Plus scenario
+      const vpFiles = generateConsumerProjectFiles({
+        toolchain: "vite-plus",
+        runtime: "node",
+        pm: "pnpm",
+        type: "vite-plus",
+      });
+      expect(vpFiles).toHaveProperty("vite.config.ts");
+      expect(vpFiles).toHaveProperty("index.html");
+      expect(vpFiles).toHaveProperty("pnpm-lock.yaml");
+      expect(JSON.parse(vpFiles["package.json"]).devDependencies).toHaveProperty("vite-plus");
     });
   });
 

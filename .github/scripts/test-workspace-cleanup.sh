@@ -187,36 +187,19 @@ if [[ "$MODE" == "setup" ]]; then
   }
   trap cleanup_staging_dir EXIT
 
-  IS_DYNAMIC_CONSUMER=false
-  FIXTURE_DIR=""
-  if [[ "$FIXTURE" == "consumer-project" || "$TYPE" == "consumer-integration" ]]; then
-    IS_DYNAMIC_CONSUMER=true
-    FIXTURE_DIR="consumer-project (dynamic)"
-  fi
-
-  if [[ "$IS_DYNAMIC_CONSUMER" == "true" ]]; then
-    node "$REPO_ROOT/.github/scripts/generate-consumer-project.js" "$TMP_FIX" || {
-      echo "Error: Failed to generate dynamic consumer project." >&2
+  if [ -n "$FIXTURE" ] && [ -d "$FIXTURE" ]; then
+    cp -r "$FIXTURE"/* "$TMP_FIX"/ || {
+      echo "Error: Failed to copy fixture into temp dir." >&2
       exit 1
     }
   else
-    if [ -n "$FIXTURE" ]; then
-      if [[ "$FIXTURE" == /* ]]; then
-        FIXTURE_DIR="$FIXTURE"
-      else
-        FIXTURE_DIR="__tests__/fixtures/${FIXTURE}"
-      fi
-    else
-      FIXTURE_DIR="__tests__/fixtures/${ACTION}/${RUNTIME}/${PM}/${TYPE}"
-    fi
-
-    if [ ! -d "$FIXTURE_DIR" ]; then
-      echo "Error: Missing expected fixture directory for matrix combination '${ACTION} (${RUNTIME}, ${PM}, ${TYPE})': $FIXTURE_DIR" >&2
-      exit 1
-    fi
-
-    cp -r "$FIXTURE_DIR"/* "$TMP_FIX"/ || {
-      echo "Error: Failed to copy fixture into temp dir." >&2
+    node "$REPO_ROOT/.github/scripts/generate-consumer-project.js" "$TMP_FIX" \
+      --action "$ACTION" \
+      --runtime "$RUNTIME" \
+      --pm "$PM" \
+      --type "$TYPE" \
+      ${FIXTURE:+--fixture "$FIXTURE"} || {
+      echo "Error: Failed to generate dynamic scenario project." >&2
       exit 1
     }
   fi
@@ -224,7 +207,7 @@ if [[ "$MODE" == "setup" ]]; then
   # Guard reserved local action directories and unallowed fixture root items that collide with existing workspace items
   for reserved in pages autofix; do
     if [ -e "$TMP_FIX/$reserved" ]; then
-      echo "Error: Fixture '${FIXTURE_DIR}' contains reserved local action directory '${reserved}'. Aborting setup to protect action source." >&2
+      echo "Error: Fixture contains reserved local action directory '${reserved}'. Aborting setup to protect action source." >&2
       exit 1
     fi
   done

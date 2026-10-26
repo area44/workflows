@@ -1,8 +1,0 @@
-{
-  "name": "mixed-fixture",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "format": "echo 'formatting js'"
-  }
-}

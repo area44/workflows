@@ -1,6 +1,0 @@
-[project]
-name = "uv-fixture"
-version = "0.1.0"
-
-[tool.uv]
-dev-dependencies = ["ruff"]

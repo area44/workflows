@@ -1,8 +1,0 @@
-{
-  "name": "autofix-npm-minimal",
-  "scripts": {
-    "format": "echo 'formatting'",
-    "lint": "echo 'linting'"
-  },
-  "type": "module"
-}

@@ -37,15 +37,15 @@ The `npm run build` command bundles source files from `src/` to produce executab
 
 Maintainers and automated CI pipelines enforce the following quality gates and test commands:
 
-| Stage / Gate             | Command / Pipeline Step             | Description                                           |
-| ------------------------ | ----------------------------------- | ----------------------------------------------------- |
-| Dependency Installation  | `npm ci`                            | Installs exact workspace dependencies                 |
-| Lint                     | `npm run lint`                      | Validates code style and lint rules via Vite+         |
-| Formatting Validation    | `npm run format --check`            | Checks code formatting without mutating source files  |
-| Build                    | `npm run build`                     | Bundles TypeScript source code into `dist/` artifacts |
-| Unit Tests               | `npm test`                          | Executes unit test suites via Vite+                   |
-| Action Integration Tests | GitHub Actions (`test-actions.yml`) | Tests `pages` and `autofix` actions using fixtures    |
-| Changeset Creation       | `npm run changeset`                 | Interactively creates a new changeset file            |
+| Stage / Gate             | Command / Pipeline Step             | Description                                                          |
+| ------------------------ | ----------------------------------- | -------------------------------------------------------------------- |
+| Dependency Installation  | `npm ci`                            | Installs exact workspace dependencies                                |
+| Lint                     | `npm run lint`                      | Validates code style and lint rules via Vite+                        |
+| Formatting Validation    | `npm run format --check`            | Checks code formatting without mutating source files                 |
+| Build                    | `npm run build`                     | Bundles TypeScript source code into `dist/` artifacts                |
+| Unit Tests               | `npm test`                          | Executes unit test suites via Vite+                                  |
+| Action Integration Tests | GitHub Actions (`test-actions.yml`) | Tests `pages` and `autofix` actions using dynamic scenario generator |
+| Changeset Creation       | `npm run changeset`                 | Interactively creates a new changeset file                           |
 
 ## Release Process and Versioning
 
