@@ -137,6 +137,71 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
     });
   });
 
+  describe("Frozen-lockfile Installation & Framework Build Integration Tests", () => {
+    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", () => {
+      const target = path.join(tempDir, "bun_astro_scenario");
+      createConsumerProject(target, {
+        action: "pages",
+        runtime: "bun",
+        pm: "bun",
+        type: "basic",
+      });
+
+      expect(fs.existsSync(path.join(target, "bun.lock"))).toBe(true);
+      expect(fs.readFileSync(path.join(target, "bun.lock"), "utf8").length).toBeGreaterThan(100);
+
+      // Verify bun install --frozen-lockfile
+      execSync("/usr/local/bun/bin/bun install --frozen-lockfile", { cwd: target, stdio: "ignore" });
+      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+
+      // Verify real astro build command execution
+      execSync("/usr/local/bun/bin/bun run build", { cwd: target, stdio: "ignore" });
+      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+        "AREA44 Workflows Consumer Project"
+      );
+    });
+
+    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", () => {
+      const target = path.join(tempDir, "npm_vite_scenario");
+      createConsumerProject(target, {
+        action: "pages",
+        runtime: "node",
+        pm: "npm",
+        type: "vite",
+      });
+
+      expect(fs.existsSync(path.join(target, "package-lock.json"))).toBe(true);
+
+      // Verify npm ci
+      execSync("npm ci", { cwd: target, stdio: "ignore" });
+      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+
+      // Verify real vite build command execution
+      execSync("npm run build", { cwd: target, stdio: "ignore" });
+      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+        "AREA44 Workflows Consumer Project"
+      );
+    });
+
+    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install", () => {
+      const target = path.join(tempDir, "pnpm_vp_scenario");
+      createConsumerProject(target, {
+        action: "pages",
+        runtime: "node",
+        pm: "pnpm",
+        type: "vite-plus",
+      });
+
+      expect(fs.existsSync(path.join(target, "pnpm-lock.yaml"))).toBe(true);
+
+      // Verify pnpm install --frozen-lockfile
+      execSync("pnpm install --frozen-lockfile", { cwd: target, stdio: "ignore" });
+      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+    });
+  });
+
   describe("Directory Creation Safety & Overwrite Protection", () => {
     it("writes consumer project files into a target directory safely", () => {
       const target = path.join(tempDir, "my_project");
