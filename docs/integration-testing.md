@@ -1,14 +1,23 @@
 # Consumer Integration Testing Guide
 
-This document explains the purpose, architecture, boundaries, execution, and extension of integration testing for `area44/workflows` using the temporary consumer project fixture.
+This document explains the purpose, architecture, boundaries, execution, and fixture consolidation policy of integration testing for `area44/workflows` using dynamically generated consumer project fixtures.
 
 ## Overview & Architecture
 
-To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` maintains an isolated, lightweight consumer fixture at:
+To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` generates consumer projects dynamically in temporary directories using a single canonical generator module:
 
-`__tests__/fixtures/consumer-project/`
+- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single source of truth defining file contents, templates, CLI target validation, and non-empty/overwrite safeguards. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory>`).
+- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical JS generator module so unit tests and Node scripts share identical generation logic without drift.
 
-### Fixture Structure
+### Target Directory & Overwrite Protection
+
+To prevent accidental data loss:
+
+- **Explicit Target Required**: The CLI refuses to execute without an explicit target directory argument (forbidding implicit `process.cwd()` execution).
+- **`allowNonEmpty` Option / `--allow-non-empty` Flag**: Allows generating into a non-empty directory if pre-existing files are unrelated (e.g. `pre_existing.txt`).
+- **`overwrite` Option / `--overwrite` Flag**: Explicitly permits overwriting files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`). Even when `allowNonEmpty` is true, colliding files will NOT be overwritten unless `overwrite` is explicitly enabled.
+
+### Generated Project Structure
 
 - **`package.json`**: Defines standard Node.js package metadata, scripts (`"build": "mkdir -p dist && cp index.html dist/index.html"`, `lint`, `format`), and package manager declaration (`npm@10.8.2`).
 - **`package-lock.json`**: Lockfile for reproducible npm installation.
@@ -17,7 +26,17 @@ To ensure that composite actions (`pages` and `autofix`) function correctly when
 - **`requirements.txt`**: Pinned Python dependency manifest (`ruff==0.17.2`).
 - **`main.py`**: Python source code file to exercise Python linting and formatting workflows.
 
-The fixture represents a real-world multi-language (JS + Python) consumer application.
+The generated project represents a real-world multi-language (JS + Python) consumer application without committing static fixture files to the repository.
+
+---
+
+## Fixture Consolidation Policy
+
+All fixtures across the repository are audited and maintained under the following consolidation policy:
+
+1. **Unique and Necessary**: Specialized fixtures (`pages/*`, `autofix/*`, `vite-plus/*`) representing distinct toolchains, package managers, lockfiles, or failure modes are retained.
+2. **Dynamic Generation**: Repeated or general-purpose consumer application fixtures are generated dynamically in unique temporary directories rather than committed as static files.
+3. **Obsolete Fixtures**: Committed static consumer fixtures (`__tests__/fixtures/consumer-project/` and `__tests__/fixtures/pages/node/npm/consumer/`) have been removed after verifying full test migration to dynamic project factory functions.
 
 ---
 
@@ -28,15 +47,15 @@ Integration validation is divided into two distinct levels to balance speed and 
 ### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
 
 - **Execution Boundary**: Directly imports TypeScript source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`) in Vitest via `vite-plus/test`.
-- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against temporary clones of `__tests__/fixtures/consumer-project/`.
+- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against dynamically generated consumer projects in temporary directories (`os.tmpdir()`).
 
 ### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
 
 - **Execution Boundary**: Invokes the local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
 - **Purpose**: End-to-end execution of the composite action pipeline:
-  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` copies `__tests__/fixtures/consumer-project` into the workspace root while stashing `__tests__` (preventing test files from polluting matrix runs).
-  - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code.
-  - **Output & Artifact Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the build copies the source file to `dist/index.html` containing the consumer fixture title (`"AREA44 Workflows Consumer Project"`).
+  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` generates a dynamic consumer project into an isolated temporary staging directory created safely via `mktemp -d` while stashing `__tests__` into an exclusively owned `mktemp -d` stash directory (preventing test files from polluting matrix runs).
+  - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code against the generated project.
+  - **Output & Artifact Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the build copies the source file to `dist/index.html` containing the consumer fixture marker (`"AREA44 Workflows Consumer Project"`).
   - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
 
 ---
@@ -47,6 +66,12 @@ Integration validation is divided into two distinct levels to balance speed and 
 
 ```bash
 npm test
+```
+
+### Run Consumer Generator Tests
+
+```bash
+npm test __tests__/generate-consumer-project.test.ts
 ```
 
 ### Run Consumer Integration Module Tests
@@ -63,30 +88,14 @@ npm test __tests__/workspace-cleanup.test.ts
 
 ---
 
-## Targeting the Branch Under Test
+## Temporary Directory Ownership & Two-Phase Fail-Closed Cleanup Guarantees
 
-To ensure changes under review in pull requests are tested before merging:
+All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership, two-phase fail-closed validation, and deterministic cleanup:
 
-- Action-level CI tests reference local relative action definitions (`./pages` and `./autofix`) rather than remote refs (`area44/workflows/pages@main`).
-- Unit and module integration test suites in `__tests__/` import directly from source modules in `src/`.
-
----
-
-## GitHub-Hosted Runner Integration Constraints
-
-Certain integration steps depend on GitHub-hosted runner infrastructure and permissions:
-
-- **GitHub Pages Artifact Upload (`actions/upload-pages-artifact`)**: Requires GitHub Pages permissions and runner environment tokens (`id-token: write`).
-- **Autofix CI Push (`autofix-ci/action`)**: Requires `github.workflow == 'autofix.ci'` and `contents: write` permissions.
-
-These external steps are guarded by workflow conditions and run during GitHub Actions CI workflow execution.
-
----
-
-## Workspace Safety & Cleanup Guarantees
-
-All workspace state mutations during matrix setup are tracked in `.test_workspace_state/`:
-
-- Pre-existing workspace items are safely backed up before fixture installation.
-- Installed files and generated build/cache artifacts are tracked in manifests.
-- Restoration validates path boundaries and manifest integrity before deleting or moving files.
+- **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions (0700). An `EXIT` trap guarantees that staging directories are cleaned up automatically on exit.
+- **Exclusive Stash Ownership**: Setup creates a unique test stash directory using `mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX"`. It never reuses or overwrites pre-existing PID-based directories.
+- **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks (`pwd -P`) within `${RUNNER_TEMP:-/tmp}`, rejects symbolic links (`[ -L "$p" ]`), and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
+- **Two-Phase Fail-Closed Cleanup**:
+  - **Phase 1 (Atomic Validation)**: Before any file is deleted or moved, all manifests (`installed_fixture_files`, `backed_up_files`, `snapshot.status`, `stash.info`) are parsed and validated in full. Installed fixtures are verified as top-level relative names, original backup items are checked against the `ROOT_ITEMS` allowlist, backup paths are matched against exact literal string patterns (`${orig_item}.test_bak_<digits>`), and duplicate/nested records are rejected.
+  - **Phase 2 (Execution)**: Destructive file deletions and restorations occur ONLY if all Phase 1 validations pass with zero errors.
+- **Workspace Recovery Guarantees**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. If validation or restoration fails, state, backup files, and stashed directories are preserved for manual recovery.

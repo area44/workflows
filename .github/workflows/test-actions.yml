@@ -38,12 +38,6 @@ jobs:
           - action: pages
             runtime: node
             pm: npm
-            type: consumer
-            fixture: pages/node/npm/consumer
-            verify_site: true
-          - action: pages
-            runtime: node
-            pm: npm
             type: consumer-integration
             fixture: consumer-project
             verify_site: true

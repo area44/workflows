@@ -2,6 +2,14 @@
 name = "conflicting-fixture"
 version = "0.1.0"
 
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
 [tool.uv]
 dev-dependencies = ["ruff"]
 

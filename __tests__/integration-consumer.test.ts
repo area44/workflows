@@ -4,7 +4,7 @@
  * Scope & Architecture:
  * This test suite validates module-level integration between domain modules in `src/`
  * (resolveEnvironment, resolveSiteVariables, resolveBuildCommandToParse, selectAutofixScripts)
- * and the consumer project fixture (`__tests__/fixtures/consumer-project/`).
+ * against a dynamically generated consumer project fixture.
  *
  * Direct module imports are used here for fast local unit/component validation.
  * Full composite action-level execution is verified in CI via `.github/workflows/test-actions.yml`.
@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { createConsumerProject } from "./helpers/consumer-project.js";
 import {
   inspectJsProjectEnvironment,
   selectAutofixScripts,
@@ -32,10 +33,6 @@ vi.mock("@actions/core");
 describe("Consumer Project Module Integration Suite", () => {
   const originalCwd = process.cwd();
   const originalEnv = { ...process.env };
-  const consumerFixturePath = path.resolve(
-    originalCwd,
-    "__tests__/fixtures/consumer-project",
-  );
 
   let tempDir: string;
 
@@ -44,10 +41,9 @@ describe("Consumer Project Module Integration Suite", () => {
     vi.restoreAllMocks();
     process.env = { ...originalEnv };
 
-    // Create an isolated temporary working directory for each test
+    // Create an isolated temporary working directory for each test and generate consumer project files
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "consumer_integration_test_"));
-    // Copy consumer fixture files into temp working directory
-    fs.cpSync(consumerFixturePath, tempDir, { recursive: true });
+    createConsumerProject(tempDir);
     process.chdir(tempDir);
   });
 
