@@ -36,6 +36,43 @@ export function normalizePythonProjectName(name) {
  */
 
 /**
+ * Determines whether a JavaScript project is present for the scenario.
+ * @param {ConsumerProjectOptions} options
+ * @param {string} type
+ */
+function isJsProjectPresent(options, type) {
+  if (typeof options.hasJsProject === "boolean") {
+    return options.hasJsProject;
+  }
+  if (typeof options.hasJsProject === "string") {
+    return options.hasJsProject !== "false";
+  }
+  return !type.startsWith("python-");
+}
+
+/**
+ * Resolves the JS package manager string for package.json.
+ * @param {string} rawPm
+ * @param {string} pmType
+ * @param {string} type
+ */
+function resolveJsPackageManager(rawPm, pmType, type) {
+  if (rawPm.includes("@")) {
+    return rawPm;
+  }
+  if (type === "minimal") {
+    return undefined;
+  }
+  if (pmType === "pnpm") {
+    return "pnpm@12.15.0";
+  }
+  if (pmType === "bun") {
+    return "bun@1.4.0";
+  }
+  return "npm@10.8.2";
+}
+
+/**
  * Resolves JavaScript configuration options for scenario generation.
  * @param {ConsumerProjectOptions} options
  */
@@ -45,25 +82,8 @@ function resolveJsOptions(options) {
   const runtime = options.runtime || "node";
   const rawPm = options.pm || options.packageManager || "npm";
   const pmType = rawPm.startsWith("pnpm") ? "pnpm" : rawPm.startsWith("bun") ? "bun" : "npm";
-
-  let hasJs = true;
-  if (typeof options.hasJsProject === "boolean") {
-    hasJs = options.hasJsProject;
-  } else if (typeof options.hasJsProject === "string") {
-    hasJs = options.hasJsProject !== "false";
-  } else if (type.startsWith("python-")) {
-    hasJs = false;
-  }
-
-  const packageManager = rawPm.includes("@")
-    ? rawPm
-    : type === "minimal"
-    ? undefined
-    : pmType === "pnpm"
-    ? "pnpm@12.15.0"
-    : pmType === "bun"
-    ? "bun@1.4.0"
-    : "npm@10.8.2";
+  const hasJs = isJsProjectPresent(options, type);
+  const packageManager = resolveJsPackageManager(rawPm, pmType, type);
 
   const toolchain =
     options.toolchain ||
@@ -121,31 +141,27 @@ function resolvePythonOptions(options, type, action) {
     }
   }
 
-  const ruffVersion = options.ruffVersion !== undefined ? options.ruffVersion : "0.17.2";
+  const ruffVersion =
+    options.ruffVersion !== undefined
+      ? options.ruffVersion
+      : type === "python-pip" || type === "python-none"
+      ? ""
+      : "0.17.2";
 
   return { hasPython, pythonPm, ruffVersion };
 }
 
 /**
- * Generates JavaScript files for a given scenario.
+ * Builds JS scripts and html/astro files.
  * @param {Record<string, string>} files
  * @param {ConsumerProjectOptions} options
  * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
-function buildJsFiles(files, options, jsOpt) {
-  const { action, runtime, pmType, type, packageManager, toolchain } = jsOpt;
+function buildJsScriptsAndHtml(files, options, jsOpt) {
+  const { action, toolchain, type } = jsOpt;
   const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
-  const name =
-    options.name ||
-    (options.type || options.action || options.toolchain
-      ? type === "vite-plus"
-        ? "test-vite-plus"
-        : `test-${action || "project"}-${runtime}-${pmType}-${type}`
-      : "consumer-project");
 
-  /** @type {Record<string, string>} */
   let scripts = {};
-  /** @type {Record<string, string>} */
   let devDependencies = {};
 
   if (
@@ -162,7 +178,7 @@ function buildJsFiles(files, options, jsOpt) {
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
     scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
     devDependencies = { "vite-plus": "^1.4.0" };
-    files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
+    files["vite.config.ts"] = `export default {};\n`;
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (toolchain === "vite" || type === "vite") {
     scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
@@ -191,21 +207,17 @@ function buildJsFiles(files, options, jsOpt) {
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   }
 
-  const packageJson = {
-    name,
-    version: "1.0.0",
-    private: true,
-    type: "module",
-    scripts,
-    ...(Object.keys(devDependencies).length > 0 ? { devDependencies } : {}),
-    ...(runtime === "bun" && pmType === "pnpm"
-      ? { devEngines: { runtime: { name: "bun", version: ">=1.0.0" } } }
-      : {}),
-    ...(packageManager ? { packageManager } : {}),
-  };
+  return { scripts, devDependencies };
+}
 
-  files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
-
+/**
+ * Builds JS lockfiles.
+ * @param {Record<string, string>} files
+ * @param {string} name
+ * @param {string} pmType
+ * @param {string} type
+ */
+function buildJsLockfile(files, name, pmType, type) {
   if (pmType === "npm") {
     const packageLockJson = {
       name,
@@ -227,8 +239,43 @@ function buildJsFiles(files, options, jsOpt) {
       files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
     }
   } else if (pmType === "bun") {
-    files["bun.lock"] = `# bun lockfile v1\n# https://bun.sh/docs/install/lockfile\n\n{\n  "lockfileVersion": 1,\n  "workspaces": {\n    "": {\n      "name": "${name}"\n    }\n  },\n  "packages": {}\n}\n`;
+    files["bun.lock"] = "";
   }
+}
+
+/**
+ * Generates JavaScript files for a given scenario.
+ * @param {Record<string, string>} files
+ * @param {ConsumerProjectOptions} options
+ * @param {ReturnType<typeof resolveJsOptions>} jsOpt
+ */
+function buildJsFiles(files, options, jsOpt) {
+  const { action, runtime, pmType, type, packageManager } = jsOpt;
+  const name =
+    options.name ||
+    (options.type || options.action || options.toolchain
+      ? type === "vite-plus"
+        ? "test-vite-plus"
+        : `test-${action || "project"}-${runtime}-${pmType}-${type}`
+      : "consumer-project");
+
+  const { scripts, devDependencies } = buildJsScriptsAndHtml(files, options, jsOpt);
+
+  const packageJson = {
+    name,
+    version: "1.0.0",
+    private: true,
+    type: "module",
+    scripts,
+    ...(Object.keys(devDependencies).length > 0 ? { devDependencies } : {}),
+    ...(runtime === "bun" && pmType === "pnpm"
+      ? { devEngines: { runtime: { name: "bun", version: ">=1.0.0" } } }
+      : {}),
+    ...(packageManager ? { packageManager } : {}),
+  };
+
+  files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
+  buildJsLockfile(files, name, pmType, type);
 
   if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
     files[".node-version"] = "24.19.0\n";
