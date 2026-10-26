@@ -2,11 +2,13 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
   createConsumerProject,
   generateConsumerProjectFiles,
+  normalizePythonProjectName,
 } from "../.github/scripts/generate-consumer-project.js";
 
 describe("Consumer Project Generator Unit & Regression Suite", () => {
@@ -23,7 +25,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
   });
 
   describe("File Generation Content & Structure", () => {
-    it("generates all required consumer project files with valid structure", () => {
+    it("generates all required consumer project files with valid structure and default project name", () => {
       const files = generateConsumerProjectFiles();
 
       expect(files).toHaveProperty("package.json");
@@ -35,22 +37,25 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
       const pkg = JSON.parse(files["package.json"]);
       const lock = JSON.parse(files["package-lock.json"]);
+      const pyproject = parseToml(files["pyproject.toml"]) as any;
 
-      // Identity & Lockfile alignment
+      // Identity & Lockfile & pyproject.toml alignment with default name
       expect(pkg.name).toBe("consumer-project");
       expect(lock.name).toBe("consumer-project");
+      expect(lock.packages[""].name).toBe("consumer-project");
+      expect(pyproject.project.name).toBe("consumer-project");
       expect(pkg.packageManager).toBe("npm@10.8.2");
 
       // HTML Marker content
       expect(files["index.html"]).toContain("AREA44 Workflows Consumer Project");
 
       // Python Configuration & Ruff version alignment
-      expect(files["pyproject.toml"]).toContain('ruff==0.17.2');
+      expect(files["pyproject.toml"]).toContain("ruff==0.17.2");
       expect(files["requirements.txt"]).toBe("ruff==0.17.2\n");
       expect(files["main.py"]).toContain('print("AREA44 consumer project Python entrypoint")');
     });
 
-    it("applies custom generation options correctly", () => {
+    it("applies custom project name consistently across package.json, package-lock.json, and pyproject.toml", () => {
       const files = generateConsumerProjectFiles({
         name: "custom-app",
         packageManager: "pnpm@9.1.0",
@@ -59,11 +64,39 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       });
 
       const pkg = JSON.parse(files["package.json"]);
+      const lock = JSON.parse(files["package-lock.json"]);
+      const pyproject = parseToml(files["pyproject.toml"]) as any;
+
       expect(pkg.name).toBe("custom-app");
+      expect(lock.name).toBe("custom-app");
+      expect(lock.packages[""].name).toBe("custom-app");
+      expect(pyproject.project.name).toBe("custom-app");
+
       expect(pkg.packageManager).toBe("pnpm@9.1.0");
       expect(files["index.html"]).toContain("Custom Consumer Marker");
-      expect(files["pyproject.toml"]).toContain('ruff==0.18.0');
+      expect(files["pyproject.toml"]).toContain("ruff==0.18.0");
       expect(files["requirements.txt"]).toBe("ruff==0.18.0\n");
+    });
+
+    it("normalizes custom project names deterministically for Python package naming rules", () => {
+      expect(normalizePythonProjectName("custom-app")).toBe("custom-app");
+      expect(normalizePythonProjectName("@area44/my-custom_app")).toBe("area44-my-custom-app");
+      expect(normalizePythonProjectName("My Custom_App!")).toBe("my-custom-app");
+      expect(normalizePythonProjectName("")).toBe("consumer-project");
+      expect(normalizePythonProjectName(undefined as any)).toBe("consumer-project");
+
+      const files = generateConsumerProjectFiles({
+        name: "@area44/my-custom_app!",
+      });
+
+      const pkg = JSON.parse(files["package.json"]);
+      const lock = JSON.parse(files["package-lock.json"]);
+      const pyproject = parseToml(files["pyproject.toml"]) as any;
+
+      expect(pkg.name).toBe("@area44/my-custom_app!");
+      expect(lock.name).toBe("@area44/my-custom_app!");
+      expect(lock.packages[""].name).toBe("@area44/my-custom_app!");
+      expect(pyproject.project.name).toBe("area44-my-custom-app");
     });
   });
 

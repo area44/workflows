@@ -4,6 +4,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
+ * Normalizes a project name for Python package compatibility (PEP 508 / PEP 621).
+ * @param {string} [name]
+ * @returns {string}
+ */
+export function normalizePythonProjectName(name) {
+  if (!name || typeof name !== "string") {
+    return "consumer-project";
+  }
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "consumer-project";
+}
+
+/**
  * @typedef {Object} ConsumerProjectOptions
  * @property {string} [name]
  * @property {string} [packageManager]
@@ -24,6 +36,7 @@ export function generateConsumerProjectFiles(options = {}) {
   const packageManager = options.packageManager || "npm@10.8.2";
   const ruffVersion = options.ruffVersion || "0.17.2";
   const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
+  const pyProjectName = normalizePythonProjectName(name);
 
   const packageJson = {
     name,
@@ -53,7 +66,7 @@ export function generateConsumerProjectFiles(options = {}) {
   };
 
   const pyprojectToml = `[project]
-name = "consumer-app"
+name = "${pyProjectName}"
 version = "0.1.0"
 dependencies = [
   "ruff==${ruffVersion}",
