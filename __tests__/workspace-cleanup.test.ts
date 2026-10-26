@@ -695,6 +695,131 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(path.join(tempDir, "index.html"))).toBe(false);
   });
 
+  it("handles repeated cleanup idempotently when __tests__ is restored but stash path removal was interrupted", () => {
+    const origTestsFile = path.join(tempDir, "__tests__", "my_test.test.js");
+    fs.mkdirSync(path.dirname(origTestsFile), { recursive: true });
+    fs.writeFileSync(origTestsFile, "console.log('original test');");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    const stashInfo = fs.readFileSync(path.join(stateDir, "stash.info"), "utf8");
+    const stashPathMatch = stashInfo.match(/stash_tests_path=(.*)/);
+    expect(stashPathMatch).not.toBeNull();
+    const stashPath = stashPathMatch![1].trim();
+
+    // First cleanup interrupted after moving __tests__ back but before stash path deletion
+    runScript("cleanup", tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_AFTER_MV_STASH: "1" },
+    });
+
+    expect(fs.existsSync(origTestsFile)).toBe(true);
+    expect(fs.existsSync(stashPath)).toBe(true);
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    // Second cleanup completes restoration idempotently
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(origTestsFile)).toBe(true);
+    expect(fs.existsSync(stashPath)).toBe(false);
+    expect(fs.existsSync(stateDir)).toBe(false);
+  });
+
+  it("handles repeated cleanup idempotently when tests_existed_before_setup=false and stash is already removed", () => {
+    runScript("setup pages node npm consumer-integration consumer-project", tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    const stashInfo = fs.readFileSync(path.join(stateDir, "stash.info"), "utf8");
+    const stashPathMatch = stashInfo.match(/stash_tests_path=(.*)/);
+    expect(stashPathMatch).not.toBeNull();
+    const stashPath = stashPathMatch![1].trim();
+
+    // Manually delete empty stash path before cleanup
+    fs.rmSync(stashPath, { recursive: true, force: true });
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(stateDir)).toBe(false);
+  });
+
+  it("fails closed and exits nonzero when journal contains unknown event type", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "UNKNOWN_EVENT_TYPE|arg1|arg2\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Unknown record type 'UNKNOWN_EVENT_TYPE' in journal.log");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when journal contains invalid field count or malformed line", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    // BACKUP_DONE should have 3 fields (2 pipes)
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "BACKUP_DONE|package.json\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Malformed 'BACKUP_DONE' entry in journal.log");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when journal contains unsafe or nested path", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "INSTALL_PENDING|../unsafe_path\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Unsafe path in journal.log 'INSTALL_PENDING' record");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when journal contains mismatched backup filename prefix", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "BACKUP_DONE|package.json|package_invalid_bak_123\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error: Mismatched backup filename prefix in journal.log");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("remains safe when cleanup is invoked twice", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 

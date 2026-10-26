@@ -431,6 +431,86 @@ elif [[ "$MODE" == "cleanup" ]]; then
     fi
   fi
 
+  # --- JOURNAL LOG VALIDATION & RECONCILIATION ---
+  declare -A restored_items=()
+  declare -A journal_pending_backups=()
+  declare -A journal_done_backups=()
+
+  if [ -f "$STATE_DIR/journal.log" ]; then
+    while IFS= read -r j_line || [ -n "$j_line" ]; do
+      [ -z "$j_line" ] && continue
+
+      # Count pipe fields
+      pipe_count=$(tr -dc '|' <<< "$j_line" | wc -c | tr -d ' ' || echo 0)
+
+      IFS='|' read -r j_type j_arg1 j_arg2 <<< "$j_line"
+
+      case "$j_type" in
+        STASH_PENDING|STASH_DONE)
+          if [ "$pipe_count" -ne 1 ] || [ -z "$j_arg1" ] || [ -n "$j_arg2" ]; then
+            echo "Error: Malformed '$j_type' entry in journal.log (invalid field count or empty path). Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          ;;
+        INSTALL_PENDING|INSTALL_DONE)
+          if [ "$pipe_count" -ne 1 ] || [ -z "$j_arg1" ] || [ -n "$j_arg2" ]; then
+            echo "Error: Malformed '$j_type' entry in journal.log (invalid field count or empty path). Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          if ! validate_path "$j_arg1" || [[ "$j_arg1" == *"/"* ]]; then
+            echo "Error: Unsafe path in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          ;;
+        BACKUP_PENDING|BACKUP_DONE|RESTORE_DONE)
+          if [ "$pipe_count" -ne 2 ] || [ -z "$j_arg1" ] || [ -z "$j_arg2" ]; then
+            echo "Error: Malformed '$j_type' entry in journal.log (invalid field count or empty path). Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          if ! validate_path "$j_arg1" || [[ "$j_arg1" == *"/"* ]]; then
+            echo "Error: Unsafe original path in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+          if [[ "$j_type" != "RESTORE_DONE" || "$j_arg1" != "__tests__" ]]; then
+            if ! validate_path "$j_arg2" || [[ "$j_arg2" == *"/"* ]]; then
+              echo "Error: Unsafe backup path in journal.log '$j_type' record: '$j_arg2'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            if ! is_allowed_root_item "$j_arg1"; then
+              echo "Error: Unallowed root item in journal.log '$j_type' record: '$j_arg1'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+            bak_prefix="${j_arg1}.test_bak_"
+            if [[ "$j_arg2" != "$bak_prefix"* ]]; then
+              echo "Error: Mismatched backup filename prefix in journal.log '$j_type' record for '$j_arg1': '$j_arg2'. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
+          fi
+          if [[ "$j_type" == "RESTORE_DONE" ]]; then
+            restored_items["$j_arg1"]="$j_arg2"
+          elif [[ "$j_type" == "BACKUP_PENDING" ]]; then
+            journal_pending_backups["$j_arg1"]="$j_arg2"
+          elif [[ "$j_type" == "BACKUP_DONE" ]]; then
+            journal_done_backups["$j_arg1"]="$j_arg2"
+          fi
+          ;;
+        *)
+          echo "Error: Unknown record type '$j_type' in journal.log. Failing closed." >&2
+          VALIDATION_FAILED=true
+          break
+          ;;
+      esac
+    done < "$STATE_DIR/journal.log"
+  fi
+
   # --- PHASE 1: ATOMIC VALIDATION PHASE (NO DESTRUCTIVE MUTATIONS) ---
 
   # 1. Pre-validate fixture ownership manifest and installed_fixture_files
@@ -445,20 +525,6 @@ elif [[ "$MODE" == "cleanup" ]]; then
       fi
       valid_fixture_owners["$owner_item"]=1
     done < "$STATE_DIR/fixture_ownership_manifest"
-  fi
-
-  # Include pending install items from journal if interrupted during installation
-  if [ -f "$STATE_DIR/journal.log" ]; then
-    while IFS='|' read -r j_type j_arg1 j_arg2 || [ -n "$j_type" ]; do
-      if [[ "$j_type" == "INSTALL_PENDING" || "$j_type" == "INSTALL_DONE" ]]; then
-        if [ -n "$j_arg1" ] && validate_path "$j_arg1" && [[ "$j_arg1" != *"/"* ]]; then
-          if [ -n "${valid_fixture_owners[$j_arg1]:-}" ] && [ -e "$j_arg1" ]; then
-            # Ensure it is recorded in installed list
-            :
-          fi
-        fi
-      fi
-    done < "$STATE_DIR/journal.log"
   fi
 
   valid_installed_fixture_items=()
@@ -516,16 +582,6 @@ elif [[ "$MODE" == "cleanup" ]]; then
   valid_bak_items=()
   declare -A seen_orig_items=()
   declare -A seen_bak_items=()
-  declare -A restored_items=()
-
-  # Read completed restorations from journal for repeated cleanup idempotency
-  if [ -f "$STATE_DIR/journal.log" ]; then
-    while IFS='|' read -r j_type j_orig j_bak || [ -n "$j_type" ]; do
-      if [[ "$j_type" == "RESTORE_DONE" ]] && [ -n "$j_orig" ]; then
-        restored_items["$j_orig"]=1
-      fi
-    done < "$STATE_DIR/journal.log"
-  fi
 
   if [ -f "$STATE_DIR/backed_up_files" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
@@ -634,27 +690,34 @@ elif [[ "$MODE" == "cleanup" ]]; then
     STASH_PATH=$(grep "^stash_tests_path=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
     TESTS_EXISTED=$(grep "^tests_existed_before_setup=" "$STATE_DIR/stash.info" 2>/dev/null | cut -d'=' -f2- || true)
 
+    # Reconcile stash validation with previous restoration pass or missing stash on disk
     if [[ "$TESTS_EXISTED" == "true" ]]; then
-      if [ -z "$STASH_PATH" ] || ! validate_stash_path "$STASH_PATH"; then
-        echo "Error: Invalid or unverified stashed __tests__ directory path at '$STASH_PATH'." >&2
-        VALIDATION_FAILED=true
+      # If RESTORE_DONE for __tests__ was logged, or if __tests__ exists in workspace and STASH_PATH is already gone
+      if [ -n "${restored_items["__tests__"]:-}" ] || { [ ! -d "$STASH_PATH" ] && [ -d "__tests__" ]; }; then
+        # Restoration already completed previously or stash already removed safely
+        :
       else
-        stashed_tests="${STASH_PATH}/__tests__"
-        # In PHASE_STASHING, __tests__ could either be in workspace or already moved into stash
-        if [[ "$SETUP_PHASE" == "PHASE_STASHING" ]]; then
-          if [ ! -d "$stashed_tests" ] && [ ! -d "__tests__" ] && [ -z "${restored_items["__tests__"]:-}" ]; then
-            echo "Error: Neither stashed __tests__ nor workspace __tests__ exist during PHASE_STASHING." >&2
-            VALIDATION_FAILED=true
-          fi
+        if [ -z "$STASH_PATH" ] || ! validate_stash_path "$STASH_PATH"; then
+          echo "Error: Invalid or unverified stashed __tests__ directory path at '$STASH_PATH'." >&2
+          VALIDATION_FAILED=true
         else
-          if { [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; } && [ -z "${restored_items["__tests__"]:-}" ] && [ ! -d "__tests__" ]; then
-            echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
-            VALIDATION_FAILED=true
+          stashed_tests="${STASH_PATH}/__tests__"
+          # In PHASE_STASHING, __tests__ could either be in workspace or already moved into stash
+          if [[ "$SETUP_PHASE" == "PHASE_STASHING" ]]; then
+            if [ ! -d "$stashed_tests" ] && [ ! -d "__tests__" ]; then
+              echo "Error: Neither stashed __tests__ nor workspace __tests__ exist during PHASE_STASHING." >&2
+              VALIDATION_FAILED=true
+            fi
+          else
+            if { [ ! -d "$stashed_tests" ] || [ -L "$stashed_tests" ]; } && [ ! -d "__tests__" ]; then
+              echo "Error: Stashed __tests__ directory at '$stashed_tests' is missing, not a directory, or is a symbolic link." >&2
+              VALIDATION_FAILED=true
+            fi
           fi
         fi
       fi
     elif [[ "$TESTS_EXISTED" == "false" ]]; then
-      if [ -n "$STASH_PATH" ] && ! validate_stash_path "$STASH_PATH"; then
+      if [ -n "$STASH_PATH" ] && [ -d "$STASH_PATH" ] && ! validate_stash_path "$STASH_PATH"; then
         echo "Error: Invalid stash path at '$STASH_PATH'." >&2
         VALIDATION_FAILED=true
       fi
@@ -740,14 +803,21 @@ elif [[ "$MODE" == "cleanup" ]]; then
           rm -rf __tests__
           if mv "$stashed_tests" .; then
             log_journal "RESTORE_DONE|__tests__|${stashed_tests}"
-            rm -rf "$STASH_PATH"
+            if [ "${INJECT_FAILURE_AFTER_MV_STASH:-0}" -eq 1 ]; then
+              echo "Error: Injected failure after moving stashed __tests__ into workspace." >&2
+              HAD_RESTORE_FAILURE=true
+            else
+              rm -rf "$STASH_PATH"
+            fi
           else
             echo "Error: Failed to restore stashed __tests__ from '$stashed_tests'. Preserving stash directory for recovery." >&2
             HAD_RESTORE_FAILURE=true
           fi
         elif [ -d __tests__ ]; then
           echo "Notice: __tests__ directory already in workspace." >&2
-          rm -rf "$STASH_PATH"
+          if [ -d "$STASH_PATH" ]; then
+            rm -rf "$STASH_PATH"
+          fi
         fi
       fi
     elif [[ "$TESTS_EXISTED" == "false" ]]; then
