@@ -917,6 +917,54 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
     expect(fs.existsSync(stateDir)).toBe(true);
   });
 
+  it("fails closed and exits nonzero when manifest maps to a backup file that is missing and journal has conflicting RESTORE_DONE backup path", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "modified-pkg");
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "package.json|package.json.test_bak_123\n");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    // Journal records RESTORE_DONE for a DIFFERENT backup path package.json.test_bak_999
+    fs.writeFileSync(path.join(stateDir, "journal.log"), "RESTORE_DONE|package.json|package.json.test_bak_999\n");
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("conflicts with manifest mapping");
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("modified-pkg");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("fails closed and exits nonzero when duplicate RESTORE_DONE entries for same item exist in journal", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_COMPLETE\n");
+    fs.writeFileSync(path.join(stateDir, "stash.info"), "tests_existed_before_setup=false\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot.status"), "SNAPSHOT_STATUS=complete\n");
+    fs.writeFileSync(path.join(stateDir, "snapshot_pre_existing_items"), "");
+    fs.writeFileSync(path.join(stateDir, "backed_up_files"), "");
+    fs.writeFileSync(path.join(stateDir, "installed_fixture_files"), "");
+    fs.writeFileSync(path.join(stateDir, "fixture_ownership_manifest"), "");
+
+    fs.writeFileSync(path.join(tempDir, "package.json"), "workspace-pkg");
+
+    fs.writeFileSync(
+      path.join(stateDir, "journal.log"),
+      "RESTORE_DONE|package.json|package.json.test_bak_123\nRESTORE_DONE|package.json|package.json.test_bak_456\n"
+    );
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Duplicate RESTORE_DONE entry for 'package.json'");
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("workspace-pkg");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
   it("remains safe when cleanup is invoked twice", () => {
     fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg");
 

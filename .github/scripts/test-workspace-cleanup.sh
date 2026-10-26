@@ -462,6 +462,7 @@ elif [[ "$MODE" == "cleanup" ]]; then
 
   # --- JOURNAL LOG VALIDATION & RECONCILIATION ---
   declare -A restored_items=()
+  declare -A seen_restore_done=()
   declare -A journal_pending_backups=()
   declare -A journal_done_backups=()
 
@@ -513,6 +514,13 @@ elif [[ "$MODE" == "cleanup" ]]; then
             VALIDATION_FAILED=true
             break
           fi
+
+          if [ -n "${seen_restore_done[$j_arg1]:-}" ] && [[ "$j_type" == "RESTORE_DONE" ]]; then
+            echo "Error: Duplicate RESTORE_DONE entry for '$j_arg1' in journal.log. Failing closed." >&2
+            VALIDATION_FAILED=true
+            break
+          fi
+
           if [[ "$j_arg1" == "__tests__" ]]; then
             if [[ "$j_type" != "RESTORE_DONE" ]]; then
               echo "Error: Unallowed journal entry type '$j_type' for '__tests__'. Failing closed." >&2
@@ -580,10 +588,21 @@ elif [[ "$MODE" == "cleanup" ]]; then
           fi
 
           if [[ "$j_type" == "RESTORE_DONE" ]]; then
+            seen_restore_done["$j_arg1"]="$j_arg2"
             restored_items["$j_arg1"]="$j_arg2"
           elif [[ "$j_type" == "BACKUP_PENDING" ]]; then
+            if [ -n "${journal_pending_backups[$j_arg1]:-}" ] && [ "${journal_pending_backups[$j_arg1]}" != "$j_arg2" ]; then
+              echo "Error: Conflicting BACKUP_PENDING path for '$j_arg1' in journal.log. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
             journal_pending_backups["$j_arg1"]="$j_arg2"
           elif [[ "$j_type" == "BACKUP_DONE" ]]; then
+            if [ -n "${journal_done_backups[$j_arg1]:-}" ] && [ "${journal_done_backups[$j_arg1]}" != "$j_arg2" ]; then
+              echo "Error: Conflicting BACKUP_DONE path for '$j_arg1' in journal.log. Failing closed." >&2
+              VALIDATION_FAILED=true
+              break
+            fi
             journal_done_backups["$j_arg1"]="$j_arg2"
           fi
           ;;
@@ -732,11 +751,25 @@ elif [[ "$MODE" == "cleanup" ]]; then
         break
       fi
 
-      # Verify presence of backup file if restoration was not already completed in a previous pass
-      if [ ! -e "$bak_item" ] && [ -z "${restored_items[$orig_item]:-}" ]; then
-        echo "Error: Expected backup file '$bak_item' for '$orig_item' is missing. Failing closed." >&2
-        VALIDATION_FAILED=true
-        break
+      # Exact (orig_item, bak_item) pair validation against RESTORE_DONE
+      if [ -n "${restored_items[$orig_item]:-}" ]; then
+        if [ "${restored_items[$orig_item]}" != "$bak_item" ]; then
+          echo "Error: RESTORE_DONE backup path '${restored_items[$orig_item]}' for '$orig_item' conflicts with manifest mapping '$bak_item'. Failing closed." >&2
+          VALIDATION_FAILED=true
+          break
+        fi
+        if [ ! -e "$bak_item" ] && [ ! -e "$orig_item" ]; then
+          echo "Error: RESTORE_DONE recorded for '$orig_item' ($bak_item), but neither backup file nor original path exists. Failing closed." >&2
+          VALIDATION_FAILED=true
+          break
+        fi
+      else
+        # Verify presence of backup file if restoration was not already completed
+        if [ ! -e "$bak_item" ]; then
+          echo "Error: Expected backup file '$bak_item' for '$orig_item' is missing. Failing closed." >&2
+          VALIDATION_FAILED=true
+          break
+        fi
       fi
 
       seen_orig_items["$orig_item"]=1
@@ -752,15 +785,28 @@ elif [[ "$MODE" == "cleanup" ]]; then
       if [[ "$j_type" == "BACKUP_PENDING" || "$j_type" == "BACKUP_DONE" ]]; then
         if [ -n "$j_orig" ] && [ -n "$j_bak" ] && [ -z "${seen_orig_items[$j_orig]:-}" ]; then
           if validate_path "$j_orig" && validate_path "$j_bak" && is_allowed_root_item "$j_orig"; then
-            if [ -e "$j_bak" ]; then
-              seen_orig_items["$j_orig"]=1
-              seen_bak_items["$j_bak"]=1
-              valid_orig_items+=("$j_orig")
-              valid_bak_items+=("$j_bak")
-            elif [ ! -e "$j_orig" ] && [ -z "${restored_items[$j_orig]:-}" ]; then
-              echo "Error: Journal records pending backup for '$j_orig' to '$j_bak', but backup file is missing and original item is gone. Failing closed." >&2
-              VALIDATION_FAILED=true
-              break
+            if [ -n "${restored_items[$j_orig]:-}" ]; then
+              if [ "${restored_items[$j_orig]}" != "$j_bak" ]; then
+                echo "Error: RESTORE_DONE backup path '${restored_items[$j_orig]}' for '$j_orig' conflicts with journal backup record '$j_bak'. Failing closed." >&2
+                VALIDATION_FAILED=true
+                break
+              fi
+              if [ ! -e "$j_bak" ] && [ ! -e "$j_orig" ]; then
+                echo "Error: RESTORE_DONE recorded for '$j_orig' ($j_bak), but neither backup file nor original path exists. Failing closed." >&2
+                VALIDATION_FAILED=true
+                break
+              fi
+            else
+              if [ -e "$j_bak" ]; then
+                seen_orig_items["$j_orig"]=1
+                seen_bak_items["$j_bak"]=1
+                valid_orig_items+=("$j_orig")
+                valid_bak_items+=("$j_bak")
+              elif [ ! -e "$j_orig" ]; then
+                echo "Error: Journal records pending backup for '$j_orig' to '$j_bak', but backup file is missing and original item is gone. Failing closed." >&2
+                VALIDATION_FAILED=true
+                break
+              fi
             fi
           fi
         fi
