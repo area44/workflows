@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   createConsumerProject,
   generateConsumerProjectFiles,
+  getLockfileTemplates,
   normalizePythonProjectName,
 } from "../.github/scripts/generate-consumer-project.js";
 
@@ -223,7 +224,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install", { timeout: 30000 }, () => {
+    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install and real vp build cleanly", { timeout: 30000 }, () => {
       const target = path.join(tempDir, "pnpm_vp_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -233,10 +234,81 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       });
 
       expect(fs.existsSync(path.join(target, "pnpm-lock.yaml"))).toBe(true);
+      expect(fs.existsSync(path.join(target, "pnpm-workspace.yaml"))).toBe(true);
 
       // Verify pnpm install --frozen-lockfile
       runCommandWithDiagnostics("pnpm install --frozen-lockfile", target);
       expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+
+      // Verify real vp build execution
+      runCommandWithDiagnostics("pnpm run build", target);
+      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+        "AREA44 Workflows Consumer Project"
+      );
+    });
+
+    it("verifies no-framework Bun scenario (none:bun) generates valid project and frozen install passes cleanly", { timeout: 30000 }, () => {
+      const target = path.join(tempDir, "bun_none_scenario");
+      createConsumerProject(target, {
+        runtime: "bun",
+        pm: "bun",
+        toolchain: "none",
+        type: "basic",
+      });
+
+      const bunBin = fs.existsSync("/usr/local/bun/bin/bun") ? "/usr/local/bun/bin/bun" : "bun";
+      runCommandWithDiagnostics(`${bunBin} install --frozen-lockfile`, target);
+    });
+  });
+
+  describe("Template Error Handling & Validation Suite", () => {
+    it("successfully loads valid lockfile templates file and verifies required keys", () => {
+      const templates = getLockfileTemplates();
+      expect(templates).toHaveProperty("astro:npm");
+      expect(templates).toHaveProperty("astro:pnpm");
+      expect(templates).toHaveProperty("astro:bun");
+      expect(templates).toHaveProperty("vite:npm");
+      expect(templates).toHaveProperty("vite:pnpm");
+      expect(templates).toHaveProperty("vite:bun");
+      expect(templates).toHaveProperty("vite-plus:npm");
+      expect(templates).toHaveProperty("vite-plus:pnpm");
+      expect(templates).toHaveProperty("vite-plus:bun");
+      expect(templates).toHaveProperty("none:npm");
+      expect(templates).toHaveProperty("none:pnpm");
+      expect(templates).toHaveProperty("none:bun");
+    });
+
+    it("throws explicit error when template file is missing", () => {
+      const nonExistentPath = path.join(tempDir, "non_existent_templates.json");
+      expect(() => getLockfileTemplates(nonExistentPath)).toThrow("Missing lockfile templates file");
+    });
+
+    it("throws explicit error when template JSON is malformed", () => {
+      const malformedPath = path.join(tempDir, "malformed.json");
+      fs.writeFileSync(malformedPath, "{ invalid json content }");
+      expect(() => getLockfileTemplates(malformedPath)).toThrow("Malformed JSON in lockfile templates file");
+    });
+
+    it("throws explicit error when template file structure is not an object", () => {
+      const invalidArrayPath = path.join(tempDir, "array_structure.json");
+      fs.writeFileSync(invalidArrayPath, JSON.stringify(["not", "an", "object"]));
+      expect(() => getLockfileTemplates(invalidArrayPath)).toThrow("Invalid template structure");
+    });
+
+    it("throws explicit error during project creation when template key is missing", () => {
+      const incompletePath = path.join(tempDir, "incomplete_templates.json");
+      fs.writeFileSync(incompletePath, JSON.stringify({ "none:npm": "{}" }));
+
+      const target = path.join(tempDir, "missing_key_target");
+      expect(() =>
+        createConsumerProject(target, {
+          action: "pages",
+          pm: "pnpm",
+          toolchain: "astro",
+          customTemplatePath: incompletePath,
+        } as any)
+      ).toThrow("Missing lockfile template for key 'astro:pnpm'");
     });
   });
 

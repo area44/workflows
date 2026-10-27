@@ -214,23 +214,41 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
 
 // Pre-generated canonical lockfile templates loaded lazily from lockfile-templates.json
 let lockfileTemplates = null;
-function getLockfileTemplates() {
-  if (!lockfileTemplates) {
-    const templatePath = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "lockfile-templates.json"
-    );
-    if (fs.existsSync(templatePath)) {
-      try {
-        lockfileTemplates = JSON.parse(fs.readFileSync(templatePath, "utf8"));
-      } catch (err) {
-        lockfileTemplates = {};
-      }
-    } else {
-      lockfileTemplates = {};
-    }
+export function getLockfileTemplates(customTemplatePath) {
+  const templatePath =
+    customTemplatePath ||
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "lockfile-templates.json");
+
+  if (!customTemplatePath && lockfileTemplates) {
+    return lockfileTemplates;
   }
-  return lockfileTemplates;
+
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Missing lockfile templates file at '${templatePath}'.`);
+  }
+
+  let rawContent = "";
+  try {
+    rawContent = fs.readFileSync(templatePath, "utf8");
+  } catch (err) {
+    throw new Error(`Failed to read lockfile templates file at '${templatePath}': ${err.message}`);
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch (err) {
+    throw new Error(`Malformed JSON in lockfile templates file at '${templatePath}': ${err.message}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid template structure in lockfile templates file at '${templatePath}': expected object.`);
+  }
+
+  if (!customTemplatePath) {
+    lockfileTemplates = parsed;
+  }
+  return parsed;
 }
 
 /**
@@ -240,10 +258,16 @@ function getLockfileTemplates() {
  * @param {string} pmType
  * @param {string} type
  * @param {string} toolchain
+ * @param {string} [customTemplatePath]
  */
-function buildJsLockfile(files, name, pmType, type, toolchain) {
-  const templates = getLockfileTemplates();
+function buildJsLockfile(files, name, pmType, type, toolchain, customTemplatePath) {
+  const templates = getLockfileTemplates(customTemplatePath);
   const templateKey = `${toolchain || "none"}:${pmType}`;
+
+  if (!Object.prototype.hasOwnProperty.call(templates, templateKey)) {
+    throw new Error(`Missing lockfile template for key '${templateKey}' in lockfile-templates.json.`);
+  }
+
   const lockfileContent = templates[templateKey];
 
   if (pmType === "npm") {
@@ -271,27 +295,11 @@ function buildJsLockfile(files, name, pmType, type, toolchain) {
     } else {
       files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
     }
-    if (type === "basic" || type === "minimal") {
-      files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
-    }
+    files["pnpm-workspace.yaml"] =
+      "packages:\n  - '.'\nallowBuilds:\n  esbuild: true\n  sharp: true\n  \"@img/sharp-libvips-linux-x64\": true\n";
   } else if (pmType === "bun") {
-    if (lockfileContent) {
+    if (lockfileContent && lockfileContent.trim().length > 0) {
       files["bun.lock"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
-    } else {
-      files["bun.lock"] =
-        JSON.stringify(
-          {
-            lockfileVersion: 1,
-            workspaces: {
-              "": {
-                name,
-              },
-            },
-            packages: {},
-          },
-          null,
-          2
-        ) + "\n";
     }
   }
 }
@@ -328,7 +336,7 @@ function buildJsFiles(files, options, jsOpt) {
   };
 
   files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
-  buildJsLockfile(files, name, pmType, type, toolchain);
+  buildJsLockfile(files, name, pmType, type, toolchain, options.customTemplatePath);
 
   if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
     files[".node-version"] = "24.19.0\n";
