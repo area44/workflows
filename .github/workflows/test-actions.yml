@@ -139,6 +139,7 @@ jobs:
       - name: Generate Consumer Project Workspace
         run: |
           node action-source/.github/scripts/generate-consumer-project.js . \
+            --allow-non-empty \
             --action "${{ matrix.action }}" \
             --runtime "${{ matrix.runtime }}" \
             --pm "${{ matrix.pm }}" \
