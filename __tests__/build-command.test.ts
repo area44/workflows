@@ -414,6 +414,34 @@ describe("build-command", () => {
       );
     });
 
+    it("should report exact failure message for invalid build-command scenario 'npm run invalid-command-12345'", async () => {
+      process.env.BUILD_COMMAND = "npm run invalid-command-12345";
+
+      vi.mocked(exec.exec).mockResolvedValue(1);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Build command execution failed with exit code 1.",
+      );
+      expect(core.setOutput).not.toHaveBeenCalledWith("path", expect.anything());
+    });
+
+    it("should report exact failure message for missing output-directory scenario 'non_existent_output_dir_99'", async () => {
+      process.env.BUILD_COMMAND = "npm run build";
+      process.env.BUILD_PATH = "non_existent_output_dir_99";
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const exitCode = await runBuildCommand({ exitOnFailure: false });
+
+      expect(exitCode).toBe(1);
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Build output validation failed: Configured build output directory 'non_existent_output_dir_99' does not exist.",
+      );
+    });
+
     it("should fail when build command succeeds but configured output directory is empty", async () => {
       const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-empty-"));
 

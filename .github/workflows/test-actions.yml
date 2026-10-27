@@ -226,7 +226,7 @@ jobs:
               exit 1
             fi
 
-            # Verify setup succeeded so failure was NOT due to an early setup failure
+            # Verify setup and dependency installation succeeded so failure was NOT due to an early setup failure
             if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
               echo "Error: [${ACTION}] Negative scenario failed during early environment setup (package manager mismatch)."
               echo "  Expected package manager: ${EXPECTED_PM}"
@@ -241,7 +241,12 @@ jobs:
               exit 1
             fi
 
-            echo "Verified negative scenario failure outcome and environment setup for '${SCENARIO_NAME}'."
+            if [[ ! -d "node_modules" ]]; then
+              echo "Error: [${ACTION}] Negative scenario failed before dependency installation (node_modules directory missing)."
+              exit 1
+            fi
+
+            echo "Verified negative scenario failure outcome, environment setup, and dependency installation for '${SCENARIO_NAME}'."
             exit 0
           fi
 
