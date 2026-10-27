@@ -138,19 +138,44 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
   });
 
   describe("Frozen-lockfile Installation & Framework Build Integration Tests", () => {
+    function resolveBinaryCommand(cmd: string): string {
+      if (cmd.startsWith("pnpm ")) {
+        try {
+          execSync("pnpm --version", { stdio: "ignore" });
+          return cmd;
+        } catch {
+          return `npx --yes pnpm@12.15.0 ${cmd.slice(5)}`;
+        }
+      }
+      if (cmd.startsWith("bun ") || cmd.startsWith("/usr/local/bun/bin/bun ")) {
+        const subCmd = cmd.replace(/^(\/usr\/local\/bun\/bin\/bun|bun)\s+/, "");
+        if (fs.existsSync("/usr/local/bun/bin/bun")) {
+          return `/usr/local/bun/bin/bun ${subCmd}`;
+        }
+        try {
+          execSync("bun --version", { stdio: "ignore" });
+          return `bun ${subCmd}`;
+        } catch {
+          return `npx --yes bun@1.4.0 ${subCmd}`;
+        }
+      }
+      return cmd;
+    }
+
     function runCommandWithDiagnostics(cmd: string, cwd: string) {
+      const resolvedCmd = resolveBinaryCommand(cmd);
       try {
-        return execSync(cmd, { cwd, encoding: "utf8", stdio: "pipe" });
+        return execSync(resolvedCmd, { cwd, encoding: "utf8", stdio: "pipe" });
       } catch (err: any) {
         const stdout = err.stdout || "";
         const stderr = err.stderr || "";
         throw new Error(
-          `Command failed: '${cmd}' in directory '${cwd}' (exit code: ${err.status}).\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`
+          `Command failed: '${resolvedCmd}' in directory '${cwd}' (exit code: ${err.status}).\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`
         );
       }
     }
 
-    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", () => {
+    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", { timeout: 30000 }, () => {
       const target = path.join(tempDir, "bun_astro_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -175,7 +200,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", () => {
+    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", { timeout: 30000 }, () => {
       const target = path.join(tempDir, "npm_vite_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -198,7 +223,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install", () => {
+    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install", { timeout: 30000 }, () => {
       const target = path.join(tempDir, "pnpm_vp_scenario");
       createConsumerProject(target, {
         action: "pages",

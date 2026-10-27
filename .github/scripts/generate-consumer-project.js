@@ -277,6 +277,21 @@ function buildJsLockfile(files, name, pmType, type, toolchain) {
   } else if (pmType === "bun") {
     if (lockfileContent) {
       files["bun.lock"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    } else {
+      files["bun.lock"] =
+        JSON.stringify(
+          {
+            lockfileVersion: 1,
+            workspaces: {
+              "": {
+                name,
+              },
+            },
+            packages: {},
+          },
+          null,
+          2
+        ) + "\n";
     }
   }
 }
