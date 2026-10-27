@@ -60,14 +60,14 @@ function resolveJsPackageManager(rawPm, pmType, type) {
   if (rawPm.includes("@")) {
     return rawPm;
   }
+  if (pmType === "bun") {
+    return "bun@1.4.0";
+  }
   if (type === "minimal") {
     return undefined;
   }
   if (pmType === "pnpm") {
     return "pnpm@12.15.0";
-  }
-  if (pmType === "bun") {
-    return "bun@1.4.0";
   }
   return "npm@10.8.2";
 }
@@ -158,7 +158,7 @@ function resolvePythonOptions(options, type, action) {
  * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
 function buildJsScriptsAndHtml(files, options, jsOpt) {
-  const { action, toolchain, type } = jsOpt;
+  const { action, toolchain, type, pmType } = jsOpt;
   const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
 
   let scripts = {};
@@ -174,14 +174,18 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
       lint: 'node -e "console.log(\'Linting JS...\')"',
       format: 'node -e "console.log(\'Formatting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
-    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    scripts = { build: "vp build" };
     devDependencies = { "vite-plus": "^1.4.0" };
     files["vite.config.ts"] = `export default {};\n`;
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (toolchain === "vite" || type === "vite") {
-    scripts = { build: "mkdir -p dist && cp index.html dist/index.html" };
+    scripts = { build: "vite build" };
+    devDependencies = { vite: "^6.0.0" };
     files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
     files["index.html"] = `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
     files["src/main.ts"] = `console.log('vite app');\n`;
@@ -190,7 +194,8 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
     toolchain === "astro" ||
     (action === "pages" && (type === "basic" || type === "minimal"))
   ) {
-    scripts = { build: "mkdir -p dist && cp src/pages/index.astro dist/index.html" };
+    scripts = { build: "astro build" };
+    devDependencies = { astro: "^5.0.0" };
     files["astro.config.mjs"] = `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
     files["src/pages/index.astro"] = `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (action === "autofix") {
@@ -198,16 +203,69 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
       format: 'node -e "console.log(\'Formatting JS...\')"',
       lint: 'node -e "console.log(\'Linting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
   } else {
     scripts = {
       build: "mkdir -p dist && cp index.html dist/index.html",
       lint: 'node -e "console.log(\'Linting JS...\')"',
       format: 'node -e "console.log(\'Formatting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   }
 
   return { scripts, devDependencies };
+}
+
+// Pre-generated canonical lockfile templates loaded lazily from lockfile-templates.json
+let lockfileTemplates = null;
+export function getLockfileTemplates(customTemplatePath) {
+  const templatePath =
+    customTemplatePath ||
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "lockfile-templates.json");
+
+  if (!customTemplatePath && lockfileTemplates) {
+    return lockfileTemplates;
+  }
+
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Missing lockfile templates file at '${templatePath}'.`);
+  }
+
+  let rawContent = "";
+  try {
+    rawContent = fs.readFileSync(templatePath, "utf8");
+  } catch (err) {
+    throw new Error(`Failed to read lockfile templates file at '${templatePath}': ${err.message}`);
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch (err) {
+    throw new Error(`Malformed JSON in lockfile templates file at '${templatePath}': ${err.message}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid template structure in lockfile templates file at '${templatePath}': expected object.`);
+  }
+
+  for (const [key, val] of Object.entries(parsed)) {
+    if (typeof val !== "string" || val.trim().length === 0) {
+      throw new Error(
+        `Invalid or empty template value for key '${key}' in lockfile templates file at '${templatePath}'.`
+      );
+    }
+  }
+
+  if (!customTemplatePath) {
+    lockfileTemplates = parsed;
+  }
+  return parsed;
 }
 
 /**
@@ -216,30 +274,29 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
  * @param {string} name
  * @param {string} pmType
  * @param {string} type
+ * @param {string} toolchain
+ * @param {string} [customTemplatePath]
  */
-function buildJsLockfile(files, name, pmType, type) {
+function buildJsLockfile(files, name, pmType, type, toolchain, customTemplatePath) {
+  const templates = getLockfileTemplates(customTemplatePath);
+  const templateKey = `${toolchain || "none"}:${pmType}`;
+
+  if (!Object.prototype.hasOwnProperty.call(templates, templateKey)) {
+    throw new Error(`Missing lockfile template for key '${templateKey}' in lockfile-templates.json.`);
+  }
+
+  const lockfileContent = templates[templateKey];
+
   if (pmType === "npm") {
-    const packageLockJson = {
-      name,
-      version: "1.0.0",
-      lockfileVersion: 3,
-      requires: true,
-      packages: {
-        "": {
-          name,
-          version: "1.0.0",
-          license: "MIT",
-        },
-      },
-    };
-    files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
+    files["package-lock.json"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
   } else if (pmType === "pnpm") {
-    files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
-    if (type === "basic" || type === "minimal") {
-      files["pnpm-workspace.yaml"] = "packages:\n  - '.'\n";
-    }
+    files["pnpm-lock.yaml"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    files["pnpm-workspace.yaml"] =
+      "packages:\n  - '.'\nallowBuilds:\n  esbuild: true\n  sharp: true\n  \"@img/sharp-libvips-linux-x64\": true\n";
   } else if (pmType === "bun") {
-    files["bun.lock"] = "";
+    if (lockfileContent && lockfileContent.trim().length > 0) {
+      files["bun.lock"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    }
   }
 }
 
@@ -250,7 +307,7 @@ function buildJsLockfile(files, name, pmType, type) {
  * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
 function buildJsFiles(files, options, jsOpt) {
-  const { action, runtime, pmType, type, packageManager } = jsOpt;
+  const { action, runtime, pmType, type, packageManager, toolchain } = jsOpt;
   const name =
     options.name ||
     (options.type || options.action || options.toolchain
@@ -275,7 +332,7 @@ function buildJsFiles(files, options, jsOpt) {
   };
 
   files["package.json"] = JSON.stringify(packageJson, null, 2) + "\n";
-  buildJsLockfile(files, name, pmType, type);
+  buildJsLockfile(files, name, pmType, type, toolchain, options.customTemplatePath);
 
   if (runtime === "node" && (pmType === "npm" || pmType === "bun") && type === "basic") {
     files[".node-version"] = "24.19.0\n";
