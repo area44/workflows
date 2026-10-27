@@ -271,30 +271,9 @@ function buildJsLockfile(files, name, pmType, type, toolchain, customTemplatePat
   const lockfileContent = templates[templateKey];
 
   if (pmType === "npm") {
-    if (lockfileContent) {
-      files["package-lock.json"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
-    } else {
-      const packageLockJson = {
-        name,
-        version: "1.0.0",
-        lockfileVersion: 3,
-        requires: true,
-        packages: {
-          "": {
-            name,
-            version: "1.0.0",
-            license: "MIT",
-          },
-        },
-      };
-      files["package-lock.json"] = JSON.stringify(packageLockJson, null, 2) + "\n";
-    }
+    files["package-lock.json"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
   } else if (pmType === "pnpm") {
-    if (lockfileContent) {
-      files["pnpm-lock.yaml"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
-    } else {
-      files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n";
-    }
+    files["pnpm-lock.yaml"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
     files["pnpm-workspace.yaml"] =
       "packages:\n  - '.'\nallowBuilds:\n  esbuild: true\n  sharp: true\n  \"@img/sharp-libvips-linux-x64\": true\n";
   } else if (pmType === "bun") {

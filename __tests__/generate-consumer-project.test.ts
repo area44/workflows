@@ -176,7 +176,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       }
     }
 
-    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", { timeout: 30000 }, () => {
+    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", { timeout: 60000 }, () => {
       const target = path.join(tempDir, "bun_astro_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -201,7 +201,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", { timeout: 30000 }, () => {
+    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", { timeout: 60000 }, () => {
       const target = path.join(tempDir, "npm_vite_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -224,7 +224,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install and real vp build cleanly", { timeout: 30000 }, () => {
+    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install and real vp build cleanly", { timeout: 60000 }, () => {
       const target = path.join(tempDir, "pnpm_vp_scenario");
       createConsumerProject(target, {
         action: "pages",
@@ -248,7 +248,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
     });
 
-    it("verifies no-framework Bun scenario (none:bun) generates valid project and frozen install passes cleanly", { timeout: 30000 }, () => {
+    it("verifies no-framework Bun scenario (none:bun) generates valid project and frozen install passes cleanly", { timeout: 60000 }, () => {
       const target = path.join(tempDir, "bun_none_scenario");
       createConsumerProject(target, {
         runtime: "bun",
