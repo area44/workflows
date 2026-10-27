@@ -95,6 +95,16 @@ jobs:
           - action: autofix
             runtime: node
             pm: npm
+            type: python-conflicting
+            has_js_project: "false"
+            has_python_source: "true"
+            python_pm: uv
+            python_version: "3.12"
+            ruff_version: "0.17.2"
+            verify_site: false
+          - action: autofix
+            runtime: node
+            pm: npm
             type: python-none
             has_js_project: "false"
             has_python_source: "false"
@@ -202,8 +212,12 @@ jobs:
 
           if [[ "$ACTION" == "pages" ]]; then
             STEP_OUTCOME="$PAGES_OUTCOME"
+            DETECTED_PM="$PAGES_PM"
+            DETECTED_RUNTIME="$PAGES_RUNTIME"
           else
             STEP_OUTCOME="$AUTOFIX_OUTCOME"
+            DETECTED_PM="$AUTOFIX_PM"
+            DETECTED_RUNTIME="$AUTOFIX_RUNTIME"
           fi
 
           if [[ "$EXPECTED_FAILURE" == "true" ]]; then
@@ -211,21 +225,29 @@ jobs:
               echo "Error: Expected action step to fail for scenario '${SCENARIO_NAME}', but outcome was '${STEP_OUTCOME}'."
               exit 1
             fi
-            echo "Verified negative scenario failure outcome for '${SCENARIO_NAME}'."
+
+            # Verify setup succeeded so failure was NOT due to an early setup failure
+            if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
+              echo "Error: [${ACTION}] Negative scenario failed during early environment setup (package manager mismatch)."
+              echo "  Expected package manager: ${EXPECTED_PM}"
+              echo "  Detected package manager: ${DETECTED_PM}"
+              exit 1
+            fi
+
+            if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
+              echo "Error: [${ACTION}] Negative scenario failed during early environment setup (runtime mismatch)."
+              echo "  Expected runtime: ${EXPECTED_RUNTIME}"
+              echo "  Detected runtime: ${DETECTED_RUNTIME}"
+              exit 1
+            fi
+
+            echo "Verified negative scenario failure outcome and environment setup for '${SCENARIO_NAME}'."
             exit 0
           fi
 
           if [[ "$STEP_OUTCOME" != "success" ]]; then
             echo "Error: Action execution failed unexpectedly for scenario '${SCENARIO_NAME}' with outcome '${STEP_OUTCOME}'."
             exit 1
-          fi
-
-          if [[ "$ACTION" == "pages" ]]; then
-            DETECTED_PM="$PAGES_PM"
-            DETECTED_RUNTIME="$PAGES_RUNTIME"
-          else
-            DETECTED_PM="$AUTOFIX_PM"
-            DETECTED_RUNTIME="$AUTOFIX_RUNTIME"
           fi
 
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
