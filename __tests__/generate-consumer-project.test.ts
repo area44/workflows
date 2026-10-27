@@ -157,7 +157,9 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
           execSync("bun --version", { stdio: "ignore" });
           return `bun ${subCmd}`;
         } catch {
-          return `npx --yes bun@1.4.0 ${subCmd}`;
+          throw new Error(
+            "Bun runtime is required for this integration test but 'bun' executable was not found on PATH or at /usr/local/bun/bin/bun. Please install Bun (e.g. via oven-sh/setup-bun) before running tests."
+          );
         }
       }
       return cmd;
