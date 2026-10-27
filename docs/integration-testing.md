@@ -1,88 +1,97 @@
-# Consumer Integration Testing Guide
+# Consumer Integration Testing & Scenario Factory Guide
 
-This document explains the purpose, architecture, boundaries, execution, and fixture consolidation policy of integration testing for `area44/workflows` using dynamically generated consumer project fixtures.
+This document explains the purpose, architecture, scenario definitions, cleanup safety guarantees, and execution of integration testing for `area44/workflows` using dynamically generated consumer project scenarios.
 
-## Overview & Architecture
+## Overview & Scenario Factory Architecture
 
-To ensure that composite actions (`pages` and `autofix`) function correctly when consumed by real projects—beyond isolated unit tests—`area44/workflows` generates consumer projects dynamically in temporary directories using a single canonical generator module:
+To ensure that composite actions (`pages` and `autofix`) function correctly across diverse project configurations—beyond unit tests—`area44/workflows` uses a unified scenario factory to dynamically generate consumer projects in temporary directories:
 
-- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single source of truth defining file contents, templates, CLI target validation, and non-empty/overwrite safeguards. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory>`).
-- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical JS generator module so unit tests and Node scripts share identical generation logic without drift.
+- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single authoritative source of truth for project file contents, scenario templates, CLI argument parsing, non-empty checks, and overwrite protections. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory> [options]`).
+- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit/integration tests and shell scripts share identical generation logic without drift.
 
-### Target Directory & Overwrite Protection
+### Scenario Dimensions & Factory Options
 
-To prevent accidental data loss:
+The scenario factory supports explicit options across all tested project dimensions:
 
-- **Explicit Target Required**: The CLI refuses to execute without an explicit target directory argument (forbidding implicit `process.cwd()` execution).
-- **`allowNonEmpty` Option / `--allow-non-empty` Flag**: Allows generating into a non-empty directory if pre-existing files are unrelated (e.g. `pre_existing.txt`).
-- **`overwrite` Option / `--overwrite` Flag**: Explicitly permits overwriting files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`). Even when `allowNonEmpty` is true, colliding files will NOT be overwritten unless `overwrite` is explicitly enabled.
+| Dimension           | Factory Options        | Supported Values                                                                                                                                      |
+| ------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Action**          | `action`               | `pages`, `autofix`, or empty/unspecified                                                                                                              |
+| **Runtime**         | `runtime`              | `node`, `bun`                                                                                                                                         |
+| **Package Manager** | `pm`, `packageManager` | `npm`, `pnpm`, `bun`, or explicit version string (e.g. `pnpm@12.15.0`)                                                                                |
+| **Toolchain**       | `toolchain`            | `astro`, `vite`, `vite-plus`, `none`                                                                                                                  |
+| **Project Type**    | `type`                 | `basic`, `minimal`, `vite`, `vite-plus`, `consumer-integration`, `python-uv`, `python-pip`, `python-conflicting`, `python-none`, `mixed`, `mixed-bun` |
+| **Python Source**   | `hasPythonSource`      | `true`, `false` (controls `.py`/`.pyi` file generation)                                                                                               |
+| **Python PM**       | `pythonPm`             | `uv`, `pip`, or empty                                                                                                                                 |
+| **Ruff Version**    | `ruffVersion`          | Version string (e.g. `0.17.2`) or empty string `""`                                                                                                   |
+| **Marker Content**  | `markerContent`        | Assertion string included in HTML outputs (e.g. `AREA44 Workflows Consumer Project`)                                                                  |
 
-### Generated Project Structure
+### Target Directory Safety & Overwrite Protection
 
-- **`package.json`**: Defines standard Node.js package metadata, scripts (`"build": "mkdir -p dist && cp index.html dist/index.html"`, `lint`, `format`), and package manager declaration (`npm@10.8.2`).
-- **`package-lock.json`**: Lockfile for reproducible npm installation.
-- **`index.html`**: HTML static asset source containing `"AREA44 Workflows Consumer Project"`.
-- **`pyproject.toml`**: Python project configuration with `ruff` dependency specification.
-- **`requirements.txt`**: Pinned Python dependency manifest (`ruff==0.17.2`).
-- **`main.py`**: Python source code file to exercise Python linting and formatting workflows.
+To prevent accidental data loss during local development or test runs:
 
-The generated project represents a real-world multi-language (JS + Python) consumer application without committing static fixture files to the repository.
-
----
-
-## Fixture Consolidation Policy
-
-All fixtures across the repository are audited and maintained under the following consolidation policy:
-
-1. **Unique and Necessary**: Specialized fixtures (`pages/*`, `autofix/*`, `vite-plus/*`) representing distinct toolchains, package managers, lockfiles, or failure modes are retained.
-2. **Dynamic Generation**: Repeated or general-purpose consumer application fixtures are generated dynamically in unique temporary directories rather than committed as static files.
-3. **Obsolete Fixtures**: Committed static consumer fixtures (`__tests__/fixtures/consumer-project/` and `__tests__/fixtures/pages/node/npm/consumer/`) have been removed after verifying full test migration to dynamic project factory functions.
+- **Explicit Target Required**: The CLI and helper function refuse to run without an explicit target directory path.
+- **`allowNonEmpty` Option / `--allow-non-empty` Flag**: Permits generation into a non-empty directory if pre-existing files are unrelated (e.g., `pre_existing.txt`).
+- **`overwrite` Option / `--overwrite` Flag**: Explicitly permits overwriting files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pnpm-lock.yaml`, `bun.lock`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`). Even when `allowNonEmpty` is true, colliding files will NOT be overwritten unless `overwrite` is set.
 
 ---
 
-## Testing Boundaries & Architecture
+## Retained Integration Scenarios & Dynamic Migration
 
-Integration validation is divided into two distinct levels to balance speed and execution fidelity:
+Static fixture files under `__tests__/fixtures/` have been consolidated into dynamic scenario definitions. The following distinct integration behaviors are covered:
+
+1. **Astro Builds**: `action: "pages", toolchain: "astro"` generates `astro.config.mjs` and `src/pages/index.astro`.
+2. **Vite Builds**: `type: "vite"` or `toolchain: "vite"` generates `vite.config.ts`, `index.html`, and `src/main.ts`.
+3. **Vite+ Builds**: `type: "vite-plus"` or `toolchain: "vite-plus"` generates `vite.config.ts` and `index.html` configured for `vp build`.
+4. **Package Manager & Runtime Resolution**: npm, pnpm, and Bun projects across Node.js and Bun runtimes.
+5. **Python uv & pip Workflows**: `uv`-managed projects (`uv.lock`), `pip`-managed projects (`requirements.txt`), conflicting lockfiles, and `python-none` projects without Python source.
+6. **Mixed Language Projects**: JavaScript + Python multi-language repositories.
+7. **Consumer Integration**: End-to-end HTML artifact generation and marker content validation (`"AREA44 Workflows Consumer Project"`).
+
+---
+
+## How to Add a New Test Scenario
+
+To add a new scenario:
+
+1. Pass the relevant scenario options to `generateConsumerProjectFiles(options)` or `createConsumerProject(targetDir, options)`.
+2. If new file templates or option dimensions are required, add them to `generateConsumerProjectFiles` in `.github/scripts/generate-consumer-project.js`.
+3. Add unit test assertions for the new scenario options in `__tests__/generate-consumer-project.test.ts`.
+
+---
+
+## Testing Boundaries & Execution
+
+Integration testing is performed across two distinct boundaries:
 
 ### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
 
-- **Execution Boundary**: Directly imports TypeScript source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`) in Vitest via `vite-plus/test`.
-- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against dynamically generated consumer projects in temporary directories (`os.tmpdir()`).
+- **Execution Boundary**: Runs in Vitest (`vite-plus/test`) importing source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`).
+- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against generated scenarios in temporary directories (`os.tmpdir()`).
 
 ### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
 
-- **Execution Boundary**: Invokes the local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
+- **Execution Boundary**: Runs local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
 - **Purpose**: End-to-end execution of the composite action pipeline:
-  - **Workspace Installation**: `.github/scripts/test-workspace-cleanup.sh setup` generates a dynamic consumer project into an isolated temporary staging directory created safely via `mktemp -d` while stashing `__tests__` into an exclusively owned `mktemp -d` stash directory (preventing test files from polluting matrix runs).
-  - **Action Invocation**: Runs `./pages` and `./autofix` using local checkout code against the generated project.
-  - **Output & Artifact Verification**: Validates step outputs (`package-manager`, `runtime`, `toolchain`, `has-js-project`, `has-python-source`, etc.) and asserts that the build copies the source file to `dist/index.html` containing the consumer fixture marker (`"AREA44 Workflows Consumer Project"`).
+  - **Workspace Setup**: `.github/scripts/test-workspace-cleanup.sh setup "$ACTION" "$RUNTIME" "$PM" "$TYPE"` generates the requested scenario dynamically into a temporary staging directory created safely via `mktemp -d` while stashing `__tests__` into an exclusively owned `mktemp -d` stash directory.
+  - **Action Invocation**: Invokes `./pages` or `./autofix` against the generated project.
+  - **Output & Artifact Verification**: Asserts step outputs and checks produced artifacts (e.g., `dist/index.html`).
   - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
 
 ---
 
 ## Running Integration Tests Locally
 
-### Run Full Test Suite
-
 ```bash
+# Run full test suite
 npm test
-```
 
-### Run Consumer Generator Tests
-
-```bash
+# Run generator scenario tests
 npm test __tests__/generate-consumer-project.test.ts
-```
 
-### Run Consumer Integration Module Tests
-
-```bash
+# Run consumer integration module tests
 npm test __tests__/integration-consumer.test.ts
-```
 
-### Run Workspace Cleanup Script Validation
-
-```bash
+# Run workspace cleanup script validation
 npm test __tests__/workspace-cleanup.test.ts
 ```
 
@@ -92,7 +101,7 @@ npm test __tests__/workspace-cleanup.test.ts
 
 All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership, two-phase fail-closed validation, and deterministic cleanup:
 
-- **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions (0700). An `EXIT` trap guarantees that staging directories are cleaned up automatically on exit.
+- **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions. An `EXIT` trap guarantees that staging directories are cleaned up automatically on exit.
 - **Exclusive Stash Ownership**: Setup creates a unique test stash directory using `mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX"`. It never reuses or overwrites pre-existing PID-based directories.
 - **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks (`pwd -P`) within `${RUNNER_TEMP:-/tmp}`, rejects symbolic links (`[ -L "$p" ]`), and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
 - **Two-Phase Fail-Closed Cleanup**:

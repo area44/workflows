@@ -7,6 +7,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager } from "../src/autofix/index";
 
 vi.mock("@actions/exec");
@@ -31,26 +32,42 @@ describe("autofix", () => {
   });
 
   describe("Fixture-based test cases", () => {
-    const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "autofix-fixture-test-"));
+    });
+
+    afterEach(() => {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
 
     const fixtureCases = [
       {
-        fixture: "autofix/node/npm/basic",
+        action: "autofix",
+        runtime: "node",
         pm: "npm",
+        type: "basic",
         executable: "npm",
         installArgs: ["install"],
         expectedScriptNames: ["format", "lint"],
       },
       {
-        fixture: "autofix/node/pnpm/basic",
+        action: "autofix",
+        runtime: "node",
         pm: "pnpm",
+        type: "basic",
         executable: "pnpm",
         installArgs: ["install", "--no-frozen-lockfile"],
         expectedScriptNames: ["format", "lint"],
       },
       {
-        fixture: "autofix/bun/bun/basic",
+        action: "autofix",
+        runtime: "bun",
         pm: "bun",
+        type: "basic",
         executable: "bun",
         installArgs: ["install"],
         expectedScriptNames: ["format", "lint"],
@@ -58,25 +75,27 @@ describe("autofix", () => {
     ];
 
     it.each(fixtureCases)(
-      "should install dependencies and run scripts for $fixture using @actions/exec",
-      async ({ fixture, pm, executable, installArgs, expectedScriptNames }) => {
-        const fixturePath = path.join(fixturesDir, fixture);
-        process.chdir(fixturePath);
+      "should install dependencies and run scripts for $pm basic scenario using @actions/exec",
+      async ({ action, runtime, pm, type, executable, installArgs, expectedScriptNames }) => {
+        const scenarioPath = path.join(tempDir, `${action}-${runtime}-${pm}-${type}`);
+        createConsumerProject(scenarioPath, { action, runtime, pm, type });
+        process.chdir(scenarioPath);
         process.env.PACKAGE_MANAGER = pm;
 
         await run();
 
-        expect(exec.exec).toHaveBeenCalledWith(executable, installArgs, expect.objectContaining({ cwd: fixturePath }));
+        expect(exec.exec).toHaveBeenCalledWith(executable, installArgs, expect.objectContaining({ cwd: scenarioPath }));
         for (const scriptName of expectedScriptNames) {
-          expect(exec.exec).toHaveBeenCalledWith(executable, ["run", scriptName], expect.objectContaining({ cwd: fixturePath }));
+          expect(exec.exec).toHaveBeenCalledWith(executable, ["run", scriptName], expect.objectContaining({ cwd: scenarioPath }));
         }
         expect(exec.exec).toHaveBeenCalledTimes(1 + expectedScriptNames.length);
       },
     );
 
     it("should not run Python workflow in JS/TS-only repository", async () => {
-      const fixturePath = path.join(fixturesDir, "autofix/node/npm/basic");
-      process.chdir(fixturePath);
+      const scenarioPath = path.join(tempDir, "js-only");
+      createConsumerProject(scenarioPath, { action: "autofix", runtime: "node", pm: "npm", type: "basic" });
+      process.chdir(scenarioPath);
 
       await run();
 
@@ -315,18 +334,29 @@ describe("autofix", () => {
   });
 
   describe("Python Integration", () => {
-    const pythonFixturesDir = path.resolve(originalCwd, "__tests__/fixtures/autofix/python");
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "autofix-python-test-"));
+    });
+
+    afterEach(() => {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
 
     it("should execute Python workflow and Ruff autofix for uv fixture when Python source exists", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      const fixturePath = path.join(pythonFixturesDir, "uv");
+      const scenarioPath = path.join(tempDir, "python-uv");
+      createConsumerProject(scenarioPath, { type: "python-uv" });
 
-      await run(fixturePath);
+      await run(scenarioPath);
 
       expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
-      expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: fixturePath }));
-      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: fixturePath }));
-      expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: fixturePath }));
+      expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: scenarioPath }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: scenarioPath }));
+      expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: scenarioPath }));
     });
 
     it("should install Python dependencies when executing Python workflow", async () => {

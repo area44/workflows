@@ -1,3 +1,5 @@
+import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
+import os from "node:os";
 import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,7 +29,7 @@ vi.mock("@actions/core");
 describe("resolve-environment", () => {
   const originalEnv = { ...process.env };
   const originalCwd = process.cwd();
-  const fixturesDir = path.resolve(originalCwd, "__tests__/fixtures");
+  const fixturesDir = os.tmpdir();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -927,7 +929,7 @@ describe("resolve-environment", () => {
       {
         action: "pages",
         runtime: "node",
-        pm: "npm",
+        pm: "npm@11.19.0",
         type: "basic",
         expectedNode: "24.19.0",
         expectedBun: "",
@@ -947,7 +949,7 @@ describe("resolve-environment", () => {
       {
         action: "pages",
         runtime: "node",
-        pm: "pnpm",
+        pm: "pnpm@12.15.0",
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
@@ -967,7 +969,7 @@ describe("resolve-environment", () => {
       {
         action: "pages",
         runtime: "bun",
-        pm: "bun",
+        pm: "bun@1.4",
         type: "basic",
         expectedNode: "",
         expectedBun: "1.4",
@@ -977,7 +979,7 @@ describe("resolve-environment", () => {
       {
         action: "pages",
         runtime: "bun",
-        pm: "pnpm",
+        pm: "pnpm@12.15.0",
         type: "basic",
         expectedNode: "24",
         expectedBun: ">=1.0.0",
@@ -987,7 +989,7 @@ describe("resolve-environment", () => {
       {
         action: "pages",
         runtime: "bun",
-        pm: "bun",
+        pm: "bun@1.4",
         type: "minimal",
         expectedNode: "",
         expectedBun: "1.4",
@@ -997,7 +999,7 @@ describe("resolve-environment", () => {
       {
         action: "autofix",
         runtime: "node",
-        pm: "npm",
+        pm: "npm@11.19.0",
         type: "basic",
         expectedNode: "24.19.0",
         expectedBun: "",
@@ -1007,7 +1009,7 @@ describe("resolve-environment", () => {
       {
         action: "autofix",
         runtime: "node",
-        pm: "pnpm",
+        pm: "pnpm@12.15.0",
         type: "basic",
         expectedNode: "24",
         expectedBun: "",
@@ -1019,15 +1021,21 @@ describe("resolve-environment", () => {
     it.each(cases)(
       "should resolve correct environment for fixture $action/$runtime/$pm/$type",
       ({ action, runtime: rt, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
-        const fixturePath = path.join(fixturesDir, action, rt, pm, type);
-        process.chdir(fixturePath);
+        const scenarioPath = path.join(fixturesDir, `res-env-${action}-${rt}-${type}-${Date.now()}`);
+        createConsumerProject(scenarioPath, { action, runtime: rt, pm, type });
+        process.chdir(scenarioPath);
 
-        const env = resolveEnvironment();
+        try {
+          const env = resolveEnvironment();
 
-        expect(env.js.nodeVersion).toBe(expectedNode);
-        expect(env.js.bunVersion).toBe(expectedBun);
-        expect(env.js.pm).toEqual(expectedPm);
-        expect(env.js.runtime).toBe(expectedRuntime);
+          expect(env.js.nodeVersion).toBe(expectedNode);
+          expect(env.js.bunVersion).toBe(expectedBun);
+          expect(env.js.pm).toEqual(expectedPm);
+          expect(env.js.runtime).toBe(expectedRuntime);
+        } finally {
+          process.chdir(originalCwd);
+          fs.rmSync(scenarioPath, { recursive: true, force: true });
+        }
       },
     );
   });
@@ -1152,7 +1160,7 @@ describe("resolve-environment", () => {
     });
 
     it("should verify python-version is empty string for python-none fixture output", () => {
-      const tempDir = path.join(fixturesDir, "autofix/python/none");
+      const tempDir = path.join(fixturesDir, "py-none-" + Date.now()); createConsumerProject(tempDir, { type: "python-none" });
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
@@ -1213,7 +1221,7 @@ describe("resolve-environment", () => {
 
   describe("run", () => {
     it("should coordinate environment resolution, execute adapters, and write action output on fixture project", () => {
-      const fixturePath = path.join(fixturesDir, "pages/node/npm/basic");
+      const fixturePath = path.join(fixturesDir, "pages-npm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
@@ -1233,7 +1241,7 @@ describe("resolve-environment", () => {
     });
 
     it("should resolve bun and set adapter outputs for bun project fixture", () => {
-      const fixturePath = path.join(fixturesDir, "pages/bun/bun/basic");
+      const fixturePath = path.join(fixturesDir, "pages-bun-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "bun@1.4", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
@@ -1253,7 +1261,7 @@ describe("resolve-environment", () => {
     });
 
     it("should resolve pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
-      const fixturePath = path.join(fixturesDir, "pages/bun/pnpm/basic");
+      const fixturePath = path.join(fixturesDir, "pages-bun-pnpm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "pnpm@12.15.0", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
@@ -1311,7 +1319,7 @@ describe("resolve-environment", () => {
 
   describe("toolchain resolution inputs", () => {
     it("should resolve toolchain to 'vite-plus' when toolchainInput is 'vite-plus'", () => {
-      const fixturePath = path.join(fixturesDir, "pages/node/npm/basic");
+      const fixturePath = path.join(fixturesDir, "pages-npm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(fixturePath);
 
       const resolved = resolveEnvironment("node", "vite-plus");
@@ -1319,7 +1327,7 @@ describe("resolve-environment", () => {
     });
 
     it("should resolve toolchain to 'vite' when toolchainInput is 'vite'", () => {
-      const fixturePath = path.join(fixturesDir, "vite-plus/node/pnpm/minimal");
+      const fixturePath = path.join(fixturesDir, "vp-minimal-" + Date.now()); createConsumerProject(fixturePath, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(fixturePath);
 
       const resolved = resolveEnvironment("node", "vite");
@@ -1327,12 +1335,12 @@ describe("resolve-environment", () => {
     });
 
     it("should auto-detect toolchain when toolchainInput is 'auto' or empty", () => {
-      const vpFixture = path.join(fixturesDir, "vite-plus/node/pnpm/minimal");
+      const vpFixture = path.join(fixturesDir, "vp-minimal-auto-" + Date.now()); createConsumerProject(vpFixture, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(vpFixture);
       const resolvedVp = resolveEnvironment("node", "auto");
       expect(resolvedVp.js.toolchain).toBe("vite-plus");
 
-      const stdFixture = path.join(fixturesDir, "pages/node/npm/basic");
+      const stdFixture = path.join(fixturesDir, "std-fixture-" + Date.now()); createConsumerProject(stdFixture, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(stdFixture);
       const resolvedStd = resolveEnvironment("node", "");
       expect(resolvedStd.js.toolchain).toBe("vite");

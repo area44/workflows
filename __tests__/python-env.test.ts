@@ -1,4 +1,6 @@
+import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -19,7 +21,7 @@ import {
 } from "../src/python-env.js";
 
 describe("Python Package Manager Detection & Ruff Version Resolution", () => {
-  const fixturesDir = path.resolve(process.cwd(), "__tests__/fixtures/autofix/python");
+  const fixturesDir = os.tmpdir();
 
   describe("parseToml() and Standard TOML Parsing", () => {
     describe("Valid TOML constructs", () => {
@@ -1210,7 +1212,7 @@ enabled = true
 
   describe("resolvePythonEnvironment()", () => {
     it("should return hasPythonSource=false and empty fields when no python source exists", () => {
-      const resolved = resolvePythonEnvironment(path.join(fixturesDir, "none"));
+      const resolved = resolvePythonEnvironment(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }));
       expect(resolved).toEqual({
         hasPythonSource: false,
         pythonVersion: "",
@@ -1220,7 +1222,7 @@ enabled = true
     });
 
     it("should resolve python version, package manager, and ruff version when python source exists", () => {
-      const resolved = resolvePythonEnvironment(path.join(fixturesDir, "uv"));
+      const resolved = resolvePythonEnvironment(createConsumerProject(path.join(os.tmpdir(), `py-uv-${Date.now()}`), { type: "python-uv" }));
       expect(resolved.hasPythonSource).toBe(true);
       expect(resolved.pythonVersion).toBe("3.12");
       expect(resolved.ruffVersion).toBe("0.17.2");
@@ -1230,7 +1232,7 @@ enabled = true
 
   describe("hasPythonSource()", () => {
     it("should return true when .py file exists in directory", () => {
-      expect(hasPythonSource(path.join(fixturesDir, "uv"))).toBe(true);
+      expect(hasPythonSource(createConsumerProject(path.join(os.tmpdir(), `py-uv-${Date.now()}`), { type: "python-uv" }))).toBe(true);
     });
 
     it("should return true when .pyi file exists in directory", () => {
@@ -1297,7 +1299,7 @@ enabled = true
     });
 
     it("should return false when directory has no python source files", () => {
-      expect(hasPythonSource(path.join(fixturesDir, "none"))).toBe(false);
+      expect(hasPythonSource(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }))).toBe(false);
     });
 
     it("should return false for JS/TS-only repository", () => {
@@ -1402,7 +1404,7 @@ enabled = true
     });
 
     it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
-      expect(resolvePythonVersion(path.join(fixturesDir, "none"))).toBe(DEFAULT_PYTHON_VERSION);
+      expect(resolvePythonVersion(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }))).toBe(DEFAULT_PYTHON_VERSION);
     });
   });
 
@@ -1519,15 +1521,15 @@ enabled = true
     });
 
     it("should return empty string when no manifest or ruff declaration exists", () => {
-      expect(resolveRuffVersion(path.join(fixturesDir, "none"))).toBe("");
+      expect(resolveRuffVersion(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }))).toBe("");
     });
   });
 
   describe("isRuffDeclaredInProject()", () => {
     it("should detect ruff declared in pyproject.toml or requirements.txt", () => {
-      expect(isRuffDeclaredInProject(path.join(fixturesDir, "uv"))).toBe(true);
-      expect(isRuffDeclaredInProject(path.join(fixturesDir, "pip"))).toBe(true);
-      expect(isRuffDeclaredInProject(path.join(fixturesDir, "none"))).toBe(false);
+      expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-uv-${Date.now()}`), { type: "python-uv" }))).toBe(true);
+      expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-pip-${Date.now()}`), { type: "python-pip", ruffVersion: "0.17.2" }))).toBe(true);
+      expect(isRuffDeclaredInProject(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }))).toBe(false);
     });
 
     it("should return false when pyproject.toml contains only [tool.ruff] configuration without dependency declaration", () => {
@@ -1725,7 +1727,7 @@ enabled = true
 
   describe("detectPythonPackageManager()", () => {
     it("should detect uv package manager from uv fixture directory", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "uv"));
+      const pmInfo = detectPythonPackageManager(createConsumerProject(path.join(os.tmpdir(), `py-uv-${Date.now()}`), { type: "python-uv" }));
       expect(pmInfo).not.toBeNull();
       expect(pmInfo?.name).toBe("uv");
       expect(pmInfo?.lockfile).toBe("uv.lock");
@@ -1889,7 +1891,7 @@ enabled = true
     });
 
     it("should detect pip package manager from pip fixture directory", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "pip"));
+      const pmInfo = detectPythonPackageManager(createConsumerProject(path.join(os.tmpdir(), `py-pip-${Date.now()}`), { type: "python-pip" }));
       expect(pmInfo).not.toBeNull();
       expect(pmInfo?.name).toBe("pip");
       expect(pmInfo?.lockfile).toBe("requirements.txt");
@@ -1934,7 +1936,7 @@ enabled = true
     });
 
     it("should select uv as highest priority when conflicting lockfiles exist and .py file is present", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "conflicting"));
+      const pmInfo = detectPythonPackageManager(createConsumerProject(path.join(os.tmpdir(), `py-conflicting-${Date.now()}`), { type: "python-conflicting" }));
       expect(pmInfo).not.toBeNull();
       expect(pmInfo?.name).toBe("uv");
     });
@@ -1971,7 +1973,7 @@ enabled = true
     });
 
     it("should return null when no python project configuration or lockfiles exist", () => {
-      const pmInfo = detectPythonPackageManager(path.join(fixturesDir, "none"));
+      const pmInfo = detectPythonPackageManager(createConsumerProject(path.join(os.tmpdir(), `py-none-${Date.now()}`), { type: "python-none" }));
       expect(pmInfo).toBeNull();
     });
   });
