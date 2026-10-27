@@ -977,4 +977,67 @@ describe("Workspace Setup and Cleanup Shell Script", () => {
 
     expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg");
   });
+
+  it("handles pre-existing files and directories with spaces in their names correctly", () => {
+    const spaceDir = path.join(tempDir, "dir with spaces");
+    fs.mkdirSync(spaceDir, { recursive: true });
+    const spaceFile = path.join(spaceDir, "file with spaces.txt");
+    fs.writeFileSync(spaceFile, "content with spaces");
+
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg-spaces");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg-spaces");
+    expect(fs.readFileSync(spaceFile, "utf8")).toBe("content with spaces");
+  });
+
+  it("recovers safely when setup fails before backup move occurs (INJECT_FAILURE_BEFORE_BACKUP_MOVE)", () => {
+    fs.writeFileSync(path.join(tempDir, "package.json"), "orig-pkg-before-move");
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir, {
+      expectFailure: true,
+      env: { INJECT_FAILURE_BEFORE_BACKUP_MOVE: "1" },
+    });
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(path.join(tempDir, "package.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(tempDir, "package.json"), "utf8")).toBe("orig-pkg-before-move");
+  });
+
+  it("rejects stash path that points outside approved temporary directory even if inside runner temp subfolder", () => {
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, "phase.status"), "SETUP_PHASE=PHASE_STASHED\n");
+
+    const outsidePath = "/tmp/unapproved_outside_dir/tests_stash_999";
+    fs.writeFileSync(
+      path.join(stateDir, "stash.info"),
+      `stash_tests_path=${outsidePath}\ntests_existed_before_setup=true\n`
+    );
+
+    const output = runScript("cleanup", tempDir, { expectFailure: true });
+
+    expect(output).toContain("Error:");
+    expect(fs.existsSync(stateDir)).toBe(true);
+  });
+
+  it("handles scenario where pre-existing __tests__ is absent cleanly without error", () => {
+    expect(fs.existsSync(path.join(tempDir, "__tests__"))).toBe(false);
+
+    runScript(`setup autofix node npm python-pip "${fixtureDir}"`, tempDir);
+
+    const stateDir = path.join(tempDir, ".test_workspace_state");
+    expect(fs.readFileSync(path.join(stateDir, "stash.info"), "utf8")).toContain("tests_existed_before_setup=false");
+
+    runScript("cleanup", tempDir);
+
+    expect(fs.existsSync(path.join(tempDir, "__tests__"))).toBe(false);
+  });
 });
