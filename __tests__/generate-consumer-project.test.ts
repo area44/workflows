@@ -277,6 +277,9 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(templates).toHaveProperty("none:npm");
       expect(templates).toHaveProperty("none:pnpm");
       expect(templates).toHaveProperty("none:bun");
+
+      expect(typeof templates["none:bun"]).toBe("string");
+      expect(templates["none:bun"].trim().length).toBeGreaterThan(0);
     });
 
     it("throws explicit error when template file is missing", () => {
@@ -294,6 +297,18 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       const invalidArrayPath = path.join(tempDir, "array_structure.json");
       fs.writeFileSync(invalidArrayPath, JSON.stringify(["not", "an", "object"]));
       expect(() => getLockfileTemplates(invalidArrayPath)).toThrow("Invalid template structure");
+    });
+
+    it("throws explicit error when template value is empty or whitespace-only", () => {
+      const emptyValPath = path.join(tempDir, "empty_val.json");
+      fs.writeFileSync(emptyValPath, JSON.stringify({ "astro:npm": "   " }));
+      expect(() => getLockfileTemplates(emptyValPath)).toThrow("Invalid or empty template value for key 'astro:npm'");
+    });
+
+    it("throws explicit error when template value is an invalid type (number, object, null)", () => {
+      const invalidTypePath = path.join(tempDir, "invalid_type.json");
+      fs.writeFileSync(invalidTypePath, JSON.stringify({ "astro:npm": 123 }));
+      expect(() => getLockfileTemplates(invalidTypePath)).toThrow("Invalid or empty template value for key 'astro:npm'");
     });
 
     it("throws explicit error during project creation when template key is missing", () => {

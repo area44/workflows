@@ -158,7 +158,7 @@ function resolvePythonOptions(options, type, action) {
  * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
 function buildJsScriptsAndHtml(files, options, jsOpt) {
-  const { action, toolchain, type } = jsOpt;
+  const { action, toolchain, type, pmType } = jsOpt;
   const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
 
   let scripts = {};
@@ -174,6 +174,9 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
       lint: 'node -e "console.log(\'Linting JS...\')"',
       format: 'node -e "console.log(\'Formatting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
     scripts = { build: "vp build" };
@@ -200,12 +203,18 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
       format: 'node -e "console.log(\'Formatting JS...\')"',
       lint: 'node -e "console.log(\'Linting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
   } else {
     scripts = {
       build: "mkdir -p dist && cp index.html dist/index.html",
       lint: 'node -e "console.log(\'Linting JS...\')"',
       format: 'node -e "console.log(\'Formatting JS...\')"',
     };
+    if (pmType === "bun") {
+      devDependencies = { "@types/node": "^24.0.0" };
+    }
     files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   }
 
@@ -243,6 +252,14 @@ export function getLockfileTemplates(customTemplatePath) {
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Invalid template structure in lockfile templates file at '${templatePath}': expected object.`);
+  }
+
+  for (const [key, val] of Object.entries(parsed)) {
+    if (typeof val !== "string" || val.trim().length === 0) {
+      throw new Error(
+        `Invalid or empty template value for key '${key}' in lockfile templates file at '${templatePath}'.`
+      );
+    }
   }
 
   if (!customTemplatePath) {
