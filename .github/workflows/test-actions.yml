@@ -246,8 +246,6 @@ jobs:
             EXPECTED_TOOLCHAIN="vite"
             if [[ "$TYPE" == "vite-plus" || "$EXPECTED_TOOLCHAIN_INPUT" == "vite-plus" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
-            elif [[ "$TYPE" == "basic" || "$TYPE" == "minimal" ]]; then
-              EXPECTED_TOOLCHAIN="astro"
             fi
             DETECTED_TOOLCHAIN="${PAGES_TOOLCHAIN}"
             if [[ "$DETECTED_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
