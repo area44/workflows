@@ -60,14 +60,14 @@ function resolveJsPackageManager(rawPm, pmType, type) {
   if (rawPm.includes("@")) {
     return rawPm;
   }
+  if (pmType === "bun") {
+    return "bun@1.4.0";
+  }
   if (type === "minimal") {
     return undefined;
   }
   if (pmType === "pnpm") {
     return "pnpm@12.15.0";
-  }
-  if (pmType === "bun") {
-    return "bun@1.4.0";
   }
   return "npm@10.8.2";
 }
