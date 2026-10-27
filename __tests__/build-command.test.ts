@@ -102,6 +102,11 @@ describe("build-command", () => {
       expect(uploadStep.if).toContain("steps.resolve_environment.outcome == 'success'");
       expect(uploadStep.if).toContain("steps.build_site.outcome == 'success'");
       expect(uploadStep.with.path).toBe("${{ steps.build_site.outputs.path }}");
+
+      // Verify referenced dist entrypoint files exist on disk
+      expect(fs.existsSync(path.resolve(process.cwd(), "dist/resolve-environment.mjs"))).toBe(true);
+      expect(fs.existsSync(path.resolve(process.cwd(), "dist/site-variables.mjs"))).toBe(true);
+      expect(fs.existsSync(path.resolve(process.cwd(), "dist/build-command.mjs"))).toBe(true);
     });
   });
 

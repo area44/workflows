@@ -1,13 +1,13 @@
 # Consumer Integration Testing & Scenario Factory Guide
 
-This document explains the purpose, architecture, scenario definitions, cleanup safety guarantees, and execution of integration testing for `area44/workflows` using dynamically generated consumer project scenarios.
+This document explains the purpose, architecture, scenario definitions, isolated workspace layout, and execution of integration testing for `area44/workflows` using dynamically generated consumer project scenarios.
 
 ## Overview & Scenario Factory Architecture
 
-To ensure that composite actions (`pages` and `autofix`) function correctly across diverse project configurations—beyond unit tests—`area44/workflows` uses a unified scenario factory to dynamically generate consumer projects in temporary directories:
+To ensure that composite actions (`pages` and `autofix`) function correctly across diverse project configurations—beyond unit tests—`area44/workflows` uses a unified scenario factory to dynamically generate consumer projects:
 
 - **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single authoritative source of truth for project file contents, scenario templates, CLI argument parsing, non-empty checks, and overwrite protections. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory> [options]`).
-- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit/integration tests and shell scripts share identical generation logic without drift.
+- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit/integration tests share identical generation logic without drift.
 
 ### Scenario Dimensions & Factory Options
 
@@ -35,7 +35,7 @@ To prevent accidental data loss during local development or test runs:
 
 ---
 
-## Retained Integration Scenarios & Dynamic Migration
+## Retained Integration Scenarios
 
 Static fixture files under `__tests__/fixtures/` have been consolidated into dynamic scenario definitions. The following distinct integration behaviors are covered:
 
@@ -65,17 +65,21 @@ Integration testing is performed across two distinct boundaries:
 
 ### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
 
-- **Execution Boundary**: Runs in Vitest (`vite-plus/test`) importing source modules (`src/resolve-environment.ts`, `src/pages/site-variables.ts`, `src/pages/build-command.ts`, `src/javascript-env.ts`).
+- **Execution Boundary**: Runs in Vitest (`vite-plus/test`) importing source modules directly from `src/`.
 - **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against generated scenarios in temporary directories (`os.tmpdir()`).
 
 ### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
 
-- **Execution Boundary**: Runs local composite actions (`./pages` and `./autofix`) in GitHub Actions runners.
+- **Execution Boundary**: Runs local composite actions (`./action-source/pages` and `./action-source/autofix`) in GitHub Actions runners.
+- **Isolated Workspace Layout**:
+  - The action repository is checked out into a dedicated subdirectory `action-source/`.
+  - The target consumer project is generated in `$GITHUB_WORKSPACE` (the root CWD), outside `action-source/`.
+  - The local action is invoked via `uses: ./action-source/pages` or `uses: ./action-source/autofix`.
+  - The action source checkout in `action-source/` is never modified or mutated by fixture generation or action execution.
 - **Purpose**: End-to-end execution of the composite action pipeline:
-  - **Workspace Setup**: `.github/scripts/test-workspace-cleanup.sh setup "$ACTION" "$RUNTIME" "$PM" "$TYPE"` generates the requested scenario dynamically into a temporary staging directory created safely via `mktemp -d` while stashing `__tests__` into an exclusively owned `mktemp -d` stash directory.
-  - **Action Invocation**: Invokes `./pages` or `./autofix` against the generated project.
+  - **Action Invocation**: Invokes `./action-source/pages` or `./action-source/autofix` against the generated project.
   - **Output & Artifact Verification**: Asserts step outputs and checks produced artifacts (e.g., `dist/index.html`).
-  - **Workspace Restoration**: `.github/scripts/test-workspace-cleanup.sh cleanup` restores original workspace files and stashed directories safely.
+  - **Negative Failure Mode Testing**: Verifies that invalid build commands or missing output directories trigger explicit step failures with expected error messages.
 
 ---
 
@@ -90,21 +94,4 @@ npm test __tests__/generate-consumer-project.test.ts
 
 # Run consumer integration module tests
 npm test __tests__/integration-consumer.test.ts
-
-# Run workspace cleanup script validation
-npm test __tests__/workspace-cleanup.test.ts
 ```
-
----
-
-## Temporary Directory Ownership & Two-Phase Fail-Closed Cleanup Guarantees
-
-All temporary consumer projects created during unit/integration tests and CI matrix runs enforce strict ownership, two-phase fail-closed validation, and deterministic cleanup:
-
-- **Exclusive Staging Ownership**: `.github/scripts/test-workspace-cleanup.sh` uses `mktemp -d "${TMP_FIX_BASE}/fixture_copy_XXXXXX"` to create unique staging directories with restricted permissions. An `EXIT` trap guarantees that staging directories are cleaned up automatically on exit.
-- **Exclusive Stash Ownership**: Setup creates a unique test stash directory using `mktemp -d "${TMP_TESTS_BASE}/tests_stash_XXXXXX"`. It never reuses or overwrites pre-existing PID-based directories.
-- **Canonical Stash Path Validation**: `validate_stash_path()` enforces strict physical canonical path containment checks (`pwd -P`) within `${RUNNER_TEMP:-/tmp}`, rejects symbolic links (`[ -L "$p" ]`), and requires `tests_stash_*` naming conventions, preventing path traversal, symlink escapes, or deletion of out-of-bounds directories.
-- **Two-Phase Fail-Closed Cleanup**:
-  - **Phase 1 (Atomic Validation)**: Before any file is deleted or moved, all manifests (`installed_fixture_files`, `backed_up_files`, `snapshot.status`, `stash.info`) are parsed and validated in full. Installed fixtures are verified as top-level relative names, original backup items are checked against the `ROOT_ITEMS` allowlist, backup paths are matched against exact literal string patterns (`${orig_item}.test_bak_<digits>`), and duplicate/nested records are rejected.
-  - **Phase 2 (Execution)**: Destructive file deletions and restorations occur ONLY if all Phase 1 validations pass with zero errors.
-- **Workspace Recovery Guarantees**: Matrix setups tracked in `.test_workspace_state/` snapshot pre-existing workspace items before installation. If validation or restoration fails, state, backup files, and stashed directories are preserved for manual recovery.

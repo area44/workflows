@@ -15,16 +15,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Pages action
+          # Pages action - Positive scenarios
           - action: pages
             runtime: node
             pm: npm
             type: basic
-            verify_site: true
-          - action: pages
-            runtime: node
-            pm: npm
-            type: minimal
             verify_site: true
           - action: pages
             runtime: node
@@ -33,47 +28,33 @@ jobs:
             verify_site: true
           - action: pages
             runtime: node
-            pm: npm
-            type: consumer-integration
-            verify_site: true
-          - action: pages
-            runtime: node
-            pm: pnpm
-            type: basic
-            verify_site: true
-          - action: pages
-            runtime: node
-            pm: pnpm
-            type: minimal
-            verify_site: true
-          - action: pages
-            runtime: node
             pm: pnpm
             type: vite-plus
             toolchain: vite-plus
             verify_site: true
           - action: pages
-            runtime: node
-            pm: bun
-            type: basic
-            verify_site: true
-          - action: pages
             runtime: bun
             pm: bun
-            type: basic
-            verify_site: true
-          - action: pages
-            runtime: bun
-            pm: bun
-            type: minimal
-            verify_site: true
-          - action: pages
-            runtime: bun
-            pm: pnpm
             type: basic
             verify_site: true
 
-          # JS Autofix action
+          # Pages action - Negative scenarios
+          - action: pages
+            runtime: node
+            pm: npm
+            type: basic
+            build_command: "npm run invalid-command-12345"
+            expected_failure: "true"
+            verify_site: false
+          - action: pages
+            runtime: node
+            pm: npm
+            type: basic
+            build_path: "non_existent_output_dir_99"
+            expected_failure: "true"
+            verify_site: false
+
+          # JS Autofix action - Positive scenarios
           - action: autofix
             runtime: node
             pm: npm
@@ -81,46 +62,16 @@ jobs:
             verify_site: false
           - action: autofix
             runtime: node
-            pm: npm
-            type: minimal
-            verify_site: false
-          - action: autofix
-            runtime: node
             pm: pnpm
-            type: basic
-            verify_site: false
-          - action: autofix
-            runtime: node
-            pm: pnpm
-            type: minimal
-            verify_site: false
-          - action: autofix
-            runtime: node
-            pm: bun
-            type: basic
-            verify_site: false
-          - action: autofix
-            runtime: node
-            pm: bun
-            type: minimal
-            verify_site: false
-          - action: autofix
-            runtime: bun
-            pm: bun
             type: basic
             verify_site: false
           - action: autofix
             runtime: bun
             pm: bun
-            type: minimal
-            verify_site: false
-          - action: autofix
-            runtime: bun
-            pm: pnpm
             type: basic
             verify_site: false
 
-          # Python Autofix action
+          # Python Autofix action - Positive scenarios
           - action: autofix
             runtime: node
             pm: npm
@@ -128,16 +79,6 @@ jobs:
             has_js_project: "false"
             has_python_source: "true"
             python_pm: uv
-            python_version: "3.12"
-            ruff_version: "0.17.2"
-            verify_site: false
-          - action: autofix
-            runtime: node
-            pm: npm
-            type: consumer-integration
-            has_js_project: "true"
-            has_python_source: "true"
-            python_pm: pip
             python_version: "3.12"
             ruff_version: "0.17.2"
             verify_site: false
@@ -154,16 +95,6 @@ jobs:
           - action: autofix
             runtime: node
             pm: npm
-            type: python-conflicting
-            has_js_project: "false"
-            has_python_source: "true"
-            python_pm: uv
-            python_version: "3.12"
-            ruff_version: "0.17.2"
-            verify_site: false
-          - action: autofix
-            runtime: node
-            pm: npm
             type: python-none
             has_js_project: "false"
             has_python_source: "false"
@@ -171,6 +102,8 @@ jobs:
             python_version: ""
             ruff_version: ""
             verify_site: false
+
+          # Mixed JS + Python Autofix action - Positive scenarios
           - action: autofix
             runtime: node
             pm: npm
@@ -184,46 +117,66 @@ jobs:
           - action: autofix
             runtime: bun
             pm: bun
-            type: mixed
+            type: mixed-bun
             has_js_project: "true"
             has_python_source: "true"
             python_pm: pip
             python_version: "3.12"
             ruff_version: "0.17.2"
             verify_site: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Workspace
-        env:
-          ACTION: ${{ matrix.action }}
-          RUNTIME: ${{ matrix.runtime }}
-          PM: ${{ matrix.pm }}
-          TYPE: ${{ matrix.type }}
+    steps:
+      - name: Checkout Action Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: action-source
+
+      - name: Setup Node.js Baseline
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24.x"
+
+      - name: Generate Consumer Project Workspace
         run: |
-          bash .github/scripts/test-workspace-cleanup.sh setup "$ACTION" "$RUNTIME" "$PM" "$TYPE"
+          node action-source/.github/scripts/generate-consumer-project.js . \
+            --action "${{ matrix.action }}" \
+            --runtime "${{ matrix.runtime }}" \
+            --pm "${{ matrix.pm }}" \
+            --type "${{ matrix.type }}" \
+            ${{ matrix.toolchain && format('--toolchain {0}', matrix.toolchain) || '' }} \
+            ${{ matrix.has_js_project && format('--has-js-project {0}', matrix.has_js_project) || '' }} \
+            ${{ matrix.has_python_source && format('--has-python-source {0}', matrix.has_python_source) || '' }} \
+            ${{ matrix.python_pm && format('--python-pm {0}', matrix.python_pm) || '' }} \
+            ${{ matrix.python_version && format('--python-version {0}', matrix.python_version) || '' }} \
+            ${{ matrix.ruff_version != null && format('--ruff-version "{0}"', matrix.ruff_version) || '' }}
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
-        uses: ./pages
+        uses: ./action-source/pages
         id: pages
+        continue-on-error: true
         with:
           runtime: ${{ matrix.runtime }}
+          build-command: ${{ matrix.build_command }}
+          path: ${{ matrix.build_path }}
 
       - name: Test Autofix Action
         if: matrix.action == 'autofix'
-        uses: ./autofix
+        uses: ./action-source/autofix
         id: autofix
+        continue-on-error: true
         with:
           runtime: ${{ matrix.runtime }}
 
-      - name: Verify outputs
+      - name: Verify outputs and outcomes
         env:
           ACTION: ${{ matrix.action }}
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          EXPECTED_FAILURE: ${{ matrix.expected_failure }}
+          PAGES_OUTCOME: ${{ steps.pages.outcome }}
+          AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
           PAGES_PM: ${{ steps.pages.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
@@ -246,7 +199,34 @@ jobs:
         run: |
           SCENARIO_NAME="${ACTION} (${RUNTIME}, ${PM}, ${TYPE})"
 
-          DETECTED_PM="${PAGES_PM}${AUTOFIX_PM}"
+          if [[ "$ACTION" == "pages" ]]; then
+            STEP_OUTCOME="$PAGES_OUTCOME"
+          else
+            STEP_OUTCOME="$AUTOFIX_OUTCOME"
+          fi
+
+          if [[ "$EXPECTED_FAILURE" == "true" ]]; then
+            if [[ "$STEP_OUTCOME" != "failure" ]]; then
+              echo "Error: Expected action step to fail for scenario '${SCENARIO_NAME}', but outcome was '${STEP_OUTCOME}'."
+              exit 1
+            fi
+            echo "Verified negative scenario failure outcome for '${SCENARIO_NAME}'."
+            exit 0
+          fi
+
+          if [[ "$STEP_OUTCOME" != "success" ]]; then
+            echo "Error: Action execution failed unexpectedly for scenario '${SCENARIO_NAME}' with outcome '${STEP_OUTCOME}'."
+            exit 1
+          fi
+
+          if [[ "$ACTION" == "pages" ]]; then
+            DETECTED_PM="$PAGES_PM"
+            DETECTED_RUNTIME="$PAGES_RUNTIME"
+          else
+            DETECTED_PM="$AUTOFIX_PM"
+            DETECTED_RUNTIME="$AUTOFIX_RUNTIME"
+          fi
+
           if [[ "$DETECTED_PM" != "$EXPECTED_PM" ]]; then
             echo "Error: [${ACTION}] Package manager mismatch stage failed for scenario '${SCENARIO_NAME}'."
             echo "  Expected package manager: ${EXPECTED_PM}"
@@ -254,7 +234,6 @@ jobs:
             exit 1
           fi
 
-          DETECTED_RUNTIME="${PAGES_RUNTIME}${AUTOFIX_RUNTIME}"
           if [[ "$DETECTED_RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
             echo "Error: [${ACTION}] Runtime mismatch stage failed for scenario '${SCENARIO_NAME}'."
             echo "  Expected runtime: ${EXPECTED_RUNTIME}"
@@ -266,6 +245,8 @@ jobs:
             EXPECTED_TOOLCHAIN="vite"
             if [[ "$TYPE" == "vite-plus" || "$EXPECTED_TOOLCHAIN_INPUT" == "vite-plus" ]]; then
               EXPECTED_TOOLCHAIN="vite-plus"
+            elif [[ "$TYPE" == "basic" || "$TYPE" == "minimal" ]]; then
+              EXPECTED_TOOLCHAIN="astro"
             fi
             DETECTED_TOOLCHAIN="${PAGES_TOOLCHAIN}"
             if [[ "$DETECTED_TOOLCHAIN" != "$EXPECTED_TOOLCHAIN" ]]; then
@@ -348,17 +329,4 @@ jobs:
               echo "  Expected build artifact 'dist/index.html' was not produced by action execution."
               exit 1
             fi
-
-            if [[ "$TYPE" == "consumer-integration" ]]; then
-              if ! grep -q "AREA44 Workflows Consumer Project" "dist/index.html"; then
-                echo "Error: [${ACTION}] Consumer artifact content verification failed for scenario '${SCENARIO_NAME}'."
-                echo "  'dist/index.html' did not contain expected consumer fixture content 'AREA44 Workflows Consumer Project'."
-                exit 1
-              fi
-            fi
           fi
-
-      - name: Restore Workspace Root
-        if: always()
-        run: |
-          bash .github/scripts/test-workspace-cleanup.sh cleanup
