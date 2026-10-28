@@ -126,12 +126,39 @@ export interface ResolvedJsEnvironment {
 }
 
 /**
- * Input Parsing
- * Parses raw action runtime inputs into normalized input representations.
+ * Strict Runtime Version Validation
+ * Validates version specifiers against a strict anchored grammar,
+ * rejecting empty strings, malformed punctuation-only values (e.g. "---", "...", "^^^"),
+ * and unsupported characters.
  */
-export function parseEnvironmentInputs(
-  runtimeInput: string = core.getInput("runtime"),
-): ParsedInputs {
+export function validateRuntimeVersion(version: string): boolean {
+  if (!version || typeof version !== "string") return false;
+  const trimmed = version.trim();
+  if (!trimmed) return false;
+
+  if (/^[.\-^~+@:]+$/.test(trimmed)) {
+    return false;
+  }
+
+  if (/^lts\/(?:\*|[a-z0-9_-]+)$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^[a-z0-9_-]+$/i.test(trimmed) && /[0-9a-zA-Z]/.test(trimmed)) {
+    return true;
+  }
+
+  const versionRegex =
+    /^(?:[~^>=<]*\s*)?\d+(?:\.(?:\d+|x|\*))?(?:\.(?:\d+|x|\*))?(?:-[a-zA-Z0-9_.-]+)?(?:\+[a-zA-Z0-9_.-]+)?$/;
+  return versionRegex.test(trimmed);
+}
+
+/**
+ * Strict Runtime Input Parsing
+ * Parses raw action runtime inputs into normalized input representations,
+ * accepting exactly one runtime specifier ("node", "bun", "node@<version>", or "bun@<version>").
+ */
+export function parseRuntimeInput(runtimeInput: string = core.getInput("runtime")): ParsedInputs {
   if (!runtimeInput) return {};
 
   const trimmed = runtimeInput.trim();
@@ -153,14 +180,8 @@ export function parseEnvironmentInputs(
   }
 
   if (lower.startsWith("node@")) {
-    const ver = lower.slice(5);
-    if (
-      !ver ||
-      /[^a-zA-Z0-9_.*/~^><=-]/.test(ver) ||
-      ver.includes("@") ||
-      ver.includes(":") ||
-      ver.includes("?")
-    ) {
+    const ver = trimmed.slice(5).trim();
+    if (!validateRuntimeVersion(ver)) {
       throw new Error(
         "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
       );
@@ -169,14 +190,8 @@ export function parseEnvironmentInputs(
   }
 
   if (lower.startsWith("bun@")) {
-    const ver = lower.slice(4);
-    if (
-      !ver ||
-      /[^a-zA-Z0-9_.*/~^><=-]/.test(ver) ||
-      ver.includes("@") ||
-      ver.includes(":") ||
-      ver.includes("?")
-    ) {
+    const ver = trimmed.slice(4).trim();
+    if (!validateRuntimeVersion(ver)) {
       throw new Error(
         "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
       );
@@ -187,6 +202,16 @@ export function parseEnvironmentInputs(
   throw new Error(
     "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
   );
+}
+
+/**
+ * Input Parsing
+ * Parses raw action runtime inputs into normalized input representations.
+ */
+export function parseEnvironmentInputs(
+  runtimeInput: string = core.getInput("runtime"),
+): ParsedInputs {
+  return parseRuntimeInput(runtimeInput);
 }
 
 /**

@@ -15,6 +15,8 @@ import {
   isSupportedPackageManager,
   isSupportedRuntime,
   parseEnvironmentInputs,
+  parseRuntimeInput,
+  validateRuntimeVersion,
   resolveBunVersion,
   resolveJsEnvironment,
   resolveJsPackageManager,
@@ -171,6 +173,30 @@ describe("javascript-env", () => {
           specifiedRuntime: "bun",
           bunVersion: "1.4",
         });
+      });
+    });
+
+    describe("validateRuntimeVersion unit tests", () => {
+      it("should accept valid version specifiers", () => {
+        expect(validateRuntimeVersion("22")).toBe(true);
+        expect(validateRuntimeVersion("24.19.0")).toBe(true);
+        expect(validateRuntimeVersion("1.4.0-rc1")).toBe(true);
+        expect(validateRuntimeVersion("latest")).toBe(true);
+        expect(validateRuntimeVersion("lts/*")).toBe(true);
+        expect(validateRuntimeVersion("lts/iron")).toBe(true);
+        expect(validateRuntimeVersion("20.x")).toBe(true);
+        expect(validateRuntimeVersion(">=1.0.0")).toBe(true);
+        expect(validateRuntimeVersion("^20.0.0")).toBe(true);
+      });
+
+      it("should reject punctuation-only and malformed version specifiers", () => {
+        expect(validateRuntimeVersion("---")).toBe(false);
+        expect(validateRuntimeVersion("...")).toBe(false);
+        expect(validateRuntimeVersion("^^^")).toBe(false);
+        expect(validateRuntimeVersion("")).toBe(false);
+        expect(validateRuntimeVersion("   ")).toBe(false);
+        expect(validateRuntimeVersion("24?token=123")).toBe(false);
+        expect(validateRuntimeVersion("24@25")).toBe(false);
       });
     });
 
