@@ -446,6 +446,7 @@ dev = ["pytest"]
         const pmInfo = detectPythonPackageManager(tempDir);
         expect(pmInfo).toEqual({
           name: "uv",
+          source: "uvToml",
           configFile: "uv.toml",
           installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
           execPrefix: "uv run",

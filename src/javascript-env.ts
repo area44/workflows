@@ -15,6 +15,8 @@ export interface ParsedInputs {
   specifiedRuntime?: "node" | "bun";
   nodeVersion?: string;
   bunVersion?: string;
+  hasNode?: boolean;
+  hasBun?: boolean;
 }
 
 export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
@@ -189,6 +191,7 @@ export function parseEnvironmentInputs(
   let nodeVersion: string | undefined;
   let bunVersion: string | undefined;
 
+  let hasNode = false;
   let hasBun = false;
   const counts = { node: 0, bun: 0, both: 0 };
 
@@ -197,8 +200,10 @@ export function parseEnvironmentInputs(
     counts[parsed.type]++;
 
     if (parsed.type === "both") {
+      hasNode = true;
       hasBun = true;
     } else if (parsed.type === "node") {
+      hasNode = true;
       if (!specifiedRuntime) specifiedRuntime = "node";
       if (parsed.version) nodeVersion = parsed.version;
     } else if (parsed.type === "bun") {
@@ -221,7 +226,9 @@ export function parseEnvironmentInputs(
   return {
     specifiedRuntime,
     nodeVersion,
-    bunVersion: bunVersion || (hasBun ? DEFAULT_BUN_VERSION : undefined),
+    bunVersion,
+    hasNode,
+    hasBun,
   };
 }
 
@@ -298,7 +305,7 @@ export function resolveNodeVersion(
     return parsed.nodeVersion;
   }
 
-  if (parsed.specifiedRuntime === "bun") {
+  if (parsed.specifiedRuntime === "bun" && !parsed.hasNode) {
     return "";
   }
 
@@ -312,7 +319,7 @@ export function resolveNodeVersion(
     return pkgVer;
   }
 
-  if (runtime === "bun" || pm.name === "bun") {
+  if ((runtime === "bun" || pm.name === "bun") && !parsed.hasNode) {
     return "";
   }
 
@@ -402,7 +409,12 @@ export function resolveBunVersion(
 
   const hasBunEngine =
     project.packageJson && getDevEngineRuntimeVersion(project.packageJson, "bun") !== undefined;
-  const isBunDetected = pm.name === "bun" || project.hasBunLock || hasBunEngine;
+  const isBunDetected =
+    Boolean(parsed.hasBun) ||
+    parsed.specifiedRuntime === "bun" ||
+    pm.name === "bun" ||
+    project.hasBunLock ||
+    hasBunEngine;
 
   if (isBunDetected) {
     if (project.hasPackageJson) {

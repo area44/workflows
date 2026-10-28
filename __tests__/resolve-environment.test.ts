@@ -189,6 +189,7 @@ describe("resolve-environment", () => {
         expect(env.python.hasPythonSource).toBe(true);
         expect(env.python.pmInfo).toEqual({
           name: "pip",
+          source: "standalone",
           installCommands: [],
           execPrefix: "",
           isStandalone: true,
@@ -1272,7 +1273,7 @@ describe("resolve-environment", () => {
 
       expect(env.js.runtime).toBe("node");
       expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4" });
-      expect(env.js.nodeVersion).toBe("");
+      expect(env.js.nodeVersion).toBe(DEFAULT_NODE_VERSION);
       expect(env.js.bunVersion).toBe("1.4");
     });
 

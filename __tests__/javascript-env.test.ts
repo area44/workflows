@@ -140,6 +140,8 @@ describe("javascript-env", () => {
           specifiedRuntime: "node",
           nodeVersion: undefined,
           bunVersion: undefined,
+          hasNode: true,
+          hasBun: false,
         });
       });
 
@@ -147,7 +149,9 @@ describe("javascript-env", () => {
         expect(parseEnvironmentInputs("bun")).toEqual({
           specifiedRuntime: "bun",
           nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
+          bunVersion: undefined,
+          hasNode: false,
+          hasBun: true,
         });
       });
 
@@ -156,6 +160,8 @@ describe("javascript-env", () => {
           specifiedRuntime: "node",
           nodeVersion: "22",
           bunVersion: undefined,
+          hasNode: true,
+          hasBun: false,
         });
       });
 
@@ -164,6 +170,8 @@ describe("javascript-env", () => {
           specifiedRuntime: "bun",
           nodeVersion: undefined,
           bunVersion: "1.4",
+          hasNode: false,
+          hasBun: true,
         });
       });
 
@@ -172,18 +180,24 @@ describe("javascript-env", () => {
           specifiedRuntime: "node",
           nodeVersion: "24",
           bunVersion: "1.4",
+          hasNode: true,
+          hasBun: true,
         });
 
         expect(parseEnvironmentInputs("bun@1.4, node@24")).toEqual({
           specifiedRuntime: "bun",
           nodeVersion: "24",
           bunVersion: "1.4",
+          hasNode: true,
+          hasBun: true,
         });
 
         expect(parseEnvironmentInputs("node, bun")).toEqual({
           specifiedRuntime: "node",
           nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
+          bunVersion: undefined,
+          hasNode: true,
+          hasBun: true,
         });
       });
 
@@ -191,7 +205,9 @@ describe("javascript-env", () => {
         expect(parseEnvironmentInputs("both")).toEqual({
           specifiedRuntime: undefined,
           nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
+          bunVersion: undefined,
+          hasNode: true,
+          hasBun: true,
         });
       });
 
@@ -200,18 +216,24 @@ describe("javascript-env", () => {
           specifiedRuntime: "node",
           nodeVersion: "24",
           bunVersion: undefined,
+          hasNode: true,
+          hasBun: false,
         });
 
         expect(parseEnvironmentInputs("Bun@1.4 , Node@22")).toEqual({
           specifiedRuntime: "bun",
           nodeVersion: "22",
           bunVersion: "1.4",
+          hasNode: true,
+          hasBun: true,
         });
 
         expect(parseEnvironmentInputs("BOTH")).toEqual({
           specifiedRuntime: undefined,
           nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
+          bunVersion: undefined,
+          hasNode: true,
+          hasBun: true,
         });
       });
     });
@@ -500,6 +522,80 @@ describe("javascript-env", () => {
       const ver = resolveBunVersion({ bunVersion: "1.4.1" }, pm, project);
       expect(ver).toBe("1.4.1");
       expect(core.info).toHaveBeenCalledWith("Resolved Bun version from input: 1.4.1");
+    });
+
+    it("regression test: runtime selection 'bun' should defer to .bun-version file and not override with default Bun version", () => {
+      const parsed = parseEnvironmentInputs("bun");
+      expect(parsed.bunVersion).toBeUndefined();
+
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.2.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "DEFAULT_BUN_VERSION", source: "lockfile" as const };
+
+      const ver = resolveBunVersion(parsed, pm, project);
+      expect(ver).toBe("1.2.0");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.2.0");
+    });
+
+    it("regression test: runtime selection 'bun' should defer to devEngines.bun and not override with default Bun version", () => {
+      const parsed = parseEnvironmentInputs("bun");
+      expect(parsed.bunVersion).toBeUndefined();
+
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "DEFAULT_BUN_VERSION", source: "lockfile" as const };
+
+      const ver = resolveBunVersion(parsed, pm, project);
+      expect(ver).toBe("1.3.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
+    });
+
+    it("regression test: runtime selection 'both' should defer to .bun-version and devEngines.bun", () => {
+      const parsed = parseEnvironmentInputs("both");
+      expect(parsed.bunVersion).toBeUndefined();
+
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.5",
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12", source: "default" as const };
+
+      const ver = resolveBunVersion(parsed, pm, project);
+      expect(ver).toBe("1.1.5");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.5");
+    });
+
+    it("regression test: runtime selection 'node' should defer to .nvmrc and devEngines.node", () => {
+      const parsed = parseEnvironmentInputs("node");
+      expect(parsed.nodeVersion).toBeUndefined();
+
+      const project = {
+        hasPackageJson: true,
+        nvmRcVersion: "20.10.0",
+        packageJson: { devEngines: { node: "22.0.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12", source: "default" as const };
+
+      const ver = resolveNodeVersion(parsed, pm, "node", project);
+      expect(ver).toBe("20.10.0");
+      expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.10.0");
     });
 
     it("should prioritize .bun-version file over packageManager field (including bun@latest) and devEngines", () => {

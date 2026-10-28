@@ -47,6 +47,7 @@ export interface PythonInstallCommand {
 
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
+  source?: "uvLock" | "uvToml" | "pyproject" | "requirements" | "setupPy" | "setupCfg" | "standalone";
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -835,6 +836,7 @@ function checkUvLockedProject(
   }
   return {
     name: "uv",
+    source: "uvLock",
     lockfile: "uv.lock",
     configFile: "pyproject.toml",
     installCommands: [{ executable: "uv", args: ["sync"] }],
@@ -852,6 +854,7 @@ function checkUvUnlockedProject(
     const reqPathRel = getRelativePath(ctx.cwd, path.join(ctx.requirementsDir, "requirements.txt"));
     return {
       name: "uv",
+      source: ctx.pyprojectDir ? "pyproject" : "uvToml",
       configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
       installCommands: [{ executable: "uv", args: ["pip", "install", "-r", reqPathRel] }],
       execPrefix: "uv run",
@@ -861,6 +864,7 @@ function checkUvUnlockedProject(
   if (hasValidPyproject) {
     return {
       name: "uv",
+      source: ctx.pyprojectDir ? "pyproject" : "uvToml",
       configFile: ctx.pyprojectDir ? "pyproject.toml" : "uv.toml",
       installCommands: [{ executable: "uv", args: ["sync"] }],
       lockCommand: "uv lock",
@@ -909,12 +913,19 @@ function detectPipFromContext(ctx: PythonProjectContext): PythonPackageManagerIn
   if (!isPipProject) return null;
 
   let configFile: string | undefined;
+  let source: "pyproject" | "requirements" | "setupPy" | "setupCfg" = "requirements";
+
   if (hasProjectOrBuildSystem) {
     configFile = "pyproject.toml";
+    source = "pyproject";
   } else if (ctx.hasSetupPy) {
     configFile = "setup.py";
+    source = "setupPy";
   } else if (ctx.hasSetupCfg) {
     configFile = "setup.cfg";
+    source = "setupCfg";
+  } else if (ctx.hasRequirementsTxt) {
+    source = "requirements";
   }
 
   let installCommands: PythonInstallCommand[] = [];
@@ -943,6 +954,7 @@ function detectPipFromContext(ctx: PythonProjectContext): PythonPackageManagerIn
 
   return {
     name: "pip",
+    source,
     lockfile,
     configFile,
     installCommands,
@@ -1212,6 +1224,7 @@ export function detectPythonPackageManager(
   // Standalone Python project without manifest or lockfile
   return {
     name: "pip",
+    source: "standalone",
     installCommands: [],
     execPrefix: "",
     isStandalone: true,
