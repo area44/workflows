@@ -10,13 +10,13 @@
   },
   "type": "module",
   "scripts": {
-    "format": "vp fmt",
+    "format": "node .github/scripts/format.js",
     "lint": "vp lint",
     "build": "vp pack",
     "test": "vp test",
     "changeset": "changeset",
     "version": "changeset version && npm install --package-lock-only && npm run build",
-    "release": "changeset tag"
+    "release": "changeset git-tag"
   },
   "devDependencies": {
     "@actions/core": "^3.0.1",
