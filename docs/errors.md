@@ -14,7 +14,7 @@ All internal modules throw standard native JavaScript `Error` instances containi
 
 Action steps report failures to the GitHub Actions runner using official `@actions/core` APIs:
 
-- `core.setFailed(message)`: Marks the current workflow step as failed and displays the provided error message in the step summary.
+- `core.setFailed(message)`: Marks the current workflow step as failed and logs the provided error message.
 - `core.error(message)`: Emits inline error log annotations when appropriate.
 
 ## Entry Point Boundaries
@@ -42,6 +42,6 @@ For machine-verifiable assertions in CI workflows, `runBuildCommand()` in `src/p
 ## Related Documentation
 
 - **[Repository README](../README.md)**: Project overview and action API summary.
-- **[Security Boundaries](./security.md)**: Input trust model, command execution without subshell, and secret masking.
-- **[Maintenance & Repository Health](./maintenance.md)**: Source of truth files, build pipeline, and quality gates.
+- **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
+- **[Maintenance & Repository Health](./maintenance.md)**: Source files, build pipeline, and quality gates.
 - **[Integration Testing Guide](./integration-testing.md)**: Integration test matrix and failure mode verification.
