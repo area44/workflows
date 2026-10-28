@@ -250,32 +250,42 @@ export function writeOutput(env: ResolvedEnvironment): void {
   const bunSetup = setupBun(env);
   const pmSetup = setupPackageManager(env);
 
-  core.setOutput("has-python-source", String(python.hasPythonSource));
-  core.setOutput("setup-python", String(python.hasPythonSource));
+  const jsRuntimeVersion = js.runtime === "bun" ? js.bunVersion : js.nodeVersion;
 
+  // Public Ecosystem-Scoped Outputs
+  core.setOutput("has-javascript-project", String(hasJsProject));
+  core.setOutput("javascript-runtime", js.runtime);
+  core.setOutput("javascript-runtime-version", jsRuntimeVersion);
+  core.setOutput("javascript-package-manager", js.pm.name);
+  core.setOutput("javascript-package-manager-version", js.pm.version);
+  core.setOutput("javascript-toolchain", js.toolchain);
+
+  core.setOutput("has-python-source", String(python.hasPythonSource));
+  core.setOutput("python-runtime", python.hasPythonSource ? "python" : "");
+  core.setOutput("python-runtime-version", python.hasPythonSource ? python.pythonVersion : "");
+  core.setOutput(
+    "python-package-manager",
+    python.hasPythonSource ? (python.pmInfo ? python.pmInfo.name : "") : "",
+  );
+  core.setOutput("ruff-version", python.hasPythonSource ? python.ruffVersion : "");
+
+  // Internal Setup Outputs (retained for action composite step orchestration)
+  core.setOutput("has-js-project", String(hasJsProject));
   core.setOutput("node-version", js.nodeVersion);
   core.setOutput("bun-version", js.bunVersion);
   core.setOutput("package-manager", js.pm.name);
   core.setOutput("package-manager-version", js.pm.version);
   core.setOutput("runtime", js.runtime);
   core.setOutput("toolchain", js.toolchain);
-  core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 
-  core.setOutput("has-js-project", String(hasJsProject));
+  core.setOutput("python-version", python.hasPythonSource ? python.pythonVersion : "");
+  core.setOutput("setup-python", String(python.hasPythonSource));
+
   core.setOutput("setup-node", String(hasJsProject && nodeSetup.shouldSetup));
   core.setOutput("setup-node-cache", hasJsProject ? nodeSetup.cache : "");
   core.setOutput("setup-bun", String(hasJsProject && bunSetup.shouldSetup));
   core.setOutput("setup-pnpm", String(hasJsProject && pmSetup.shouldSetupPnpm));
-
-  if (python.hasPythonSource) {
-    core.setOutput("python-version", python.pythonVersion);
-    core.setOutput("ruff-version", python.ruffVersion);
-    core.setOutput("python-package-manager", python.pmInfo ? python.pmInfo.name : "");
-  } else {
-    core.setOutput("python-version", "");
-    core.setOutput("ruff-version", "");
-    core.setOutput("python-package-manager", "");
-  }
+  core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
 }
 
 /**

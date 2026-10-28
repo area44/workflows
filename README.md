@@ -51,15 +51,14 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Outputs
 
-| Name                      | Description                                |
-| ------------------------- | ------------------------------------------ |
-| `node-version`            | The Node.js version used                   |
-| `bun-version`             | The Bun version used                       |
-| `package-manager`         | The package manager used                   |
-| `package-manager-version` | The version of the package manager used    |
-| `runtime`                 | The runtime used (node or bun)             |
-| `toolchain`               | The resolved toolchain (vite or vite-plus) |
-| `vp-version`              | The version of Vite+ installed             |
+| Name                                 | Description                                           |
+| ------------------------------------ | ----------------------------------------------------- |
+| `javascript-runtime`                 | The JavaScript runtime used (node or bun)             |
+| `javascript-runtime-version`         | The version of the resolved JavaScript runtime        |
+| `javascript-package-manager`         | The JavaScript package manager used                   |
+| `javascript-package-manager-version` | The version of the JavaScript package manager used    |
+| `javascript-toolchain`               | The resolved JavaScript toolchain (vite or vite-plus) |
+| `vp-version`                         | The version of Vite+ installed                        |
 
 ### `autofix` (Automatically format and fix code)
 
@@ -69,18 +68,18 @@ This action accepts no inputs.
 
 #### Outputs
 
-| Name                      | Description                                                           |
-| ------------------------- | --------------------------------------------------------------------- |
-| `node-version`            | The Node.js version used                                              |
-| `bun-version`             | The Bun version used                                                  |
-| `package-manager`         | The package manager used                                              |
-| `package-manager-version` | The version of the package manager used                               |
-| `runtime`                 | The runtime used (node or bun)                                        |
-| `has-js-project`          | Whether a JavaScript project (package.json) was detected              |
-| `has-python-source`       | Whether Python source code was detected                               |
-| `python-version`          | The Python version used                                               |
-| `python-package-manager`  | The Python package manager detected (uv or pip)                       |
-| `ruff-version`            | The Ruff version specified by the project or empty string for default |
+| Name                                 | Description                                                           |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `has-javascript-project`             | Whether a JavaScript project (package.json) was detected              |
+| `javascript-runtime`                 | The JavaScript runtime used (node or bun)                             |
+| `javascript-runtime-version`         | The version of the resolved JavaScript runtime                        |
+| `javascript-package-manager`         | The JavaScript package manager used                                   |
+| `javascript-package-manager-version` | The version of the JavaScript package manager used                    |
+| `has-python-source`                  | Whether Python source code was detected                               |
+| `python-runtime`                     | The Python runtime used (python or empty)                             |
+| `python-runtime-version`             | The Python runtime version used                                       |
+| `python-package-manager`             | The Python package manager detected (uv or pip)                       |
+| `ruff-version`                       | The Ruff version specified by the project or empty string for default |
 
 ## Documentation Index
 

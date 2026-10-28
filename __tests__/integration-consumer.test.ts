@@ -76,14 +76,16 @@ describe("Consumer Project Module Integration Suite", () => {
       const env = resolveEnvironment();
       writeOutput(env);
 
-      expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "10.8.2");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
-      expect(core.setOutput).toHaveBeenCalledWith("toolchain", "vite");
+      expect(core.setOutput).toHaveBeenCalledWith("has-javascript-project", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime-version", "24.19.0");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "10.8.2");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite");
       expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("python-runtime", "python");
+      expect(core.setOutput).toHaveBeenCalledWith("python-runtime-version", "3.12");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
-      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 

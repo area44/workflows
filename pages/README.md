@@ -96,15 +96,14 @@ The action automatically resolves and exports the following environment variable
 
 ## Outputs
 
-| Name                      | Description                                |
-| ------------------------- | ------------------------------------------ |
-| `node-version`            | The Node.js version used                   |
-| `bun-version`             | The Bun version used                       |
-| `package-manager`         | The package manager used                   |
-| `package-manager-version` | The version of the package manager used    |
-| `runtime`                 | The runtime used (node or bun)             |
-| `toolchain`               | The resolved toolchain (vite or vite-plus) |
-| `vp-version`              | The version of Vite+ installed             |
+| Name                                 | Description                                           |
+| ------------------------------------ | ----------------------------------------------------- |
+| `javascript-runtime`                 | The JavaScript runtime used (node or bun)             |
+| `javascript-runtime-version`         | The version of the resolved JavaScript runtime        |
+| `javascript-package-manager`         | The JavaScript package manager used                   |
+| `javascript-package-manager-version` | The version of the JavaScript package manager used    |
+| `javascript-toolchain`               | The resolved JavaScript toolchain (vite or vite-plus) |
+| `vp-version`                         | The version of Vite+ installed                        |
 
 ## Constraints and Failure Behavior
 

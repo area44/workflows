@@ -1422,10 +1422,12 @@ describe("resolve-environment", () => {
       writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("python-runtime", "");
+      expect(core.setOutput).toHaveBeenCalledWith("python-runtime-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
       expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
     });
 
     it("should verify python-version is empty string for python-none fixture output", () => {
@@ -1458,10 +1460,12 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-runtime", "python");
+        expect(core.setOutput).toHaveBeenCalledWith("python-runtime-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
-        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
-        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });

@@ -198,19 +198,19 @@ jobs:
           EXPECTED_FAILURE: ${{ matrix.expected_failure }}
           PAGES_OUTCOME: ${{ steps.pages.outcome }}
           AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
-          PAGES_PM: ${{ steps.pages.outputs.package-manager }}
-          AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
+          PAGES_PM: ${{ steps.pages.outputs.javascript-package-manager }}
+          AUTOFIX_PM: ${{ steps.autofix.outputs.javascript-package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
-          PAGES_RUNTIME: ${{ steps.pages.outputs.runtime }}
-          AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
+          PAGES_RUNTIME: ${{ steps.pages.outputs.javascript-runtime }}
+          AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.javascript-runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
-          PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
+          PAGES_TOOLCHAIN: ${{ steps.pages.outputs.javascript-toolchain }}
           EXPECTED_TOOLCHAIN_INPUT: ${{ matrix.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
-          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-js-project }}
+          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-javascript-project }}
           AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.has-python-source }}
           AUTOFIX_PYTHON_PM: ${{ steps.autofix.outputs.python-package-manager }}
-          AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-version }}
+          AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-runtime-version }}
           AUTOFIX_RUFF_VER: ${{ steps.autofix.outputs.ruff-version }}
           EXPECTED_HAS_JS_PROJECT: ${{ matrix.has_js_project }}
           EXPECTED_HAS_PYTHON_SOURCE: ${{ matrix.has_python_source }}

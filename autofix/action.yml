@@ -1,30 +1,30 @@
 name: Autofix
 description: "Automatically format and fix code."
 outputs:
-  node-version:
-    description: "The Node.js version used"
-    value: ${{ steps.resolve_environment.outputs.node-version }}
-  bun-version:
-    description: "The Bun version used"
-    value: ${{ steps.resolve_environment.outputs.bun-version }}
-  package-manager:
-    description: "The package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager }}
-  package-manager-version:
-    description: "The version of the package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager-version }}
-  runtime:
-    description: "The runtime used (node or bun)"
-    value: ${{ steps.resolve_environment.outputs.runtime }}
-  has-js-project:
+  has-javascript-project:
     description: "Whether a JavaScript project (package.json) was detected"
-    value: ${{ steps.resolve_environment.outputs.has-js-project }}
+    value: ${{ steps.resolve_environment.outputs.has-javascript-project }}
+  javascript-runtime:
+    description: "The JavaScript runtime used (node or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime }}
+  javascript-runtime-version:
+    description: "The version of the resolved JavaScript runtime"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime-version }}
+  javascript-package-manager:
+    description: "The JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
+  javascript-package-manager-version:
+    description: "The version of the JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
   has-python-source:
     description: "Whether Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.has-python-source }}
-  python-version:
-    description: "The Python version used"
-    value: ${{ steps.resolve_environment.outputs.python-version }}
+  python-runtime:
+    description: "The Python runtime used (python or empty)"
+    value: ${{ steps.resolve_environment.outputs.python-runtime }}
+  python-runtime-version:
+    description: "The Python runtime version used"
+    value: ${{ steps.resolve_environment.outputs.python-runtime-version }}
   python-package-manager:
     description: "The Python package manager detected (uv or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
@@ -94,7 +94,7 @@ runs:
 
     - name: Run autofix
       id: run_autofix
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.resolve_environment.outputs.has-js-project == 'true' || steps.resolve_environment.outputs.has-python-source == 'true') }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.resolve_environment.outputs.has-javascript-project == 'true' || steps.resolve_environment.outputs.has-python-source == 'true') }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}

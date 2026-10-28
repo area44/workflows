@@ -10,24 +10,21 @@ inputs:
     required: false
 
 outputs:
-  node-version:
-    description: "The Node.js version used"
-    value: ${{ steps.resolve_environment.outputs.node-version }}
-  bun-version:
-    description: "The Bun version used"
-    value: ${{ steps.resolve_environment.outputs.bun-version }}
-  package-manager:
-    description: "The package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager }}
-  package-manager-version:
-    description: "The version of the package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager-version }}
-  runtime:
-    description: "The runtime used (node or bun)"
-    value: ${{ steps.resolve_environment.outputs.runtime }}
-  toolchain:
-    description: "The resolved toolchain (vite or vite-plus)"
-    value: ${{ steps.resolve_environment.outputs.toolchain }}
+  javascript-runtime:
+    description: "The JavaScript runtime used (node or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime }}
+  javascript-runtime-version:
+    description: "The version of the resolved JavaScript runtime"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime-version }}
+  javascript-package-manager:
+    description: "The JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
+  javascript-package-manager-version:
+    description: "The version of the JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
+  javascript-toolchain:
+    description: "The resolved JavaScript toolchain (vite or vite-plus)"
+    value: ${{ steps.resolve_environment.outputs.javascript-toolchain }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.version }}
