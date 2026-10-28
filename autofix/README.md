@@ -4,7 +4,7 @@ Automatically format and fix code.
 
 ## Action Purpose
 
-The `autofix` composite action automatically formats and fixes code across the AREA44 ecosystem. It detects project configurations, provisions appropriate runtimes and package managers, executes repository scripts and Ruff, and integrates with `autofix.ci` to commit fixes back to pull requests.
+The `autofix` composite action automatically formats and fixes code.
 
 ## Features and Supported Behavior
 

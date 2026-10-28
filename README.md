@@ -63,7 +63,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `toolchain`               | The resolved toolchain (vite or vite-plus) |
 | `vp-version`              | The version of Vite+ installed             |
 
-### `autofix` (Automated Code Updates)
+### `autofix` (Automatically format and fix code)
 
 #### Inputs
 
