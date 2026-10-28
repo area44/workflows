@@ -294,6 +294,33 @@ export function resolveNodeVersion(
  * Version Resolution
  * Resolves Bun version based on parsed inputs, package manager, and project state.
  */
+function getBunVersionFromFile(project: JsProjectEnvironment): string | undefined {
+  if (project.bunFileError) {
+    core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
+  } else if (project.bunFileVersion) {
+    core.info(`Found .bun-version: ${project.bunFileVersion}`);
+    return project.bunFileVersion;
+  }
+  return undefined;
+}
+
+function getBunVersionFromDevEngines(project: JsProjectEnvironment): string | undefined {
+  if (project.packageJsonError) {
+    core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
+  } else if (project.packageJson) {
+    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
+    if (devVersion) {
+      core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
+      return devVersion;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Version Resolution
+ * Resolves Bun version based on parsed inputs, package manager, and project state.
+ */
 export function resolveBunVersion(
   parsed: ParsedInputs,
   pm: PackageManager,
@@ -306,11 +333,9 @@ export function resolveBunVersion(
     return parsed.bunVersion;
   }
 
-  if (project.bunFileError) {
-    core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
-  } else if (project.bunFileVersion) {
-    core.info(`Found .bun-version: ${project.bunFileVersion}`);
-    return project.bunFileVersion;
+  const fileVer = getBunVersionFromFile(project);
+  if (fileVer !== undefined) {
+    return fileVer;
   }
 
   if (pm.name === "bun" && pm.version && pm.version !== "latest") {
@@ -320,14 +345,9 @@ export function resolveBunVersion(
     return pm.version;
   }
 
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
-    if (devVersion) {
-      core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
-      return devVersion;
-    }
+  const devEngineVer = getBunVersionFromDevEngines(project);
+  if (devEngineVer !== undefined) {
+    return devEngineVer;
   }
 
   const hasBunEngine =
