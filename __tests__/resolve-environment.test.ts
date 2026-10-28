@@ -634,6 +634,50 @@ describe("resolve-environment", () => {
       }
     });
 
+    it("resolves multi-runtime input 'both' with version files independently", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-both-vers-"));
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "both-app" }));
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment("both");
+        writeOutput(env);
+
+        expect(env.js.nodeVersion).toBe("20.10.0");
+        expect(env.js.bunVersion).toBe("1.2.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("resolves runtime=node with packageManager bun@1.4 by setting up both Node and Bun", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-node-pm-bun-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "node-runtime-bun-pm", packageManager: "bun@1.4.0" }),
+      );
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment("node");
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("node");
+        expect(env.js.nodeVersion).toBe(DEFAULT_NODE_VERSION);
+        expect(env.js.bunVersion).toBe("1.4.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("reports Node.js and npm outputs correctly", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-node-npm-"));
       fs.writeFileSync(

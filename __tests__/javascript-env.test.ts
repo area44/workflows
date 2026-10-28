@@ -131,8 +131,8 @@ describe("javascript-env", () => {
   describe("parseEnvironmentInputs", () => {
     describe("valid runtime inputs", () => {
       it("should return empty object for empty or whitespace-only input", () => {
-        expect(parseEnvironmentInputs("")).toEqual({});
-        expect(parseEnvironmentInputs("   ")).toEqual({});
+        expect(parseEnvironmentInputs("")).toEqual({ hasNode: false, hasBun: false });
+        expect(parseEnvironmentInputs("   ")).toEqual({ hasNode: false, hasBun: false });
       });
 
       it("should parse explicit node runtime without version", () => {

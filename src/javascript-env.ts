@@ -15,8 +15,8 @@ export interface ParsedInputs {
   specifiedRuntime?: "node" | "bun";
   nodeVersion?: string;
   bunVersion?: string;
-  hasNode?: boolean;
-  hasBun?: boolean;
+  hasNode: boolean;
+  hasBun: boolean;
 }
 
 export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
@@ -179,10 +179,10 @@ function parseSingleRuntimePart(rawPart: string): ParsedPart {
 export function parseEnvironmentInputs(
   runtimeInput: string = core.getInput("runtime"),
 ): ParsedInputs {
-  if (!runtimeInput) return {};
+  if (!runtimeInput) return { hasNode: false, hasBun: false };
 
   const trimmed = runtimeInput.trim();
-  if (!trimmed) return {};
+  if (!trimmed) return { hasNode: false, hasBun: false };
 
   validateCommaStructure(trimmed);
 
