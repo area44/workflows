@@ -952,10 +952,7 @@ describe("autofix", () => {
       expect(action.runs.using).toBe("composite");
 
       // Inputs contract
-      expect(action.inputs.runtime).toEqual({
-        description: expect.any(String),
-        required: false,
-      });
+      expect(action.inputs).toBeUndefined();
 
       // Outputs contract with exact expression mappings
       expect(action.outputs["node-version"].value).toBe(

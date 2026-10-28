@@ -283,10 +283,9 @@ export function writeOutput(env: ResolvedEnvironment): void {
  * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Aggregate Environment
  */
 export function resolveEnvironment(
-  runtimeInput: string = core.getInput("runtime"),
   toolchainInput: string = core.getInput("toolchain"),
 ): ResolvedEnvironment {
-  const js = resolveJsEnvironment(runtimeInput, toolchainInput);
+  const js = resolveJsEnvironment(toolchainInput);
   const python = resolvePythonEnvironment();
 
   if (!js.hasJsProject && !python.hasPythonSource) {
@@ -305,9 +304,8 @@ export function resolveEnvironment(
 
 export function run(): void {
   try {
-    const runtimeInput = core.getInput("runtime");
     const toolchainInput = core.getInput("toolchain");
-    const env = resolveEnvironment(runtimeInput, toolchainInput);
+    const env = resolveEnvironment(toolchainInput);
     writeOutput(env);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

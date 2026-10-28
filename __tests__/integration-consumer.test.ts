@@ -87,11 +87,6 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 
-    it("rejects incompatible runtime override (Bun runtime with npm lockfile) on consumer project", () => {
-      expect(() => resolveEnvironment("bun@1.4")).toThrow(
-        "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager",
-      );
-    });
   });
 
   describe("Site Variables Resolution", () => {

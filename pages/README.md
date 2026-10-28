@@ -10,7 +10,7 @@ The `pages` composite action builds and deploys static sites to GitHub Pages acr
 
 - **Unified Build Pipeline:** Automated environment resolution, dependency synchronization, site compilation, output directory validation, and Pages artifact upload.
 - **Automatic Vite+ Detection:** Detects Vite+ projects from dependencies in `package.json` and uses `voidzero-dev/setup-vp` for setup and dependency installation.
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection or explicit overrides (`runtime: 'node@24'`, `runtime: 'bun@1.4'`).
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic detection from project configuration (`.bun-version`, `.nvmrc`, `.node-version`, `packageManager`, and `devEngines`).
 - **Automatic Site and Base Variables:** Derives and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`).
 - **Output Validation:** Asserts that the configured build output directory exists and is non-empty before initiating GitHub Pages artifact upload.
 
@@ -40,7 +40,6 @@ jobs:
         uses: area44/workflows/pages@main
         with:
           # Optional: path: 'dist'
-          # Optional: runtime: 'node@24'
           # Optional: build-command: 'npm run build'
 ```
 
@@ -49,8 +48,41 @@ jobs:
 | Name            | Description                                                                                   | Default                       | Required |
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | -------- |
 | `path`          | Directory where the built site is located (empty or whitespace-only values default to `dist`) | `dist`                        | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4)                                 |                               | Optional |
 | `build-command` | Custom build command                                                                          | `<package-manager> run build` | Optional |
+
+## Project Runtime Resolution
+
+Project environment resolution distinguishes between three independent concepts:
+
+- **Project Runtime:** The JavaScript execution environment (`node` or `bun`).
+- **Runtime Version:** The version of Node.js or Bun to provision (e.g. `24` or `1.4.0`).
+- **Package Manager:** The package manager binary used for dependency installation (`npm`, `pnpm`, or `bun`).
+
+### Conflict Validation & Resolution Precedence
+
+All project configuration signals are validated for contradictions before selecting a runtime. Contradictory runtime declarations (e.g. declaring both `devEngines.node` and `devEngines.bun` in `package.json`, or pairing `.bun-version` with `devEngines.node`) produce an explicit configuration error rather than silently choosing one runtime.
+
+After conflict validation, runtime selection follows deterministic precedence:
+
+1. **Bun Package Manager:** If `packageManager` or `devEngines.packageManager` is `bun@...`, or if `bun.lock` exists, Bun runtime is selected.
+2. **`package.json` `devEngines`:** Declarations in `devEngines.bun` select Bun; `devEngines.node` select Node.js.
+3. **Version Files:** A `.bun-version` file selects Bun runtime; an `.nvmrc` or `.node-version` file selects Node.js runtime.
+4. **Default Fallback:** Defaults to Node.js runtime (`node@24`) when no explicit Bun runtime signals exist.
+
+### Package Manager Compatibility
+
+Bun runtime supports both `bun` and `pnpm` package managers. For example, a project using `pnpm` with Bun runtime is valid:
+
+```json
+{
+  "packageManager": "pnpm@12.15.0",
+  "devEngines": {
+    "bun": "1.4.0"
+  }
+}
+```
+
+Pairing Bun runtime with `npm` package manager is unsupported and triggers an explicit validation failure.
 
 ## Exported Environment Variables
 
