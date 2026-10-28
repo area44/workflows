@@ -119,6 +119,54 @@ export interface ResolvedJsEnvironment {
   toolchain: Toolchain;
 }
 
+function checkVersionFilesConflict(
+  hasBunVersionFile: boolean,
+  hasNodeVersionFile: boolean,
+  hasBunDevEngine: boolean,
+  hasNodeDevEngine: boolean,
+  project?: JsProjectEnvironment,
+): "bun" | "node" | undefined {
+  if (!hasBunVersionFile && !hasNodeVersionFile) return undefined;
+
+  if (hasBunVersionFile && hasNodeVersionFile) {
+    if (hasBunDevEngine) return "bun";
+    if (hasNodeDevEngine) return "node";
+    const nodeFile = project?.nvmRcVersion ? ".nvmrc" : ".node-version";
+    throw new Error(
+      `Conflicting runtime version files detected: found both .bun-version and Node.js version file (${nodeFile}).`,
+    );
+  }
+
+  if (hasBunVersionFile) {
+    if (hasNodeDevEngine) {
+      throw new Error(
+        "Conflicting runtime configuration: found .bun-version file but package.json devEngines specifies Node.js runtime.",
+      );
+    }
+    return "bun";
+  }
+
+  if (hasNodeDevEngine) {
+    throw new Error(
+      "Conflicting runtime configuration: found Node.js version file but package.json devEngines specifies Bun runtime.",
+    );
+  }
+  return "node";
+}
+
+function checkDevEngineConflict(
+  hasBunDevEngine: boolean,
+  hasNodeDevEngine: boolean,
+): "bun" | "node" | undefined {
+  if (hasBunDevEngine && hasNodeDevEngine) {
+    throw new Error(
+      "Conflicting runtime configuration in package.json devEngines: both Node.js and Bun runtimes are specified.",
+    );
+  }
+  if (hasBunDevEngine) return "bun";
+  return undefined;
+}
+
 /**
  * Runtime Resolution
  * Resolves target runtime based on package manager and project configuration.
@@ -152,42 +200,17 @@ export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironmen
   const hasBunDevEngine = Boolean(pkg && getDevEngineRuntimeVersion(pkg, "bun") !== undefined);
   const hasNodeDevEngine = Boolean(pkg && getDevEngineRuntimeVersion(pkg, "node") !== undefined);
 
-  if (hasBunVersionFile && hasNodeVersionFile) {
-    if (hasBunDevEngine) return "bun";
-    if (hasNodeDevEngine) return "node";
-    const nodeFile = project?.nvmRcVersion ? ".nvmrc" : ".node-version";
-    throw new Error(
-      `Conflicting runtime version files detected: found both .bun-version and Node.js version file (${nodeFile}).`,
-    );
-  }
+  const fileRes = checkVersionFilesConflict(
+    hasBunVersionFile,
+    hasNodeVersionFile,
+    hasBunDevEngine,
+    hasNodeDevEngine,
+    project,
+  );
+  if (fileRes) return fileRes;
 
-  if (hasBunVersionFile) {
-    if (hasNodeDevEngine) {
-      throw new Error(
-        "Conflicting runtime configuration: found .bun-version file but package.json devEngines specifies Node.js runtime.",
-      );
-    }
-    return "bun";
-  }
-
-  if (hasNodeVersionFile) {
-    if (hasBunDevEngine) {
-      throw new Error(
-        "Conflicting runtime configuration: found Node.js version file but package.json devEngines specifies Bun runtime.",
-      );
-    }
-    return "node";
-  }
-
-  if (hasBunDevEngine && hasNodeDevEngine) {
-    throw new Error(
-      "Conflicting runtime configuration in package.json devEngines: both Node.js and Bun runtimes are specified.",
-    );
-  }
-
-  if (hasBunDevEngine) {
-    return "bun";
-  }
+  const engineRes = checkDevEngineConflict(hasBunDevEngine, hasNodeDevEngine);
+  if (engineRes) return engineRes;
 
   return "node";
 }
