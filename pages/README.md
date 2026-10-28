@@ -10,7 +10,7 @@ The `pages` composite action builds and deploys static sites to GitHub Pages acr
 
 - **Unified Build Pipeline:** Automated environment resolution, dependency synchronization, site compilation, output directory validation, and Pages artifact upload.
 - **Automatic Vite+ Detection:** Detects Vite+ projects from dependencies in `package.json` and uses `voidzero-dev/setup-vp` for setup and dependency installation.
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection from project configuration files and defaults.
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic detection from project configuration (`.bun-version`, `.nvmrc`, `.node-version`, `packageManager`, and `devEngines`).
 - **Automatic Site and Base Variables:** Derives and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`).
 - **Output Validation:** Asserts that the configured build output directory exists and is non-empty before initiating GitHub Pages artifact upload.
 
@@ -49,6 +49,17 @@ jobs:
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | -------- |
 | `path`          | Directory where the built site is located (empty or whitespace-only values default to `dist`) | `dist`                        | Optional |
 | `build-command` | Custom build command                                                                          | `<package-manager> run build` | Optional |
+
+## Project Runtime Resolution
+
+Project runtimes (`node` or `bun`) and versions are automatically resolved directly from consumer project configuration files according to deterministic precedence:
+
+1. **Bun Package Manager:** If the package manager is Bun (`bun@...` in `packageManager` or `devEngines`, or `bun.lock`), Bun runtime is selected.
+2. **Version Files:** A `.bun-version` file explicitly selects Bun runtime. An `.nvmrc` or `.node-version` file selects Node.js runtime. Conflicting version files trigger a validation error unless `package.json` explicitly resolves the runtime.
+3. **`package.json` `devEngines`:** Declarations in `devEngines.bun` select Bun; `devEngines.node` select Node.js.
+4. **Default Fallback:** Defaults to Node.js runtime (`node@24`) when no explicit Bun indicators are present.
+
+_Note on Compatibility:_ Bun runtime supports Bun and `pnpm` package managers. Pairing Bun runtime with `npm` is unsupported and triggers an explicit validation failure.
 
 ## Exported Environment Variables
 

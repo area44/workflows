@@ -122,17 +122,73 @@ export interface ResolvedJsEnvironment {
 /**
  * Runtime Resolution
  * Resolves target runtime based on package manager and project configuration.
+ *
+ * Precedence Rules:
+ * 1. Package manager is Bun (`pm.name === "bun"` via `packageManager`, `devEngines.packageManager`, or `bun.lock`) -> Bun.
+ * 2. Version files: `.bun-version` indicates Bun; `.nvmrc` or `.node-version` indicates Node.js.
+ *    Conflicting version files trigger an unresolvable error unless `package.json` explicitly breaks the tie.
+ * 3. `devEngines` runtime declarations in `package.json` (`devEngines.bun` vs `devEngines.node`).
+ * 4. Default fallback -> Node.js.
  */
 export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironment): "node" | "bun" {
   if (pm.name === "bun") {
     return "bun";
   }
-  if (
-    project?.packageJson &&
-    getDevEngineRuntimeVersion(project.packageJson, "bun") !== undefined
-  ) {
+
+  const hasJsProject = Boolean(
+    project?.hasPackageJson ||
+    project?.hasPnpmLock ||
+    project?.hasPackageLock ||
+    project?.hasBunLock,
+  );
+  if (!hasJsProject) {
+    return "node";
+  }
+
+  const hasBunVersionFile = Boolean(project?.bunFileVersion);
+  const hasNodeVersionFile = Boolean(project?.nvmRcVersion || project?.nodeFileVersion);
+
+  const pkg = project?.packageJson;
+  const hasBunDevEngine = Boolean(pkg && getDevEngineRuntimeVersion(pkg, "bun") !== undefined);
+  const hasNodeDevEngine = Boolean(pkg && getDevEngineRuntimeVersion(pkg, "node") !== undefined);
+
+  if (hasBunVersionFile && hasNodeVersionFile) {
+    if (hasBunDevEngine) return "bun";
+    if (hasNodeDevEngine) return "node";
+    const nodeFile = project?.nvmRcVersion ? ".nvmrc" : ".node-version";
+    throw new Error(
+      `Conflicting runtime version files detected: found both .bun-version and Node.js version file (${nodeFile}).`,
+    );
+  }
+
+  if (hasBunVersionFile) {
+    if (hasNodeDevEngine) {
+      throw new Error(
+        "Conflicting runtime configuration: found .bun-version file but package.json devEngines specifies Node.js runtime.",
+      );
+    }
     return "bun";
   }
+
+  if (hasNodeVersionFile) {
+    if (hasBunDevEngine) {
+      throw new Error(
+        "Conflicting runtime configuration: found Node.js version file but package.json devEngines specifies Bun runtime.",
+      );
+    }
+    return "node";
+  }
+
+  if (hasBunDevEngine && hasNodeDevEngine) {
+    throw new Error(
+      "Conflicting runtime configuration in package.json devEngines: both Node.js and Bun runtimes are specified.",
+    );
+  }
+
+  if (hasBunDevEngine) {
+    return "bun";
+  }
+
   return "node";
 }
 

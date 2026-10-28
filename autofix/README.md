@@ -60,6 +60,17 @@ This action accepts no inputs.
 | `python-package-manager`  | The Python package manager detected (uv or pip)                       |
 | `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
+## Project Runtime Resolution
+
+Project runtimes (`node` or `bun`) and versions are automatically resolved directly from consumer project configuration files according to deterministic precedence:
+
+1. **Bun Package Manager:** If the package manager is Bun (`bun@...` in `packageManager` or `devEngines`, or `bun.lock`), Bun runtime is selected.
+2. **Version Files:** A `.bun-version` file explicitly selects Bun runtime. An `.nvmrc` or `.node-version` file selects Node.js runtime. Conflicting version files trigger a validation error unless `package.json` explicitly resolves the runtime.
+3. **`package.json` `devEngines`:** Declarations in `devEngines.bun` select Bun; `devEngines.node` select Node.js.
+4. **Default Fallback:** Defaults to Node.js runtime (`node@24`) when no explicit Bun indicators are present.
+
+_Note on Compatibility:_ Bun runtime supports Bun and `pnpm` package managers. Pairing Bun runtime with `npm` is unsupported and triggers an explicit validation failure.
+
 ## Runtime and Workflow Behavior
 
 ### JavaScript Script Selection

@@ -151,24 +151,101 @@ describe("javascript-env", () => {
   });
 
   describe("resolveRuntime", () => {
-    it("should resolve bun runtime when package manager is bun", () => {
-      expect(resolveRuntime({ name: "bun", version: "1.4" })).toBe("bun");
+    it("should resolve bun runtime for a project with .bun-version, pnpm, and no devEngines.runtime", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.4.0",
+        hasPnpmLock: true,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "pnpm" as const, version: "12.15.0" };
+      expect(resolveRuntime(pm, project)).toBe("bun");
     });
 
-    it("should resolve bun runtime when package.json devEngines declares bun runtime", () => {
-      const project = {
+    it("should resolve bun runtime for a project explicitly declaring Bun through devEngines.runtime or devEngines.bun", () => {
+      const projectWithDevEngineBun = {
         hasPackageJson: true,
         packageJson: { devEngines: { bun: "1.4" } },
         hasPnpmLock: false,
         hasPackageLock: false,
         hasBunLock: false,
       };
-      expect(resolveRuntime({ name: "pnpm", version: "12" }, project)).toBe("bun");
+      expect(resolveRuntime({ name: "pnpm", version: "12" }, projectWithDevEngineBun)).toBe("bun");
+
+      const projectWithDevEngineRuntimeBun = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: "bun" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "pnpm", version: "12" }, projectWithDevEngineRuntimeBun)).toBe("bun");
     });
 
-    it("should resolve node runtime when package manager is npm or pnpm", () => {
-      expect(resolveRuntime({ name: "npm", version: "12" })).toBe("node");
-      expect(resolveRuntime({ name: "pnpm", version: "12" })).toBe("node");
+    it("should resolve node runtime for a project using Node.js with .node-version or .nvmrc", () => {
+      const projectWithNodeFile = {
+        hasPackageJson: true,
+        nodeFileVersion: "22.0.0",
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "npm", version: "12" }, projectWithNodeFile)).toBe("node");
+
+      const projectWithNvmRc = {
+        hasPackageJson: true,
+        nvmRcVersion: "20.10.0",
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "npm", version: "12" }, projectWithNvmRc)).toBe("node");
+    });
+
+    it("should resolve default node runtime when no explicit runtime declaration is present", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "npm", version: "12" }, project)).toBe("node");
+    });
+
+    it("should throw error for conflicting runtime version files when package.json does not break the tie", () => {
+      const conflictingProject = {
+        hasPackageJson: true,
+        bunFileVersion: "1.4.0",
+        nvmRcVersion: "20.10.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(() => resolveRuntime({ name: "pnpm", version: "12" }, conflictingProject)).toThrow(
+        "Conflicting runtime version files detected: found both .bun-version and Node.js version file (.nvmrc).",
+      );
+    });
+
+    it("should throw error for conflicting devEngines runtime declarations in package.json", () => {
+      const conflictingDevEnginesProject = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { runtime: ["node", "bun"] } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(() => resolveRuntime({ name: "pnpm", version: "12" }, conflictingDevEnginesProject)).toThrow(
+        "Conflicting runtime configuration in package.json devEngines: both Node.js and Bun runtimes are specified.",
+      );
+    });
+
+    it("should validate supported and unsupported Bun and package-manager combinations", () => {
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "bun")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "pnpm")).not.toThrow();
+      expect(() => validateRuntimePackageManagerCompatibility("bun", "npm")).toThrow(
+        "Bun runtime does not support npm package manager",
+      );
     });
   });
 
