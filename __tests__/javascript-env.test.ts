@@ -151,6 +151,45 @@ describe("javascript-env", () => {
   });
 
   describe("resolveRuntime", () => {
+    it("should fail when packageManager indicates Bun and both devEngines.node and devEngines.bun are declared", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { node: "22.0.0", bun: "1.4.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      expect(() => resolveRuntime({ name: "bun", version: "1.4" }, project)).toThrow(
+        "Conflicting runtime configuration in package.json devEngines: both Node.js and Bun runtimes are specified.",
+      );
+    });
+
+    it("should fail when packageManager indicates Bun but Node.js runtime is explicitly declared in devEngines", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { node: "22.0.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      expect(() => resolveRuntime({ name: "bun", version: "1.4" }, project)).toThrow(
+        "Conflicting runtime configuration: packageManager indicates Bun but package.json devEngines specifies Node.js runtime.",
+      );
+    });
+
+    it("should fail when packageManager indicates Bun but a Node.js version file is present", () => {
+      const project = {
+        hasPackageJson: true,
+        nvmRcVersion: "20.10.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      expect(() => resolveRuntime({ name: "bun", version: "1.4" }, project)).toThrow(
+        "Conflicting runtime configuration: packageManager indicates Bun but Node.js version file (.nvmrc) specifies Node.js runtime.",
+      );
+    });
+
     it("should fail when both devEngines.node and devEngines.bun are declared with no version files", () => {
       const project = {
         hasPackageJson: true,
@@ -230,7 +269,7 @@ describe("javascript-env", () => {
     });
 
     it("should throw error for conflicting version files without explicit package.json runtime declaration", () => {
-      const project = {
+      const projectWithNvmRc = {
         hasPackageJson: true,
         bunFileVersion: "1.4.0",
         nvmRcVersion: "20.10.0",
@@ -238,9 +277,31 @@ describe("javascript-env", () => {
         hasPackageLock: false,
         hasBunLock: false,
       };
-      expect(() => resolveRuntime({ name: "pnpm", version: "12" }, project)).toThrow(
+      expect(() => resolveRuntime({ name: "pnpm", version: "12" }, projectWithNvmRc)).toThrow(
         "Conflicting runtime version files detected: found both .bun-version and Node.js version file (.nvmrc).",
       );
+
+      const projectWithNodeVersion = {
+        hasPackageJson: true,
+        bunFileVersion: "1.4.0",
+        nodeFileVersion: "22.0.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(() => resolveRuntime({ name: "pnpm", version: "12" }, projectWithNodeVersion)).toThrow(
+        "Conflicting runtime version files detected: found both .bun-version and Node.js version file (.node-version).",
+      );
+    });
+
+    it("should infer Bun when packageManager is Bun with no conflicting declarations", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      expect(resolveRuntime({ name: "bun", version: "1.4.0" }, project)).toBe("bun");
     });
 
     it("should validate supported and unsupported Bun and package-manager combinations", () => {

@@ -52,14 +52,37 @@ jobs:
 
 ## Project Runtime Resolution
 
-Project runtimes (`node` or `bun`) and versions are automatically resolved directly from consumer project configuration files according to deterministic precedence:
+Project environment resolution distinguishes between three independent concepts:
 
-1. **Bun Package Manager:** If the package manager is Bun (`bun@...` in `packageManager` or `devEngines`, or `bun.lock`), Bun runtime is selected.
-2. **Version Files:** A `.bun-version` file explicitly selects Bun runtime. An `.nvmrc` or `.node-version` file selects Node.js runtime. Conflicting version files trigger a validation error unless `package.json` explicitly resolves the runtime.
-3. **`package.json` `devEngines`:** Declarations in `devEngines.bun` select Bun; `devEngines.node` select Node.js.
-4. **Default Fallback:** Defaults to Node.js runtime (`node@24`) when no explicit Bun indicators are present.
+- **Project Runtime:** The JavaScript execution environment (`node` or `bun`).
+- **Runtime Version:** The version of Node.js or Bun to provision (e.g. `24` or `1.4.0`).
+- **Package Manager:** The package manager binary used for dependency installation (`npm`, `pnpm`, or `bun`).
 
-_Note on Compatibility:_ Bun runtime supports Bun and `pnpm` package managers. Pairing Bun runtime with `npm` is unsupported and triggers an explicit validation failure.
+### Conflict Validation & Resolution Precedence
+
+All project configuration signals are validated for contradictions before selecting a runtime. Contradictory runtime declarations (e.g. declaring both `devEngines.node` and `devEngines.bun` in `package.json`, or pairing `.bun-version` with `devEngines.node`) produce an explicit configuration error rather than silently choosing one runtime.
+
+After conflict validation, runtime selection follows deterministic precedence:
+
+1. **Bun Package Manager:** If `packageManager` or `devEngines.packageManager` is `bun@...`, or if `bun.lock` exists, Bun runtime is selected.
+2. **`package.json` `devEngines`:** Declarations in `devEngines.bun` select Bun; `devEngines.node` select Node.js.
+3. **Version Files:** A `.bun-version` file selects Bun runtime; an `.nvmrc` or `.node-version` file selects Node.js runtime.
+4. **Default Fallback:** Defaults to Node.js runtime (`node@24`) when no explicit Bun runtime signals exist.
+
+### Package Manager Compatibility
+
+Bun runtime supports both `bun` and `pnpm` package managers. For example, a project using `pnpm` with Bun runtime is valid:
+
+```json
+{
+  "packageManager": "pnpm@12.15.0",
+  "devEngines": {
+    "bun": "1.4.0"
+  }
+}
+```
+
+Pairing Bun runtime with `npm` package manager is unsupported and triggers an explicit validation failure.
 
 ## Exported Environment Variables
 
