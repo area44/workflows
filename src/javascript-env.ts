@@ -8,6 +8,7 @@ export type SupportedPackageManager = "npm" | "pnpm" | "bun";
 export interface PackageManager {
   name: string;
   version: string;
+  source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
 export interface ParsedInputs {
@@ -102,6 +103,7 @@ export interface JsProjectEnvironment {
 export interface JsPackageManagerInfo {
   name: SupportedPackageManager;
   version: string;
+  source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
 export type Toolchain = "vite" | "vite-plus";
@@ -383,9 +385,12 @@ export function resolveBunVersion(
     return fileVer;
   }
 
-  if (pm.name === "bun" && pm.version) {
+  const isExplicitPm =
+    pm.name === "bun" && pm.version && pm.source !== "lockfile" && pm.source !== "default";
+  if (isExplicitPm) {
     if (project.hasPackageJson) {
-      core.info(`Found Bun version in packageManager: ${pm.version}`);
+      const srcLabel = pm.source === "devEngines" ? "package.json devEngines" : "packageManager";
+      core.info(`Found Bun version in ${srcLabel}: ${pm.version}`);
     }
     return pm.version;
   }
@@ -686,27 +691,6 @@ function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
   return undefined;
 }
 
-function parseDevEnginePmNamedSection(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
-  if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
-  for (const pm of ["pnpm", "npm", "bun"] as const) {
-    if (pkg.devEngines[pm] !== undefined && pkg.devEngines[pm] !== null) {
-      const val = pkg.devEngines[pm];
-      const defaultVer = getDefaultJsPackageManagerVersion(pm);
-      if (typeof val === "string") {
-        const trimmed = val.trim();
-        return { name: pm, version: trimmed || defaultVer };
-      } else if (typeof val === "object" && val !== null) {
-        const ver =
-          (val as any).version !== undefined && (val as any).version !== null
-            ? String((val as any).version).trim()
-            : "";
-        return { name: pm, version: ver || defaultVer };
-      }
-    }
-  }
-  return undefined;
-}
-
 function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
   if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
 
@@ -721,7 +705,7 @@ function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInf
     }
   }
 
-  return parseDevEnginePmNamedSection(pkg);
+  return undefined;
 }
 
 function parseDevEngineRuntimeString(
@@ -906,7 +890,7 @@ function resolvePmFromPackageJson(project: JsProjectEnvironment): JsPackageManag
     if (project.hasPackageJson) {
       core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
     }
-    return { name, version: pmVersion };
+    return { name, version: pmVersion, source: "packageManager" };
   }
 
   const devPm = getDevEnginePackageManager(pkg);
@@ -914,7 +898,7 @@ function resolvePmFromPackageJson(project: JsProjectEnvironment): JsPackageManag
     if (project.hasPackageJson) {
       core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
     }
-    return devPm;
+    return { ...devPm, source: "devEngines" };
   }
 
   return undefined;
@@ -946,7 +930,7 @@ function resolvePmFromLockfiles(project: JsProjectEnvironment): JsPackageManager
   if (project.hasPackageJson) {
     core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
   }
-  return { name: selected.name, version: selected.version };
+  return { name: selected.name, version: selected.version, source: "lockfile" };
 }
 
 export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
@@ -963,7 +947,7 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   if (project.hasPackageJson) {
     core.info(`Package manager not specified; using default: npm@${DEFAULT_NPM_VERSION}`);
   }
-  return { name: "npm", version: DEFAULT_NPM_VERSION };
+  return { name: "npm", version: DEFAULT_NPM_VERSION, source: "default" };
 }
 
 export function getJsInstallationPlan(

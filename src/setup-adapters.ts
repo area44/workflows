@@ -39,7 +39,7 @@ export function resolvePnpmSetupRuntime(
  */
 export function setupNode(env: ResolvedEnvironment): NodeSetupConfig {
   const js = env.js;
-  const shouldSetup = js.pm.name !== "pnpm" && Boolean(js.nodeVersion);
+  const shouldSetup = Boolean(js.nodeVersion);
   return {
     shouldSetup,
     nodeVersion: js.nodeVersion,

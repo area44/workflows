@@ -646,7 +646,7 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(env.js.runtime).toBe("node");
-        expect(env.js.pm).toEqual({ name: "npm", version: "12.0.0" });
+        expect(env.js.pm).toMatchObject({ name: "npm", version: "12.0.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@12.0.0");
@@ -672,7 +672,7 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(env.js.runtime).toBe("node");
-        expect(env.js.pm).toEqual({ name: "pnpm", version: "9.5.0" });
+        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.5.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.5.0");
@@ -698,7 +698,7 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(env.js.runtime).toBe("bun");
-        expect(env.js.pm).toEqual({ name: "bun", version: "1.4.0" });
+        expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Bun.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4.0");
@@ -725,7 +725,7 @@ describe("resolve-environment", () => {
 
         expect(env.js.runtime).toBe("bun");
         expect(env.js.bunVersion).toBe("latest");
-        expect(env.js.pm).toEqual({ name: "bun", version: "latest" });
+        expect(env.js.pm).toMatchObject({ name: "bun", version: "latest" });
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
         expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
@@ -908,7 +908,7 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(env.js.hasJsProject).toBe(true);
-        expect(env.js.pm).toEqual({ name: "pnpm", version: "9.1.0" });
+        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.1.0" });
         expect(env.python.hasPythonSource).toBe(false);
 
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
@@ -942,7 +942,7 @@ describe("resolve-environment", () => {
         expect(run1).toEqual(run2);
         expect(run1.js.nodeVersion).toBe("22.1.0");
         expect(run1.js.bunVersion).toBe("");
-        expect(run1.js.pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+        expect(run1.js.pm).toMatchObject({ name: "npm", version: DEFAULT_NPM_VERSION });
         expect(run1.js.runtime).toBe("node");
         expect(run1.js.toolchain).toBe("vite");
         expect(run1.python.hasPythonSource).toBe(false);
@@ -1271,7 +1271,7 @@ describe("resolve-environment", () => {
       const env = resolveEnvironment("node");
 
       expect(env.js.runtime).toBe("node");
-      expect(env.js.pm).toEqual({ name: "bun", version: "1.4" });
+      expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -1285,7 +1285,7 @@ describe("resolve-environment", () => {
       const env = resolveEnvironment("bun");
 
       expect(env.js.runtime).toBe("bun");
-      expect(env.js.pm).toEqual({ name: "pnpm", version: "12.15.0" });
+      expect(env.js.pm).toMatchObject({ name: "pnpm", version: "12.15.0" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -1397,7 +1397,7 @@ describe("resolve-environment", () => {
 
           expect(env.js.nodeVersion).toBe(expectedNode);
           expect(env.js.bunVersion).toBe(expectedBun);
-          expect(env.js.pm).toEqual(expectedPm);
+          expect(env.js.pm).toMatchObject(expectedPm);
           expect(env.js.runtime).toBe(expectedRuntime);
         } finally {
           process.chdir(originalCwd);
