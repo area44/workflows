@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  build-test:
-    name: Build and test
+  quality-test:
+    name: Quality and unit tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,15 +17,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve environment
-        shell: bash
-        id: resolve_environment
-        run: node "dist/resolve-environment.mjs"
-
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: ${{ steps.resolve_environment.outputs.node-version }}
+          node-version: "24.x"
           cache: "npm"
           cache-dependency-path: "package-lock.json"
 
@@ -46,8 +41,37 @@ jobs:
       - name: Check formatting
         run: npm run format -- --check
 
-      - name: Build project
+      - name: Run unit tests
+        run: npm test
+
+  check-dist:
+    name: Verify committed dist consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: "package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project artifacts
         run: npm run build
 
-      - name: Run tests
-        run: npm test
+      - name: Check dist consistency
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain dist/)" ]; then
+            echo "Error: Tracked or untracked files under dist/ are out of sync with src/. Run 'npm run build' and commit changes." >&2
+            echo "Status of dist/:" >&2
+            git status --porcelain dist/ >&2
+            echo "Diff of tracked dist/ files:" >&2
+            git diff dist/ >&2
+            exit 1
+          fi

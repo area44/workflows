@@ -227,6 +227,14 @@ export function validateBuildOutput(
 
 function handleBuildFailure(message: string, exitCode: number, exitOnFailure: boolean): number {
   core.setFailed(message);
+  const runnerTemp = process.env.RUNNER_TEMP;
+  if (runnerTemp) {
+    try {
+      fs.writeFileSync(path.join(runnerTemp, "pages_build_error.log"), message, "utf8");
+    } catch {
+      // Ignore write errors in restricted or non-standard environments
+    }
+  }
   if (exitOnFailure) {
     process.exit(exitCode);
   }

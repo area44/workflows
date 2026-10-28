@@ -1025,6 +1025,10 @@ describe("autofix", () => {
       expect(autofixCiStep).toBeDefined();
       expect(autofixCiStep.if).toContain("github.workflow == 'autofix.ci'");
       expect(autofixCiStep.if).toContain("steps.run_autofix.outcome == 'success'");
+
+      // Verify referenced dist entrypoint files exist on disk
+      expect(fs.existsSync(path.resolve(originalCwd, "dist/resolve-environment.mjs"))).toBe(true);
+      expect(fs.existsSync(path.resolve(originalCwd, "dist/autofix.mjs"))).toBe(true);
     });
 
     it("should succeed when both JS and Python workflows succeed in a mixed project", async () => {
