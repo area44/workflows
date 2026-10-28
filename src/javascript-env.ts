@@ -130,13 +130,13 @@ export interface ResolvedJsEnvironment {
 function validateCommaStructure(trimmed: string): void {
   if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
     throw new Error(
-      'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+      'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
     );
   }
 }
 
 interface ParsedPart {
-  type: "node" | "bun" | "both";
+  type: "node" | "bun";
   version?: string;
 }
 
@@ -144,7 +144,7 @@ function parseSingleRuntimePart(rawPart: string): ParsedPart {
   const part = rawPart.toLowerCase();
 
   if (part === "both") {
-    return { type: "both" };
+    throw new Error("Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.");
   }
   if (part === "node") {
     return { type: "node" };
@@ -161,14 +161,14 @@ function parseSingleRuntimePart(rawPart: string): ParsedPart {
     const ver = part.slice(prefixLen);
     if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
       throw new Error(
-        'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+        'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
       );
     }
     return { type: isNodeSpec ? "node" : "bun", version: ver };
   }
 
   throw new Error(
-    'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+    'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
   );
 }
 
@@ -193,16 +193,13 @@ export function parseEnvironmentInputs(
 
   let hasNode = false;
   let hasBun = false;
-  const counts = { node: 0, bun: 0, both: 0 };
+  const counts = { node: 0, bun: 0 };
 
   for (const rawPart of parts) {
     const parsed = parseSingleRuntimePart(rawPart);
     counts[parsed.type]++;
 
-    if (parsed.type === "both") {
-      hasNode = true;
-      hasBun = true;
-    } else if (parsed.type === "node") {
+    if (parsed.type === "node") {
       hasNode = true;
       if (!specifiedRuntime) specifiedRuntime = "node";
       if (parsed.version) nodeVersion = parsed.version;
@@ -218,9 +215,6 @@ export function parseEnvironmentInputs(
   }
   if (counts.bun > 1) {
     throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "bun".');
-  }
-  if (counts.both > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "both".');
   }
 
   return {

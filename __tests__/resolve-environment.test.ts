@@ -634,15 +634,15 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("resolves multi-runtime input 'both' with version files independently", () => {
-      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-both-vers-"));
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "both-app" }));
+    it("resolves multi-runtime input 'node, bun' with version files independently", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-multi-vers-"));
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "multi-app" }));
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
       fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
 
       process.chdir(tempDir);
       try {
-        const env = resolveEnvironment("both");
+        const env = resolveEnvironment("node, bun");
         writeOutput(env);
 
         expect(env.js.nodeVersion).toBe("20.10.0");
@@ -653,6 +653,15 @@ describe("resolve-environment", () => {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("rejects runtime input 'both' explicitly with an actionable error", () => {
+      expect(() => resolveEnvironment("both")).toThrow(
+        "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+      );
+      expect(() => resolveEnvironment("BOTH")).toThrow(
+        "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+      );
     });
 
     it("resolves runtime=node with packageManager bun@1.4 by setting up both Node and Bun", () => {

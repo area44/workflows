@@ -201,14 +201,16 @@ describe("javascript-env", () => {
         });
       });
 
-      it("should parse both keyword", () => {
-        expect(parseEnvironmentInputs("both")).toEqual({
-          specifiedRuntime: undefined,
-          nodeVersion: undefined,
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: true,
-        });
+      it("should parse both keyword by rejecting it with a clear error", () => {
+        expect(() => parseEnvironmentInputs("both")).toThrow(
+          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+        );
+        expect(() => parseEnvironmentInputs("BOTH")).toThrow(
+          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+        );
+        expect(() => parseEnvironmentInputs(" Both ")).toThrow(
+          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+        );
       });
 
       it("should support mixed-case and whitespace-padded inputs", () => {
@@ -227,14 +229,6 @@ describe("javascript-env", () => {
           hasNode: true,
           hasBun: true,
         });
-
-        expect(parseEnvironmentInputs("BOTH")).toEqual({
-          specifiedRuntime: undefined,
-          nodeVersion: undefined,
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: true,
-        });
       });
     });
 
@@ -250,7 +244,7 @@ describe("javascript-env", () => {
         expect(err).toBeDefined();
         expect(err?.message).not.toContain(rawInput);
         expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
         );
       });
 
@@ -265,7 +259,7 @@ describe("javascript-env", () => {
         expect(err).toBeDefined();
         expect(err?.message).not.toContain(rawInput);
         expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
         );
       });
 
@@ -281,7 +275,7 @@ describe("javascript-env", () => {
         expect(err?.message).not.toContain("token_12345");
         expect(err?.message).not.toContain(rawInputWithToken);
         expect(err?.message).toBe(
-          'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+          'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
         );
       });
 
@@ -297,7 +291,7 @@ describe("javascript-env", () => {
         expect(err?.message).not.toContain("secret_token");
         expect(err?.message).not.toContain(rawInput);
         expect(err?.message).toBe(
-          'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+          'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
         );
       });
 
@@ -316,9 +310,6 @@ describe("javascript-env", () => {
 
         expect(() => parseEnvironmentInputs("bun@1.2, bun@1.4")).toThrow(
           'Invalid runtime input: duplicate or conflicting specifiers for "bun".',
-        );
-        expect(() => parseEnvironmentInputs("both, both")).toThrow(
-          'Invalid runtime input: duplicate or conflicting specifiers for "both".',
         );
       });
 
@@ -348,7 +339,7 @@ describe("javascript-env", () => {
         expect(caughtError?.message).not.toContain(sensitiveToken);
         expect(caughtError?.message).not.toContain("invalid_specifier");
         expect(caughtError?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
+          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
         );
       });
     });
@@ -560,8 +551,8 @@ describe("javascript-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
     });
 
-    it("regression test: runtime selection 'both' should defer to .bun-version and devEngines.bun", () => {
-      const parsed = parseEnvironmentInputs("both");
+    it("regression test: runtime selection 'node, bun' should defer to .bun-version and devEngines.bun", () => {
+      const parsed = parseEnvironmentInputs("node, bun");
       expect(parsed.bunVersion).toBeUndefined();
 
       const project = {
