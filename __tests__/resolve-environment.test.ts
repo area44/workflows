@@ -180,8 +180,7 @@ describe("resolve-environment", () => {
     );
 
     it("should validate legitimate resolver output for standalone Python source without manifest", () => {
-      const tempDir = path.join(fixturesDir, "standalone-pm-validation-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "standalone-pm-val-"));
       fs.writeFileSync(path.join(tempDir, "script.py"), "print('hello')\n");
 
       process.chdir(tempDir);
@@ -390,8 +389,7 @@ describe("resolve-environment", () => {
 
   describe("CI Workspace Setup and Restoration Safety", () => {
     it("should simulate setup backup safety and prevent data loss when backup destination already exists", () => {
-      const tempDir = path.join(fixturesDir, "backup-safety-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "backup-safety-"));
       fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig"}');
       fs.writeFileSync(path.join(tempDir, "package.json.test_bak_123"), '{"name":"existing-bak"}');
 
@@ -417,8 +415,7 @@ describe("resolve-environment", () => {
     });
 
     it("should restore original files cleanly if setup fails midway", () => {
-      const tempDir = path.join(fixturesDir, "mid-setup-failure-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "mid-setup-fail-"));
       fs.writeFileSync(path.join(tempDir, "package.json"), '{"name":"orig-pkg"}');
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'orig-py'\n");
 
@@ -455,10 +452,46 @@ describe("resolve-environment", () => {
     });
   });
 
-  describe("Cross-Language Integration Scenarios", () => {
-    it("should handle JavaScript-only projects correctly", () => {
-      const tempDir = path.join(fixturesDir, "js-only-integration-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+  describe("Scenario Matrix Verification", () => {
+    it("regression test: Python-only project with stray .nvmrc and .bun-version files", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-py-stray-js-"));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "ruff==0.4.2\n");
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.hasPythonSource).toBe(true);
+
+        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports JavaScript outputs when only a JavaScript project is detected", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-js-only-"));
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "js-app" }));
 
       process.chdir(tempDir);
@@ -468,23 +501,35 @@ describe("resolve-environment", () => {
 
         expect(env.js.hasJsProject).toBe(true);
         expect(env.python.hasPythonSource).toBe(false);
+
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
+        expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", DEFAULT_NPM_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should handle Python-only projects correctly", () => {
-      const tempDir = path.join(fixturesDir, "python-only-integration-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+    it("reports Python outputs when only a Python project is detected", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-py-only-"));
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'py-app'\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "ruff==0.4.2\n");
 
       process.chdir(tempDir);
       try {
@@ -493,27 +538,36 @@ describe("resolve-environment", () => {
 
         expect(env.js.hasJsProject).toBe(false);
         expect(env.python.hasPythonSource).toBe(true);
+
+        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("should handle mixed-language (JS + Python) projects correctly", () => {
-      const tempDir = path.join(fixturesDir, "mixed-lang-integration-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
+    it("resolves both environments independently when both projects are present", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-both-"));
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "mixed-app", packageManager: "pnpm@9.0.0" }),
+        JSON.stringify({ name: "dual-app", packageManager: "pnpm@9.0.0" }),
       );
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'mixed-app'\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'dual-app'\n");
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "");
 
@@ -524,8 +578,302 @@ describe("resolve-environment", () => {
 
         expect(env.js.hasJsProject).toBe(true);
         expect(env.python.hasPythonSource).toBe(true);
+
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("uses default configuration when neither project is detected", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-neither-"));
+      fs.writeFileSync(path.join(tempDir, "README.md"), "# Empty Repo\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.hasPythonSource).toBe(false);
+
+        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
+        expect(core.info).toHaveBeenCalledWith(
+          "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
+        );
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Node.js and npm outputs correctly", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-node-npm-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "node-npm-app", packageManager: "npm@12.0.0" }),
+      );
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("node");
+        expect(env.js.pm).toMatchObject({ name: "npm", version: "12.0.0" });
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
+        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@12.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.0.0");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Node.js and pnpm outputs correctly", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-node-pnpm-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "node-pnpm-app", packageManager: "pnpm@9.5.0" }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("node");
+        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.5.0" });
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
+        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.5.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Bun and its package manager correctly", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-bun-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "bun-app", packageManager: "bun@1.4.0" }),
+      );
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("bun");
+        expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4.0" });
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Bun.");
+        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4.0");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves latest when Bun is configured through packageManager", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-bun-latest-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "bun-latest-app", packageManager: "bun@latest" }),
+      );
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("bun");
+        expect(env.js.bunVersion).toBe("latest");
+        expect(env.js.pm).toMatchObject({ name: "bun", version: "latest" });
+        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
+        expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Python and uv outputs correctly", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-py-uv-"));
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'py-uv-app'\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.python.pmInfo?.name).toBe("uv");
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Python and pip outputs correctly", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-py-pip-"));
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests>=2.0.0\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.python.pmInfo?.name).toBe("pip");
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps explicit input precedence over project configuration", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-explicit-input-"));
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "explicit-app" }));
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment("node@22");
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("node");
+        expect(env.js.nodeVersion).toBe("22");
+        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "22");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("uses default versions when version declarations are missing", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-missing-vers-"));
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "no-ver-app" }));
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hi')\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.nodeVersion).toBe(DEFAULT_NODE_VERSION);
+        expect(env.python.pythonVersion).toBe("3.12");
+
+        expect(core.info).toHaveBeenCalledWith(
+          `Node.js version not specified; using default: ${DEFAULT_NODE_VERSION}`,
+        );
+        expect(core.info).toHaveBeenCalledWith(
+          `Python version not specified; using default: 3.12`,
+        );
+
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves validation and failure behavior for malformed project configuration", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-malformed-config-"));
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "uv.lock"), ""); // missing pyproject.toml
+
+      process.chdir(tempDir);
+      try {
+        expect(() => resolveEnvironment()).toThrow(
+          /Invalid Python project configuration: 'uv.lock' was detected without a valid 'pyproject.toml'/,
+        );
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("resolves Python environment without JavaScript project from nested services/py-svc directory", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-workspace-nested-py-"));
+      fs.mkdirSync(path.join(tempDir, "packages/js-pkg"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "services/py-svc"), { recursive: true });
+
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[tool.uv.workspace]\nmembers = ["services/*"]\n',
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "packages/js-pkg/package.json"),
+        JSON.stringify({ name: "js-nested-pkg" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "services/py-svc/pyproject.toml"),
+        "[project]\nname = 'py-svc'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "services/py-svc/service.py"), "print('svc')\n");
+
+      process.chdir(path.join(tempDir, "services/py-svc"));
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.pmInfo?.name).toBe("uv");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
@@ -535,22 +883,41 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should handle projects with neither JS nor Python correctly", () => {
-      const tempDir = path.join(fixturesDir, "neither-lang-integration-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "README.md"), "# Hello\n");
+    it("resolves JavaScript project from nested packages/js-pkg directory without detecting Python", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-workspace-nested-js-"));
+      fs.mkdirSync(path.join(tempDir, "packages/js-pkg"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "services/py-svc"), { recursive: true });
 
-      process.chdir(tempDir);
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[tool.uv.workspace]\nmembers = ["services/*"]\n',
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "packages/js-pkg/package.json"),
+        JSON.stringify({ name: "js-nested-pkg", packageManager: "pnpm@9.1.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "services/py-svc/pyproject.toml"),
+        "[project]\nname = 'py-svc'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "services/py-svc/service.py"), "print('svc')\n");
+
+      process.chdir(path.join(tempDir, "packages/js-pkg"));
       try {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(false);
+        expect(env.js.hasJsProject).toBe(true);
+        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.1.0" });
         expect(env.python.hasPythonSource).toBe(false);
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.1.0");
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -575,7 +942,7 @@ describe("resolve-environment", () => {
         expect(run1).toEqual(run2);
         expect(run1.js.nodeVersion).toBe("22.1.0");
         expect(run1.js.bunVersion).toBe("");
-        expect(run1.js.pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+        expect(run1.js.pm).toMatchObject({ name: "npm", version: DEFAULT_NPM_VERSION });
         expect(run1.js.runtime).toBe("node");
         expect(run1.js.toolchain).toBe("vite");
         expect(run1.python.hasPythonSource).toBe(false);
@@ -904,7 +1271,7 @@ describe("resolve-environment", () => {
       const env = resolveEnvironment("node");
 
       expect(env.js.runtime).toBe("node");
-      expect(env.js.pm).toEqual({ name: "bun", version: "1.4" });
+      expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -918,7 +1285,7 @@ describe("resolve-environment", () => {
       const env = resolveEnvironment("bun");
 
       expect(env.js.runtime).toBe("bun");
-      expect(env.js.pm).toEqual({ name: "pnpm", version: "12.15.0" });
+      expect(env.js.pm).toMatchObject({ name: "pnpm", version: "12.15.0" });
       expect(env.js.nodeVersion).toBe("");
       expect(env.js.bunVersion).toBe("1.4");
     });
@@ -1021,7 +1388,7 @@ describe("resolve-environment", () => {
     it.each(cases)(
       "should resolve correct environment for fixture $action/$runtime/$pm/$type",
       ({ action, runtime: rt, pm, type, expectedNode, expectedBun, expectedPm, expectedRuntime }) => {
-        const scenarioPath = path.join(fixturesDir, `res-env-${action}-${rt}-${type}-${Date.now()}`);
+        const scenarioPath = fs.mkdtempSync(path.join(fixturesDir, `res-env-${action}-${rt}-${type}-`));
         createConsumerProject(scenarioPath, { action, runtime: rt, pm, type });
         process.chdir(scenarioPath);
 
@@ -1030,7 +1397,7 @@ describe("resolve-environment", () => {
 
           expect(env.js.nodeVersion).toBe(expectedNode);
           expect(env.js.bunVersion).toBe(expectedBun);
-          expect(env.js.pm).toEqual(expectedPm);
+          expect(env.js.pm).toMatchObject(expectedPm);
           expect(env.js.runtime).toBe(expectedRuntime);
         } finally {
           process.chdir(originalCwd);
@@ -1160,7 +1527,8 @@ describe("resolve-environment", () => {
     });
 
     it("should verify python-version is empty string for python-none fixture output", () => {
-      const tempDir = path.join(fixturesDir, "py-none-" + Date.now()); createConsumerProject(tempDir, { type: "python-none" });
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "py-none-"));
+      createConsumerProject(tempDir, { type: "python-none" });
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
@@ -1171,6 +1539,7 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
       } finally {
         process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
@@ -1221,63 +1590,81 @@ describe("resolve-environment", () => {
 
   describe("run", () => {
     it("should coordinate environment resolution, execute adapters, and write action output on fixture project", () => {
-      const fixturePath = path.join(fixturesDir, "pages-npm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
+      const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-npm-basic-"));
+      createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
-      run();
+      try {
+        run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "24.19.0");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.19.0");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24.19.0");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.19.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixturePath, { recursive: true, force: true });
+      }
     });
 
     it("should resolve bun and set adapter outputs for bun project fixture", () => {
-      const fixturePath = path.join(fixturesDir, "pages-bun-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "bun@1.4", type: "basic" });
+      const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-bun-basic-"));
+      createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "bun@1.4", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-bun-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
-      run();
+      try {
+        run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
-      expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.info).not.toHaveBeenCalledWith("Node.js version not specified, using lts/*");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixturePath, { recursive: true, force: true });
+      }
     });
 
     it("should resolve pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
-      const fixturePath = path.join(fixturesDir, "pages-bun-pnpm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "pnpm@12.15.0", type: "basic" });
+      const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-bun-pnpm-basic-"));
+      createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "pnpm@12.15.0", type: "basic" });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
       process.env.GITHUB_REPOSITORY = "owner/my-pnpm-bun-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
-      run();
+      try {
+        run();
 
-      expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixturePath, { recursive: true, force: true });
+      }
     });
 
     it("should ensure setup-node is false for Python-only project when run() executes", () => {
@@ -1319,31 +1706,55 @@ describe("resolve-environment", () => {
 
   describe("toolchain resolution inputs", () => {
     it("should resolve toolchain to 'vite-plus' when toolchainInput is 'vite-plus'", () => {
-      const fixturePath = path.join(fixturesDir, "pages-npm-basic-" + Date.now()); createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
+      const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-npm-basic-"));
+      createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(fixturePath);
 
-      const resolved = resolveEnvironment("node", "vite-plus");
-      expect(resolved.js.toolchain).toBe("vite-plus");
+      try {
+        const resolved = resolveEnvironment("node", "vite-plus");
+        expect(resolved.js.toolchain).toBe("vite-plus");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixturePath, { recursive: true, force: true });
+      }
     });
 
     it("should resolve toolchain to 'vite' when toolchainInput is 'vite'", () => {
-      const fixturePath = path.join(fixturesDir, "vp-minimal-" + Date.now()); createConsumerProject(fixturePath, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
+      const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "vp-minimal-"));
+      createConsumerProject(fixturePath, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(fixturePath);
 
-      const resolved = resolveEnvironment("node", "vite");
-      expect(resolved.js.toolchain).toBe("vite");
+      try {
+        const resolved = resolveEnvironment("node", "vite");
+        expect(resolved.js.toolchain).toBe("vite");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixturePath, { recursive: true, force: true });
+      }
     });
 
     it("should auto-detect toolchain when toolchainInput is 'auto' or empty", () => {
-      const vpFixture = path.join(fixturesDir, "vp-minimal-auto-" + Date.now()); createConsumerProject(vpFixture, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
+      const vpFixture = fs.mkdtempSync(path.join(fixturesDir, "vp-minimal-auto-"));
+      createConsumerProject(vpFixture, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(vpFixture);
-      const resolvedVp = resolveEnvironment("node", "auto");
-      expect(resolvedVp.js.toolchain).toBe("vite-plus");
+      try {
+        const resolvedVp = resolveEnvironment("node", "auto");
+        expect(resolvedVp.js.toolchain).toBe("vite-plus");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(vpFixture, { recursive: true, force: true });
+      }
 
-      const stdFixture = path.join(fixturesDir, "std-fixture-" + Date.now()); createConsumerProject(stdFixture, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
+      const stdFixture = fs.mkdtempSync(path.join(fixturesDir, "std-fixture-"));
+      createConsumerProject(stdFixture, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(stdFixture);
-      const resolvedStd = resolveEnvironment("node", "");
-      expect(resolvedStd.js.toolchain).toBe("vite");
+      try {
+        const resolvedStd = resolveEnvironment("node", "");
+        expect(resolvedStd.js.toolchain).toBe("vite");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(stdFixture, { recursive: true, force: true });
+      }
     });
 
     it("should throw INVALID_INPUT when toolchainInput is unsupported", () => {

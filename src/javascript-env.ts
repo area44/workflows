@@ -8,6 +8,7 @@ export type SupportedPackageManager = "npm" | "pnpm" | "bun";
 export interface PackageManager {
   name: string;
   version: string;
+  source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
 export interface ParsedInputs {
@@ -102,6 +103,7 @@ export interface JsProjectEnvironment {
 export interface JsPackageManagerInfo {
   name: SupportedPackageManager;
   version: string;
+  source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
 export type Toolchain = "vite" | "vite-plus";
@@ -238,6 +240,50 @@ export function resolveRuntime(parsed: ParsedInputs, pm: PackageManager): "node"
   return "node";
 }
 
+function getNodeVersionFromVersionFiles(project: JsProjectEnvironment): string | undefined {
+  if (project.nvmRcError) {
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.nvmRcError}`);
+    }
+  } else if (project.nvmRcVersion) {
+    if (project.hasPackageJson) {
+      core.info(`Found .nvmrc: ${project.nvmRcVersion}`);
+    }
+    return project.nvmRcVersion;
+  }
+
+  if (project.nodeFileError) {
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.nodeFileError}`);
+    }
+  } else if (project.nodeFileVersion) {
+    if (project.hasPackageJson) {
+      core.info(`Found .node-version: ${project.nodeFileVersion}`);
+    }
+    return project.nodeFileVersion;
+  }
+
+  return undefined;
+}
+
+function getNodeVersionFromPackageJson(project: JsProjectEnvironment): string | undefined {
+  if (project.packageJsonError) {
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.packageJsonError}`);
+    }
+  } else if (project.packageJson) {
+    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "node");
+    if (devVersion) {
+      if (project.hasPackageJson) {
+        core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
+      }
+      return devVersion;
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Version Resolution
  * Resolves Node.js version based on parsed inputs, runtime, and project state.
@@ -256,35 +302,23 @@ export function resolveNodeVersion(
     return "";
   }
 
-  if (project.nvmRcError) {
-    core.warning(`Failed to detect Node.js version: ${project.nvmRcError}`);
-  } else if (project.nvmRcVersion) {
-    core.info(`Found .nvmrc: ${project.nvmRcVersion}`);
-    return project.nvmRcVersion;
+  const fileVer = getNodeVersionFromVersionFiles(project);
+  if (fileVer !== undefined) {
+    return fileVer;
   }
 
-  if (project.nodeFileError) {
-    core.warning(`Failed to detect Node.js version: ${project.nodeFileError}`);
-  } else if (project.nodeFileVersion) {
-    core.info(`Found .node-version: ${project.nodeFileVersion}`);
-    return project.nodeFileVersion;
-  }
-
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect Node.js version: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "node");
-    if (devVersion) {
-      core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
-      return devVersion;
-    }
+  const pkgVer = getNodeVersionFromPackageJson(project);
+  if (pkgVer !== undefined) {
+    return pkgVer;
   }
 
   if (runtime === "bun" || pm.name === "bun") {
     return "";
   }
 
-  core.info(`Node.js version not specified, using ${DEFAULT_NODE_VERSION}`);
+  if (project.hasPackageJson) {
+    core.info(`Node.js version not specified; using default: ${DEFAULT_NODE_VERSION}`);
+  }
   return DEFAULT_NODE_VERSION;
 }
 
@@ -292,34 +326,78 @@ export function resolveNodeVersion(
  * Version Resolution
  * Resolves Bun version based on parsed inputs, package manager, and project state.
  */
+function getBunVersionFromFile(project: JsProjectEnvironment): string | undefined {
+  if (project.bunFileError) {
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
+    }
+  } else if (project.bunFileVersion) {
+    if (project.hasPackageJson) {
+      core.info(`Found .bun-version: ${project.bunFileVersion}`);
+    }
+    return project.bunFileVersion;
+  }
+  return undefined;
+}
+
+function getBunVersionFromDevEngines(project: JsProjectEnvironment): string | undefined {
+  if (project.packageJsonError) {
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
+    }
+  } else if (project.packageJson) {
+    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
+    if (devVersion) {
+      if (project.hasPackageJson) {
+        core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
+      }
+      return devVersion;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Version Resolution
+ * Resolves Bun version based on parsed inputs, package manager, and project state.
+ *
+ * Precedence Contract:
+ * 1. Action Runtime Input (`parsed.bunVersion` e.g. `runtime: "bun@1.4"`)
+ * 2. `.bun-version` version file
+ * 3. Package Manager field in `package.json` (`packageManager: "bun@<ver>"`, e.g. `bun@latest` or `bun@1.2.0`)
+ * 4. Engine requirements in `package.json` (`devEngines.bun`)
+ * 5. Default fallback (`DEFAULT_BUN_VERSION` = "1.4") if Bun runtime / package-manager / lockfile is detected
+ */
 export function resolveBunVersion(
   parsed: ParsedInputs,
   pm: PackageManager,
   project: JsProjectEnvironment,
 ): string {
   if (parsed.bunVersion !== undefined) {
+    if (project.hasPackageJson) {
+      core.info(`Resolved Bun version from input: ${parsed.bunVersion}`);
+    }
     return parsed.bunVersion;
   }
 
-  if (project.bunFileError) {
-    core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
-  } else if (project.bunFileVersion) {
-    core.info(`Found .bun-version: ${project.bunFileVersion}`);
-    return project.bunFileVersion;
+  const fileVer = getBunVersionFromFile(project);
+  if (fileVer !== undefined) {
+    return fileVer;
   }
 
-  if (pm.name === "bun" && pm.version && pm.version !== "latest") {
+  const isExplicitPm =
+    pm.name === "bun" && pm.version && pm.source !== "lockfile" && pm.source !== "default";
+  if (isExplicitPm) {
+    if (project.hasPackageJson) {
+      const srcLabel = pm.source === "devEngines" ? "package.json devEngines" : "packageManager";
+      core.info(`Found Bun version in ${srcLabel}: ${pm.version}`);
+    }
     return pm.version;
   }
 
-  if (project.packageJsonError) {
-    core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
-    if (devVersion) {
-      core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
-      return devVersion;
-    }
+  const devEngineVer = getBunVersionFromDevEngines(project);
+  if (devEngineVer !== undefined) {
+    return devEngineVer;
   }
 
   const hasBunEngine =
@@ -327,6 +405,9 @@ export function resolveBunVersion(
   const isBunDetected = pm.name === "bun" || project.hasBunLock || hasBunEngine;
 
   if (isBunDetected) {
+    if (project.hasPackageJson) {
+      core.info(`Bun version not specified; using default: ${DEFAULT_BUN_VERSION}`);
+    }
     return DEFAULT_BUN_VERSION;
   }
 
@@ -443,8 +524,18 @@ export function resolveJsEnvironment(
 ): ResolvedJsEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectJsProjectEnvironment(cwd);
+
+  if (project.hasPackageJson) {
+    core.info("Detected JavaScript/TypeScript project.");
+  }
+
   const pm = resolveJsPackageManager(project);
   const runtime = resolveRuntime(parsedInputs, pm);
+
+  if (project.hasPackageJson) {
+    core.info(`Resolved runtime: ${runtime === "bun" ? "Bun" : "Node.js"}.`);
+  }
+
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
   const toolchain = resolveToolchain(toolchainInput, project);
 
@@ -600,27 +691,6 @@ function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {
   return undefined;
 }
 
-function parseDevEnginePmNamedSection(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
-  if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
-  for (const pm of ["pnpm", "npm", "bun"] as const) {
-    if (pkg.devEngines[pm] !== undefined && pkg.devEngines[pm] !== null) {
-      const val = pkg.devEngines[pm];
-      const defaultVer = getDefaultJsPackageManagerVersion(pm);
-      if (typeof val === "string") {
-        const trimmed = val.trim();
-        return { name: pm, version: trimmed || defaultVer };
-      } else if (typeof val === "object" && val !== null) {
-        const ver =
-          (val as any).version !== undefined && (val as any).version !== null
-            ? String((val as any).version).trim()
-            : "";
-        return { name: pm, version: ver || defaultVer };
-      }
-    }
-  }
-  return undefined;
-}
-
 function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInfo | undefined {
   if (!pkg.devEngines || typeof pkg.devEngines !== "object") return undefined;
 
@@ -635,7 +705,7 @@ function getDevEnginePackageManager(pkg: JsPackageManifest): JsPackageManagerInf
     }
   }
 
-  return parseDevEnginePmNamedSection(pkg);
+  return undefined;
 }
 
 function parseDevEngineRuntimeString(
@@ -792,34 +862,49 @@ export function getDevEngineRuntimeVersion(
   );
 }
 
-export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
+function resolvePmFromPackageJson(project: JsProjectEnvironment): JsPackageManagerInfo | undefined {
   if (project.packageJsonError) {
-    core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
-  } else if (project.packageJson) {
-    const pkg = project.packageJson;
-    if (pkg.packageManager && typeof pkg.packageManager === "string") {
-      const trimmed = pkg.packageManager.trim();
-      const atIdx = trimmed.indexOf("@");
-      const rawName = (atIdx !== -1 ? trimmed.slice(0, atIdx) : trimmed).trim();
-      const rawVersion = (atIdx !== -1 ? trimmed.slice(atIdx + 1) : "").trim();
-      const name = rawName.toLowerCase();
-      if (!isSupportedPackageManager(name)) {
-        throw new Error(
-          `Unsupported package manager '${rawName}'. Supported package managers are npm, pnpm, and bun.`,
-        );
-      }
-      const pmVersion = rawVersion || getDefaultJsPackageManagerVersion(name);
-      core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
-      return { name, version: pmVersion };
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
     }
-
-    const devPm = getDevEnginePackageManager(pkg);
-    if (devPm) {
-      core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
-      return devPm;
-    }
+    return undefined;
   }
 
+  if (!project.packageJson) {
+    return undefined;
+  }
+
+  const pkg = project.packageJson;
+  if (pkg.packageManager && typeof pkg.packageManager === "string") {
+    const trimmed = pkg.packageManager.trim();
+    const atIdx = trimmed.indexOf("@");
+    const rawName = (atIdx !== -1 ? trimmed.slice(0, atIdx) : trimmed).trim();
+    const rawVersion = (atIdx !== -1 ? trimmed.slice(atIdx + 1) : "").trim();
+    const name = rawName.toLowerCase();
+    if (!isSupportedPackageManager(name)) {
+      throw new Error(
+        `Unsupported package manager '${rawName}'. Supported package managers are npm, pnpm, and bun.`,
+      );
+    }
+    const pmVersion = rawVersion || getDefaultJsPackageManagerVersion(name);
+    if (project.hasPackageJson) {
+      core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
+    }
+    return { name, version: pmVersion, source: "packageManager" };
+  }
+
+  const devPm = getDevEnginePackageManager(pkg);
+  if (devPm) {
+    if (project.hasPackageJson) {
+      core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
+    }
+    return { ...devPm, source: "devEngines" };
+  }
+
+  return undefined;
+}
+
+function resolvePmFromLockfiles(project: JsProjectEnvironment): JsPackageManagerInfo | undefined {
   const detectedLocks: Array<{ name: SupportedPackageManager; file: string; version: string }> = [];
   if (project.hasPnpmLock)
     detectedLocks.push({ name: "pnpm", file: "pnpm-lock.yaml", version: DEFAULT_PNPM_VERSION });
@@ -828,20 +913,41 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   if (project.hasBunLock)
     detectedLocks.push({ name: "bun", file: "bun lockfile", version: DEFAULT_BUN_VERSION });
 
-  if (detectedLocks.length > 0) {
-    if (detectedLocks.length > 1) {
-      const fileList = detectedLocks.map((l) => l.file).join(", ");
+  if (detectedLocks.length === 0) {
+    return undefined;
+  }
+
+  if (detectedLocks.length > 1) {
+    const fileList = detectedLocks.map((l) => l.file).join(", ");
+    if (project.hasPackageJson) {
       core.warning(
         `Multiple conflicting lockfiles found (${fileList}). Selecting '${detectedLocks[0].file}' (${detectedLocks[0].name}) based on priority precedence.`,
       );
     }
-    const selected = detectedLocks[0];
-    core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
-    return { name: selected.name, version: selected.version };
   }
 
-  core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);
-  return { name: "npm", version: DEFAULT_NPM_VERSION };
+  const selected = detectedLocks[0];
+  if (project.hasPackageJson) {
+    core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
+  }
+  return { name: selected.name, version: selected.version, source: "lockfile" };
+}
+
+export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
+  const pkgPm = resolvePmFromPackageJson(project);
+  if (pkgPm) {
+    return pkgPm;
+  }
+
+  const lockPm = resolvePmFromLockfiles(project);
+  if (lockPm) {
+    return lockPm;
+  }
+
+  if (project.hasPackageJson) {
+    core.info(`Package manager not specified; using default: npm@${DEFAULT_NPM_VERSION}`);
+  }
+  return { name: "npm", version: DEFAULT_NPM_VERSION, source: "default" };
 }
 
 export function getJsInstallationPlan(

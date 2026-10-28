@@ -61,7 +61,7 @@ describe("Consumer Project Module Integration Suite", () => {
 
       // JS Environment verification
       expect(env.js.hasJsProject).toBe(true);
-      expect(env.js.pm).toEqual({ name: "npm", version: "10.8.2" });
+      expect(env.js.pm).toMatchObject({ name: "npm", version: "10.8.2" });
       expect(env.js.runtime).toBe("node");
       expect(env.js.toolchain).toBe("vite");
 

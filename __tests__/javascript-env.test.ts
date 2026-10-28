@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -34,11 +35,7 @@ describe("javascript-env", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    tempDir = path.join(
-      originalCwd,
-      "__tests__/fixtures/temp-js-env-" + Math.random().toString(36).substring(2, 9),
-    );
-    fs.mkdirSync(tempDir, { recursive: true });
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "temp-js-env-"));
     process.chdir(tempDir);
   });
 
@@ -59,10 +56,40 @@ describe("javascript-env", () => {
 
       const res = resolveJsEnvironment("node", "vite", tempDir);
       expect(res.hasJsProject).toBe(true);
-      expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0", source: "packageManager" });
       expect(res.runtime).toBe("node");
       expect(res.nodeVersion).toBe("20.10.0");
       expect(res.toolchain).toBe("vite");
+
+      expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.10.0");
+    });
+
+    it("should suppress JS detection logs when package.json is absent", () => {
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(false);
+      expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Package manager not specified"),
+      );
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Node.js version not specified"),
+      );
+    });
+
+    it("should suppress JS warnings and logs in Python-only project with stray .bun-version or .nvmrc", () => {
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0");
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0");
+
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(false);
+      expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
+      expect(core.warning).not.toHaveBeenCalled();
     });
   });
 
@@ -382,6 +409,158 @@ describe("javascript-env", () => {
         DEFAULT_BUN_VERSION,
       );
     });
+
+    it("should preserve 'latest' when packageManager specifies bun@latest and log Found Bun version in packageManager: latest", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "latest" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("latest");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
+    });
+
+    it("should respect concrete Bun version in packageManager and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "1.2.0", source: "packageManager" as const };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.2.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: 1.2.0");
+    });
+
+    it("regression test: should prefer devEngines.bun version over lockfile-derived default Bun version when packageManager is absent", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ devEngines: { bun: "1.3.0" } }),
+      );
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+
+      expect(pm.name).toBe("bun");
+      expect(pm.source).toBe("lockfile");
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.3.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
+    });
+
+    it("should respect .bun-version file and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.0",
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.0");
+    });
+
+    it("should respect Bun version in package.json devEngines and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.3.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
+    });
+
+    it("should prioritize explicit action input for Bun version over project config", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "bun", version: "1.2.0" };
+
+      const ver = resolveBunVersion({ bunVersion: "1.4.1" }, pm, project);
+      expect(ver).toBe("1.4.1");
+      expect(core.info).toHaveBeenCalledWith("Resolved Bun version from input: 1.4.1");
+    });
+
+    it("should prioritize .bun-version file over packageManager field (including bun@latest) and devEngines", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.0",
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "latest" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.0");
+    });
+
+    it("should prioritize packageManager 'bun@latest' over concrete devEngines.bun version", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "latest" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("latest");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
+    });
+
+    it("should prioritize packageManager concrete version over devEngines.bun version", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "1.2.0" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.2.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: 1.2.0");
+    });
+
+    it("should not emit Bun fallback logs for a project without Bun detection", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("");
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Bun version"));
+    });
   });
 
   describe("sanitizePackageManager", () => {
@@ -475,7 +654,27 @@ describe("javascript-env", () => {
       );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
+      expect(pm).toEqual({ name: "pnpm", version: "9.5.0", source: "packageManager" });
+    });
+
+    it("should preserve 'latest' version in packageManager field for pnpm and npm", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@latest" }),
+      );
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: "latest", source: "packageManager" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@latest");
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "npm@latest" }),
+      );
+      const projectNpm = inspectJsProjectEnvironment(tempDir);
+      const pmNpm = resolveJsPackageManager(projectNpm);
+      expect(pmNpm).toEqual({ name: "npm", version: "latest", source: "packageManager" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@latest");
     });
 
     it("should trim whitespace and normalize uppercase in packageManager field", () => {
@@ -485,7 +684,7 @@ describe("javascript-env", () => {
       );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
+      expect(pm).toEqual({ name: "pnpm", version: "9.5.0", source: "packageManager" });
     });
 
     it("should resolve packageManager from devEngines if packageManager field is missing", () => {
@@ -495,7 +694,7 @@ describe("javascript-env", () => {
       );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "bun", version: "1.2.0" });
+      expect(pm).toEqual({ name: "bun", version: "1.2.0", source: "devEngines" });
     });
 
     it("should trim whitespace and normalize uppercase in devEngines.packageManager", () => {
@@ -505,17 +704,18 @@ describe("javascript-env", () => {
       );
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(pm).toEqual({ name: "pnpm", version: "9.1.0", source: "devEngines" });
     });
 
     it("should resolve fallback package manager from lockfile when package.json does not specify packageManager", () => {
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION, source: "lockfile" });
     });
 
     it("should log a core warning when multiple conflicting lockfiles exist in workspace while using deterministic precedence", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
@@ -523,7 +723,7 @@ describe("javascript-env", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
 
-      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION });
+      expect(pm).toEqual({ name: "pnpm", version: DEFAULT_PNPM_VERSION, source: "lockfile" });
       expect(core.warning).toHaveBeenCalledWith(
         "Multiple conflicting lockfiles found (pnpm-lock.yaml, package-lock.json, bun lockfile). Selecting 'pnpm-lock.yaml' (pnpm) based on priority precedence.",
       );
@@ -611,7 +811,7 @@ describe("javascript-env", () => {
       const pm = resolveJsPackageManager(project);
 
       // Should pick explicit packageManager field, not lockfile or devEngines
-      expect(pm).toEqual({ name: "npm", version: "11.0.0" });
+      expect(pm).toEqual({ name: "npm", version: "11.0.0", source: "packageManager" });
     });
 
     it("should enforce devEngines.packageManager precedence over lockfiles when packageManager field is absent", () => {
@@ -627,13 +827,13 @@ describe("javascript-env", () => {
       const pm = resolveJsPackageManager(project);
 
       // Should pick devEngines.packageManager over lockfile
-      expect(pm).toEqual({ name: "bun", version: "1.4.0" });
+      expect(pm).toEqual({ name: "bun", version: "1.4.0", source: "devEngines" });
     });
 
     it("should default to npm if no packageManager or lockfile is found", () => {
       const project = inspectJsProjectEnvironment(tempDir);
       const pm = resolveJsPackageManager(project);
-      expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION });
+      expect(pm).toEqual({ name: "npm", version: DEFAULT_NPM_VERSION, source: "default" });
     });
 
     it("should throw an Error if an unsupported package manager is specified in packageManager field", () => {
