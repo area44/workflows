@@ -1,10 +1,10 @@
 # area44/autofix
 
-Automatically update code with repository-configured scripts and [autofix.ci](https://autofix.ci/).
+Automatically update code with repository-configured scripts, Ruff, and autofix.ci.
 
 ## Action Purpose
 
-The `autofix` composite action automates code formatting, linting, and fixes across JavaScript, TypeScript, and Python codebases. It detects project configurations, provisions appropriate runtimes and package managers, executes repository scripts and Ruff, and integrates with `autofix.ci` to commit fixes back to pull requests.
+The `autofix` composite action automatically updates code with repository-configured scripts, Ruff, and autofix.ci across the AREA44 ecosystem. It detects project configurations, provisions appropriate runtimes and package managers, executes repository scripts and Ruff, and integrates with `autofix.ci` to commit fixes back to pull requests.
 
 ## Features and Supported Behavior
 
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run autofix
         uses: area44/workflows/autofix@main

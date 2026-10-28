@@ -53,7 +53,7 @@ Maintainers and automated CI pipelines enforce the following quality gates:
 | ------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
 | Dependency Installation   | `npm ci`                                              | Installs exact locked workspace dependencies.                       |
 | Lint                      | `npm run lint` (`vp lint`)                            | Validates code style and lint rules via Vite+.                      |
-| Formatting Validation     | `npm run format -- --check` (`vp fmt --check`)        | Checks code formatting without mutating source files.               |
+| Formatting Validation     | `npm run format --check` (`vp fmt --check`)           | Checks code formatting without mutating source files.               |
 | Build                     | `npm run build` (`vp pack`)                           | Bundles TypeScript source code into `dist/` artifacts.              |
 | Unit & Integration Tests  | `npm test` (`vp test`)                                | Executes unit and scenario factory test suites via Vitest.          |
 | Action Integration Matrix | GitHub Actions (`.github/workflows/test-actions.yml`) | Tests `pages` and `autofix` composite actions in live runner steps. |
@@ -72,4 +72,4 @@ This repository uses `@changesets/cli` to automate package versioning, changelog
 - **[Repository README](../README.md)**: Main project overview and action API summary.
 - **[Error Handling Architecture](./errors.md)**: Native JavaScript error boundaries and failure logging.
 - **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
-- **[Integration Testing Guide](./integration-testing.md)**: Scenario factory, unit testing, and integration CI matrix.
+- **[Maintenance & Repository Health](./maintenance.md)**: Source files, build pipeline, and quality gates.
