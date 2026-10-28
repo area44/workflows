@@ -456,7 +456,7 @@ describe("resolve-environment", () => {
   });
 
   describe("Scenario Matrix Verification", () => {
-    it("Scenario 1: JavaScript/TypeScript only - Report JS detection and skip Python setup", () => {
+    it("reports JavaScript outputs when only a JavaScript project is detected", () => {
       const tempDir = path.join(fixturesDir, "matrix-js-only-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "js-app" }));
@@ -493,7 +493,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("Scenario 2: Python only - Report Python detection and skip Node.js/Bun/pnpm setup", () => {
+    it("reports Python outputs when only a Python project is detected", () => {
       const tempDir = path.join(fixturesDir, "matrix-py-only-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -528,7 +528,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("Scenario 3: Both environments - Report both independently and configure both", () => {
+    it("resolves both environments independently when both projects are present", () => {
       const tempDir = path.join(fixturesDir, "matrix-both-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(
@@ -567,7 +567,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("Scenario 4: Neither environment - Report neither detected and use defaults without activating setup", () => {
+    it("uses default configuration when neither project is detected", () => {
       const tempDir = path.join(fixturesDir, "matrix-neither-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "README.md"), "# Empty Repo\n");
@@ -603,7 +603,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("Scenario 5: Node.js with npm - Report Node.js and npm correctly", () => {
+    it("reports Node.js and npm outputs correctly", () => {
       const tempDir = path.join(fixturesDir, "matrix-node-npm-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(
@@ -614,18 +614,22 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.js.runtime).toBe("node");
         expect(env.js.pm).toEqual({ name: "npm", version: "12.0.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@12.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.0.0");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 6: Node.js with pnpm - Report Node.js and pnpm correctly", () => {
+    it("reports Node.js and pnpm outputs correctly", () => {
       const tempDir = path.join(fixturesDir, "matrix-node-pnpm-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(
@@ -637,18 +641,22 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.js.runtime).toBe("node");
         expect(env.js.pm).toEqual({ name: "pnpm", version: "9.5.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.5.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 7: Bun project - Report Bun and its package manager correctly", () => {
+    it("reports Bun and its package manager correctly", () => {
       const tempDir = path.join(fixturesDir, "matrix-bun-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(
@@ -660,18 +668,49 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.js.runtime).toBe("bun");
         expect(env.js.pm).toEqual({ name: "bun", version: "1.4.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Bun.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4.0");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4.0");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 8: Python with uv - Report Python and uv correctly", () => {
+    it("preserves latest when Bun is configured through packageManager", () => {
+      const tempDir = path.join(fixturesDir, "matrix-bun-latest-" + Date.now());
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "bun-latest-app", packageManager: "bun@latest" }),
+      );
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.runtime).toBe("bun");
+        expect(env.js.bunVersion).toBe("latest");
+        expect(env.js.pm).toEqual({ name: "bun", version: "latest" });
+        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
+        expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("reports Python and uv outputs correctly", () => {
       const tempDir = path.join(fixturesDir, "matrix-py-uv-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
@@ -681,17 +720,21 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.python.hasPythonSource).toBe(true);
         expect(env.python.pmInfo?.name).toBe("uv");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 9: Python with pip - Report Python and pip correctly", () => {
+    it("reports Python and pip outputs correctly", () => {
       const tempDir = path.join(fixturesDir, "matrix-py-pip-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
@@ -700,17 +743,21 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.python.hasPythonSource).toBe(true);
         expect(env.python.pmInfo?.name).toBe("pip");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 10: Explicit runtime or version input - Preserve input precedence and report configuration", () => {
+    it("keeps explicit input precedence over project configuration", () => {
       const tempDir = path.join(fixturesDir, "matrix-explicit-input-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "explicit-app" }));
@@ -718,16 +765,19 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment("node@22");
+        writeOutput(env);
+
         expect(env.js.runtime).toBe("node");
         expect(env.js.nodeVersion).toBe("22");
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "22");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 11: Missing version declarations - Distinguish defaults from detected values", () => {
+    it("uses default versions when version declarations are missing", () => {
       const tempDir = path.join(fixturesDir, "matrix-missing-vers-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "no-ver-app" }));
@@ -736,6 +786,8 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.js.nodeVersion).toBe(DEFAULT_NODE_VERSION);
         expect(env.python.pythonVersion).toBe("3.12");
 
@@ -745,13 +797,16 @@ describe("resolve-environment", () => {
         expect(core.info).toHaveBeenCalledWith(
           `Python version not specified; using default: 3.12`,
         );
+
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
 
-    it("Scenario 12: Malformed project configuration - Preserve validation and failure behavior", () => {
+    it("preserves validation and failure behavior for malformed project configuration", () => {
       const tempDir = path.join(fixturesDir, "matrix-malformed-config-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");

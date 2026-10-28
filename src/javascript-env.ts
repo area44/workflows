@@ -338,7 +338,7 @@ export function resolveBunVersion(
     return fileVer;
   }
 
-  if (pm.name === "bun" && pm.version && pm.version !== "latest") {
+  if (pm.name === "bun" && pm.version) {
     if (project.hasPackageJson) {
       core.info(`Found Bun version in packageManager: ${pm.version}`);
     }
@@ -356,11 +356,7 @@ export function resolveBunVersion(
 
   if (isBunDetected) {
     if (project.hasPackageJson) {
-      if (pm.name === "bun" && pm.version === "latest") {
-        core.info(`Bun version specified as latest; using default: ${DEFAULT_BUN_VERSION}`);
-      } else {
-        core.info(`Bun version not specified; using default: ${DEFAULT_BUN_VERSION}`);
-      }
+      core.info(`Bun version not specified; using default: ${DEFAULT_BUN_VERSION}`);
     }
     return DEFAULT_BUN_VERSION;
   }

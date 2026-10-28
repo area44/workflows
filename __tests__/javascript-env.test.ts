@@ -400,7 +400,7 @@ describe("javascript-env", () => {
       );
     });
 
-    it("should log 'Bun version specified as latest; using default: 1.4' when packageManager specifies bun@latest", () => {
+    it("should preserve 'latest' when packageManager specifies bun@latest and log Found Bun version in packageManager: latest", () => {
       const project = {
         hasPackageJson: true,
         hasPnpmLock: false,
@@ -410,10 +410,8 @@ describe("javascript-env", () => {
       const pm = { name: "bun", version: "latest" };
 
       const ver = resolveBunVersion({}, pm, project);
-      expect(ver).toBe(DEFAULT_BUN_VERSION);
-      expect(core.info).toHaveBeenCalledWith(
-        `Bun version specified as latest; using default: ${DEFAULT_BUN_VERSION}`,
-      );
+      expect(ver).toBe("latest");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
     });
 
     it("should respect concrete Bun version in packageManager and log it", () => {
