@@ -1,13 +1,17 @@
-# Consumer Integration Testing & Scenario Factory Guide
+# Integration Testing & Scenario Factory Guide
 
-This document explains the purpose, architecture, scenario definitions, isolated workspace layout, and execution of integration testing for `area44/workflows` using dynamically generated consumer project scenarios.
+This document defines the integration testing architecture, scenario factory design, isolated workspace layout, local test execution, and GitHub Actions CI matrix verification across `@area44/workflows`.
+
+## Purpose and Scope
+
+This guide details how `@area44/workflows` verifies composite action behavior (`pages` and `autofix`) and environment resolution logic against realistic consumer projects without maintaining fragile static fixture directories.
 
 ## Overview & Scenario Factory Architecture
 
-To ensure that composite actions (`pages` and `autofix`) function correctly across diverse project configurations—beyond unit tests—`area44/workflows` uses a unified scenario factory to dynamically generate consumer projects:
+To ensure action workflows function reliably across diverse project configurations, the repository uses a unified scenario factory to dynamically generate consumer projects:
 
-- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: Single authoritative source of truth for project file contents, scenario templates, CLI argument parsing, non-empty checks, and overwrite protections. Requires an explicit target directory argument (`generate-consumer-project.js <target-directory> [options]`).
-- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit/integration tests share identical generation logic without drift.
+- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node .github/scripts/generate-consumer-project.js <target-directory> [options]`).
+- **TypeScript Test Helper (`__tests__/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit and module-level integration tests share identical generation logic.
 
 ### Scenario Dimensions & Factory Options
 
@@ -23,78 +27,88 @@ The scenario factory supports explicit options across all tested project dimensi
 | **Python Source**   | `hasPythonSource`      | `true`, `false` (controls `.py`/`.pyi` file generation)                                                                                               |
 | **Python PM**       | `pythonPm`             | `uv`, `pip`, or empty                                                                                                                                 |
 | **Ruff Version**    | `ruffVersion`          | Version string (e.g. `0.17.2`) or empty string `""`                                                                                                   |
-| **Marker Content**  | `markerContent`        | Assertion string included in HTML outputs (e.g. `AREA44 Workflows Consumer Project`)                                                                  |
+| **Marker Content**  | `markerContent`        | Assertion string included in HTML outputs (e.g. `"AREA44 Workflows Consumer Project"`)                                                                |
 
 ### Target Directory Safety & Overwrite Protection
 
-To prevent accidental data loss during local development or test runs:
+To prevent accidental data loss during local testing or CI runs:
 
-- **Explicit Target Required**: The CLI and helper function refuse to run without an explicit target directory path.
-- **`allowNonEmpty` Option / `--allow-non-empty` Flag**: Permits generation into a non-empty directory if pre-existing files are unrelated (e.g., `pre_existing.txt`).
-- **`overwrite` Option / `--overwrite` Flag**: Explicitly permits overwriting files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pnpm-lock.yaml`, `bun.lock`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`). Even when `allowNonEmpty` is true, colliding files will NOT be overwritten unless `overwrite` is set.
-
----
-
-## Retained Integration Scenarios
-
-Static fixture files under `__tests__/fixtures/` have been consolidated into dynamic scenario definitions. The following distinct integration behaviors are covered:
-
-1. **Astro Builds**: `action: "pages", toolchain: "astro"` generates `astro.config.mjs` and `src/pages/index.astro`.
-2. **Vite Builds**: `type: "vite"` or `toolchain: "vite"` generates `vite.config.ts`, `index.html`, and `src/main.ts`.
-3. **Vite+ Builds**: `type: "vite-plus"` or `toolchain: "vite-plus"` generates `vite.config.ts` and `index.html` configured for `vp build`.
-4. **Package Manager & Runtime Resolution**: npm, pnpm, and Bun projects across Node.js and Bun runtimes.
-5. **Python uv & pip Workflows**: `uv`-managed projects (`uv.lock`), `pip`-managed projects (`requirements.txt`), conflicting lockfiles, and `python-none` projects without Python source.
-6. **Mixed Language Projects**: JavaScript + Python multi-language repositories.
-7. **Consumer Integration**: End-to-end HTML artifact generation and marker content validation (`"AREA44 Workflows Consumer Project"`).
-
----
-
-## How to Add a New Test Scenario
-
-To add a new scenario:
-
-1. Pass the relevant scenario options to `generateConsumerProjectFiles(options)` or `createConsumerProject(targetDir, options)`.
-2. If new file templates or option dimensions are required, add them to `generateConsumerProjectFiles` in `.github/scripts/generate-consumer-project.js`.
-3. Add unit test assertions for the new scenario options in `__tests__/generate-consumer-project.test.ts`.
+- **Explicit Target Required**: The CLI and helper functions refuse to run without an explicit target directory path.
+- **`allowNonEmpty` Option (`--allow-non-empty`)**: Permits generation into a non-empty directory if pre-existing files do not collide with generated files.
+- **`overwrite` Option (`--overwrite`)**: Explicitly permits overwriting pre-existing files whose names collide with generated outputs (`package.json`, `package-lock.json`, `pnpm-lock.yaml`, `bun.lock`, `pyproject.toml`, `requirements.txt`, `index.html`, `main.py`).
 
 ---
 
 ## Testing Boundaries & Execution
 
-Integration testing is performed across two distinct boundaries:
+Testing is organized across distinct execution boundaries:
 
-### 1. Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)
+### 1. Unit & Module-Level Tests (`npm test`)
 
-- **Execution Boundary**: Runs in Vitest (`vite-plus/test`) importing source modules directly from `src/`.
-- **Purpose**: Fast local execution validating environment detection, output formatting, site variable calculations, custom command parsing, and error diagnostics against generated scenarios in temporary directories (`os.tmpdir()`).
+- **Execution Boundary**: Runs via Vite+ (`vp test` / Vitest) directly importing source modules from `src/`.
+- **Unit Tests**: Modules under `__tests__/` test individual domain logic (`python-env.test.ts`, `javascript-env.test.ts`, `resolve-environment.test.ts`, `build-command.test.ts`, `site-variables.test.ts`, `autofix.test.ts`, `generate-consumer-project.test.ts`).
+- **Module-Level Integration Tests (`__tests__/integration-consumer.test.ts`)**: Fast local tests validating environment detection, output formatting, site variable calculations, custom build command parsing, and error diagnostics against generated scenarios in temporary directories (`os.tmpdir()`).
 
 ### 2. Action-Level Composite CI Matrix (`.github/workflows/test-actions.yml`)
 
-- **Execution Boundary**: Runs local composite actions (`./action-source/pages` and `./action-source/autofix`) in GitHub Actions runners.
+- **Execution Boundary**: Runs live composite actions (`./action-source/pages` and `./action-source/autofix`) in GitHub Actions runners.
 - **Isolated Workspace Layout**:
-  - The action repository is checked out into a dedicated subdirectory `action-source/`.
-  - The target consumer project is generated in `$GITHUB_WORKSPACE` (the root CWD), outside `action-source/`.
-  - The local action is invoked via `uses: ./action-source/pages` or `uses: ./action-source/autofix`.
-  - The action source checkout in `action-source/` is never modified or mutated by fixture generation or action execution.
-- **Purpose**: End-to-end execution of the composite action pipeline:
-  - **Action Invocation**: Invokes `./action-source/pages` or `./action-source/autofix` against the generated project.
-  - **Output & Artifact Verification**: Asserts step outputs and checks produced artifacts (e.g., `dist/index.html`).
-  - **Negative Failure Mode Testing**: Verifies that invalid build commands or missing output directories trigger explicit step failures with exact error log assertions:
-    - **Pre-Execution Clean Step**: `rm -rf "$TARGET_PATH" dist` cleans pre-existing build outputs and deletes `${RUNNER_TEMP}/pages_build_error.log` before action execution to prevent stale artifacts or stale error logs from causing false positives.
-    - **Invalid Build Command (`invalid_build_command`)**: Verifies step outcome is `failure`, environment setup succeeded (`PAGES_PM` and `PAGES_RUNTIME` match expected), `node_modules` exists (confirming dependency installation completed), and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"` (confirming failure occurred specifically during build execution).
-    - **Missing Output Directory (`missing_output_dir`)**: Verifies step outcome is `failure`, environment setup succeeded, `node_modules` exists, and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."` (confirming failure occurred specifically during output path validation).
+  - The action repository source is checked out into a dedicated subdirectory `action-source/`.
+  - The target consumer project is generated at the runner workspace root `$GITHUB_WORKSPACE`, outside `action-source/`.
+  - Local composite actions are invoked via `uses: ./action-source/pages` or `uses: ./action-source/autofix`.
+  - The action source directory `action-source/` remains pristine and unmutated throughout testing.
+- **Positive Scenarios**:
+  - Astro, Vite, and Vite+ site compilation and Pages artifact generation.
+  - Node.js and Bun runtime setup and dependency synchronization (`npm`, `pnpm`, `bun`).
+  - Python `uv` and `pip` environment detection, Ruff linting/formatting, and multi-language projects (`mixed`, `mixed-bun`).
+- **Negative Scenarios & Machine-Verifiable Failure Logging**:
+  - **Pre-Execution Cleanup**: Step `Clean Build Outputs Before Execution` removes pre-existing build output directories (`rm -rf "$TARGET_PATH" dist`) and clears `${RUNNER_TEMP}/pages_build_error.log` before action execution.
+  - **Invalid Build Command (`invalid_build_command`)**: Asserts step outcome is `failure`, environment setup succeeded, `node_modules` exists, and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"`.
+  - **Missing Output Directory (`missing_output_dir`)**: Asserts step outcome is `failure`, environment setup succeeded, `node_modules` exists, and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."`.
+
+### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml`)
+
+- **`quality-test` Job**: Provisions Node 24 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format -- --check`), and unit tests (`npm test`).
+- **`check-dist` Job**: Provisions Node 24, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`).
 
 ---
 
-## Running Integration Tests Locally
+## How to Add a New Test Scenario
+
+1. Pass required scenario options to `generateConsumerProjectFiles(options)` or `createConsumerProject(targetDir, options)`.
+2. If new file templates or option dimensions are needed, update `.github/scripts/generate-consumer-project.js`.
+3. Add unit test assertions in `__tests__/generate-consumer-project.test.ts`.
+4. Add module-level integration assertions in `__tests__/integration-consumer.test.ts` or add matrix entries to `.github/workflows/test-actions.yml`.
+
+---
+
+## Local Test Execution Commands
 
 ```bash
-# Run full test suite
+# Run full unit and module integration test suite
 npm test
 
-# Run generator scenario tests
+# Run scenario factory generator unit tests
 npm test __tests__/generate-consumer-project.test.ts
 
 # Run consumer integration module tests
 npm test __tests__/integration-consumer.test.ts
+
+# Run code style linting
+npm run lint
+
+# Check code formatting
+npm run format -- --check
+
+# Build bundled artifacts in dist/
+npm run build
 ```
+
+---
+
+## Related Documentation
+
+- **[Repository README](../README.md)**: Project overview and action API summary.
+- **[Error Handling Architecture](./errors.md)**: Native JavaScript error boundaries and failure logging.
+- **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
+- **[Maintenance & Repository Health](./maintenance.md)**: Source files, build pipeline, and quality gates.

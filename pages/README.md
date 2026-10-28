@@ -2,17 +2,19 @@
 
 Build static sites and upload GitHub Pages artifacts with automatic JavaScript environment setup and Vite+ toolchain detection.
 
-## Features
+## Action Purpose
 
-- **Unified Build Pipeline:** Standardized environment resolution, dependency installation, build execution, output validation, and Pages artifact upload for static site generators.
-- **Automatic Vite+ Detection:** Automatically detects Vite+ projects from `package.json` dependencies and uses `voidzero-dev/setup-vp` for setup and dependency installation.
-- **Output Validation:** Ensures the configured build output directory exists and is non-empty before uploading the GitHub Pages artifact.
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection or explicit overrides. Internal action orchestration entrypoints run consistently under Node while project build commands execute via the resolved project package manager and runtime.
-- **Automatic Site and Base Variables:** Automatically resolves and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`) for static site generators.
+The `pages` composite action standardizes static site generation and GitHub Pages artifact uploads across the AREA44 ecosystem. It resolves project runtimes and package managers, installs dependencies, executes site build commands, validates output directories, and uploads site artifacts.
 
-## Usage
+## Features and Supported Behavior
 
-Add the following workflow to your repository:
+- **Unified Build Pipeline:** Automated environment resolution, dependency synchronization, site compilation, output directory validation, and Pages artifact upload.
+- **Automatic Vite+ Detection:** Detects Vite+ projects from dependencies in `package.json` and uses `voidzero-dev/setup-vp` for setup and dependency installation.
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection or explicit overrides (`runtime: 'node@24'`, `runtime: 'bun@1.4'`).
+- **Automatic Site and Base Variables:** Derives and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`).
+- **Output Validation:** Asserts that the configured build output directory exists and is non-empty before initiating GitHub Pages artifact upload.
+
+## Usage Example
 
 ```yaml
 name: GitHub Pages
@@ -32,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Build Pages site
         uses: area44/workflows/pages@main
@@ -52,13 +54,13 @@ jobs:
 
 ## Exported Environment Variables
 
-The action automatically exports environment variables for static site generators based on GitHub repository context:
+The action automatically resolves and exports the following environment variables for static site generators based on GitHub repository metadata:
 
-| Name       | Resolved Value                                                      | Description                                                            |
-| ---------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `SITE`     | `https://<owner>.github.io`                                         | The deployment origin URL derived from `GITHUB_REPOSITORY_OWNER`.      |
-| `BASE`     | `/` (primary `<owner>.github.io` repo) or `/<repo>/` (project repo) | The base path prefix for site assets derived from `GITHUB_REPOSITORY`. |
-| `BASE_URL` | `/` (primary `<owner>.github.io` repo) or `/<repo>/` (project repo) | Equivalent alias to `BASE` for frameworks that read `BASE_URL`.        |
+| Name       | Resolved Value                                                      | Description                                                        |
+| ---------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `SITE`     | `https://<owner>.github.io`                                         | Deployment origin URL derived from `GITHUB_REPOSITORY_OWNER`.      |
+| `BASE`     | `/` (primary `<owner>.github.io` repo) or `/<repo>/` (project repo) | Base path prefix for site assets derived from `GITHUB_REPOSITORY`. |
+| `BASE_URL` | `/` (primary `<owner>.github.io` repo) or `/<repo>/` (project repo) | Equivalent alias to `BASE` for frameworks reading `BASE_URL`.      |
 
 ## Outputs
 
@@ -72,6 +74,16 @@ The action automatically exports environment variables for static site generator
 | `toolchain`               | The resolved toolchain (vite or vite-plus) |
 | `vp-version`              | The version of Vite+ installed             |
 
-## Static Site Requirement
+## Constraints and Failure Behavior
 
-This action publishes static output artifacts for GitHub Pages. It does not automatically convert server-rendered or SSR applications into static sites. Ensure your framework project is configured to generate static output (e.g., `output: 'static'` in Astro or static export mode in Next.js).
+- **Static Output Requirement:** This action publishes static output artifacts for GitHub Pages. It does not convert server-rendered (SSR) applications into static sites. Ensure your framework project is configured for static site export (e.g., `output: 'static'` in Astro).
+- **Build Execution Failure:** If the build command exits with a non-zero exit code, the action fails immediately. When `RUNNER_TEMP` is set, failure details are written to `${RUNNER_TEMP}/pages_build_error.log`.
+- **Missing Output Directory Failure:** If the configured output directory (`path`) does not exist or contains no files after build execution, validation fails and prevents artifact upload. Diagnostic details are written to `${RUNNER_TEMP}/pages_build_error.log`.
+
+## Related Documentation
+
+- **[Repository README](../README.md)**: Main project overview and action API summary.
+- **[Error Handling Architecture](../docs/errors.md)**: Detailed error boundaries and diagnostic error reporting.
+- **[Security Boundaries](../docs/security.md)**: Input trust model and command tokenization.
+- **[Maintenance & Repository Health](../docs/maintenance.md)**: Source files, build pipeline, and quality gates.
+- **[Integration Testing Guide](../docs/integration-testing.md)**: Test scenarios and composite action matrix verification.
