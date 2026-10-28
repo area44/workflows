@@ -68,7 +68,10 @@ jobs:
         shell: bash
         run: |
           if [ -n "$(git status --porcelain dist/)" ]; then
-            echo "Error: Tracked dist/ files are out of sync with src/. Run 'npm run build' and commit changes." >&2
-            git diff dist/
+            echo "Error: Tracked or untracked files under dist/ are out of sync with src/. Run 'npm run build' and commit changes." >&2
+            echo "Status of dist/:" >&2
+            git status --porcelain dist/ >&2
+            echo "Diff of tracked dist/ files:" >&2
+            git diff dist/ >&2
             exit 1
           fi

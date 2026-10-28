@@ -79,7 +79,9 @@ Integration testing is performed across two distinct boundaries:
 - **Purpose**: End-to-end execution of the composite action pipeline:
   - **Action Invocation**: Invokes `./action-source/pages` or `./action-source/autofix` against the generated project.
   - **Output & Artifact Verification**: Asserts step outputs and checks produced artifacts (e.g., `dist/index.html`).
-  - **Negative Failure Mode Testing**: Verifies that invalid build commands or missing output directories trigger explicit step failures with expected error messages.
+  - **Negative Failure Mode Testing**: Verifies that invalid build commands or missing output directories trigger explicit step failures with expected stage assertions:
+    - **Invalid Build Command (`invalid_build_command`)**: Verifies step outcome is `failure`, environment setup succeeded (`PAGES_PM` and `PAGES_RUNTIME` match expected), `node_modules` exists (confirming dependency installation completed), and default `dist/index.html` was NOT produced (confirming failure occurred during build execution).
+    - **Missing Output Directory (`missing_output_dir`)**: Verifies step outcome is `failure`, environment setup succeeded, `node_modules` exists, default `dist/index.html` WAS produced by build, and configured output directory (`non_existent_output_dir_99`) does not exist (confirming failure occurred during output path validation).
 
 ---
 

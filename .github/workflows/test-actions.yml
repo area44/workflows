@@ -44,6 +44,7 @@ jobs:
             pm: npm
             type: basic
             build_command: "npm run invalid-command-12345"
+            negative_type: "invalid_build_command"
             expected_failure: "true"
             verify_site: false
           - action: pages
@@ -51,6 +52,7 @@ jobs:
             pm: npm
             type: basic
             build_path: "non_existent_output_dir_99"
+            negative_type: "missing_output_dir"
             expected_failure: "true"
             verify_site: false
 
@@ -185,6 +187,7 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          NEGATIVE_TYPE: ${{ matrix.negative_type }}
           EXPECTED_FAILURE: ${{ matrix.expected_failure }}
           PAGES_OUTCOME: ${{ steps.pages.outcome }}
           AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
@@ -246,7 +249,25 @@ jobs:
               exit 1
             fi
 
-            echo "Verified negative scenario failure outcome, environment setup, and dependency installation for '${SCENARIO_NAME}'."
+            if [[ "$NEGATIVE_TYPE" == "invalid_build_command" ]]; then
+              # Invalid build command failed during execution, so default build artifact dist/index.html was NOT generated
+              if [[ -f "dist/index.html" ]]; then
+                echo "Error: [${ACTION}] Invalid build command scenario produced build artifact 'dist/index.html', but command execution should have failed prior to output creation."
+                exit 1
+              fi
+            elif [[ "$NEGATIVE_TYPE" == "missing_output_dir" ]]; then
+              # Missing output path scenario ran default build command successfully (producing dist/index.html), but non_existent_output_dir_99 was missing
+              if [[ ! -f "dist/index.html" ]]; then
+                echo "Error: [${ACTION}] Missing output path scenario did not run build command (expected default 'dist/index.html' artifact was missing)."
+                exit 1
+              fi
+              if [[ -d "non_existent_output_dir_99" ]]; then
+                echo "Error: [${ACTION}] Configured non-existent output directory 'non_existent_output_dir_99' unexpectedly exists."
+                exit 1
+              fi
+            fi
+
+            echo "Verified negative scenario failure outcome, stage assertions, and failure path for '${SCENARIO_NAME}'."
             exit 0
           fi
 
