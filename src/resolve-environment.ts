@@ -289,6 +289,12 @@ export function resolveEnvironment(
   const js = resolveJsEnvironment(runtimeInput, toolchainInput);
   const python = resolvePythonEnvironment();
 
+  if (!js.hasJsProject && !python.hasPythonSource) {
+    core.info(
+      "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
+    );
+  }
+
   const env: ResolvedEnvironment = {
     js,
     python,

@@ -63,6 +63,23 @@ describe("javascript-env", () => {
       expect(res.runtime).toBe("node");
       expect(res.nodeVersion).toBe("20.10.0");
       expect(res.toolchain).toBe("vite");
+
+      expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found .nvmrc: 20.10.0");
+    });
+
+    it("should suppress JS detection logs when package.json is absent", () => {
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(false);
+      expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Package manager not specified"),
+      );
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Node.js version not specified"),
+      );
     });
   });
 

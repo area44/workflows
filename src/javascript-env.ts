@@ -284,7 +284,9 @@ export function resolveNodeVersion(
     return "";
   }
 
-  core.info(`Node.js version not specified, using ${DEFAULT_NODE_VERSION}`);
+  if (project.hasPackageJson) {
+    core.info(`Node.js version not specified; using default: ${DEFAULT_NODE_VERSION}`);
+  }
   return DEFAULT_NODE_VERSION;
 }
 
@@ -327,6 +329,9 @@ export function resolveBunVersion(
   const isBunDetected = pm.name === "bun" || project.hasBunLock || hasBunEngine;
 
   if (isBunDetected) {
+    if (project.hasPackageJson) {
+      core.info(`Bun version not specified; using default: ${DEFAULT_BUN_VERSION}`);
+    }
     return DEFAULT_BUN_VERSION;
   }
 
@@ -443,8 +448,18 @@ export function resolveJsEnvironment(
 ): ResolvedJsEnvironment {
   const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectJsProjectEnvironment(cwd);
+
+  if (project.hasPackageJson) {
+    core.info("Detected JavaScript/TypeScript project.");
+  }
+
   const pm = resolveJsPackageManager(project);
   const runtime = resolveRuntime(parsedInputs, pm);
+
+  if (project.hasPackageJson) {
+    core.info(`Resolved runtime: ${runtime === "bun" ? "Bun" : "Node.js"}.`);
+  }
+
   const versions = resolveVersions(parsedInputs, pm, runtime, project);
   const toolchain = resolveToolchain(toolchainInput, project);
 
@@ -840,7 +855,9 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
     return { name: selected.name, version: selected.version };
   }
 
-  core.info(`Package manager not specified, using npm@${DEFAULT_NPM_VERSION}`);
+  if (project.hasPackageJson) {
+    core.info(`Package manager not specified; using default: npm@${DEFAULT_NPM_VERSION}`);
+  }
   return { name: "npm", version: DEFAULT_NPM_VERSION };
 }
 

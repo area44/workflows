@@ -1,8 +1,11 @@
 import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
+import * as core from "@actions/core";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("@actions/core");
 
 import {
   DEFAULT_PYTHON_VERSION,
@@ -1219,6 +1222,7 @@ enabled = true
         ruffVersion: "",
         pmInfo: null,
       });
+      expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
     });
 
     it("should resolve python version, package manager, and ruff version when python source exists", () => {
@@ -1227,6 +1231,9 @@ enabled = true
       expect(resolved.pythonVersion).toBe("3.12");
       expect(resolved.ruffVersion).toBe("0.17.2");
       expect(resolved.pmInfo?.name).toBe("uv");
+      expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+      expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
+      expect(core.info).toHaveBeenCalledWith("Resolved Ruff version: 0.17.2");
     });
   });
 
