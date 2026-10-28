@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -34,7 +35,7 @@ describe("javascript-env", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    tempDir = fs.mkdtempSync(path.join(fs.realpathSync(originalCwd), "__tests__/fixtures/temp-js-env-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "temp-js-env-"));
     process.chdir(tempDir);
   });
 
