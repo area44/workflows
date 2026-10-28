@@ -47,7 +47,14 @@ export interface PythonInstallCommand {
 
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
-  source?: "uvLock" | "uvToml" | "pyproject" | "requirements" | "setupPy" | "setupCfg" | "standalone";
+  source?:
+    | "uvLock"
+    | "uvToml"
+    | "pyproject"
+    | "requirements"
+    | "setupPy"
+    | "setupCfg"
+    | "standalone";
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
