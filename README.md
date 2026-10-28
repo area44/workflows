@@ -90,7 +90,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 - **[Pages Action Documentation](./pages/README.md)**: Details on inputs, outputs, environment variables (`SITE`, `BASE`, `BASE_URL`), and static site requirements.
 - **[Autofix Action Documentation](./autofix/README.md)**: Information on JavaScript script selection, Python Ruff formatting/linting, and autofix.ci integration.
-- **[Error Handling Architecture](./docs/errors.md)**: Native JavaScript error propagation, top-level boundaries, and build failure logging (`${RUNNER_TEMP}/pages_build_error.log`).
+- **[Error Handling Architecture](./docs/errors.md)**: Native JavaScript error propagation, top-level boundaries, and build failure logging.
 - **[Security Boundaries](./docs/security.md)**: Trust boundaries, shell command argument tokenization without subshell execution, and secret masking.
 - **[Maintenance & Repository Health](./docs/maintenance.md)**: Invariants, sources of truth, build pipelines (`npm run build`), quality gates, and release versioning.
 - **[Integration Testing & Scenario Factory Guide](./docs/integration-testing.md)**: Dynamic scenario factory architecture, unit tests, module-level tests, and composite action CI matrix verification.
