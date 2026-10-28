@@ -11,12 +11,6 @@ export interface PackageManager {
   source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
-export interface ParsedInputs {
-  specifiedRuntime?: "node" | "bun";
-  nodeVersion?: string;
-  bunVersion?: string;
-}
-
 export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
   return runtime === "node" || runtime === "bun";
 }
@@ -125,116 +119,18 @@ export interface ResolvedJsEnvironment {
   toolchain: Toolchain;
 }
 
-function validateCommaStructure(trimmed: string): void {
-  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
-    throw new Error(
-      'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-    );
-  }
-}
-
-interface ParsedPart {
-  type: "node" | "bun" | "both";
-  version?: string;
-}
-
-function parseSingleRuntimePart(rawPart: string): ParsedPart {
-  const part = rawPart.toLowerCase();
-
-  if (part === "both") {
-    return { type: "both" };
-  }
-  if (part === "node") {
-    return { type: "node" };
-  }
-  if (part === "bun") {
-    return { type: "bun" };
-  }
-
-  const isNodeSpec = part.startsWith("node@");
-  const isBunSpec = part.startsWith("bun@");
-
-  if (isNodeSpec || isBunSpec) {
-    const prefixLen = isNodeSpec ? 5 : 4;
-    const ver = part.slice(prefixLen);
-    if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
-      throw new Error(
-        'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-      );
-    }
-    return { type: isNodeSpec ? "node" : "bun", version: ver };
-  }
-
-  throw new Error(
-    'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-  );
-}
-
-/**
- * Input Parsing
- * Parses raw action runtime inputs into normalized input representations.
- */
-export function parseEnvironmentInputs(
-  runtimeInput: string = core.getInput("runtime"),
-): ParsedInputs {
-  if (!runtimeInput) return {};
-
-  const trimmed = runtimeInput.trim();
-  if (!trimmed) return {};
-
-  validateCommaStructure(trimmed);
-
-  const parts = trimmed.split(/[\s,]+/);
-  let specifiedRuntime: "node" | "bun" | undefined;
-  let nodeVersion: string | undefined;
-  let bunVersion: string | undefined;
-
-  let hasBun = false;
-  const counts = { node: 0, bun: 0, both: 0 };
-
-  for (const rawPart of parts) {
-    const parsed = parseSingleRuntimePart(rawPart);
-    counts[parsed.type]++;
-
-    if (parsed.type === "both") {
-      hasBun = true;
-    } else if (parsed.type === "node") {
-      if (!specifiedRuntime) specifiedRuntime = "node";
-      if (parsed.version) nodeVersion = parsed.version;
-    } else if (parsed.type === "bun") {
-      hasBun = true;
-      if (!specifiedRuntime) specifiedRuntime = "bun";
-      if (parsed.version) bunVersion = parsed.version;
-    }
-  }
-
-  if (counts.node > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "node".');
-  }
-  if (counts.bun > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "bun".');
-  }
-  if (counts.both > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "both".');
-  }
-
-  return {
-    specifiedRuntime,
-    nodeVersion,
-    bunVersion: bunVersion || (hasBun ? DEFAULT_BUN_VERSION : undefined),
-  };
-}
-
 /**
  * Runtime Resolution
- * Resolves target runtime according to canonical precedence:
- * explicit specifiedRuntime > package manager derived runtime > default node runtime
+ * Resolves target runtime based on package manager and project configuration.
  */
-export function resolveRuntime(parsed: ParsedInputs, pm: PackageManager): "node" | "bun" {
-  if (parsed.specifiedRuntime) {
-    return parsed.specifiedRuntime;
-  }
+export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironment): "node" | "bun" {
   if (pm.name === "bun") {
+    return "bun";
+  }
+  if (
+    project?.packageJson &&
+    getDevEngineRuntimeVersion(project.packageJson, "bun") !== undefined
+  ) {
     return "bun";
   }
   return "node";
@@ -286,19 +182,14 @@ function getNodeVersionFromPackageJson(project: JsProjectEnvironment): string | 
 
 /**
  * Version Resolution
- * Resolves Node.js version based on parsed inputs, runtime, and project state.
+ * Resolves Node.js version based on runtime, package manager, and project state.
  */
 export function resolveNodeVersion(
-  parsed: ParsedInputs,
   pm: PackageManager,
   runtime: "node" | "bun",
   project: JsProjectEnvironment,
 ): string {
-  if (parsed.nodeVersion !== undefined) {
-    return parsed.nodeVersion;
-  }
-
-  if (parsed.specifiedRuntime === "bun") {
+  if (runtime === "bun") {
     return "";
   }
 
@@ -312,7 +203,7 @@ export function resolveNodeVersion(
     return pkgVer;
   }
 
-  if (runtime === "bun" || pm.name === "bun") {
+  if (pm.name === "bun") {
     return "";
   }
 
@@ -359,27 +250,15 @@ function getBunVersionFromDevEngines(project: JsProjectEnvironment): string | un
 
 /**
  * Version Resolution
- * Resolves Bun version based on parsed inputs, package manager, and project state.
+ * Resolves Bun version based on package manager and project state.
  *
  * Precedence Contract:
- * 1. Action Runtime Input (`parsed.bunVersion` e.g. `runtime: "bun@1.4"`)
- * 2. `.bun-version` version file
- * 3. Package Manager field in `package.json` (`packageManager: "bun@<ver>"`, e.g. `bun@latest` or `bun@1.2.0`)
- * 4. Engine requirements in `package.json` (`devEngines.bun`)
- * 5. Default fallback (`DEFAULT_BUN_VERSION` = "1.4") if Bun runtime / package-manager / lockfile is detected
+ * 1. `.bun-version` version file
+ * 2. Package Manager field in `package.json` (`packageManager: "bun@<ver>"`, e.g. `bun@latest` or `bun@1.2.0`)
+ * 3. Engine requirements in `package.json` (`devEngines.bun`)
+ * 4. Default fallback (`DEFAULT_BUN_VERSION` = "1.4") if Bun runtime / package-manager / lockfile is detected
  */
-export function resolveBunVersion(
-  parsed: ParsedInputs,
-  pm: PackageManager,
-  project: JsProjectEnvironment,
-): string {
-  if (parsed.bunVersion !== undefined) {
-    if (project.hasPackageJson) {
-      core.info(`Resolved Bun version from input: ${parsed.bunVersion}`);
-    }
-    return parsed.bunVersion;
-  }
-
+export function resolveBunVersion(pm: PackageManager, project: JsProjectEnvironment): string {
   const fileVer = getBunVersionFromFile(project);
   if (fileVer !== undefined) {
     return fileVer;
@@ -419,14 +298,13 @@ export function resolveBunVersion(
  * Resolves nodeVersion and bunVersion.
  */
 export function resolveVersions(
-  parsed: ParsedInputs,
   pm: PackageManager,
   runtime: "node" | "bun",
   project: JsProjectEnvironment,
 ): { nodeVersion: string; bunVersion: string } {
   return {
-    nodeVersion: resolveNodeVersion(parsed, pm, runtime, project),
-    bunVersion: resolveBunVersion(parsed, pm, project),
+    nodeVersion: resolveNodeVersion(pm, runtime, project),
+    bunVersion: resolveBunVersion(pm, project),
   };
 }
 
@@ -518,11 +396,9 @@ export function resolveToolchain(
  * Cohesive JavaScript environment resolution entry point.
  */
 export function resolveJsEnvironment(
-  runtimeInput?: string,
   toolchainInput?: string,
   cwd: string = process.cwd(),
 ): ResolvedJsEnvironment {
-  const parsedInputs = parseEnvironmentInputs(runtimeInput);
   const project = inspectJsProjectEnvironment(cwd);
 
   if (project.hasPackageJson) {
@@ -530,13 +406,13 @@ export function resolveJsEnvironment(
   }
 
   const pm = resolveJsPackageManager(project);
-  const runtime = resolveRuntime(parsedInputs, pm);
+  const runtime = resolveRuntime(pm, project);
 
   if (project.hasPackageJson) {
     core.info(`Resolved runtime: ${runtime === "bun" ? "Bun" : "Node.js"}.`);
   }
 
-  const versions = resolveVersions(parsedInputs, pm, runtime, project);
+  const versions = resolveVersions(pm, runtime, project);
   const toolchain = resolveToolchain(toolchainInput, project);
 
   return {

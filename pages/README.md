@@ -10,7 +10,7 @@ The `pages` composite action builds and deploys static sites to GitHub Pages acr
 
 - **Unified Build Pipeline:** Automated environment resolution, dependency synchronization, site compilation, output directory validation, and Pages artifact upload.
 - **Automatic Vite+ Detection:** Detects Vite+ projects from dependencies in `package.json` and uses `voidzero-dev/setup-vp` for setup and dependency installation.
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection or explicit overrides (`runtime: 'node@24'`, `runtime: 'bun@1.4'`).
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic version detection from project configuration files and defaults.
 - **Automatic Site and Base Variables:** Derives and exports `SITE`, `BASE`, and `BASE_URL` environment variables from GitHub repository context (`https://<owner>.github.io` and `/<repo>/`).
 - **Output Validation:** Asserts that the configured build output directory exists and is non-empty before initiating GitHub Pages artifact upload.
 
@@ -40,7 +40,6 @@ jobs:
         uses: area44/workflows/pages@main
         with:
           # Optional: path: 'dist'
-          # Optional: runtime: 'node@24'
           # Optional: build-command: 'npm run build'
 ```
 
@@ -49,7 +48,6 @@ jobs:
 | Name            | Description                                                                                   | Default                       | Required |
 | --------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | -------- |
 | `path`          | Directory where the built site is located (empty or whitespace-only values default to `dist`) | `dist`                        | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4)                                 |                               | Optional |
 | `build-command` | Custom build command                                                                          | `<package-manager> run build` | Optional |
 
 ## Exported Environment Variables

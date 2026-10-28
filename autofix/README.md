@@ -37,17 +37,13 @@ jobs:
 
       - name: Run autofix
         uses: area44/workflows/autofix@main
-        with:
-          # Optional: runtime: 'node@24'
 ```
 
 ## Public API Contract
 
 ### Inputs
 
-| Name      | Description                                                   | Default | Required |
-| --------- | ------------------------------------------------------------- | ------- | -------- |
-| `runtime` | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
+This action accepts no inputs.
 
 ### Outputs
 

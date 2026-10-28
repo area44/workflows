@@ -33,7 +33,6 @@ jobs:
         uses: area44/workflows/pages@main
         with:
           # Optional: path: 'dist'
-          # Optional: runtime: 'node@24'
           # Optional: build-command: 'npm run build'
 ```
 
@@ -45,11 +44,10 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Inputs
 
-| Name            | Description                                                   | Default                       | Required |
-| --------------- | ------------------------------------------------------------- | ----------------------------- | -------- |
-| `path`          | Directory where the built site is located                     | `dist`                        | Optional |
-| `runtime`       | Optional runtime and version override (e.g. node@24, bun@1.4) |                               | Optional |
-| `build-command` | Custom build command                                          | `<package-manager> run build` | Optional |
+| Name            | Description                               | Default                       | Required |
+| --------------- | ----------------------------------------- | ----------------------------- | -------- |
+| `path`          | Directory where the built site is located | `dist`                        | Optional |
+| `build-command` | Custom build command                      | `<package-manager> run build` | Optional |
 
 #### Outputs
 
@@ -67,9 +65,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Inputs
 
-| Name      | Description                                                   | Default | Required |
-| --------- | ------------------------------------------------------------- | ------- | -------- |
-| `runtime` | Optional runtime and version override (e.g. node@24, bun@1.4) |         | Optional |
+This action accepts no inputs.
 
 #### Outputs
 

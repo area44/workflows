@@ -8,8 +8,7 @@ This document specifies the security boundaries and defensive measures implement
 
 ## Trust Boundaries & Input Validation
 
-- **Untrusted User Inputs**: Composite action inputs (`runtime`, `build-command`, `path`) supplied in workflow files and repository manifest files (`package.json`, `pyproject.toml`, `uv.toml`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) are treated as untrusted user input.
-- **Fail-Fast Input Parsing**: Custom `runtime` inputs (e.g., `node@24`, `bun@1.4`) are parsed and strictly validated by `parseRuntimeSpec()` and environment resolution routines in `src/javascript-env.ts` and `src/resolve-environment.ts` before environment resolution or toolchain setup takes place. Malformed inputs fail fast with descriptive native error messages.
+- **Untrusted User Inputs**: Composite action inputs (`build-command`, `path`) supplied in workflow files and repository manifest files (`package.json`, `pyproject.toml`, `uv.toml`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) are treated as untrusted user input.
 - **Package Manager Sanitization**: Package manager identifiers are sanitized before executing package manager binaries, restricting characters to alphanumeric names and hyphens.
 
 ## Command Execution & Subshell Avoidance

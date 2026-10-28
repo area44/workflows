@@ -178,7 +178,6 @@ jobs:
         id: pages
         continue-on-error: true
         with:
-          runtime: ${{ matrix.runtime }}
           build-command: ${{ matrix.build_command }}
           path: ${{ matrix.build_path }}
 
@@ -187,8 +186,6 @@ jobs:
         uses: ./action-source/autofix
         id: autofix
         continue-on-error: true
-        with:
-          runtime: ${{ matrix.runtime }}
 
       - name: Verify outputs and outcomes
         env:

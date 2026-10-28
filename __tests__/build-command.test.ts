@@ -45,10 +45,6 @@ describe("build-command", () => {
         required: false,
         default: "dist",
       });
-      expect(action.inputs.runtime).toEqual({
-        description: expect.any(String),
-        required: false,
-      });
       expect(action.inputs["build-command"]).toEqual({
         description: expect.any(String),
         required: false,

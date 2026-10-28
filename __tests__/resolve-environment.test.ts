@@ -368,23 +368,6 @@ describe("resolve-environment", () => {
       );
     });
 
-    it("should prove writeOutput is not called when validation fails in run()", () => {
-      const getInputSpy = vi.spyOn(core, "getInput").mockImplementation((name) => {
-        if (name === "runtime") return "invalid-runtime";
-        return "";
-      });
-
-      try {
-        run();
-
-        expect(core.setFailed).toHaveBeenCalledWith(
-          expect.stringContaining("Environment setup failed:"),
-        );
-        expect(core.setOutput).not.toHaveBeenCalled();
-      } finally {
-        getInputSpy.mockRestore();
-      }
-    });
   });
 
   describe("CI Workspace Setup and Restoration Safety", () => {
@@ -781,24 +764,6 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("keeps explicit input precedence over project configuration", () => {
-      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-explicit-input-"));
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "explicit-app" }));
-
-      process.chdir(tempDir);
-      try {
-        const env = resolveEnvironment("node@22");
-        writeOutput(env);
-
-        expect(env.js.runtime).toBe("node");
-        expect(env.js.nodeVersion).toBe("22");
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", "22");
-      } finally {
-        process.chdir(originalCwd);
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
 
     it("uses default versions when version declarations are missing", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-missing-vers-"));
@@ -936,8 +901,8 @@ describe("resolve-environment", () => {
           return "" as any;
         });
 
-        const run1 = resolveEnvironment("node");
-        const run2 = resolveEnvironment("node");
+        const run1 = resolveEnvironment();
+        const run2 = resolveEnvironment();
 
         expect(run1).toEqual(run2);
         expect(run1.js.nodeVersion).toBe("22.1.0");
@@ -1227,69 +1192,6 @@ describe("resolve-environment", () => {
     });
   });
 
-  describe("resolveEnvironment", () => {
-    it("should respect explicit runtime input node@22", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = resolveEnvironment("node@22");
-
-      expect(env.js.runtime).toBe("node");
-      expect(env.js.nodeVersion).toBe("22");
-      expect(env.js.bunVersion).toBe("");
-    });
-
-    it("should respect explicit runtime input bun@1.4", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "bun.lock");
-      const env = resolveEnvironment("bun@1.4");
-
-      expect(env.js.runtime).toBe("bun");
-      expect(env.js.nodeVersion).toBe("");
-      expect(env.js.bunVersion).toBe("1.4");
-    });
-
-    it("should throw validation error when explicit runtime bun@1.4 is used with npm package manager", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      expect(() => resolveEnvironment("bun@1.4")).toThrow(
-        "Unsupported runtime and package manager combination: Bun runtime does not support npm package manager",
-      );
-    });
-
-    it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
-      vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = resolveEnvironment("node@22,bun@1.4");
-
-      expect(env.js.runtime).toBe("node");
-      expect(env.js.nodeVersion).toBe("22");
-      expect(env.js.bunVersion).toBe("1.4");
-    });
-
-    it("should resolve runtime=node when explicit runtime=node is supplied even if package manager is bun", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ packageManager: "bun@1.4" }) as any,
-      );
-
-      const env = resolveEnvironment("node");
-
-      expect(env.js.runtime).toBe("node");
-      expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4" });
-      expect(env.js.nodeVersion).toBe("");
-      expect(env.js.bunVersion).toBe("1.4");
-    });
-
-    it("should resolve runtime=bun when explicit runtime=bun is supplied even if package manager is pnpm", () => {
-      vi.spyOn(fs, "existsSync").mockImplementation((p) => p === "package.json");
-      vi.spyOn(fs, "readFileSync").mockReturnValue(
-        JSON.stringify({ packageManager: "pnpm@12.15.0" }) as any,
-      );
-
-      const env = resolveEnvironment("bun");
-
-      expect(env.js.runtime).toBe("bun");
-      expect(env.js.pm).toMatchObject({ name: "pnpm", version: "12.15.0" });
-      expect(env.js.nodeVersion).toBe("");
-      expect(env.js.bunVersion).toBe("1.4");
-    });
-  });
 
   describe("Fixture-based tests", () => {
     const cases = [
@@ -1348,10 +1250,10 @@ describe("resolve-environment", () => {
         runtime: "bun",
         pm: "pnpm@12.15.0",
         type: "basic",
-        expectedNode: "24",
+        expectedNode: "",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "12.15.0" },
-        expectedRuntime: "node",
+        expectedRuntime: "bun",
       },
       {
         action: "pages",
@@ -1653,11 +1555,11 @@ describe("resolve-environment", () => {
       try {
         run();
 
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
         expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
         expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
-        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "bun");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
@@ -1685,23 +1587,6 @@ describe("resolve-environment", () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
-
-    it("should report failure via core.setFailed if environment resolution throws", () => {
-      const getInputSpy = vi.spyOn(core, "getInput").mockImplementation((name) => {
-        if (name === "runtime") return "invalid-runtime";
-        return "";
-      });
-
-      try {
-        run();
-
-        expect(core.setFailed).toHaveBeenCalledWith(
-          expect.stringContaining("Environment setup failed:"),
-        );
-      } finally {
-        getInputSpy.mockRestore();
-      }
-    });
   });
 
   describe("toolchain resolution inputs", () => {
@@ -1711,7 +1596,7 @@ describe("resolve-environment", () => {
       process.chdir(fixturePath);
 
       try {
-        const resolved = resolveEnvironment("node", "vite-plus");
+        const resolved = resolveEnvironment("vite-plus");
         expect(resolved.js.toolchain).toBe("vite-plus");
       } finally {
         process.chdir(originalCwd);
@@ -1725,7 +1610,7 @@ describe("resolve-environment", () => {
       process.chdir(fixturePath);
 
       try {
-        const resolved = resolveEnvironment("node", "vite");
+        const resolved = resolveEnvironment("vite");
         expect(resolved.js.toolchain).toBe("vite");
       } finally {
         process.chdir(originalCwd);
@@ -1738,7 +1623,7 @@ describe("resolve-environment", () => {
       createConsumerProject(vpFixture, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(vpFixture);
       try {
-        const resolvedVp = resolveEnvironment("node", "auto");
+        const resolvedVp = resolveEnvironment("auto");
         expect(resolvedVp.js.toolchain).toBe("vite-plus");
       } finally {
         process.chdir(originalCwd);
@@ -1749,7 +1634,7 @@ describe("resolve-environment", () => {
       createConsumerProject(stdFixture, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(stdFixture);
       try {
-        const resolvedStd = resolveEnvironment("node", "");
+        const resolvedStd = resolveEnvironment("");
         expect(resolvedStd.js.toolchain).toBe("vite");
       } finally {
         process.chdir(originalCwd);
@@ -1758,7 +1643,7 @@ describe("resolve-environment", () => {
     });
 
     it("should throw INVALID_INPUT when toolchainInput is unsupported", () => {
-      expect(() => resolveEnvironment("node", "invalid-toolchain")).toThrow();
+      expect(() => resolveEnvironment("invalid-toolchain")).toThrow();
     });
   });
 });

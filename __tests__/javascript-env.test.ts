@@ -54,7 +54,7 @@ describe("javascript-env", () => {
       );
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
 
-      const res = resolveJsEnvironment("node", "vite", tempDir);
+      const res = resolveJsEnvironment("vite", tempDir);
       expect(res.hasJsProject).toBe(true);
       expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0", source: "packageManager" });
       expect(res.runtime).toBe("node");
@@ -68,7 +68,7 @@ describe("javascript-env", () => {
     });
 
     it("should suppress JS detection logs when package.json is absent", () => {
-      const res = resolveJsEnvironment("node", "vite", tempDir);
+      const res = resolveJsEnvironment("vite", tempDir);
       expect(res.hasJsProject).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(
@@ -84,7 +84,7 @@ describe("javascript-env", () => {
       fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0");
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0");
 
-      const res = resolveJsEnvironment("node", "vite", tempDir);
+      const res = resolveJsEnvironment("vite", tempDir);
       expect(res.hasJsProject).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
@@ -128,209 +128,6 @@ describe("javascript-env", () => {
     });
   });
 
-  describe("parseEnvironmentInputs", () => {
-    describe("valid runtime inputs", () => {
-      it("should return empty object for empty or whitespace-only input", () => {
-        expect(parseEnvironmentInputs("")).toEqual({});
-        expect(parseEnvironmentInputs("   ")).toEqual({});
-      });
-
-      it("should parse explicit node runtime without version", () => {
-        expect(parseEnvironmentInputs("node")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: undefined,
-          bunVersion: undefined,
-        });
-      });
-
-      it("should parse explicit bun runtime without version", () => {
-        expect(parseEnvironmentInputs("bun")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
-        });
-      });
-
-      it("should parse explicit node version string", () => {
-        expect(parseEnvironmentInputs("node@22")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: "22",
-          bunVersion: undefined,
-        });
-      });
-
-      it("should parse explicit bun version string", () => {
-        expect(parseEnvironmentInputs("bun@1.4")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: undefined,
-          bunVersion: "1.4",
-        });
-      });
-
-      it("should parse multi-runtime specifier with comma or space", () => {
-        expect(parseEnvironmentInputs("node@24,bun@1.4")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: "24",
-          bunVersion: "1.4",
-        });
-
-        expect(parseEnvironmentInputs("bun@1.4, node@24")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: "24",
-          bunVersion: "1.4",
-        });
-
-        expect(parseEnvironmentInputs("node, bun")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
-        });
-      });
-
-      it("should parse both keyword", () => {
-        expect(parseEnvironmentInputs("both")).toEqual({
-          specifiedRuntime: undefined,
-          nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
-        });
-      });
-
-      it("should support mixed-case and whitespace-padded inputs", () => {
-        expect(parseEnvironmentInputs("  NODE@24  ")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: "24",
-          bunVersion: undefined,
-        });
-
-        expect(parseEnvironmentInputs("Bun@1.4 , Node@22")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: "22",
-          bunVersion: "1.4",
-        });
-
-        expect(parseEnvironmentInputs("BOTH")).toEqual({
-          specifiedRuntime: undefined,
-          nodeVersion: undefined,
-          bunVersion: DEFAULT_BUN_VERSION,
-        });
-      });
-    });
-
-    describe("invalid and malformed runtime inputs", () => {
-      it("should reject unknown runtime names without echoing raw input", () => {
-        const rawInput = "deno_secret_token_12345";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-        );
-      });
-
-      it("should reject prefix or partial runtime matches without echoing raw input", () => {
-        const rawInput = "node18_secret_token";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-        );
-      });
-
-      it("should reject malformed version syntax without echoing raw input", () => {
-        const rawInputWithToken = "node@20@22?secret=token_12345";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInputWithToken);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("token_12345");
-        expect(err?.message).not.toContain(rawInputWithToken);
-        expect(err?.message).toBe(
-          'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-        );
-      });
-
-      it("should reject malformed comma formatting without echoing raw input", () => {
-        const rawInput = ",node,secret_token";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("secret_token");
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-        );
-      });
-
-      it("should reject duplicate or conflicting specifiers without echoing full raw input", () => {
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs("node@20, node@22");
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("node@20");
-        expect(err?.message).toBe(
-          'Invalid runtime input: duplicate or conflicting specifiers for "node".',
-        );
-
-        expect(() => parseEnvironmentInputs("bun@1.2, bun@1.4")).toThrow(
-          'Invalid runtime input: duplicate or conflicting specifiers for "bun".',
-        );
-        expect(() => parseEnvironmentInputs("both, both")).toThrow(
-          'Invalid runtime input: duplicate or conflicting specifiers for "both".',
-        );
-      });
-
-      it("should reject mixed valid and invalid runtime specifiers without echoing raw input", () => {
-        const rawInput = "node@24, deno_token_secret";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("deno_token_secret");
-        expect(err?.message).not.toContain(rawInput);
-      });
-
-      it("should sanitize sensitive values in malformed or unrecognized runtime input error messages", () => {
-        const sensitiveToken = "ghp_1234567890abcdefghijklmnopqrstuv";
-        const inputWithToken = `node@24, invalid_specifier?token=${sensitiveToken}`;
-        let caughtError: Error | undefined;
-        try {
-          parseEnvironmentInputs(inputWithToken);
-        } catch (err) {
-          caughtError = err as Error;
-        }
-        expect(caughtError).toBeDefined();
-        expect(caughtError?.message).not.toContain(sensitiveToken);
-        expect(caughtError?.message).not.toContain("invalid_specifier");
-        expect(caughtError?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", "bun@<version>", or "both".',
-        );
-      });
-    });
-  });
 
   describe("resolveToolchain", () => {
     it("should resolve toolchain correctly and sanitize unknown toolchain inputs", () => {
@@ -354,22 +151,24 @@ describe("javascript-env", () => {
   });
 
   describe("resolveRuntime", () => {
-    it("should prioritize specifiedRuntime over package manager", () => {
-      expect(
-        resolveRuntime({ specifiedRuntime: "node" }, { name: "bun", version: "1.4" }),
-      ).toBe("node");
-      expect(
-        resolveRuntime({ specifiedRuntime: "bun" }, { name: "pnpm", version: "12" }),
-      ).toBe("bun");
+    it("should resolve bun runtime when package manager is bun", () => {
+      expect(resolveRuntime({ name: "bun", version: "1.4" })).toBe("bun");
     });
 
-    it("should resolve bun runtime when package manager is bun and no specifiedRuntime is provided", () => {
-      expect(resolveRuntime({}, { name: "bun", version: "1.4" })).toBe("bun");
+    it("should resolve bun runtime when package.json devEngines declares bun runtime", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.4" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "pnpm", version: "12" }, project)).toBe("bun");
     });
 
-    it("should resolve node runtime when package manager is npm or pnpm and no specifiedRuntime is provided", () => {
-      expect(resolveRuntime({}, { name: "npm", version: "12" })).toBe("node");
-      expect(resolveRuntime({}, { name: "pnpm", version: "12" })).toBe("node");
+    it("should resolve node runtime when package manager is npm or pnpm", () => {
+      expect(resolveRuntime({ name: "npm", version: "12" })).toBe("node");
+      expect(resolveRuntime({ name: "pnpm", version: "12" })).toBe("node");
     });
   });
 
@@ -387,11 +186,11 @@ describe("javascript-env", () => {
 
       const pm = { name: "npm", version: "12" };
 
-      expect(resolveNodeVersion({}, pm, "node", project)).toBe("20.10.0");
-      expect(resolveBunVersion({}, pm, project)).toBe("1.2.0");
+      expect(resolveNodeVersion(pm, "node", project)).toBe("20.10.0");
+      expect(resolveBunVersion(pm, project)).toBe("1.2.0");
 
-      const versions = resolveVersions({ nodeVersion: "24" }, pm, "node", project);
-      expect(versions).toEqual({ nodeVersion: "24", bunVersion: "1.2.0" });
+      const versions = resolveVersions(pm, "node", project);
+      expect(versions).toEqual({ nodeVersion: "20.10.0", bunVersion: "1.2.0" });
     });
 
     it("should fall back to defaults when no version files or configs exist", () => {
@@ -402,10 +201,10 @@ describe("javascript-env", () => {
         hasBunLock: false,
       };
 
-      expect(resolveNodeVersion({}, { name: "npm", version: "12" }, "node", emptyProject)).toBe(
+      expect(resolveNodeVersion({ name: "npm", version: "12" }, "node", emptyProject)).toBe(
         DEFAULT_NODE_VERSION,
       );
-      expect(resolveBunVersion({}, { name: "bun", version: "1.4" }, emptyProject)).toBe(
+      expect(resolveBunVersion({ name: "bun", version: "1.4" }, emptyProject)).toBe(
         DEFAULT_BUN_VERSION,
       );
     });
@@ -419,7 +218,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "bun", version: "latest" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("latest");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
     });
@@ -433,7 +232,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "bun", version: "1.2.0", source: "packageManager" as const };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.2.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: 1.2.0");
     });
@@ -451,7 +250,7 @@ describe("javascript-env", () => {
       expect(pm.name).toBe("bun");
       expect(pm.source).toBe("lockfile");
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.3.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
     });
@@ -467,7 +266,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "npm", version: "12" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.1.0");
       expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.0");
     });
@@ -482,24 +281,9 @@ describe("javascript-env", () => {
       };
       const pm = { name: "npm", version: "12" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.3.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
-    });
-
-    it("should prioritize explicit action input for Bun version over project config", () => {
-      const project = {
-        hasPackageJson: true,
-        bunFileVersion: "1.1.0",
-        hasPnpmLock: false,
-        hasPackageLock: false,
-        hasBunLock: false,
-      };
-      const pm = { name: "bun", version: "1.2.0" };
-
-      const ver = resolveBunVersion({ bunVersion: "1.4.1" }, pm, project);
-      expect(ver).toBe("1.4.1");
-      expect(core.info).toHaveBeenCalledWith("Resolved Bun version from input: 1.4.1");
     });
 
     it("should prioritize .bun-version file over packageManager field (including bun@latest) and devEngines", () => {
@@ -513,7 +297,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "bun", version: "latest" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.1.0");
       expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.0");
     });
@@ -528,7 +312,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "bun", version: "latest" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("latest");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
     });
@@ -543,7 +327,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "bun", version: "1.2.0" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("1.2.0");
       expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: 1.2.0");
     });
@@ -557,7 +341,7 @@ describe("javascript-env", () => {
       };
       const pm = { name: "npm", version: "12" };
 
-      const ver = resolveBunVersion({}, pm, project);
+      const ver = resolveBunVersion(pm, project);
       expect(ver).toBe("");
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Bun version"));
     });
