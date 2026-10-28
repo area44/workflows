@@ -72,4 +72,4 @@ This repository uses `@changesets/cli` to automate package versioning, changelog
 - **[Repository README](../README.md)**: Main project overview and action API summary.
 - **[Error Handling Architecture](./errors.md)**: Native JavaScript error boundaries and failure logging.
 - **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
-- **[Maintenance & Repository Health](./maintenance.md)**: Source files, build pipeline, and quality gates.
+- **[Integration Testing Guide](./integration-testing.md)**: Scenario factory, unit testing, and integration CI matrix.
