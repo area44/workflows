@@ -68,7 +68,7 @@ Testing is organized across distinct execution boundaries:
 
 ### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml`)
 
-- **`quality-test` Job**: Provisions Node 24 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format --check`), and unit tests (`npm test`).
+- **`quality-test` Job**: Provisions Node 24 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format -- --check`), and unit tests (`npm test`).
 - **`check-dist` Job**: Provisions Node 24, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`).
 
 ---
@@ -98,7 +98,7 @@ npm test __tests__/integration-consumer.test.ts
 npm run lint
 
 # Check code formatting
-npm run format --check
+npm run format -- --check
 
 # Build bundled artifacts in dist/
 npm run build
