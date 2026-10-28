@@ -17,6 +17,7 @@ import {
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");
+vi.mock("@actions/io");
 
 describe("build-command", () => {
   const originalEnv = { ...process.env };
