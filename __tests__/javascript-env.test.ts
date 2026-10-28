@@ -81,6 +81,19 @@ describe("javascript-env", () => {
         expect.stringContaining("Node.js version not specified"),
       );
     });
+
+    it("should suppress JS warnings and logs in Python-only project with stray .bun-version or .nvmrc", () => {
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0");
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0");
+
+      const res = resolveJsEnvironment("node", "vite", tempDir);
+      expect(res.hasJsProject).toBe(false);
+      expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
+      expect(core.warning).not.toHaveBeenCalled();
+    });
   });
 
   describe("isSupportedRuntime & validateRuntimePackageManagerCompatibility", () => {
@@ -582,6 +595,17 @@ describe("javascript-env", () => {
       expect(pm).toEqual({ name: "pnpm", version: "9.5.0" });
     });
 
+    it("should preserve 'latest' version in packageManager field for pnpm and npm", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@latest" }),
+      );
+      const project = inspectJsProjectEnvironment(tempDir);
+      const pm = resolveJsPackageManager(project);
+      expect(pm).toEqual({ name: "pnpm", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@latest");
+    });
+
     it("should trim whitespace and normalize uppercase in packageManager field", () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -620,6 +644,7 @@ describe("javascript-env", () => {
     });
 
     it("should log a core warning when multiple conflicting lockfiles exist in workspace while using deterministic precedence", () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), "{}");
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");

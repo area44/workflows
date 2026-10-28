@@ -257,25 +257,37 @@ export function resolveNodeVersion(
   }
 
   if (project.nvmRcError) {
-    core.warning(`Failed to detect Node.js version: ${project.nvmRcError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.nvmRcError}`);
+    }
   } else if (project.nvmRcVersion) {
-    core.info(`Found .nvmrc: ${project.nvmRcVersion}`);
+    if (project.hasPackageJson) {
+      core.info(`Found .nvmrc: ${project.nvmRcVersion}`);
+    }
     return project.nvmRcVersion;
   }
 
   if (project.nodeFileError) {
-    core.warning(`Failed to detect Node.js version: ${project.nodeFileError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.nodeFileError}`);
+    }
   } else if (project.nodeFileVersion) {
-    core.info(`Found .node-version: ${project.nodeFileVersion}`);
+    if (project.hasPackageJson) {
+      core.info(`Found .node-version: ${project.nodeFileVersion}`);
+    }
     return project.nodeFileVersion;
   }
 
   if (project.packageJsonError) {
-    core.warning(`Failed to detect Node.js version: ${project.packageJsonError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Node.js version: ${project.packageJsonError}`);
+    }
   } else if (project.packageJson) {
     const devVersion = getDevEngineRuntimeVersion(project.packageJson, "node");
     if (devVersion) {
-      core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
+      if (project.hasPackageJson) {
+        core.info(`Found Node.js version in package.json devEngines: ${devVersion}`);
+      }
       return devVersion;
     }
   }
@@ -296,9 +308,13 @@ export function resolveNodeVersion(
  */
 function getBunVersionFromFile(project: JsProjectEnvironment): string | undefined {
   if (project.bunFileError) {
-    core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Bun version: ${project.bunFileError}`);
+    }
   } else if (project.bunFileVersion) {
-    core.info(`Found .bun-version: ${project.bunFileVersion}`);
+    if (project.hasPackageJson) {
+      core.info(`Found .bun-version: ${project.bunFileVersion}`);
+    }
     return project.bunFileVersion;
   }
   return undefined;
@@ -306,11 +322,15 @@ function getBunVersionFromFile(project: JsProjectEnvironment): string | undefine
 
 function getBunVersionFromDevEngines(project: JsProjectEnvironment): string | undefined {
   if (project.packageJsonError) {
-    core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect Bun version: ${project.packageJsonError}`);
+    }
   } else if (project.packageJson) {
     const devVersion = getDevEngineRuntimeVersion(project.packageJson, "bun");
     if (devVersion) {
-      core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
+      if (project.hasPackageJson) {
+        core.info(`Found Bun version in package.json devEngines: ${devVersion}`);
+      }
       return devVersion;
     }
   }
@@ -835,7 +855,9 @@ export function getDevEngineRuntimeVersion(
 
 export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackageManagerInfo {
   if (project.packageJsonError) {
-    core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
+    if (project.hasPackageJson) {
+      core.warning(`Failed to detect package manager: ${project.packageJsonError}`);
+    }
   } else if (project.packageJson) {
     const pkg = project.packageJson;
     if (pkg.packageManager && typeof pkg.packageManager === "string") {
@@ -850,13 +872,19 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
         );
       }
       const pmVersion = rawVersion || getDefaultJsPackageManagerVersion(name);
-      core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
+      if (project.hasPackageJson) {
+        core.info(`Found packageManager in package.json: ${name}@${pmVersion}`);
+      }
       return { name, version: pmVersion };
     }
 
     const devPm = getDevEnginePackageManager(pkg);
     if (devPm) {
-      core.info(`Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`);
+      if (project.hasPackageJson) {
+        core.info(
+          `Found packageManager in package.json devEngines: ${devPm.name}@${devPm.version}`,
+        );
+      }
       return devPm;
     }
   }
@@ -872,12 +900,16 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   if (detectedLocks.length > 0) {
     if (detectedLocks.length > 1) {
       const fileList = detectedLocks.map((l) => l.file).join(", ");
-      core.warning(
-        `Multiple conflicting lockfiles found (${fileList}). Selecting '${detectedLocks[0].file}' (${detectedLocks[0].name}) based on priority precedence.`,
-      );
+      if (project.hasPackageJson) {
+        core.warning(
+          `Multiple conflicting lockfiles found (${fileList}). Selecting '${detectedLocks[0].file}' (${detectedLocks[0].name}) based on priority precedence.`,
+        );
+      }
     }
     const selected = detectedLocks[0];
-    core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
+    if (project.hasPackageJson) {
+      core.info(`Found ${selected.file}, using ${selected.name}@${selected.version}`);
+    }
     return { name: selected.name, version: selected.version };
   }
 
