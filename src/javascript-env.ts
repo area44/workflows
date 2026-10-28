@@ -358,6 +358,13 @@ function getBunVersionFromDevEngines(project: JsProjectEnvironment): string | un
 /**
  * Version Resolution
  * Resolves Bun version based on parsed inputs, package manager, and project state.
+ *
+ * Precedence Contract:
+ * 1. Action Runtime Input (`parsed.bunVersion` e.g. `runtime: "bun@1.4"`)
+ * 2. `.bun-version` version file
+ * 3. Package Manager field in `package.json` (`packageManager: "bun@<ver>"`, e.g. `bun@latest` or `bun@1.2.0`)
+ * 4. Engine requirements in `package.json` (`devEngines.bun`)
+ * 5. Default fallback (`DEFAULT_BUN_VERSION` = "1.4") if Bun runtime / package-manager / lockfile is detected
  */
 export function resolveBunVersion(
   parsed: ParsedInputs,
