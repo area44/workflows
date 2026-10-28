@@ -1,13 +1,13 @@
 # area44/workflows
 
-This repository provides reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It helps standardize and streamline CI/CD processes across projects.
+This repository provides reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It standardizes CI/CD processes, static site deployment, and automated code maintenance across projects.
 
-## Composite Actions
+## Available Actions
 
-- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Unified action to build static sites and upload GitHub Pages artifacts with automatic environment setup and Vite+ detection.
-- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically update code.
+- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Build and deploy static sites to GitHub Pages.
+- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically format and fix code.
 
-## Quick Usage
+## Quick Start
 
 ```yaml
 name: GitHub Pages
@@ -32,14 +32,14 @@ jobs:
       - name: Build site
         uses: area44/workflows/pages@main
         with:
-          # Optional: runtime: 'node@24'
           # Optional: path: 'dist'
+          # Optional: runtime: 'node@24'
           # Optional: build-command: 'npm run build'
 ```
 
 ## Public Action API Summary
 
-Each action's `action.yml` serves as the single source of truth for its public API contract (inputs, outputs, defaults, required status).
+Each action's `action.yml` serves as the single source of truth for its public API contract.
 
 ### `pages` (GitHub Pages Build and Upload)
 
@@ -63,7 +63,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `toolchain`               | The resolved toolchain (vite or vite-plus) |
 | `vp-version`              | The version of Vite+ installed             |
 
-### `autofix` (Automatically update code)
+### `autofix` (Automatically format and fix code)
 
 #### Inputs
 
@@ -80,18 +80,40 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `package-manager`         | The package manager used                                              |
 | `package-manager-version` | The version of the package manager used                               |
 | `runtime`                 | The runtime used (node or bun)                                        |
+| `has-js-project`          | Whether a JavaScript project (package.json) was detected              |
 | `has-python-source`       | Whether Python source code was detected                               |
 | `python-version`          | The Python version used                                               |
 | `python-package-manager`  | The Python package manager detected (uv or pip)                       |
 | `ruff-version`            | The Ruff version specified by the project or empty string for default |
 
-## Documentation Architecture
+## Documentation Index
 
-Specialized documentation guides explain specific contracts and operational guarantees:
+- **[Pages Action Documentation](./pages/README.md)**: Details on inputs, outputs, environment variables (`SITE`, `BASE`, `BASE_URL`), and static site requirements.
+- **[Autofix Action Documentation](./autofix/README.md)**: Information on JavaScript script selection, Python Ruff formatting/linting, and autofix.ci integration.
+- **[Error Handling Architecture](./docs/errors.md)**: Native JavaScript error propagation, top-level boundaries, and build failure logging (`${RUNNER_TEMP}/pages_build_error.log`).
+- **[Security Boundaries](./docs/security.md)**: Trust boundaries, shell command argument tokenization without subshell execution, and secret masking.
+- **[Maintenance & Repository Health](./docs/maintenance.md)**: Invariants, sources of truth, build pipelines (`npm run build`), quality gates, and release versioning.
+- **[Integration Testing & Scenario Factory Guide](./docs/integration-testing.md)**: Dynamic scenario factory architecture, unit tests, module-level tests, and composite action CI matrix verification.
 
-- **[Error Contract](./docs/errors.md)**: Defines the error handling architecture, native error propagation.
-- **[Security Boundaries](./docs/security.md)**: Input trust model, command tokenization without subshell execution, and credential masking.
-- **[Maintenance & Repository Health](./docs/maintenance.md)**: Repository invariants, source of truth files, and release process.
+## Development and Testing
+
+Local testing and validation commands are managed via Vite+ (`vp`):
+
+```bash
+# Run unit and integration tests
+npm test
+
+# Run code style linting
+npm run lint
+
+# Check formatting
+npm run format --check
+
+# Build bundle artifacts in dist/
+npm run build
+```
+
+For comprehensive details on repository structure and release management, see [docs/maintenance.md](./docs/maintenance.md) and [docs/integration-testing.md](./docs/integration-testing.md).
 
 ## License
 
