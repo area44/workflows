@@ -131,27 +131,19 @@ describe("javascript-env", () => {
   describe("parseEnvironmentInputs", () => {
     describe("valid runtime inputs", () => {
       it("should return empty object for empty or whitespace-only input", () => {
-        expect(parseEnvironmentInputs("")).toEqual({ hasNode: false, hasBun: false });
-        expect(parseEnvironmentInputs("   ")).toEqual({ hasNode: false, hasBun: false });
+        expect(parseEnvironmentInputs("")).toEqual({});
+        expect(parseEnvironmentInputs("   ")).toEqual({});
       });
 
       it("should parse explicit node runtime without version", () => {
         expect(parseEnvironmentInputs("node")).toEqual({
           specifiedRuntime: "node",
-          nodeVersion: undefined,
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: false,
         });
       });
 
       it("should parse explicit bun runtime without version", () => {
         expect(parseEnvironmentInputs("bun")).toEqual({
           specifiedRuntime: "bun",
-          nodeVersion: undefined,
-          bunVersion: undefined,
-          hasNode: false,
-          hasBun: true,
         });
       });
 
@@ -159,176 +151,60 @@ describe("javascript-env", () => {
         expect(parseEnvironmentInputs("node@22")).toEqual({
           specifiedRuntime: "node",
           nodeVersion: "22",
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: false,
         });
       });
 
       it("should parse explicit bun version string", () => {
         expect(parseEnvironmentInputs("bun@1.4")).toEqual({
           specifiedRuntime: "bun",
-          nodeVersion: undefined,
           bunVersion: "1.4",
-          hasNode: false,
-          hasBun: true,
         });
-      });
-
-      it("should parse multi-runtime specifier with comma or space", () => {
-        expect(parseEnvironmentInputs("node@24,bun@1.4")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: "24",
-          bunVersion: "1.4",
-          hasNode: true,
-          hasBun: true,
-        });
-
-        expect(parseEnvironmentInputs("bun@1.4, node@24")).toEqual({
-          specifiedRuntime: "bun",
-          nodeVersion: "24",
-          bunVersion: "1.4",
-          hasNode: true,
-          hasBun: true,
-        });
-
-        expect(parseEnvironmentInputs("node, bun")).toEqual({
-          specifiedRuntime: "node",
-          nodeVersion: undefined,
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: true,
-        });
-      });
-
-      it("should parse both keyword by rejecting it with a clear error", () => {
-        expect(() => parseEnvironmentInputs("both")).toThrow(
-          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
-        );
-        expect(() => parseEnvironmentInputs("BOTH")).toThrow(
-          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
-        );
-        expect(() => parseEnvironmentInputs(" Both ")).toThrow(
-          "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
-        );
       });
 
       it("should support mixed-case and whitespace-padded inputs", () => {
         expect(parseEnvironmentInputs("  NODE@24  ")).toEqual({
           specifiedRuntime: "node",
           nodeVersion: "24",
-          bunVersion: undefined,
-          hasNode: true,
-          hasBun: false,
         });
 
-        expect(parseEnvironmentInputs("Bun@1.4 , Node@22")).toEqual({
+        expect(parseEnvironmentInputs("  Bun@1.4  ")).toEqual({
           specifiedRuntime: "bun",
-          nodeVersion: "22",
           bunVersion: "1.4",
-          hasNode: true,
-          hasBun: true,
         });
       });
     });
 
     describe("invalid and malformed runtime inputs", () => {
-      it("should reject unknown runtime names without echoing raw input", () => {
-        const rawInput = "deno_secret_token_12345";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-        );
-      });
+      const invalidInputs = [
+        "both",
+        "BOTH",
+        " Both ",
+        "node, bun",
+        "bun, node",
+        "node@24, bun@1.4",
+        "node@",
+        "bun@",
+        "node@24@25",
+        "bun@@1.4",
+        "deno",
+        "python",
+        "npm",
+        "node 24",
+        "node@24 extra",
+        ",node",
+        "node,",
+        "node@20@22?secret=token_12345",
+      ];
 
-      it("should reject prefix or partial runtime matches without echoing raw input", () => {
-        const rawInput = "node18_secret_token";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
+      it.each(invalidInputs)("should reject invalid runtime input: %p", (input) => {
+        expect(() => parseEnvironmentInputs(input)).toThrow(
+          "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
         );
-      });
-
-      it("should reject malformed version syntax without echoing raw input", () => {
-        const rawInputWithToken = "node@20@22?secret=token_12345";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInputWithToken);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("token_12345");
-        expect(err?.message).not.toContain(rawInputWithToken);
-        expect(err?.message).toBe(
-          'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-        );
-      });
-
-      it("should reject malformed comma formatting without echoing raw input", () => {
-        const rawInput = ",node,secret_token";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("secret_token");
-        expect(err?.message).not.toContain(rawInput);
-        expect(err?.message).toBe(
-          'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-        );
-      });
-
-      it("should reject duplicate or conflicting specifiers without echoing full raw input", () => {
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs("node@20, node@22");
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("node@20");
-        expect(err?.message).toBe(
-          'Invalid runtime input: duplicate or conflicting specifiers for "node".',
-        );
-
-        expect(() => parseEnvironmentInputs("bun@1.2, bun@1.4")).toThrow(
-          'Invalid runtime input: duplicate or conflicting specifiers for "bun".',
-        );
-      });
-
-      it("should reject mixed valid and invalid runtime specifiers without echoing raw input", () => {
-        const rawInput = "node@24, deno_token_secret";
-        let err: Error | undefined;
-        try {
-          parseEnvironmentInputs(rawInput);
-        } catch (e) {
-          err = e as Error;
-        }
-        expect(err).toBeDefined();
-        expect(err?.message).not.toContain("deno_token_secret");
-        expect(err?.message).not.toContain(rawInput);
       });
 
       it("should sanitize sensitive values in malformed or unrecognized runtime input error messages", () => {
         const sensitiveToken = "ghp_1234567890abcdefghijklmnopqrstuv";
-        const inputWithToken = `node@24, invalid_specifier?token=${sensitiveToken}`;
+        const inputWithToken = `node@24?token=${sensitiveToken}`;
         let caughtError: Error | undefined;
         try {
           parseEnvironmentInputs(inputWithToken);
@@ -337,9 +213,8 @@ describe("javascript-env", () => {
         }
         expect(caughtError).toBeDefined();
         expect(caughtError?.message).not.toContain(sensitiveToken);
-        expect(caughtError?.message).not.toContain("invalid_specifier");
         expect(caughtError?.message).toBe(
-          'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
+          "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
         );
       });
     });
@@ -551,8 +426,8 @@ describe("javascript-env", () => {
       expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
     });
 
-    it("regression test: runtime selection 'node, bun' should defer to .bun-version and devEngines.bun", () => {
-      const parsed = parseEnvironmentInputs("node, bun");
+    it("regression test: runtime selection 'bun' should defer to .bun-version and devEngines.bun", () => {
+      const parsed = parseEnvironmentInputs("bun");
       expect(parsed.bunVersion).toBeUndefined();
 
       const project = {

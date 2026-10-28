@@ -634,33 +634,12 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("resolves multi-runtime input 'node, bun' with version files independently", () => {
-      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-multi-vers-"));
-      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "multi-app" }));
-      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
-      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
-
-      process.chdir(tempDir);
-      try {
-        const env = resolveEnvironment("node, bun");
-        writeOutput(env);
-
-        expect(env.js.nodeVersion).toBe("20.10.0");
-        expect(env.js.bunVersion).toBe("1.2.0");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
-      } finally {
-        process.chdir(originalCwd);
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
     it("rejects runtime input 'both' explicitly with an actionable error", () => {
       expect(() => resolveEnvironment("both")).toThrow(
-        "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+        "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
       );
       expect(() => resolveEnvironment("BOTH")).toThrow(
-        "Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.",
+        "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
       );
     });
 
@@ -1307,13 +1286,11 @@ describe("resolve-environment", () => {
       );
     });
 
-    it("should respect explicit runtime input node@22,bun@1.4 and output versions for both", () => {
+    it("should reject multi-runtime specifiers like node@22,bun@1.4", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
-      const env = resolveEnvironment("node@22,bun@1.4");
-
-      expect(env.js.runtime).toBe("node");
-      expect(env.js.nodeVersion).toBe("22");
-      expect(env.js.bunVersion).toBe("1.4");
+      expect(() => resolveEnvironment("node@22,bun@1.4")).toThrow(
+        "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
+      );
     });
 
     it("should resolve runtime=node when explicit runtime=node is supplied even if package manager is bun", () => {

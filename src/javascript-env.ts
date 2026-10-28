@@ -15,8 +15,6 @@ export interface ParsedInputs {
   specifiedRuntime?: "node" | "bun";
   nodeVersion?: string;
   bunVersion?: string;
-  hasNode: boolean;
-  hasBun: boolean;
 }
 
 export function isSupportedRuntime(runtime: string): runtime is SupportedRuntime {
@@ -127,51 +125,6 @@ export interface ResolvedJsEnvironment {
   toolchain: Toolchain;
 }
 
-function validateCommaStructure(trimmed: string): void {
-  if (trimmed.startsWith(",") || trimmed.endsWith(",") || /,[\s]*,/.test(trimmed)) {
-    throw new Error(
-      'Invalid runtime input: malformed comma placement. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-    );
-  }
-}
-
-interface ParsedPart {
-  type: "node" | "bun";
-  version?: string;
-}
-
-function parseSingleRuntimePart(rawPart: string): ParsedPart {
-  const part = rawPart.toLowerCase();
-
-  if (part === "both") {
-    throw new Error("Invalid runtime 'both'. Specify exactly one runtime: 'node' or 'bun'.");
-  }
-  if (part === "node") {
-    return { type: "node" };
-  }
-  if (part === "bun") {
-    return { type: "bun" };
-  }
-
-  const isNodeSpec = part.startsWith("node@");
-  const isBunSpec = part.startsWith("bun@");
-
-  if (isNodeSpec || isBunSpec) {
-    const prefixLen = isNodeSpec ? 5 : 4;
-    const ver = part.slice(prefixLen);
-    if (!ver || ver.includes("@") || ver.includes(",") || /\s/.test(ver)) {
-      throw new Error(
-        'Invalid runtime input: malformed version specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-      );
-    }
-    return { type: isNodeSpec ? "node" : "bun", version: ver };
-  }
-
-  throw new Error(
-    'Invalid runtime input: unrecognized or malformed runtime specifier. Supported runtime specifiers are "node", "bun", "node@<version>", or "bun@<version>".',
-  );
-}
-
 /**
  * Input Parsing
  * Parses raw action runtime inputs into normalized input representations.
@@ -179,51 +132,61 @@ function parseSingleRuntimePart(rawPart: string): ParsedPart {
 export function parseEnvironmentInputs(
   runtimeInput: string = core.getInput("runtime"),
 ): ParsedInputs {
-  if (!runtimeInput) return { hasNode: false, hasBun: false };
+  if (!runtimeInput) return {};
 
   const trimmed = runtimeInput.trim();
-  if (!trimmed) return { hasNode: false, hasBun: false };
+  if (!trimmed) return {};
 
-  validateCommaStructure(trimmed);
+  if (trimmed.includes(",") || /\s/.test(trimmed)) {
+    throw new Error(
+      "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
+    );
+  }
 
-  const parts = trimmed.split(/[\s,]+/);
-  let specifiedRuntime: "node" | "bun" | undefined;
-  let nodeVersion: string | undefined;
-  let bunVersion: string | undefined;
+  const lower = trimmed.toLowerCase();
 
-  let hasNode = false;
-  let hasBun = false;
-  const counts = { node: 0, bun: 0 };
+  if (lower === "node") {
+    return { specifiedRuntime: "node" };
+  }
+  if (lower === "bun") {
+    return { specifiedRuntime: "bun" };
+  }
 
-  for (const rawPart of parts) {
-    const parsed = parseSingleRuntimePart(rawPart);
-    counts[parsed.type]++;
-
-    if (parsed.type === "node") {
-      hasNode = true;
-      if (!specifiedRuntime) specifiedRuntime = "node";
-      if (parsed.version) nodeVersion = parsed.version;
-    } else if (parsed.type === "bun") {
-      hasBun = true;
-      if (!specifiedRuntime) specifiedRuntime = "bun";
-      if (parsed.version) bunVersion = parsed.version;
+  if (lower.startsWith("node@")) {
+    const ver = lower.slice(5);
+    if (
+      !ver ||
+      /[^a-zA-Z0-9_.*/~^><=-]/.test(ver) ||
+      ver.includes("@") ||
+      ver.includes(":") ||
+      ver.includes("?")
+    ) {
+      throw new Error(
+        "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
+      );
     }
+    return { specifiedRuntime: "node", nodeVersion: ver };
   }
 
-  if (counts.node > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "node".');
-  }
-  if (counts.bun > 1) {
-    throw new Error('Invalid runtime input: duplicate or conflicting specifiers for "bun".');
+  if (lower.startsWith("bun@")) {
+    const ver = lower.slice(4);
+    if (
+      !ver ||
+      /[^a-zA-Z0-9_.*/~^><=-]/.test(ver) ||
+      ver.includes("@") ||
+      ver.includes(":") ||
+      ver.includes("?")
+    ) {
+      throw new Error(
+        "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
+      );
+    }
+    return { specifiedRuntime: "bun", bunVersion: ver };
   }
 
-  return {
-    specifiedRuntime,
-    nodeVersion,
-    bunVersion,
-    hasNode,
-    hasBun,
-  };
+  throw new Error(
+    "Invalid runtime input. Supported values are 'node', 'bun', 'node@<version>', and 'bun@<version>'.",
+  );
 }
 
 /**
@@ -291,7 +254,7 @@ function getNodeVersionFromPackageJson(project: JsProjectEnvironment): string | 
  */
 export function resolveNodeVersion(
   parsed: ParsedInputs,
-  pm: PackageManager,
+  _pm: PackageManager,
   runtime: "node" | "bun",
   project: JsProjectEnvironment,
 ): string {
@@ -299,7 +262,7 @@ export function resolveNodeVersion(
     return parsed.nodeVersion;
   }
 
-  if (parsed.specifiedRuntime === "bun" && !parsed.hasNode) {
+  if (parsed.specifiedRuntime === "bun" || runtime === "bun") {
     return "";
   }
 
@@ -311,10 +274,6 @@ export function resolveNodeVersion(
   const pkgVer = getNodeVersionFromPackageJson(project);
   if (pkgVer !== undefined) {
     return pkgVer;
-  }
-
-  if ((runtime === "bun" || pm.name === "bun") && !parsed.hasNode) {
-    return "";
   }
 
   if (project.hasPackageJson) {
@@ -404,11 +363,7 @@ export function resolveBunVersion(
   const hasBunEngine =
     project.packageJson && getDevEngineRuntimeVersion(project.packageJson, "bun") !== undefined;
   const isBunDetected =
-    Boolean(parsed.hasBun) ||
-    parsed.specifiedRuntime === "bun" ||
-    pm.name === "bun" ||
-    project.hasBunLock ||
-    hasBunEngine;
+    parsed.specifiedRuntime === "bun" || pm.name === "bun" || project.hasBunLock || hasBunEngine;
 
   if (isBunDetected) {
     if (project.hasPackageJson) {
