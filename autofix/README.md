@@ -1,10 +1,10 @@
 # area44/autofix
 
-Automatically update code with repository-configured scripts, Ruff, and autofix.ci.
+Automatically format and fix code.
 
 ## Action Purpose
 
-The `autofix` composite action automatically updates code with repository-configured scripts, Ruff, and autofix.ci across the AREA44 ecosystem. It detects project configurations, provisions appropriate runtimes and package managers, executes repository scripts and Ruff, and integrates with `autofix.ci` to commit fixes back to pull requests.
+The `autofix` composite action automatically formats and fixes code across the AREA44 ecosystem. It detects project configurations, provisions appropriate runtimes and package managers, executes repository scripts and Ruff, and integrates with `autofix.ci` to commit fixes back to pull requests.
 
 ## Features and Supported Behavior
 
@@ -93,5 +93,5 @@ When `.py` or `.pyi` source files exist outside excluded directories (`.venv`, `
 - **[Repository README](../README.md)**: Project overview and action API summary.
 - **[Error Handling Architecture](../docs/errors.md)**: Native JavaScript error boundaries and `@actions/core` reporting.
 - **[Security Boundaries](../docs/security.md)**: Trust boundaries, process tokenization, and command execution rules.
-- **[Maintenance & Repository Health](../docs/maintenance.md)**: Source of truth files, build pipeline, and release process.
+- **[Maintenance & Repository Health](../docs/maintenance.md)**: Source of truth files, build pipeline, and quality gates.
 - **[Integration Testing Guide](../docs/integration-testing.md)**: Scenario factory, module tests, and CI matrix testing.

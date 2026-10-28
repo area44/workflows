@@ -1,5 +1,5 @@
 name: Autofix
-description: "Automatically update code with repository-configured scripts, Ruff, and autofix.ci"
+description: "Automatically format and fix code."
 inputs:
   runtime:
     description: "Optional runtime and version override (e.g. node@24, bun@1.4)"

@@ -1,10 +1,10 @@
 # area44/pages
 
-Build static sites and upload GitHub Pages artifacts with automatic environment resolution and Vite+ toolchain detection.
+Build and deploy static sites to GitHub Pages.
 
 ## Action Purpose
 
-The `pages` composite action builds static sites and uploads GitHub Pages artifacts with automatic environment resolution and Vite+ toolchain detection across the AREA44 ecosystem. It resolves project runtimes and package managers, installs dependencies, executes site build commands, validates output directories, and uploads site artifacts.
+The `pages` composite action builds and deploys static sites to GitHub Pages across the AREA44 ecosystem. It resolves project runtimes and package managers, installs dependencies, executes site build commands, validates output directories, and uploads site artifacts.
 
 ## Features and Supported Behavior
 

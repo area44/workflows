@@ -4,8 +4,8 @@ This repository provides reusable **GitHub Actions workflows and composite actio
 
 ## Available Actions
 
-- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Build static sites and upload GitHub Pages artifacts with automatic environment resolution and Vite+ detection.
-- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically update code with repository-configured scripts, Ruff, and autofix.ci.
+- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Build and deploy static sites to GitHub Pages.
+- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically format and fix code.
 
 ## Quick Start
 

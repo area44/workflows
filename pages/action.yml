@@ -1,5 +1,5 @@
 name: Build and Upload GitHub Pages Site
-description: "Build static sites and upload GitHub Pages artifacts with automatic environment resolution and Vite+ detection"
+description: "Build and deploy static sites to GitHub Pages."
 inputs:
   path:
     description: "Directory where the built site is located"
