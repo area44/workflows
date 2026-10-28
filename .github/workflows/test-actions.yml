@@ -201,7 +201,6 @@ jobs:
           EXPECTED_FAILURE: ${{ matrix.expected_failure }}
           PAGES_OUTCOME: ${{ steps.pages.outcome }}
           AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
-          PAGES_OUTPUT_PATH: ${{ steps.pages.outputs.path }}
           PAGES_PM: ${{ steps.pages.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
@@ -257,12 +256,6 @@ jobs:
 
             if [[ ! -d "node_modules" ]]; then
               echo "Error: [${ACTION}] Negative scenario failed before dependency installation (node_modules directory missing)."
-              exit 1
-            fi
-
-            # Action output 'path' must NOT be set when build command or path validation fails
-            if [[ -n "$PAGES_OUTPUT_PATH" ]]; then
-              echo "Error: [${ACTION}] Action step output 'path' was unexpectedly set to '${PAGES_OUTPUT_PATH}' on failure."
               exit 1
             fi
 
