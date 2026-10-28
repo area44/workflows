@@ -163,6 +163,12 @@ jobs:
             ${{ matrix.python_version && format('--python-version {0}', matrix.python_version) || '' }} \
             ${{ matrix.ruff_version != null && format('--ruff-version "{0}"', matrix.ruff_version) || '' }}
 
+      - name: Clean Build Outputs Before Execution
+        run: |
+          TARGET_PATH="${{ matrix.build_path }}"
+          TARGET_PATH="${TARGET_PATH:-dist}"
+          rm -rf "$TARGET_PATH" dist
+
       - name: Test Pages Action
         if: matrix.action == 'pages'
         uses: ./action-source/pages
@@ -187,10 +193,12 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
           PM: ${{ matrix.pm }}
           TYPE: ${{ matrix.type }}
+          BUILD_PATH: ${{ matrix.build_path }}
           NEGATIVE_TYPE: ${{ matrix.negative_type }}
           EXPECTED_FAILURE: ${{ matrix.expected_failure }}
           PAGES_OUTCOME: ${{ steps.pages.outcome }}
           AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
+          PAGES_OUTPUT_PATH: ${{ steps.pages.outputs.path }}
           PAGES_PM: ${{ steps.pages.outputs.package-manager }}
           AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
@@ -249,10 +257,18 @@ jobs:
               exit 1
             fi
 
+            # Action output 'path' must NOT be set when build command or path validation fails
+            if [[ -n "$PAGES_OUTPUT_PATH" ]]; then
+              echo "Error: [${ACTION}] Action step output 'path' was unexpectedly set to '${PAGES_OUTPUT_PATH}' on failure."
+              exit 1
+            fi
+
+            EFFECTIVE_BUILD_PATH="${BUILD_PATH:-dist}"
+
             if [[ "$NEGATIVE_TYPE" == "invalid_build_command" ]]; then
-              # Invalid build command failed during execution, so default build artifact dist/index.html was NOT generated
-              if [[ -f "dist/index.html" ]]; then
-                echo "Error: [${ACTION}] Invalid build command scenario produced build artifact 'dist/index.html', but command execution should have failed prior to output creation."
+              # Invalid build command failed during execution, so build artifact was NOT produced
+              if [[ -f "${EFFECTIVE_BUILD_PATH}/index.html" || -f "dist/index.html" ]]; then
+                echo "Error: [${ACTION}] Invalid build command scenario produced build artifact, but command execution should have failed prior to output creation."
                 exit 1
               fi
             elif [[ "$NEGATIVE_TYPE" == "missing_output_dir" ]]; then
@@ -261,8 +277,8 @@ jobs:
                 echo "Error: [${ACTION}] Missing output path scenario did not run build command (expected default 'dist/index.html' artifact was missing)."
                 exit 1
               fi
-              if [[ -d "non_existent_output_dir_99" ]]; then
-                echo "Error: [${ACTION}] Configured non-existent output directory 'non_existent_output_dir_99' unexpectedly exists."
+              if [[ -d "$EFFECTIVE_BUILD_PATH" ]]; then
+                echo "Error: [${ACTION}] Configured non-existent output directory '${EFFECTIVE_BUILD_PATH}' unexpectedly exists."
                 exit 1
               fi
             fi

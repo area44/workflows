@@ -80,8 +80,9 @@ Integration testing is performed across two distinct boundaries:
   - **Action Invocation**: Invokes `./action-source/pages` or `./action-source/autofix` against the generated project.
   - **Output & Artifact Verification**: Asserts step outputs and checks produced artifacts (e.g., `dist/index.html`).
   - **Negative Failure Mode Testing**: Verifies that invalid build commands or missing output directories trigger explicit step failures with expected stage assertions:
-    - **Invalid Build Command (`invalid_build_command`)**: Verifies step outcome is `failure`, environment setup succeeded (`PAGES_PM` and `PAGES_RUNTIME` match expected), `node_modules` exists (confirming dependency installation completed), and default `dist/index.html` was NOT produced (confirming failure occurred during build execution).
-    - **Missing Output Directory (`missing_output_dir`)**: Verifies step outcome is `failure`, environment setup succeeded, `node_modules` exists, default `dist/index.html` WAS produced by build, and configured output directory (`non_existent_output_dir_99`) does not exist (confirming failure occurred during output path validation).
+    - **Pre-Execution Clean Step**: `rm -rf "$TARGET_PATH" dist` cleans pre-existing build outputs before action execution to prevent stale artifacts from causing false positives.
+    - **Invalid Build Command (`invalid_build_command`)**: Verifies step outcome is `failure`, environment setup succeeded (`PAGES_PM` and `PAGES_RUNTIME` match expected), `node_modules` exists (confirming dependency installation completed), action step output `path` is empty (`PAGES_OUTPUT_PATH == ""`), and no build artifact exists at effective output path `${EFFECTIVE_BUILD_PATH}/index.html` or `dist/index.html` (confirming failure occurred during build execution prior to output creation).
+    - **Missing Output Directory (`missing_output_dir`)**: Verifies step outcome is `failure`, environment setup succeeded, `node_modules` exists, action step output `path` is empty (`PAGES_OUTPUT_PATH == ""`), default `dist/index.html` WAS produced by build, and configured output directory `${EFFECTIVE_BUILD_PATH}` (`non_existent_output_dir_99`) does not exist (confirming failure occurred during output path validation).
 
 ---
 
