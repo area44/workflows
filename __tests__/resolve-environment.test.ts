@@ -456,6 +456,44 @@ describe("resolve-environment", () => {
   });
 
   describe("Scenario Matrix Verification", () => {
+    it("regression test: Python-only project with stray .nvmrc and .bun-version files", () => {
+      const tempDir = path.join(fixturesDir, "matrix-py-stray-js-" + Date.now());
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "ruff==0.4.2\n");
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.hasJsProject).toBe(false);
+        expect(env.python.hasPythonSource).toBe(true);
+
+        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
+        expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
+        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("reports JavaScript outputs when only a JavaScript project is detected", () => {
       const tempDir = path.join(fixturesDir, "matrix-js-only-" + Date.now());
       fs.mkdirSync(tempDir, { recursive: true });
@@ -823,8 +861,8 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("Nested directories and workspace scenario: Python workspace and nested JS package", () => {
-      const tempDir = path.join(fixturesDir, "matrix-workspace-nested-" + Date.now());
+    it("resolves Python environment without JavaScript project from nested services/py-svc directory", () => {
+      const tempDir = path.join(fixturesDir, "matrix-workspace-nested-py-" + Date.now());
       fs.mkdirSync(path.join(tempDir, "packages/js-pkg"), { recursive: true });
       fs.mkdirSync(path.join(tempDir, "services/py-svc"), { recursive: true });
 
@@ -845,9 +883,58 @@ describe("resolve-environment", () => {
       process.chdir(path.join(tempDir, "services/py-svc"));
       try {
         const env = resolveEnvironment();
+        writeOutput(env);
+
         expect(env.python.hasPythonSource).toBe(true);
         expect(env.js.hasJsProject).toBe(false);
         expect(env.python.pmInfo?.name).toBe("uv");
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("resolves JavaScript project from nested packages/js-pkg directory without detecting Python", () => {
+      const tempDir = path.join(fixturesDir, "matrix-workspace-nested-js-" + Date.now());
+      fs.mkdirSync(path.join(tempDir, "packages/js-pkg"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "services/py-svc"), { recursive: true });
+
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        '[tool.uv.workspace]\nmembers = ["services/*"]\n',
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "packages/js-pkg/package.json"),
+        JSON.stringify({ name: "js-nested-pkg", packageManager: "pnpm@9.1.0" }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "services/py-svc/pyproject.toml"),
+        "[project]\nname = 'py-svc'\n",
+      );
+      fs.writeFileSync(path.join(tempDir, "services/py-svc/service.py"), "print('svc')\n");
+
+      process.chdir(path.join(tempDir, "packages/js-pkg"));
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.js.hasJsProject).toBe(true);
+        expect(env.js.pm).toEqual({ name: "pnpm", version: "9.1.0" });
+        expect(env.python.hasPythonSource).toBe(false);
+
+        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.1.0");
+        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });

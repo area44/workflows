@@ -604,6 +604,15 @@ describe("javascript-env", () => {
       const pm = resolveJsPackageManager(project);
       expect(pm).toEqual({ name: "pnpm", version: "latest" });
       expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@latest");
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ packageManager: "npm@latest" }),
+      );
+      const projectNpm = inspectJsProjectEnvironment(tempDir);
+      const pmNpm = resolveJsPackageManager(projectNpm);
+      expect(pmNpm).toEqual({ name: "npm", version: "latest" });
+      expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@latest");
     });
 
     it("should trim whitespace and normalize uppercase in packageManager field", () => {
