@@ -475,8 +475,18 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", DEFAULT_NPM_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -505,8 +515,13 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -538,8 +553,14 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -567,8 +588,15 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
+
         expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+        expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });

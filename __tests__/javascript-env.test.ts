@@ -399,6 +399,95 @@ describe("javascript-env", () => {
         DEFAULT_BUN_VERSION,
       );
     });
+
+    it("should log 'Bun version specified as latest; using default: 1.4' when packageManager specifies bun@latest", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "latest" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe(DEFAULT_BUN_VERSION);
+      expect(core.info).toHaveBeenCalledWith(
+        `Bun version specified as latest; using default: ${DEFAULT_BUN_VERSION}`,
+      );
+    });
+
+    it("should respect concrete Bun version in packageManager and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      const pm = { name: "bun", version: "1.2.0" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.2.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: 1.2.0");
+    });
+
+    it("should respect .bun-version file and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.1.0");
+      expect(core.info).toHaveBeenCalledWith("Found .bun-version: 1.1.0");
+    });
+
+    it("should respect Bun version in package.json devEngines and log it", () => {
+      const project = {
+        hasPackageJson: true,
+        packageJson: { devEngines: { bun: "1.3.0" } },
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("1.3.0");
+      expect(core.info).toHaveBeenCalledWith("Found Bun version in package.json devEngines: 1.3.0");
+    });
+
+    it("should prioritize explicit action input for Bun version over project config", () => {
+      const project = {
+        hasPackageJson: true,
+        bunFileVersion: "1.1.0",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      const pm = { name: "bun", version: "1.2.0" };
+
+      const ver = resolveBunVersion({ bunVersion: "1.4.1" }, pm, project);
+      expect(ver).toBe("1.4.1");
+      expect(core.info).toHaveBeenCalledWith("Resolved Bun version from input: 1.4.1");
+    });
+
+    it("should not emit Bun fallback logs for a project without Bun detection", () => {
+      const project = {
+        hasPackageJson: true,
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      const pm = { name: "npm", version: "12" };
+
+      const ver = resolveBunVersion({}, pm, project);
+      expect(ver).toBe("");
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Bun version"));
+    });
   });
 
   describe("sanitizePackageManager", () => {
