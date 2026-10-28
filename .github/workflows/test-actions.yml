@@ -168,6 +168,9 @@ jobs:
           TARGET_PATH="${{ matrix.build_path }}"
           TARGET_PATH="${TARGET_PATH:-dist}"
           rm -rf "$TARGET_PATH" dist
+          if [ -n "${RUNNER_TEMP:-}" ]; then
+            rm -f "${RUNNER_TEMP}/pages_build_error.log"
+          fi
 
       - name: Test Pages Action
         if: matrix.action == 'pages'
@@ -263,27 +266,34 @@ jobs:
               exit 1
             fi
 
-            EFFECTIVE_BUILD_PATH="${BUILD_PATH:-dist}"
+            # Machine-verifiable failure reason check from pages_build_error.log
+            ERROR_LOG_PATH="${RUNNER_TEMP}/pages_build_error.log"
+            if [[ ! -f "$ERROR_LOG_PATH" ]]; then
+              echo "Error: [${ACTION}] Build failure log '${ERROR_LOG_PATH}' was not produced. Failure occurred outside build_site step."
+              exit 1
+            fi
+
+            ACTUAL_ERROR_MSG=$(cat "$ERROR_LOG_PATH")
 
             if [[ "$NEGATIVE_TYPE" == "invalid_build_command" ]]; then
-              # Invalid build command failed during execution, so build artifact was NOT produced
-              if [[ -f "${EFFECTIVE_BUILD_PATH}/index.html" || -f "dist/index.html" ]]; then
-                echo "Error: [${ACTION}] Invalid build command scenario produced build artifact, but command execution should have failed prior to output creation."
+              EXPECTED_SUBSTRING="Build command execution failed with exit code"
+              if [[ "$ACTUAL_ERROR_MSG" != *"$EXPECTED_SUBSTRING"* ]]; then
+                echo "Error: [${ACTION}] Failure reason mismatch for invalid_build_command scenario."
+                echo "  Expected substring: '${EXPECTED_SUBSTRING}'"
+                echo "  Actual error log:   '${ACTUAL_ERROR_MSG}'"
                 exit 1
               fi
             elif [[ "$NEGATIVE_TYPE" == "missing_output_dir" ]]; then
-              # Missing output path scenario ran default build command successfully (producing dist/index.html), but non_existent_output_dir_99 was missing
-              if [[ ! -f "dist/index.html" ]]; then
-                echo "Error: [${ACTION}] Missing output path scenario did not run build command (expected default 'dist/index.html' artifact was missing)."
-                exit 1
-              fi
-              if [[ -d "$EFFECTIVE_BUILD_PATH" ]]; then
-                echo "Error: [${ACTION}] Configured non-existent output directory '${EFFECTIVE_BUILD_PATH}' unexpectedly exists."
+              EXPECTED_SUBSTRING="Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."
+              if [[ "$ACTUAL_ERROR_MSG" != *"$EXPECTED_SUBSTRING"* ]]; then
+                echo "Error: [${ACTION}] Failure reason mismatch for missing_output_dir scenario."
+                echo "  Expected substring: '${EXPECTED_SUBSTRING}'"
+                echo "  Actual error log:   '${ACTUAL_ERROR_MSG}'"
                 exit 1
               fi
             fi
 
-            echo "Verified negative scenario failure outcome, stage assertions, and failure path for '${SCENARIO_NAME}'."
+            echo "Verified exact failure reason for '${SCENARIO_NAME}': '${ACTUAL_ERROR_MSG}'"
             exit 0
           fi
 
