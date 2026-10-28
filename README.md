@@ -107,7 +107,7 @@ npm test
 npm run lint
 
 # Check formatting
-npm run format -- --check
+npm run format --check
 
 # Build bundle artifacts in dist/
 npm run build

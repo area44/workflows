@@ -10,7 +10,7 @@
   },
   "type": "module",
   "scripts": {
-    "format": "vp fmt",
+    "format": "node .github/scripts/format.js",
     "lint": "vp lint",
     "build": "vp pack",
     "test": "vp test",
