@@ -19,11 +19,16 @@ The `@area44/workflows` repository enforces machine-verifiable operational invar
 
 To prevent duplication and configuration drift, specific files serve as authoritative sources of truth:
 
-| Domain             | Authoritative Source of Truth File                                 | Description                                                         |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Package Versioning | `package.json` (`version` property)                                | Primary package metadata and release version number.                |
-| Public Action APIs | Per-action `action.yml` (`pages/action.yml`, `autofix/action.yml`) | Single source of truth for public inputs, outputs, and step guards. |
-| Build Pack Entries | `vite.config.ts` (`pack` configuration array)                      | Canonical entrypoints mapping `src/` modules to `dist/*.mjs`.       |
+| Domain                 | Authoritative Source of Truth File                                 | Description                                                                       |
+| ---------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Package Versioning     | `package.json` (`version` property)                                | Primary package metadata and release version number.                              |
+| Public Action APIs     | Per-action `action.yml` (`pages/action.yml`, `autofix/action.yml`) | Single source of truth for public inputs, outputs, and step guards.               |
+| Environment Algorithms | `docs/environment-resolution.md`                                   | Canonical specification for environment resolution and setup planning algorithms. |
+| Build Pack Entries     | `vite.config.ts` (`pack` configuration array)                      | Canonical entrypoints mapping `src/` modules to `dist/*.mjs`.                     |
+
+## Algorithm & Documentation Synchronization
+
+Environment resolution algorithms in `src/` (`src/resolve-environment.ts`, `src/javascript-env.ts`, `src/python-env.ts`, `src/setup-plan.ts`) must stay synchronized with the canonical algorithm specification in [`docs/environment-resolution.md`](./environment-resolution.md) and behavior-oriented test suites in `__tests__/`. Whenever resolution precedence, signal collection, conflict validation, or setup planning logic is modified, maintainers must update `docs/environment-resolution.md` and verify all precedence decision tables and worked examples against unit and integration tests.
 
 ## Public Action Structure
 
