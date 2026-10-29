@@ -54,15 +54,15 @@ describe("javascript-env", () => {
       );
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
 
-      const res = resolveJsEnvironment("vite", tempDir);
+      const res = resolveJsEnvironment("auto", tempDir);
       expect(res.detected).toBe(true);
       expect(res.packageManager).toEqual({ name: "pnpm", version: "9.1.0" });
       expect(res.runtime).toEqual({ name: "node", version: "20.10.0" });
-      expect(res.toolchain).toBe("");
+      expect(res.toolchain).toBeUndefined();
     });
 
     it("should suppress JS detection logs when package.json is absent", () => {
-      const res = resolveJsEnvironment("vite", tempDir);
+      const res = resolveJsEnvironment("auto", tempDir);
       expect(res.detected).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe("javascript-env", () => {
       fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0");
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0");
 
-      const res = resolveJsEnvironment("vite", tempDir);
+      const res = resolveJsEnvironment("auto", tempDir);
       expect(res.detected).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
@@ -124,10 +124,12 @@ describe("javascript-env", () => {
 
 
   describe("resolveToolchain", () => {
-    it("should resolve toolchain correctly and sanitize unknown toolchain inputs", () => {
-      expect(resolveToolchain("vite")).toBe("");
+    it("should resolve toolchain correctly and reject unsupported toolchain inputs", () => {
       expect(resolveToolchain("vite-plus")).toBe("vite-plus");
-      expect(resolveToolchain("auto")).toBe("");
+      expect(resolveToolchain("auto")).toBeUndefined();
+      expect(() => resolveToolchain("vite")).toThrow(
+        'Invalid toolchain input: unsupported value. Supported values are "auto" or "vite-plus".',
+      );
 
       const sensitiveToolchainInput = "invalid_toolchain_token_xyz123";
       let err: Error | undefined;
@@ -139,7 +141,7 @@ describe("javascript-env", () => {
       expect(err).toBeDefined();
       expect(err?.message).not.toContain(sensitiveToolchainInput);
       expect(err?.message).toBe(
-        'Invalid toolchain input: unsupported value. Supported values are "auto", "vite", or "vite-plus".',
+        'Invalid toolchain input: unsupported value. Supported values are "auto" or "vite-plus".',
       );
     });
   });

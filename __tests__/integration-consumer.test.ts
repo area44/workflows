@@ -63,7 +63,7 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(env.javascript.detected).toBe(true);
       expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "10.8.2" });
       expect(env.javascript.runtime.name).toBe("node");
-      expect(env.javascript.toolchain).toBe("");
+      expect(env.javascript.toolchain).toBeUndefined();
 
       // Python Environment verification
       expect(env.python.detected).toBe(true);

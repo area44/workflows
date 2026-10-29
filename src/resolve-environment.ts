@@ -71,11 +71,10 @@ function validateJsEnvironment(js: unknown): void {
     throw new Error("Invalid resolved package manager");
   }
 
-  if (
-    typeof jsObj.toolchain !== "string" ||
-    (jsObj.toolchain !== "" && jsObj.toolchain !== "vite-plus")
-  ) {
-    throw new Error(`Invalid resolved toolchain: "${String(jsObj.toolchain)}"`);
+  if (jsObj.toolchain !== undefined && jsObj.toolchain !== "vite-plus") {
+    const val =
+      typeof jsObj.toolchain === "string" ? jsObj.toolchain : JSON.stringify(jsObj.toolchain);
+    throw new Error(`Invalid resolved toolchain: "${val}"`);
   }
 
   validateRuntimePackageManagerCompatibility(runtimeName, pmObj.name);
@@ -266,7 +265,7 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("javascript-runtime-version", js.runtime.version);
   core.setOutput("javascript-package-manager", js.packageManager.name);
   core.setOutput("javascript-package-manager-version", js.packageManager.version);
-  core.setOutput("javascript-toolchain", js.toolchain);
+  core.setOutput("javascript-toolchain", js.toolchain ?? "");
 
   core.setOutput("python-detected", String(python.detected));
   core.setOutput("python-version", python.version);

@@ -61,7 +61,7 @@ describe("resolve-environment", () => {
           detected: true,
           runtime: { name: "node", version: "24" },
           packageManager: { name: "npm", version: "12" },
-          toolchain: "",
+          toolchain: undefined,
         },
         python: {
           detected: true,
@@ -928,7 +928,7 @@ describe("resolve-environment", () => {
         expect(run1.javascript.runtime.version).toBe("22.1.0");
         expect(run1.javascript.packageManager).toMatchObject({ name: "npm", version: DEFAULT_NPM_VERSION });
         expect(run1.javascript.runtime.name).toBe("node");
-        expect(run1.javascript.toolchain).toBe("");
+        expect(run1.javascript.toolchain).toBeUndefined();
         expect(run1.python.detected).toBe(false);
       });
     });
@@ -1361,14 +1361,13 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should resolve toolchain to '' when toolchainInput is 'vite'", () => {
+    it("should throw error when toolchainInput is 'vite'", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "vp-minimal-"));
       createConsumerProject(fixturePath, { toolchain: "vite-plus", runtime: "node", pm: "pnpm@12.15.0", type: "vite-plus" });
       process.chdir(fixturePath);
 
       try {
-        const resolved = resolveEnvironment("vite");
-        expect(resolved.javascript.toolchain).toBe("");
+        expect(() => resolveEnvironment("vite")).toThrow('Invalid toolchain input: unsupported value. Supported values are "auto" or "vite-plus".');
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(fixturePath, { recursive: true, force: true });
@@ -1392,7 +1391,7 @@ describe("resolve-environment", () => {
       process.chdir(stdFixture);
       try {
         const resolvedStd = resolveEnvironment("");
-        expect(resolvedStd.javascript.toolchain).toBe("");
+        expect(resolvedStd.javascript.toolchain).toBeUndefined();
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(stdFixture, { recursive: true, force: true });

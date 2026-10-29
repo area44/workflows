@@ -22,7 +22,7 @@ The scenario factory supports explicit options across all tested project dimensi
 | **Action**          | `action`               | `pages`, `autofix`, or empty/unspecified                                                                                                              |
 | **Runtime**         | `runtime`              | `node`, `bun`                                                                                                                                         |
 | **Package Manager** | `pm`, `packageManager` | `npm`, `pnpm`, `bun`, or explicit version string (e.g. `pnpm@12.15.0`)                                                                                |
-| **Toolchain**       | `toolchain`            | `astro`, `vite`, `vite-plus`, `none`                                                                                                                  |
+| **Toolchain**       | `toolchain`            | `vite-plus`, `none`                                                                                                                                   |
 | **Project Type**    | `type`                 | `basic`, `minimal`, `vite`, `vite-plus`, `consumer-integration`, `python-uv`, `python-pip`, `python-conflicting`, `python-none`, `mixed`, `mixed-bun` |
 | **Python Source**   | `hasPythonSource`      | `true`, `false` (controls `.py`/`.pyi` file generation)                                                                                               |
 | **Python PM**       | `pythonPm`             | `uv`, `pip`, or empty                                                                                                                                 |
