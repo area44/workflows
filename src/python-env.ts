@@ -57,10 +57,10 @@ export interface PythonPackageManagerInfo {
 }
 
 export interface ResolvedPythonEnvironment {
-  hasPythonSource: boolean;
-  pythonVersion: string;
+  detected: boolean;
+  version: string;
+  packageManager: PythonPackageManagerInfo | null;
   ruffVersion: string;
-  pmInfo: PythonPackageManagerInfo | null;
 }
 
 export interface ParsedTomlSuccess {
@@ -1378,10 +1378,10 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
 
   if (!pySourcePresent) {
     return {
-      hasPythonSource: false,
-      pythonVersion: "",
+      detected: false,
+      version: "",
+      packageManager: null,
       ruffVersion: "",
-      pmInfo: null,
     };
   }
 
@@ -1401,9 +1401,9 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
   }
 
   return {
-    hasPythonSource: true,
-    pythonVersion,
+    detected: true,
+    version: pythonVersion,
+    packageManager: pmInfo,
     ruffVersion,
-    pmInfo,
   };
 }

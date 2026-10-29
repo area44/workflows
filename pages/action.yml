@@ -10,24 +10,24 @@ inputs:
     required: false
 
 outputs:
-  node-version:
-    description: "The Node.js version used"
-    value: ${{ steps.resolve_environment.outputs.node-version }}
-  bun-version:
-    description: "The Bun version used"
-    value: ${{ steps.resolve_environment.outputs.bun-version }}
-  package-manager:
-    description: "The package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager }}
-  package-manager-version:
-    description: "The version of the package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager-version }}
-  runtime:
-    description: "The runtime used (node or bun)"
-    value: ${{ steps.resolve_environment.outputs.runtime }}
-  toolchain:
+  javascript-detected:
+    description: "Whether a JavaScript/TypeScript project was detected"
+    value: ${{ steps.resolve_environment.outputs.javascript-detected }}
+  javascript-runtime:
+    description: "The JavaScript runtime used (node or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime }}
+  javascript-runtime-version:
+    description: "The version of the JavaScript runtime used"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime-version }}
+  javascript-package-manager:
+    description: "The JavaScript package manager used (npm, pnpm, or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
+  javascript-package-manager-version:
+    description: "The version of the JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
+  javascript-toolchain:
     description: "The resolved toolchain (vite or vite-plus)"
-    value: ${{ steps.resolve_environment.outputs.toolchain }}
+    value: ${{ steps.resolve_environment.outputs.javascript-toolchain }}
   vp-version:
     description: "The version of Vite+ installed"
     value: ${{ steps.setup_vp.outputs.version }}
@@ -55,7 +55,7 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3
       with:
-        version: ${{ steps.resolve_environment.outputs.package-manager-version }}
+        version: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
         runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
         install: false
         cache: true
@@ -79,7 +79,7 @@ runs:
 
     - name: Setup Vite+
       id: setup_vp
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.toolchain == 'vite-plus' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.javascript-toolchain == 'vite-plus' }}
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
         node-version: ${{ steps.resolve_environment.outputs.node-version }}
@@ -88,10 +88,10 @@ runs:
 
     - name: Install dependencies
       id: install_dependencies
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.toolchain != 'vite-plus' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.javascript-toolchain != 'vite-plus' }}
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
+        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
       run: |
         PM="${PACKAGE_MANAGER:-npm}"
         case "$PM" in
@@ -118,9 +118,9 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success') }}
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
+        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
         BUILD_COMMAND: ${{ inputs.build-command }}
-        DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.toolchain == 'vite-plus' && 'vp build' || '' }}
+        DEFAULT_BUILD_COMMAND: ${{ steps.resolve_environment.outputs.javascript-toolchain == 'vite-plus' && 'vp build' || '' }}
         BUILD_PATH: ${{ inputs.path }}
         ACTION_PATH: ${{ github.action_path }}
       run: node "$ACTION_PATH/../dist/build-command.mjs"

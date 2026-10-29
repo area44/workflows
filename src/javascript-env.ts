@@ -109,14 +109,17 @@ export interface JsInstallationPlan {
   args: string[];
 }
 
-export interface ResolvedJsEnvironment {
-  hasJsProject: boolean;
-  project: JsProjectEnvironment;
-  pm: PackageManager;
-  runtime: "node" | "bun";
-  nodeVersion: string;
-  bunVersion: string;
-  toolchain: Toolchain;
+export interface ResolvedJavaScriptEnvironment {
+  detected: boolean;
+  runtime: {
+    name: "node" | "bun";
+    version: string;
+  };
+  packageManager: {
+    name: "npm" | "pnpm" | "bun";
+    version: string;
+  };
+  toolchain: "vite" | "vite-plus";
 }
 
 interface RuntimeSignals {
@@ -495,7 +498,7 @@ export function resolveToolchain(
 export function resolveJsEnvironment(
   toolchainInput?: string,
   cwd: string = process.cwd(),
-): ResolvedJsEnvironment {
+): ResolvedJavaScriptEnvironment {
   const project = inspectJsProjectEnvironment(cwd);
 
   if (project.hasPackageJson) {
@@ -503,22 +506,27 @@ export function resolveJsEnvironment(
   }
 
   const pm = resolveJsPackageManager(project);
-  const runtime = resolveRuntime(pm, project);
+  const runtimeName = resolveRuntime(pm, project);
 
   if (project.hasPackageJson) {
-    core.info(`Resolved runtime: ${runtime === "bun" ? "Bun" : "Node.js"}.`);
+    core.info(`Resolved runtime: ${runtimeName === "bun" ? "Bun" : "Node.js"}.`);
   }
 
-  const versions = resolveVersions(pm, runtime, project);
+  const versions = resolveVersions(pm, runtimeName, project);
   const toolchain = resolveToolchain(toolchainInput, project);
 
+  const runtimeVersion = runtimeName === "bun" ? versions.bunVersion : versions.nodeVersion;
+
   return {
-    hasJsProject: project.hasPackageJson,
-    project,
-    pm,
-    runtime,
-    nodeVersion: versions.nodeVersion,
-    bunVersion: versions.bunVersion,
+    detected: project.hasPackageJson,
+    runtime: {
+      name: runtimeName,
+      version: runtimeVersion,
+    },
+    packageManager: {
+      name: pm.name as SupportedPackageManager,
+      version: pm.version,
+    },
     toolchain,
   };
 }

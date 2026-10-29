@@ -60,15 +60,15 @@ describe("Consumer Project Module Integration Suite", () => {
       const env = resolveEnvironment();
 
       // JS Environment verification
-      expect(env.js.hasJsProject).toBe(true);
-      expect(env.js.pm).toMatchObject({ name: "npm", version: "10.8.2" });
-      expect(env.js.runtime).toBe("node");
-      expect(env.js.toolchain).toBe("vite");
+      expect(env.javascript.detected).toBe(true);
+      expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "10.8.2" });
+      expect(env.javascript.runtime.name).toBe("node");
+      expect(env.javascript.toolchain).toBe("vite");
 
       // Python Environment verification
-      expect(env.python.hasPythonSource).toBe(true);
-      expect(env.python.pmInfo?.name).toBe("pip");
-      expect(env.python.pythonVersion).toBe("3.12");
+      expect(env.python.detected).toBe(true);
+      expect(env.python.packageManager?.name).toBe("pip");
+      expect(env.python.version).toBe("3.12");
       expect(env.python.ruffVersion).toBe("0.17.2");
     });
 
@@ -76,12 +76,12 @@ describe("Consumer Project Module Integration Suite", () => {
       const env = resolveEnvironment();
       writeOutput(env);
 
-      expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "10.8.2");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
-      expect(core.setOutput).toHaveBeenCalledWith("toolchain", "vite");
-      expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "10.8.2");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite");
+      expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
@@ -114,7 +114,7 @@ describe("Consumer Project Module Integration Suite", () => {
       const buildCmd = await resolveBuildCommandToParse(
         undefined,
         undefined,
-        env.js.pm.name,
+        env.javascript.packageManager.name,
       );
 
       expect(buildCmd).toBe("npm run build");
@@ -128,7 +128,7 @@ describe("Consumer Project Module Integration Suite", () => {
       const buildCmd = await resolveBuildCommandToParse(
         "npm run custom-build",
         undefined,
-        env.js.pm.name,
+        env.javascript.packageManager.name,
       );
 
       expect(buildCmd).toBe("npm run custom-build");
@@ -140,8 +140,8 @@ describe("Consumer Project Module Integration Suite", () => {
 
   describe("Autofix Script Selection", () => {
     it("selects lint and format scripts defined in consumer package.json", () => {
-      const env = resolveEnvironment();
-      const scripts = selectAutofixScripts(env.js.project.packageJson?.scripts);
+      const project = inspectJsProjectEnvironment();
+      const scripts = selectAutofixScripts(project.packageJson?.scripts);
       expect(scripts).toEqual(["format", "lint"]);
     });
   });

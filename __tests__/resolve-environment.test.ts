@@ -58,25 +58,17 @@ describe("resolve-environment", () => {
   describe("Aggregate Environment Validation (validateEnvironment)", () => {
     function createValidEnvironment(): ResolvedEnvironment {
       return {
-        js: {
-          hasJsProject: true,
-          project: {
-            hasPackageJson: true,
-            hasPnpmLock: false,
-            hasPackageLock: true,
-            hasBunLock: false,
-          },
-          pm: { name: "npm", version: "12" },
-          runtime: "node",
-          nodeVersion: "24",
-          bunVersion: "",
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
           toolchain: "vite",
         },
         python: {
-          hasPythonSource: true,
-          pythonVersion: "3.12",
+          detected: true,
+          version: "3.12",
           ruffVersion: "0.4.2",
-          pmInfo: {
+          packageManager: {
             name: "uv",
             execPrefix: "uv run",
             lockfile: "uv.lock",
@@ -93,75 +85,75 @@ describe("resolve-environment", () => {
       expect(validateEnvironment(valid)).toEqual(valid);
     });
 
-    it("should validate a valid Python environment with pmInfo: null when hasPythonSource is false", () => {
+    it("should validate a valid Python environment with packageManager: null when detected is false", () => {
       const valid = createValidEnvironment();
-      valid.python.hasPythonSource = false;
-      valid.python.pythonVersion = "";
+      valid.python.detected = false;
+      valid.python.version = "";
       valid.python.ruffVersion = "";
-      valid.python.pmInfo = null;
+      valid.python.packageManager = null;
       expect(validateEnvironment(valid)).toEqual(valid);
     });
 
-    it("should reject hasPythonSource: false with non-null pmInfo", () => {
+    it("should reject detected: false with non-null packageManager", () => {
       const env = createValidEnvironment();
-      env.python.hasPythonSource = false;
-      env.python.pythonVersion = "";
+      env.python.detected = false;
+      env.python.version = "";
       env.python.ruffVersion = "";
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pmInfo" must be null when hasPythonSource is false',
+        'Invalid Python environment: "packageManager" must be null when detected is false',
       );
     });
 
-    it("should reject hasPythonSource: false with non-empty pythonVersion or ruffVersion", () => {
+    it("should reject detected: false with non-empty version or ruffVersion", () => {
       const env1 = createValidEnvironment();
-      env1.python.hasPythonSource = false;
-      env1.python.pythonVersion = "3.12";
+      env1.python.detected = false;
+      env1.python.version = "3.12";
       env1.python.ruffVersion = "";
-      env1.python.pmInfo = null;
+      env1.python.packageManager = null;
       expect(() => validateEnvironment(env1)).toThrow(
-        'Invalid Python environment: "pythonVersion" must be empty string when hasPythonSource is false',
+        'Invalid Python environment: "version" must be empty string when detected is false',
       );
 
       const env2 = createValidEnvironment();
-      env2.python.hasPythonSource = false;
-      env2.python.pythonVersion = "";
+      env2.python.detected = false;
+      env2.python.version = "";
       env2.python.ruffVersion = "0.4.2";
-      env2.python.pmInfo = null;
+      env2.python.packageManager = null;
       expect(() => validateEnvironment(env2)).toThrow(
-        'Invalid Python environment: "ruffVersion" must be empty string when hasPythonSource is false',
+        'Invalid Python environment: "ruffVersion" must be empty string when detected is false',
       );
     });
 
-    it("should reject hasPythonSource: true with pmInfo: null", () => {
+    it("should reject detected: true with packageManager: null", () => {
       const env = createValidEnvironment();
-      env.python.hasPythonSource = true;
-      env.python.pmInfo = null;
+      env.python.detected = true;
+      env.python.packageManager = null;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pmInfo" cannot be null when hasPythonSource is true',
+        'Invalid Python environment: "packageManager" cannot be null when detected is true',
       );
     });
 
-    it("should reject missing pmInfo property", () => {
+    it("should reject missing packageManager property", () => {
       const env = createValidEnvironment();
-      delete (env.python as any).pmInfo;
+      delete (env.python as any).packageManager;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pmInfo" property is required',
+        'Invalid Python environment: "packageManager" property is required',
       );
     });
 
-    it("should reject explicit pmInfo: undefined", () => {
+    it("should reject explicit packageManager: undefined", () => {
       const env = createValidEnvironment();
-      (env.python as any).pmInfo = undefined;
+      (env.python as any).packageManager = undefined;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pmInfo" property is required',
+        'Invalid Python environment: "packageManager" property is required',
       );
     });
 
     it.each([123, "uv", true, [1, 2, 3]])(
-      "should reject invalid primitive or array value for pmInfo: %p",
+      "should reject invalid primitive or array value for packageManager: %p",
       (invalidPmInfo) => {
         const env = createValidEnvironment();
-        (env.python as any).pmInfo = invalidPmInfo;
+        (env.python as any).packageManager = invalidPmInfo;
         expect(() => validateEnvironment(env)).toThrow(
           'Invalid Python environment: "pmInfo" must be an object when present',
         );
@@ -169,10 +161,10 @@ describe("resolve-environment", () => {
     );
 
     it.each(["poetry", "npm", "pipenv", "", "PIP"])(
-      "should reject invalid package manager name in pmInfo: %p",
+      "should reject invalid package manager name in packageManager: %p",
       (invalidName) => {
         const env = createValidEnvironment();
-        (env.python.pmInfo as any).name = invalidName;
+        (env.python.packageManager as any).name = invalidName;
         expect(() => validateEnvironment(env)).toThrow(
           'Invalid Python environment: pmInfo name must be "uv" or "pip"',
         );
@@ -186,8 +178,8 @@ describe("resolve-environment", () => {
       process.chdir(tempDir);
       try {
         const env = resolveEnvironment();
-        expect(env.python.hasPythonSource).toBe(true);
-        expect(env.python.pmInfo).toEqual({
+        expect(env.python.detected).toBe(true);
+        expect(env.python.packageManager).toEqual({
           name: "pip",
           installCommands: [],
           execPrefix: "",
@@ -207,11 +199,11 @@ describe("resolve-environment", () => {
       );
     });
 
-    it("should throw error for missing or invalid js section", () => {
+    it("should throw error for missing or invalid javascript section", () => {
       const env = createValidEnvironment();
-      delete (env as any).js;
+      delete (env as any).javascript;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid environment: missing or invalid "js" section',
+        'Invalid environment: missing or invalid "javascript" section',
       );
     });
 
@@ -223,51 +215,55 @@ describe("resolve-environment", () => {
       );
     });
 
-    it("should throw error for non-boolean hasJsProject", () => {
+    it("should throw error for non-boolean detected in javascript section", () => {
       const env = createValidEnvironment();
-      (env.js as any).hasJsProject = "true";
+      (env.javascript as any).detected = "true";
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid JavaScript environment: "hasJsProject" must be a boolean',
+        'Invalid JavaScript environment: "detected" must be a boolean',
       );
     });
 
-    it("should throw error for invalid runtime in js section", () => {
+    it("should throw error for invalid runtime in javascript section", () => {
       const env = createValidEnvironment();
-      (env.js as any).runtime = "invalid-runtime";
-      expect(() => validateEnvironment(env)).toThrow('Invalid resolved runtime: "invalid-runtime"');
+      (env.javascript as any).runtime = "invalid-runtime";
+      expect(() => validateEnvironment(env)).toThrow('Invalid JavaScript environment: "runtime" must be an object');
+
+      const env2 = createValidEnvironment();
+      (env2.javascript.runtime as any).name = "invalid-runtime";
+      expect(() => validateEnvironment(env2)).toThrow('Invalid resolved runtime: "invalid-runtime"');
     });
 
-    it("should throw error for invalid or missing package manager in js section", () => {
+    it("should throw error for invalid or missing package manager in javascript section", () => {
       const env = createValidEnvironment();
-      (env.js as any).pm = { name: "", version: "12" };
+      (env.javascript as any).packageManager = { name: "", version: "12" };
       expect(() => validateEnvironment(env)).toThrow("Invalid resolved package manager");
     });
 
-    it("should throw error for non-string nodeVersion or bunVersion in js section", () => {
+    it("should throw error for non-string runtime version in javascript section", () => {
       const env = createValidEnvironment();
-      (env.js as any).nodeVersion = 24;
-      expect(() => validateEnvironment(env)).toThrow("Invalid resolved versions");
+      (env.javascript.runtime as any).version = 24;
+      expect(() => validateEnvironment(env)).toThrow('Invalid JavaScript environment: "runtime.version" must be a string');
     });
 
-    it("should throw error for invalid toolchain in js section", () => {
+    it("should throw error for invalid toolchain in javascript section", () => {
       const env = createValidEnvironment();
-      (env.js as any).toolchain = "webpack";
+      (env.javascript as any).toolchain = "webpack";
       expect(() => validateEnvironment(env)).toThrow('Invalid resolved toolchain: "webpack"');
     });
 
-    it("should throw error for non-boolean hasPythonSource", () => {
+    it("should throw error for non-boolean detected in python section", () => {
       const env = createValidEnvironment();
-      (env.python as any).hasPythonSource = "yes";
+      (env.python as any).detected = "yes";
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "hasPythonSource" must be a boolean',
+        'Invalid Python environment: "detected" must be a boolean',
       );
     });
 
-    it("should throw error for non-string pythonVersion or ruffVersion", () => {
+    it("should throw error for non-string version or ruffVersion in python section", () => {
       const env = createValidEnvironment();
-      (env.python as any).pythonVersion = 3.12;
+      (env.python as any).version = 3.12;
       expect(() => validateEnvironment(env)).toThrow(
-        'Invalid Python environment: "pythonVersion" must be a string',
+        'Invalid Python environment: "version" must be a string',
       );
 
       const env2 = createValidEnvironment();
@@ -277,9 +273,9 @@ describe("resolve-environment", () => {
       );
     });
 
-    it("should throw error for invalid required pmInfo string fields", () => {
+    it("should throw error for invalid required packageManager string fields", () => {
       const env = createValidEnvironment();
-      (env.python.pmInfo as any).execPrefix = null;
+      (env.python.packageManager as any).execPrefix = null;
       expect(() => validateEnvironment(env)).toThrow(
         'Invalid Python environment: "pmInfo.execPrefix" must be a string',
       );
@@ -287,82 +283,82 @@ describe("resolve-environment", () => {
 
     it("should reject legacy installCommand supplied without installCommands", () => {
       const env = createValidEnvironment();
-      delete (env.python.pmInfo as any).installCommands;
-      (env.python.pmInfo as any).installCommand = "uv sync";
+      delete (env.python.packageManager as any).installCommands;
+      (env.python.packageManager as any).installCommand = "uv sync";
       expect(() => validateEnvironment(env)).toThrow(
         'Invalid Python environment: "pmInfo.installCommands" must be an array',
       );
     });
 
-    it("should throw error for invalid optional string or boolean fields in pmInfo", () => {
+    it("should throw error for invalid optional string or boolean fields in packageManager", () => {
       const env = createValidEnvironment();
-      (env.python.pmInfo as any).lockfile = 456;
+      (env.python.packageManager as any).lockfile = 456;
       expect(() => validateEnvironment(env)).toThrow(
         'Invalid Python environment: "pmInfo.lockfile" must be a string',
       );
 
       const env2 = createValidEnvironment();
-      (env2.python.pmInfo as any).isStandalone = "false";
+      (env2.python.packageManager as any).isStandalone = "false";
       expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: "pmInfo.isStandalone" must be a boolean',
       );
     });
 
-    it("should reject inconsistent standalone metadata in pmInfo", () => {
+    it("should reject inconsistent standalone metadata in packageManager", () => {
       const env1 = createValidEnvironment();
-      env1.python.pmInfo!.isStandalone = true;
+      env1.python.packageManager!.isStandalone = true;
       // installCommands is non-empty
       expect(() => validateEnvironment(env1)).toThrow(
         'Invalid Python environment: standalone "pmInfo" must have empty installCommands array',
       );
 
       const env2 = createValidEnvironment();
-      env2.python.pmInfo!.isStandalone = true;
-      env2.python.pmInfo!.installCommands = [];
-      env2.python.pmInfo!.lockfile = "uv.lock";
+      env2.python.packageManager!.isStandalone = true;
+      env2.python.packageManager!.installCommands = [];
+      env2.python.packageManager!.lockfile = "uv.lock";
       expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: standalone "pmInfo" cannot specify lockfile or configFile',
       );
     });
 
-    it("should reject inconsistent UV lockfile metadata in pmInfo", () => {
+    it("should reject inconsistent UV lockfile metadata in packageManager", () => {
       const env1 = createValidEnvironment();
-      env1.python.pmInfo!.name = "uv";
-      env1.python.pmInfo!.lockfile = "invalid.lock";
+      env1.python.packageManager!.name = "uv";
+      env1.python.packageManager!.lockfile = "invalid.lock";
       expect(() => validateEnvironment(env1)).toThrow(
         'Invalid Python environment: UV lockfile name must be "uv.lock" when present',
       );
 
       const env2 = createValidEnvironment();
-      env2.python.pmInfo!.name = "uv";
-      env2.python.pmInfo!.lockfile = "uv.lock";
-      delete env2.python.pmInfo!.configFile;
+      env2.python.packageManager!.name = "uv";
+      env2.python.packageManager!.lockfile = "uv.lock";
+      delete env2.python.packageManager!.configFile;
       expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: UV lockfile requires configFile "pyproject.toml"',
       );
     });
 
-    it("should throw error for malformed installCommands in pmInfo", () => {
+    it("should throw error for malformed installCommands in packageManager", () => {
       const env = createValidEnvironment();
-      (env.python.pmInfo as any).installCommands = "uv sync";
+      (env.python.packageManager as any).installCommands = "uv sync";
       expect(() => validateEnvironment(env)).toThrow(
         'Invalid Python environment: "pmInfo.installCommands" must be an array',
       );
 
       const env2 = createValidEnvironment();
-      (env2.python.pmInfo as any).installCommands = [{ executable: "uv", args: "sync" }];
+      (env2.python.packageManager as any).installCommands = [{ executable: "uv", args: "sync" }];
       expect(() => validateEnvironment(env2)).toThrow(
         'Invalid Python environment: malformed "installCommands" item',
       );
 
       const env3 = createValidEnvironment();
-      (env3.python.pmInfo as any).installCommands = [{ executable: "", args: ["sync"] }];
+      (env3.python.packageManager as any).installCommands = [{ executable: "", args: ["sync"] }];
       expect(() => validateEnvironment(env3)).toThrow(
         'Invalid Python environment: malformed "installCommands" item',
       );
 
       const env4 = createValidEnvironment();
-      (env4.python.pmInfo as any).installCommands = [{ executable: "uv", args: [123] }];
+      (env4.python.packageManager as any).installCommands = [{ executable: "uv", args: [123] }];
       expect(() => validateEnvironment(env4)).toThrow(
         'Invalid Python environment: malformed "installCommands" item',
       );
@@ -448,21 +444,21 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(false);
-        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.javascript.detected).toBe(false);
+        expect(env.python.detected).toBe(true);
 
         expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
@@ -482,23 +478,23 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(true);
-        expect(env.python.hasPythonSource).toBe(false);
+        expect(env.javascript.detected).toBe(true);
+        expect(env.python.detected).toBe(false);
 
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", DEFAULT_NPM_VERSION);
-        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", DEFAULT_NPM_VERSION);
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
@@ -519,20 +515,20 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(false);
-        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.javascript.detected).toBe(false);
+        expect(env.python.detected).toBe(true);
 
         expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
@@ -559,19 +555,19 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(true);
-        expect(env.python.hasPythonSource).toBe(true);
+        expect(env.javascript.detected).toBe(true);
+        expect(env.python.detected).toBe(true);
 
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
-        expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "9.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
@@ -590,8 +586,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(false);
-        expect(env.python.hasPythonSource).toBe(false);
+        expect(env.javascript.detected).toBe(false);
+        expect(env.python.detected).toBe(false);
 
         expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
@@ -599,13 +595,13 @@ describe("resolve-environment", () => {
           "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
         );
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
@@ -628,13 +624,13 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.runtime).toBe("node");
-        expect(env.js.pm).toMatchObject({ name: "npm", version: "12.0.0" });
+        expect(env.javascript.runtime.name).toBe("node");
+        expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "12.0.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@12.0.0");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.0.0");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "12.0.0");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -654,13 +650,13 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.runtime).toBe("node");
-        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.5.0" });
+        expect(env.javascript.runtime.name).toBe("node");
+        expect(env.javascript.packageManager).toMatchObject({ name: "pnpm", version: "9.5.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.5.0");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -680,8 +676,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.runtime).toBe("bun");
-        expect(env.js.pm).toMatchObject({ name: "bun", version: "1.4.0" });
+        expect(env.javascript.runtime.name).toBe("bun");
+        expect(env.javascript.packageManager).toMatchObject({ name: "bun", version: "1.4.0" });
         expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
         expect(core.info).toHaveBeenCalledWith("Resolved runtime: Bun.");
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4.0");
@@ -706,13 +702,13 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.runtime).toBe("bun");
-        expect(env.js.bunVersion).toBe("latest");
-        expect(env.js.pm).toMatchObject({ name: "bun", version: "latest" });
+        expect(env.javascript.runtime.name).toBe("bun");
+        expect(env.javascript.runtime.version).toBe("latest");
+        expect(env.javascript.packageManager).toMatchObject({ name: "bun", version: "latest" });
         expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
         expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "latest");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "latest");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -730,8 +726,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.python.hasPythonSource).toBe(true);
-        expect(env.python.pmInfo?.name).toBe("uv");
+        expect(env.python.detected).toBe(true);
+        expect(env.python.packageManager?.name).toBe("uv");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
@@ -752,8 +748,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.python.hasPythonSource).toBe(true);
-        expect(env.python.pmInfo?.name).toBe("pip");
+        expect(env.python.detected).toBe(true);
+        expect(env.python.packageManager?.name).toBe("pip");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
@@ -775,8 +771,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.nodeVersion).toBe(DEFAULT_NODE_VERSION);
-        expect(env.python.pythonVersion).toBe("3.12");
+        expect(env.javascript.runtime.version).toBe(DEFAULT_NODE_VERSION);
+        expect(env.python.version).toBe("3.12");
 
         expect(core.info).toHaveBeenCalledWith(
           `Node.js version not specified; using default: ${DEFAULT_NODE_VERSION}`,
@@ -833,13 +829,13 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.python.hasPythonSource).toBe(true);
-        expect(env.js.hasJsProject).toBe(false);
-        expect(env.python.pmInfo?.name).toBe("uv");
+        expect(env.python.detected).toBe(true);
+        expect(env.javascript.detected).toBe(false);
+        expect(env.python.packageManager?.name).toBe("uv");
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
@@ -872,14 +868,14 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.js.hasJsProject).toBe(true);
-        expect(env.js.pm).toMatchObject({ name: "pnpm", version: "9.1.0" });
-        expect(env.python.hasPythonSource).toBe(false);
+        expect(env.javascript.detected).toBe(true);
+        expect(env.javascript.packageManager).toMatchObject({ name: "pnpm", version: "9.1.0" });
+        expect(env.python.detected).toBe(false);
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.1.0");
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "9.1.0");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
@@ -905,48 +901,55 @@ describe("resolve-environment", () => {
         const run2 = resolveEnvironment();
 
         expect(run1).toEqual(run2);
-        expect(run1.js.nodeVersion).toBe("22.1.0");
-        expect(run1.js.bunVersion).toBe("");
-        expect(run1.js.pm).toMatchObject({ name: "npm", version: DEFAULT_NPM_VERSION });
-        expect(run1.js.runtime).toBe("node");
-        expect(run1.js.toolchain).toBe("vite");
-        expect(run1.python.hasPythonSource).toBe(false);
+        expect(run1.javascript.runtime.version).toBe("22.1.0");
+        expect(run1.javascript.packageManager).toMatchObject({ name: "npm", version: DEFAULT_NPM_VERSION });
+        expect(run1.javascript.runtime.name).toBe("node");
+        expect(run1.javascript.toolchain).toBe("vite");
+        expect(run1.python.detected).toBe(false);
       });
     });
   });
 
   describe("Tool-Specific Setup Adapters", () => {
     describe("resolvePnpmSetupRuntime", () => {
-      it("should format bun runtime specifier when bunVersion is present", () => {
+      it("should format bun runtime specifier when bun runtime is selected", () => {
         expect(
           resolvePnpmSetupRuntime({
-            nodeVersion: "24",
-            bunVersion: "1.4",
+            detected: true,
+            runtime: { name: "bun", version: "1.4" },
+            packageManager: { name: "pnpm", version: "12" },
+            toolchain: "vite",
           }),
         ).toBe("bun@1.4");
       });
 
-      it("should format node runtime specifier when nodeVersion is present and not lts", () => {
+      it("should format node runtime specifier when node runtime is selected and not lts", () => {
         expect(
           resolvePnpmSetupRuntime({
-            nodeVersion: "22.1.0",
-            bunVersion: "",
+            detected: true,
+            runtime: { name: "node", version: "22.1.0" },
+            packageManager: { name: "pnpm", version: "12" },
+            toolchain: "vite",
           }),
         ).toBe("node@22.1.0");
       });
 
-      it("should format node@lts when nodeVersion starts with lts or is empty", () => {
+      it("should format node@lts when node version starts with lts or is empty", () => {
         expect(
           resolvePnpmSetupRuntime({
-            nodeVersion: "lts/iron",
-            bunVersion: "",
+            detected: true,
+            runtime: { name: "node", version: "lts/iron" },
+            packageManager: { name: "pnpm", version: "12" },
+            toolchain: "vite",
           }),
         ).toBe("node@lts");
 
         expect(
           resolvePnpmSetupRuntime({
-            nodeVersion: "",
-            bunVersion: "",
+            detected: true,
+            runtime: { name: "node", version: "" },
+            packageManager: { name: "pnpm", version: "12" },
+            toolchain: "vite",
           }),
         ).toBe("node@lts");
       });
@@ -955,13 +958,10 @@ describe("resolve-environment", () => {
     describe("setupNode adapter", () => {
       it("should return correct setup options for npm package manager", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "npm", version: "12" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -975,13 +975,10 @@ describe("resolve-environment", () => {
 
       it("should return correct setup options for bun package manager with node runtime", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "bun", version: "1.4" },
-            runtime: "node",
-            nodeVersion: "22",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "22" },
+            packageManager: { name: "bun", version: "1.4" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -995,13 +992,10 @@ describe("resolve-environment", () => {
 
       it("should return shouldSetup=false when package manager is pnpm", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "pnpm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1013,15 +1007,12 @@ describe("resolve-environment", () => {
         });
       });
 
-      it("should return shouldSetup=false when nodeVersion is empty", () => {
+      it("should return shouldSetup=false when runtime is bun", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "bun", version: "1.4" },
-            runtime: "bun",
-            nodeVersion: "",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "bun", version: "1.4" },
+            packageManager: { name: "bun", version: "1.4" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1035,15 +1026,12 @@ describe("resolve-environment", () => {
     });
 
     describe("setupBun adapter", () => {
-      it("should return shouldSetup=true and bunVersion when package manager is not pnpm and bunVersion is set", () => {
+      it("should return shouldSetup=true and bunVersion when package manager is not pnpm and runtime is bun", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "bun", version: "1.4" },
-            runtime: "bun",
-            nodeVersion: "",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "bun", version: "1.4" },
+            packageManager: { name: "bun", version: "1.4" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1056,13 +1044,10 @@ describe("resolve-environment", () => {
 
       it("should return shouldSetup=false when package manager is pnpm", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "pnpm", version: "12" },
-            runtime: "bun",
-            nodeVersion: "24",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "bun", version: "1.4" },
+            packageManager: { name: "pnpm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1073,15 +1058,12 @@ describe("resolve-environment", () => {
         });
       });
 
-      it("should return shouldSetup=false when bunVersion is empty", () => {
+      it("should return shouldSetup=false when runtime is node", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "npm", version: "12" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1096,13 +1078,10 @@ describe("resolve-environment", () => {
     describe("setupPackageManager adapter", () => {
       it("should extract package manager options for pnpm", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "pnpm", version: "9.0.0" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "pnpm", version: "9.0.0" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1117,13 +1096,10 @@ describe("resolve-environment", () => {
 
       it("should extract package manager options for npm", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "npm", version: "12" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1138,13 +1114,10 @@ describe("resolve-environment", () => {
 
       it("should extract package manager options for bun", () => {
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "bun", version: "1.4" },
-            runtime: "bun",
-            nodeVersion: "",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "bun", version: "1.4" },
+            packageManager: { name: "bun", version: "1.4" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1164,13 +1137,10 @@ describe("resolve-environment", () => {
         const readSpy = vi.spyOn(fs, "readFileSync");
 
         const env: ResolvedEnvironment = {
-          js: {
-            hasJsProject: true,
-            project: {} as any,
-            pm: { name: "pnpm", version: "12" },
-            runtime: "node",
-            nodeVersion: "24",
-            bunVersion: "1.4",
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "pnpm", version: "12" },
             toolchain: "vite",
           },
           python: {} as any,
@@ -1179,12 +1149,12 @@ describe("resolve-environment", () => {
         const nodeConfig = setupNode(env);
         const bunConfig = setupBun(env);
         const pmConfig = setupPackageManager(env);
-        const pnpmRuntime = resolvePnpmSetupRuntime(env.js);
+        const pnpmRuntime = resolvePnpmSetupRuntime(env.javascript);
 
         expect(nodeConfig).toBeDefined();
         expect(bunConfig).toBeDefined();
         expect(pmConfig).toBeDefined();
-        expect(pnpmRuntime).toBe("bun@1.4");
+        expect(pnpmRuntime).toBe("node@24");
 
         expect(existsSpy).not.toHaveBeenCalled();
         expect(readSpy).not.toHaveBeenCalled();
@@ -1201,7 +1171,6 @@ describe("resolve-environment", () => {
         pm: "npm@11.19.0",
         type: "basic",
         expectedNode: "24.19.0",
-        expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
         expectedRuntime: "node",
       },
@@ -1211,7 +1180,6 @@ describe("resolve-environment", () => {
         pm: "npm",
         type: "minimal",
         expectedNode: "24",
-        expectedBun: "",
         expectedPm: { name: "npm", version: "12" },
         expectedRuntime: "node",
       },
@@ -1221,7 +1189,6 @@ describe("resolve-environment", () => {
         pm: "pnpm@12.15.0",
         type: "basic",
         expectedNode: "24",
-        expectedBun: "",
         expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
@@ -1231,7 +1198,6 @@ describe("resolve-environment", () => {
         pm: "pnpm",
         type: "minimal",
         expectedNode: "24",
-        expectedBun: "",
         expectedPm: { name: "pnpm", version: DEFAULT_PNPM_VERSION },
         expectedRuntime: "node",
       },
@@ -1240,7 +1206,6 @@ describe("resolve-environment", () => {
         runtime: "bun",
         pm: "bun@1.4",
         type: "basic",
-        expectedNode: "",
         expectedBun: "1.4",
         expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
@@ -1250,7 +1215,6 @@ describe("resolve-environment", () => {
         runtime: "bun",
         pm: "pnpm@12.15.0",
         type: "basic",
-        expectedNode: "",
         expectedBun: ">=1.0.0",
         expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "bun",
@@ -1260,7 +1224,6 @@ describe("resolve-environment", () => {
         runtime: "bun",
         pm: "bun@1.4",
         type: "minimal",
-        expectedNode: "",
         expectedBun: "1.4",
         expectedPm: { name: "bun", version: "1.4" },
         expectedRuntime: "bun",
@@ -1271,7 +1234,6 @@ describe("resolve-environment", () => {
         pm: "npm@11.19.0",
         type: "basic",
         expectedNode: "24.19.0",
-        expectedBun: "",
         expectedPm: { name: "npm", version: "11.19.0" },
         expectedRuntime: "node",
       },
@@ -1281,7 +1243,6 @@ describe("resolve-environment", () => {
         pm: "pnpm@12.15.0",
         type: "basic",
         expectedNode: "24",
-        expectedBun: "",
         expectedPm: { name: "pnpm", version: "12.15.0" },
         expectedRuntime: "node",
       },
@@ -1297,10 +1258,13 @@ describe("resolve-environment", () => {
         try {
           const env = resolveEnvironment();
 
-          expect(env.js.nodeVersion).toBe(expectedNode);
-          expect(env.js.bunVersion).toBe(expectedBun);
-          expect(env.js.pm).toMatchObject(expectedPm);
-          expect(env.js.runtime).toBe(expectedRuntime);
+          if (expectedRuntime === "node") {
+            expect(env.javascript.runtime.version).toBe(expectedNode);
+          } else {
+            expect(env.javascript.runtime.version).toBe(expectedBun);
+          }
+          expect(env.javascript.packageManager).toMatchObject(expectedPm);
+          expect(env.javascript.runtime.name).toBe(expectedRuntime);
         } finally {
           process.chdir(originalCwd);
           fs.rmSync(scenarioPath, { recursive: true, force: true });
@@ -1310,7 +1274,7 @@ describe("resolve-environment", () => {
   });
 
   describe("writeOutput", () => {
-    it("should consume env.js and env.python directly without re-inspecting filesystem", () => {
+    it("should consume env.javascript and env.python directly without re-inspecting filesystem", () => {
       const tempDir = path.join(fixturesDir, "write-output-no-reinspect-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "app" }));
@@ -1334,30 +1298,27 @@ describe("resolve-environment", () => {
 
     it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and adapter step outputs correctly for ResolvedEnvironment", () => {
       const env: ResolvedEnvironment = {
-        js: {
-          hasJsProject: true,
-          project: {} as any,
-          pm: { name: "pnpm", version: "9.0.0" },
-          runtime: "node",
-          nodeVersion: "20.10.0",
-          bunVersion: "",
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "20.10.0" },
+          packageManager: { name: "pnpm", version: "9.0.0" },
           toolchain: "vite",
         },
         python: {
-          hasPythonSource: false,
-          pythonVersion: "",
+          detected: false,
+          version: "",
           ruffVersion: "",
-          pmInfo: null,
+          packageManager: null,
         },
       };
 
       writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "20.10.0");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "9.0.0");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", DEFAULT_BUN_VERSION);
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "9.0.0");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("pnpm-runtime", "node@20.10.0");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
@@ -1367,30 +1328,27 @@ describe("resolve-environment", () => {
 
     it("should output all detected values when passed a ResolvedEnvironment object", () => {
       const env: ResolvedEnvironment = {
-        js: {
-          hasJsProject: true,
-          project: {} as any,
-          pm: { name: "npm", version: "12" },
-          runtime: "node",
-          nodeVersion: "24",
-          bunVersion: "",
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
           toolchain: "vite",
         },
         python: {
-          hasPythonSource: false,
-          pythonVersion: "",
+          detected: false,
+          version: "",
           ruffVersion: "",
-          pmInfo: null,
+          packageManager: null,
         },
       };
 
       writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
-      expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12");
-      expect(core.setOutput).toHaveBeenCalledWith("runtime", "node");
+      expect(core.setOutput).toHaveBeenCalledWith("bun-version", DEFAULT_BUN_VERSION);
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "12");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("pnpm-runtime", "node@24");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
       expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
@@ -1398,30 +1356,27 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
     });
 
-    it("should set has-python-source and setup-python to false and clear python outputs when no Python source files exist", () => {
+    it("should set python-detected and setup-python to false and clear python outputs when no Python source files exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
       const env: ResolvedEnvironment = {
-        js: {
-          hasJsProject: false,
-          project: {} as any,
-          pm: { name: "npm", version: "12" },
-          runtime: "node",
-          nodeVersion: "24",
-          bunVersion: "",
+        javascript: {
+          detected: false,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
           toolchain: "vite",
         },
         python: {
-          hasPythonSource: false,
-          pythonVersion: "",
+          detected: false,
+          version: "",
           ruffVersion: "",
-          pmInfo: null,
+          packageManager: null,
         },
       };
 
       writeOutput(env);
 
-      expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "false");
+      expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
       expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
       expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "");
@@ -1436,8 +1391,8 @@ describe("resolve-environment", () => {
         const env = resolveEnvironment();
         writeOutput(env);
 
-        expect(env.python.hasPythonSource).toBe(false);
-        expect(env.python.pythonVersion).toBe("");
+        expect(env.python.detected).toBe(false);
+        expect(env.python.version).toBe("");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
       } finally {
         process.chdir(originalCwd);
@@ -1445,7 +1400,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should set has-python-source and setup-python to true and resolve python outputs when Python source exists", () => {
+    it("should set python-detected and setup-python to true and resolve python outputs when Python source exists", () => {
       const tempDir = path.join(fixturesDir, "python-source-test-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -1457,7 +1412,7 @@ describe("resolve-environment", () => {
 
         writeOutput(env);
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
         expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
@@ -1479,8 +1434,8 @@ describe("resolve-environment", () => {
 
         writeOutput(env);
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
       } finally {
@@ -1504,9 +1459,9 @@ describe("resolve-environment", () => {
         run();
 
         expect(core.setOutput).toHaveBeenCalledWith("node-version", "24.19.0");
-        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "npm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "11.19.0");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "11.19.0");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "npm");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
@@ -1529,10 +1484,10 @@ describe("resolve-environment", () => {
       try {
         run();
 
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "bun");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "1.4");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "bun");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "1.4");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "false");
@@ -1555,11 +1510,11 @@ describe("resolve-environment", () => {
       try {
         run();
 
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", "");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", ">=1.0.0");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager", "pnpm");
-        expect(core.setOutput).toHaveBeenCalledWith("package-manager-version", "12.15.0");
-        expect(core.setOutput).toHaveBeenCalledWith("runtime", "bun");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "12.15.0");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "bun");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
@@ -1578,8 +1533,8 @@ describe("resolve-environment", () => {
       try {
         run();
 
-        expect(core.setOutput).toHaveBeenCalledWith("has-js-project", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("has-python-source", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
       } finally {
@@ -1597,7 +1552,7 @@ describe("resolve-environment", () => {
 
       try {
         const resolved = resolveEnvironment("vite-plus");
-        expect(resolved.js.toolchain).toBe("vite-plus");
+        expect(resolved.javascript.toolchain).toBe("vite-plus");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(fixturePath, { recursive: true, force: true });
@@ -1611,7 +1566,7 @@ describe("resolve-environment", () => {
 
       try {
         const resolved = resolveEnvironment("vite");
-        expect(resolved.js.toolchain).toBe("vite");
+        expect(resolved.javascript.toolchain).toBe("vite");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(fixturePath, { recursive: true, force: true });
@@ -1624,7 +1579,7 @@ describe("resolve-environment", () => {
       process.chdir(vpFixture);
       try {
         const resolvedVp = resolveEnvironment("auto");
-        expect(resolvedVp.js.toolchain).toBe("vite-plus");
+        expect(resolvedVp.javascript.toolchain).toBe("vite-plus");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(vpFixture, { recursive: true, force: true });
@@ -1635,7 +1590,7 @@ describe("resolve-environment", () => {
       process.chdir(stdFixture);
       try {
         const resolvedStd = resolveEnvironment("");
-        expect(resolvedStd.js.toolchain).toBe("vite");
+        expect(resolvedStd.javascript.toolchain).toBe("vite");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(stdFixture, { recursive: true, force: true });
@@ -1644,6 +1599,45 @@ describe("resolve-environment", () => {
 
     it("should throw INVALID_INPUT when toolchainInput is unsupported", () => {
       expect(() => resolveEnvironment("invalid-toolchain")).toThrow();
+    });
+  });
+
+  describe("API Contract Consistency (Legacy Output Detection)", () => {
+    it("should ensure public action definitions and README tables do not expose legacy output names", () => {
+      const repoRoot = path.resolve(__dirname, "..");
+      const pagesActionYml = fs.readFileSync(path.join(repoRoot, "pages/action.yml"), "utf8");
+      const autofixActionYml = fs.readFileSync(path.join(repoRoot, "autofix/action.yml"), "utf8");
+      const rootReadme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+      const pagesReadme = fs.readFileSync(path.join(repoRoot, "pages/README.md"), "utf8");
+      const autofixReadme = fs.readFileSync(path.join(repoRoot, "autofix/README.md"), "utf8");
+
+      const legacyNames = [
+        "has-js-project",
+        "has-python-source",
+        "package-manager-version",
+        "package-manager",
+      ];
+
+      for (const legacyName of legacyNames) {
+        // Check outputs section of pages/action.yml and autofix/action.yml
+        expect(pagesActionYml, `pages/action.yml should not contain public output '${legacyName}'`).not.toMatch(
+          new RegExp(`^\\s*${legacyName}:`, "m"),
+        );
+        expect(autofixActionYml, `autofix/action.yml should not contain public output '${legacyName}'`).not.toMatch(
+          new RegExp(`^\\s*${legacyName}:`, "m"),
+        );
+
+        // Check documentation output tables
+        expect(rootReadme, `README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
+          `| \`${legacyName}\` |`,
+        );
+        expect(pagesReadme, `pages/README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
+          `| \`${legacyName}\` |`,
+        );
+        expect(autofixReadme, `autofix/README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
+          `| \`${legacyName}\` |`,
+        );
+      }
     });
   });
 });

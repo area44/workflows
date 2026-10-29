@@ -955,26 +955,23 @@ describe("autofix", () => {
       expect(action.inputs).toBeUndefined();
 
       // Outputs contract with exact expression mappings
-      expect(action.outputs["node-version"].value).toBe(
-        "${{ steps.resolve_environment.outputs.node-version }}",
+      expect(action.outputs["javascript-detected"].value).toBe(
+        "${{ steps.resolve_environment.outputs.javascript-detected }}",
       );
-      expect(action.outputs["bun-version"].value).toBe(
-        "${{ steps.resolve_environment.outputs.bun-version }}",
+      expect(action.outputs["javascript-runtime"].value).toBe(
+        "${{ steps.resolve_environment.outputs.javascript-runtime }}",
       );
-      expect(action.outputs["package-manager"].value).toBe(
-        "${{ steps.resolve_environment.outputs.package-manager }}",
+      expect(action.outputs["javascript-runtime-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.javascript-runtime-version }}",
       );
-      expect(action.outputs["package-manager-version"].value).toBe(
-        "${{ steps.resolve_environment.outputs.package-manager-version }}",
+      expect(action.outputs["javascript-package-manager"].value).toBe(
+        "${{ steps.resolve_environment.outputs.javascript-package-manager }}",
       );
-      expect(action.outputs.runtime.value).toBe(
-        "${{ steps.resolve_environment.outputs.runtime }}",
+      expect(action.outputs["javascript-package-manager-version"].value).toBe(
+        "${{ steps.resolve_environment.outputs.javascript-package-manager-version }}",
       );
-      expect(action.outputs["has-js-project"].value).toBe(
-        "${{ steps.resolve_environment.outputs.has-js-project }}",
-      );
-      expect(action.outputs["has-python-source"].value).toBe(
-        "${{ steps.resolve_environment.outputs.has-python-source }}",
+      expect(action.outputs["python-detected"].value).toBe(
+        "${{ steps.resolve_environment.outputs.python-detected }}",
       );
       expect(action.outputs["python-version"].value).toBe(
         "${{ steps.resolve_environment.outputs.python-version }}",
@@ -996,17 +993,17 @@ describe("autofix", () => {
 
       const setupUvStep = steps.find((s: any) => s.id === "setup_uv");
       expect(setupUvStep).toBeDefined();
-      expect(setupUvStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+      expect(setupUvStep.if).toContain("steps.resolve_environment.outputs.python-detected == 'true'");
       expect(setupUvStep.if).toContain("steps.resolve_environment.outputs.python-package-manager == 'uv'");
 
       const setupPyStep = steps.find((s: any) => s.id === "setup_python");
       expect(setupPyStep).toBeDefined();
-      expect(setupPyStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+      expect(setupPyStep.if).toContain("steps.resolve_environment.outputs.python-detected == 'true'");
       expect(setupPyStep.if).toContain("steps.resolve_environment.outputs.python-package-manager != 'uv'");
 
       const setupRuffStep = steps.find((s: any) => s.id === "setup_ruff");
       expect(setupRuffStep).toBeDefined();
-      expect(setupRuffStep.if).toContain("steps.resolve_environment.outputs.has-python-source == 'true'");
+      expect(setupRuffStep.if).toContain("steps.resolve_environment.outputs.python-detected == 'true'");
 
       const runAutofixStep = steps.find((s: any) => s.id === "run_autofix");
       expect(runAutofixStep).toBeDefined();

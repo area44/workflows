@@ -198,17 +198,17 @@ jobs:
           EXPECTED_FAILURE: ${{ matrix.expected_failure }}
           PAGES_OUTCOME: ${{ steps.pages.outcome }}
           AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
-          PAGES_PM: ${{ steps.pages.outputs.package-manager }}
-          AUTOFIX_PM: ${{ steps.autofix.outputs.package-manager }}
+          PAGES_PM: ${{ steps.pages.outputs.javascript-package-manager }}
+          AUTOFIX_PM: ${{ steps.autofix.outputs.javascript-package-manager }}
           EXPECTED_PM: ${{ matrix.pm }}
-          PAGES_RUNTIME: ${{ steps.pages.outputs.runtime }}
-          AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.runtime }}
+          PAGES_RUNTIME: ${{ steps.pages.outputs.javascript-runtime }}
+          AUTOFIX_RUNTIME: ${{ steps.autofix.outputs.javascript-runtime }}
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
-          PAGES_TOOLCHAIN: ${{ steps.pages.outputs.toolchain }}
+          PAGES_TOOLCHAIN: ${{ steps.pages.outputs.javascript-toolchain }}
           EXPECTED_TOOLCHAIN_INPUT: ${{ matrix.toolchain }}
           VERIFY_SITE: ${{ matrix.verify_site }}
-          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.has-js-project }}
-          AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.has-python-source }}
+          AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.javascript-detected }}
+          AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.python-detected }}
           AUTOFIX_PYTHON_PM: ${{ steps.autofix.outputs.python-package-manager }}
           AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-version }}
           AUTOFIX_RUFF_VER: ${{ steps.autofix.outputs.ruff-version }}
@@ -324,16 +324,16 @@ jobs:
             EXPECTED_HAS_JS="${EXPECTED_HAS_JS_PROJECT:-true}"
             if [[ "$AUTOFIX_HAS_JS" != "$EXPECTED_HAS_JS" ]]; then
               echo "Error: [${ACTION}] Has JS project mismatch stage failed for scenario '${SCENARIO_NAME}'."
-              echo "  Expected has-js-project: ${EXPECTED_HAS_JS}"
-              echo "  Actual has-js-project:   ${AUTOFIX_HAS_JS}"
+              echo "  Expected javascript-detected: ${EXPECTED_HAS_JS}"
+              echo "  Actual javascript-detected:   ${AUTOFIX_HAS_JS}"
               exit 1
             fi
 
             EXPECTED_HAS_PY="${EXPECTED_HAS_PYTHON_SOURCE:-false}"
             if [[ "$AUTOFIX_HAS_PYTHON" != "$EXPECTED_HAS_PY" ]]; then
               echo "Error: [${ACTION}] Has Python source mismatch stage failed for scenario '${SCENARIO_NAME}'."
-              echo "  Expected has-python-source: ${EXPECTED_HAS_PY}"
-              echo "  Actual has-python-source:   ${AUTOFIX_HAS_PYTHON}"
+              echo "  Expected python-detected: ${EXPECTED_HAS_PY}"
+              echo "  Actual python-detected:   ${AUTOFIX_HAS_PYTHON}"
               exit 1
             fi
 
