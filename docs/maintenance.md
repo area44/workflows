@@ -28,7 +28,11 @@ To prevent duplication and configuration drift, specific files serve as authorit
 
 ## Algorithm & Documentation Synchronization
 
-Environment resolution algorithms in `src/` (`src/resolve-environment.ts`, `src/javascript-env.ts`, `src/python-env.ts`, `src/setup-plan.ts`) must stay synchronized with the canonical algorithm specification in [`docs/environment-resolution.md`](./environment-resolution.md) and behavior-oriented test suites in `__tests__/`. Whenever resolution precedence, signal collection, conflict validation, or setup planning logic is modified, maintainers must update `docs/environment-resolution.md` and verify all precedence decision tables and worked examples against unit and integration tests.
+Environment resolution algorithms in `src/` (`src/resolve-environment.ts`, `src/javascript-env.ts`, `src/python-env.ts`, `src/setup-plan.ts`) are specified at a high level in [`docs/environment-resolution.md`](./environment-resolution.md). Whenever environment resolution or setup planning behavior changes, maintainers must:
+
+- Keep the documented principles and Mermaid flowchart in `docs/environment-resolution.md` synchronized with the implementation.
+- Add or update automated tests in `__tests__/` for exhaustive edge cases, treating source code and test suites as the authority for exact behavioral edge cases.
+- Update documentation references across `README.md`, `pages/README.md`, and `autofix/README.md` if responsibilities or entrypoints change.
 
 ## Public Action Structure
 
