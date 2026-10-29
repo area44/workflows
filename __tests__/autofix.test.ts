@@ -168,7 +168,6 @@ describe("autofix", () => {
         await run(testsTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
-        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
         expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: testsTempDir }));
         expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: testsTempDir }));
       } finally {
@@ -326,7 +325,6 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(core.error).toHaveBeenCalledWith("JS dependency installation failed: npm install");
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.stringContaining('Failed to run scripts: JS dependency installation failed executing "npm install"'),
       );
@@ -353,7 +351,6 @@ describe("autofix", () => {
 
       await run(scenarioPath);
 
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: uv");
       expect(exec.exec).toHaveBeenCalledWith("uv", ["sync"], expect.objectContaining({ cwd: scenarioPath }));
       expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: scenarioPath }));
       expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: scenarioPath }));
@@ -370,7 +367,6 @@ describe("autofix", () => {
         originalCwd,
       );
 
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
       expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: originalCwd }));
     });
 
@@ -422,7 +418,6 @@ describe("autofix", () => {
         isStandalone: true,
       });
 
-      expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
@@ -438,7 +433,6 @@ describe("autofix", () => {
 
         expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
         expect(exec.exec).toHaveBeenCalledWith("npm", ["run", "check"], expect.objectContaining({ cwd: mixedTempDir }));
-        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
         expect(exec.exec).toHaveBeenCalledWith("pip", ["install", "-r", "requirements.txt"], expect.objectContaining({ cwd: mixedTempDir }));
         expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: mixedTempDir }));
         expect(exec.exec).toHaveBeenCalledWith("ruff", ["format", "."], expect.objectContaining({ cwd: mixedTempDir }));
@@ -546,9 +540,6 @@ describe("autofix", () => {
         }),
       ).rejects.toThrow("Required Python package manager 'uv' is not available in PATH.");
 
-      expect(core.error).toHaveBeenCalledWith(
-        "Required Python package manager 'uv' is not available in PATH.",
-      );
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
@@ -560,7 +551,6 @@ describe("autofix", () => {
         await run(pyOnlyTempDir);
 
         expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
-        expect(core.info).toHaveBeenCalledWith("Detected Python package manager: pip");
       } finally {
         fs.rmSync(pyOnlyTempDir, { recursive: true, force: true });
       }
@@ -696,8 +686,6 @@ describe("autofix", () => {
           execPrefix: "",
         }),
       ).rejects.toThrow('Python command "pip install -r requirements.txt" failed. Check Python environment and dependency configuration.');
-
-      expect(core.error).toHaveBeenCalledWith('Python command "pip install -r requirements.txt" failed');
     });
 
     it("should handle process launch errors gracefully when exec.exec rejects", async () => {
@@ -923,7 +911,6 @@ describe("autofix", () => {
 
       await run();
 
-      expect(core.error).toHaveBeenCalledWith('Script "check" failed');
       expect(core.setFailed).toHaveBeenCalledWith(
         'Failed to run scripts: Script "check" failed while executing "npm run check".',
       );

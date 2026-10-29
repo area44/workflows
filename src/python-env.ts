@@ -540,21 +540,18 @@ export function resolvePythonVersion(
   // 1. Local .python-version in projectDir
   const localPyVer = readVersionFromFile(path.join(ctx.projectDir, ".python-version"));
   if (localPyVer) {
-    core.info(`Found .python-version: ${localPyVer}`);
     return localPyVer;
   }
 
   // 2. Local pyproject.toml requires-python in projectDir
   const pyprojectVer = readPyprojectPythonVersion(ctx.projectDir, pyproject);
   if (pyprojectVer) {
-    core.info(`Found Python version in pyproject.toml: ${pyprojectVer}`);
     return pyprojectVer;
   }
 
   // 3. Local runtime.txt in projectDir
   const localRuntimeVer = readVersionFromFile(path.join(ctx.projectDir, "runtime.txt"));
   if (localRuntimeVer) {
-    core.info(`Found runtime.txt: ${localRuntimeVer}`);
     return localRuntimeVer;
   }
 
@@ -562,7 +559,6 @@ export function resolvePythonVersion(
   if (ctx.workspaceRootToml) {
     const wsVer = readPyprojectPythonVersion(ctx.workspaceRootDir || cwd, ctx.workspaceRootToml);
     if (wsVer) {
-      core.info(`Found Python version in workspace pyproject.toml: ${wsVer}`);
       return wsVer;
     }
   }
@@ -570,18 +566,15 @@ export function resolvePythonVersion(
   // 5. Ancestor .python-version
   const ancestorPyVer = readVersionFromFile(ctx.pythonVersionFile);
   if (ancestorPyVer) {
-    core.info(`Found .python-version: ${ancestorPyVer}`);
     return ancestorPyVer;
   }
 
   // 6. Ancestor runtime.txt
   const ancestorRuntimeVer = readVersionFromFile(ctx.runtimeTxtFile);
   if (ancestorRuntimeVer) {
-    core.info(`Found runtime.txt: ${ancestorRuntimeVer}`);
     return ancestorRuntimeVer;
   }
 
-  core.info(`Python version not specified; using default: ${DEFAULT_PYTHON_VERSION}`);
   return DEFAULT_PYTHON_VERSION;
 }
 
@@ -1385,20 +1378,10 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     };
   }
 
-  core.info("Detected Python project.");
-
   const ctx = findPythonProjectContext(cwd);
   const pythonVersion = resolvePythonVersion(cwd, ctx.pyprojectToml);
   const ruffVersion = resolveRuffVersion(cwd, ctx.pyprojectToml);
   const pmInfo = detectPythonPackageManager(cwd, ctx.pyprojectToml);
-
-  if (pmInfo) {
-    core.info(`Resolved Python package manager: ${pmInfo.name}`);
-  }
-
-  if (ruffVersion) {
-    core.info(`Resolved Ruff version: ${ruffVersion}`);
-  }
 
   return {
     detected: true,

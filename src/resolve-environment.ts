@@ -267,6 +267,80 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("ruff-version", python.ruffVersion);
 }
 
+export function logResolvedEnvironment(env: ResolvedEnvironment): void {
+  const js = env.javascript;
+  const python = env.python;
+
+  const detectedLangs: string[] = [];
+  if (js.detected) detectedLangs.push("JavaScript");
+  if (python.detected) detectedLangs.push("Python");
+
+  if (detectedLangs.length === 0) {
+    core.info("Neither JavaScript/TypeScript nor Python project detected.");
+    return;
+  }
+
+  core.startGroup("Environment");
+  core.info(`Detected: ${detectedLangs.join(", ")}`);
+  core.endGroup();
+
+  core.startGroup("Resolved Configuration");
+
+  if (detectedLangs.length === 1) {
+    if (js.detected) {
+      const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
+      const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
+      core.info(`Runtime: ${runtimeName}${runtimeVer}`);
+
+      const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
+      core.info(`Package manager: ${js.packageManager.name}${pmVer}`);
+
+      if (js.toolchain) {
+        core.info(`Toolchain: ${js.toolchain}`);
+      }
+    } else if (python.detected) {
+      const pyVer = python.version ? ` ${python.version}` : "";
+      core.info(`Runtime: Python${pyVer}`);
+
+      if (python.packageManager) {
+        core.info(`Package manager: ${python.packageManager.name}`);
+      }
+
+      if (python.ruffVersion) {
+        core.info(`Ruff: ${python.ruffVersion}`);
+      }
+    }
+  } else {
+    if (js.detected) {
+      const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
+      const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
+      core.info(`JavaScript runtime: ${runtimeName}${runtimeVer}`);
+
+      const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
+      core.info(`JavaScript package manager: ${js.packageManager.name}${pmVer}`);
+
+      if (js.toolchain) {
+        core.info(`JavaScript toolchain: ${js.toolchain}`);
+      }
+    }
+
+    if (python.detected) {
+      const pyVer = python.version ? ` ${python.version}` : "";
+      core.info(`Python runtime: Python${pyVer}`);
+
+      if (python.packageManager) {
+        core.info(`Python package manager: ${python.packageManager.name}`);
+      }
+
+      if (python.ruffVersion) {
+        core.info(`Python Ruff: ${python.ruffVersion}`);
+      }
+    }
+  }
+
+  core.endGroup();
+}
+
 /**
  * Executes the full environment resolution pipeline:
  * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Aggregate Environment
@@ -277,18 +351,15 @@ export function resolveEnvironment(
   const javascript = resolveJsEnvironment(toolchainInput);
   const python = resolvePythonEnvironment();
 
-  if (!javascript.detected && !python.detected) {
-    core.info(
-      "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
-    );
-  }
-
   const env: ResolvedEnvironment = {
     javascript,
     python,
   };
 
-  return validateEnvironment(env);
+  const validated = validateEnvironment(env);
+  logResolvedEnvironment(validated);
+
+  return validated;
 }
 
 export function run(): void {
