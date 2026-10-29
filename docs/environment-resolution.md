@@ -45,15 +45,14 @@ flowchart TD
     D1 --> E[Aggregate Environment]
     D2 --> E
 
-    subgraph Aggregate Validation & Output Pipeline
+    subgraph Aggregate Validation & Setup Planning Pipeline
         E --> F{validateEnvironment}
         F -- Invariant Violation --> FAIL
-        F -- Valid Aggregate Env --> G[writeOutput Pipeline]
-        G --> H[createSetupPlan\nPure Setup Plan]
-        H --> I[core.setOutput\nExport Action Outputs]
+        F -- Valid Aggregate Env --> G[createSetupPlan\nDerive Pure Setup Plan]
+        G --> H[core.setOutput\nExport Action Outputs]
     end
 
-    I --> J[Downstream Action Step Guards\npages / autofix]
+    H --> I[Downstream Action Step Guards\npages / autofix]
 ```
 
 ---
