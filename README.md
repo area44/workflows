@@ -85,6 +85,7 @@ This action accepts no inputs.
 
 - **[Pages Action Documentation](./pages/README.md)**: Details on inputs, outputs, environment variables (`SITE`, `BASE`, `BASE_URL`), and static site requirements.
 - **[Autofix Action Documentation](./autofix/README.md)**: Information on JavaScript script selection, Python Ruff formatting/linting, and autofix.ci integration.
+- **[Environment Resolution Algorithm Guide](./docs/environment-resolution.md)**: Design principles, decision flow, conflict handling, setup planning, and maintenance guide for repository environment resolution.
 - **[Error Handling Architecture](./docs/errors.md)**: Native JavaScript error propagation, top-level boundaries, and build failure logging.
 - **[Security Boundaries](./docs/security.md)**: Trust boundaries, shell command argument tokenization without subshell execution, and secret masking.
 - **[Maintenance & Repository Health](./docs/maintenance.md)**: Invariants, sources of truth, build pipelines (`npm run build`), quality gates, and release versioning.
