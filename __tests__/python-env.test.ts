@@ -1,6 +1,5 @@
 import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import * as core from "@actions/core";
-import child_process from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -445,7 +444,7 @@ dev = ["pytest"]
 
       try {
         const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).toMatchObject({
+        expect(pmInfo).toEqual({
           name: "uv",
           configFile: "uv.toml",
           installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
@@ -523,7 +522,7 @@ dev = ["pytest"]
 
       try {
         const memberEnv = resolvePythonEnvironment(memberDir);
-        expect(memberEnv.version).toBe("3.11");
+        expect(memberEnv.version).toBe(">=3.11");
         expect(memberEnv.ruffVersion).toBe("0.4.2");
         expect(memberEnv.packageManager?.name).toBe("uv");
         expect(memberEnv.packageManager?.lockfile).toBe("uv.lock");
@@ -764,39 +763,35 @@ enabled = true
       }
     });
 
-    it(
-      "should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true",
-      () => {
-        const configOnlyTomls = [
-          "[tool.uv]\noverride-dependencies = ['foo']\n",
-          "[tool.uv]\ndefault-groups = ['dev']\n",
-          "[tool.uv]\npackage = false\n",
-          "[tool.uv]\nmanaged = true\n",
-        ];
+    it("should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true", () => {
+      const configOnlyTomls = [
+        "[tool.uv]\noverride-dependencies = ['foo']\n",
+        "[tool.uv]\ndefault-groups = ['dev']\n",
+        "[tool.uv]\npackage = false\n",
+        "[tool.uv]\nmanaged = true\n",
+      ];
 
-        for (const [idx, content] of configOnlyTomls.entries()) {
-          const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
-          fs.mkdirSync(tempDir, { recursive: true });
-          fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-          fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+      for (const [idx, content] of configOnlyTomls.entries()) {
+        const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
 
-          try {
-            const pmInfo = detectPythonPackageManager(tempDir);
-            expect(pmInfo).not.toBeNull();
-            expect(pmInfo?.name).toBe("pip");
-            expect(pmInfo?.isStandalone).toBe(true);
+        try {
+          const pmInfo = detectPythonPackageManager(tempDir);
+          expect(pmInfo).not.toBeNull();
+          expect(pmInfo?.name).toBe("pip");
+          expect(pmInfo?.isStandalone).toBe(true);
 
-            const resolved = resolvePythonEnvironment(tempDir);
-            expect(resolved.detected).toBe(true);
-            expect(resolved.packageManager?.name).toBe("pip");
-            expect(resolved.packageManager?.isStandalone).toBe(true);
-          } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-          }
+          const resolved = resolvePythonEnvironment(tempDir);
+          expect(resolved.detected).toBe(true);
+          expect(resolved.packageManager?.name).toBe("pip");
+          expect(resolved.packageManager?.isStandalone).toBe(true);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
-      },
-      15000,
-    );
+      }
+    });
 
     it("should resolve workspace member environment end-to-end via public resolvePythonEnvironment()", () => {
       const tempDir = path.join(fixturesDir, "resolve-env-workspace-temp");
@@ -820,7 +815,7 @@ enabled = true
       try {
         const resolved = resolvePythonEnvironment(pkgDir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("3.11");
+        expect(resolved.version).toBe(">=3.11");
         expect(resolved.ruffVersion).toBe("0.4.2");
         expect(resolved.packageManager?.name).toBe("uv");
         expect(resolved.packageManager?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
@@ -854,7 +849,7 @@ enabled = true
         const deepEnv = resolvePythonEnvironment(deepDir);
 
         expect(deepEnv.detected).toBe(true);
-        expect(deepEnv.version).toBe("3.11");
+        expect(deepEnv.version).toBe(">=3.11");
         expect(deepEnv.ruffVersion).toBe("0.4.2");
         expect(deepEnv.packageManager?.name).toBe("uv");
         expect(deepEnv.packageManager?.lockfile).toBe("uv.lock");
@@ -1143,12 +1138,12 @@ enabled = true
 
     it("should accurately resolve ruff specifiers and reject ruff-lsp, ruff-tools, ruff-extra", () => {
       const testCases: [string, boolean, string | undefined][] = [
-        ["ruff>=0.6", true, undefined],
-        ["Ruff>=0.6", true, undefined],
+        ["ruff>=0.6", true, ">=0.6"],
+        ["Ruff>=0.6", true, ">=0.6"],
         ["ruff==0.4.2", true, "0.4.2"],
-        ["ruff[extra]>=0.6", true, undefined],
+        ["ruff[extra]>=0.6", true, ">=0.6"],
         ["ruff[extra]==0.4.2", true, "0.4.2"],
-        ["ruff>=0.6; python_version>='3.10'", true, undefined],
+        ["ruff>=0.6; python_version>='3.10'", true, ">=0.6"],
         ["ruff==0.4.2; python_version>='3.10'", true, "0.4.2"],
         ["ruff-lsp>=1.0", false, undefined],
         ["ruff-tools", false, undefined],
@@ -1247,55 +1242,12 @@ enabled = true
       }
     });
 
-    it("should retain uv selection and use DEFAULT_UV_VERSION when uv is selected but version query fails", () => {
-      const tempDir = path.join(fixturesDir, "uv-ver-fail-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hi')\n");
-      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n[tool.uv]\ndev-dependencies = []\n");
-
-      vi.spyOn(child_process, "execFileSync").mockImplementation((cmd) => {
-        if (cmd === "uv") throw new Error("uv command failed");
-        return "pip 24.0";
-      });
-
-      try {
-        const resolved = resolvePythonEnvironment(tempDir);
-        expect(resolved.detected).toBe(true);
-        expect(resolved.packageManager?.name).toBe("uv");
-        expect(resolved.packageManager?.version).toBe("0.6");
-        expect(resolved.packageManager?.versionSource).toBe("default");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("should use DEFAULT_PIP_VERSION when pip is selected but version query fails", () => {
-      const tempDir = path.join(fixturesDir, "pip-ver-fail-temp");
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hi')\n");
-      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
-
-      vi.spyOn(child_process, "execFileSync").mockImplementation(() => {
-        throw new Error("pip command failed");
-      });
-
-      try {
-        const resolved = resolvePythonEnvironment(tempDir);
-        expect(resolved.detected).toBe(true);
-        expect(resolved.packageManager?.name).toBe("pip");
-        expect(resolved.packageManager?.version).toBe("24.0");
-        expect(resolved.packageManager?.versionSource).toBe("default");
-      } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
-    });
-
     it("should resolve python version, package manager, and ruff version when python source exists", () => {
       const proj = createConsumerProjectInTmp({ type: "python-uv" });
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("3.12");
+        expect(resolved.version).toBe("");
         expect(resolved.ruffVersion).toBe("0.17.2");
         expect(resolved.packageManager?.name).toBe("uv");
       } finally {
@@ -1438,9 +1390,9 @@ enabled = true
   });
 
   describe("resolvePythonVersion() and constraint parsing", () => {
-    it("should parse python versions from constraint strings", () => {
-      expect(parsePythonVersionFromConstraint(">=3.11")).toBe("3.11");
-      expect(parsePythonVersionFromConstraint("^3.12")).toBe("3.12");
+    it("should parse python versions from constraint strings while preserving constraints", () => {
+      expect(parsePythonVersionFromConstraint(">=3.11")).toBe(">=3.11");
+      expect(parsePythonVersionFromConstraint("^3.12")).toBe("^3.12");
       expect(parsePythonVersionFromConstraint("3.12.1")).toBe("3.12.1");
       expect(parsePythonVersionFromConstraint("python-3.11.4")).toBe("3.11.4");
       expect(parsePythonVersionFromConstraint("")).toBeUndefined();
@@ -1497,11 +1449,11 @@ enabled = true
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {
-    it("should extract exact pin or version constraint from specifiers", () => {
+    it("should extract exact pin or version constraint from specifiers preserving constraints", () => {
       expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
       expect(extractRuffVersionSpecifier("ruff = '0.4.2'")).toBe("0.4.2");
-      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBeUndefined();
-      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("^0.4.0");
+      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBe(">=0.3.0,<0.5.0");
       expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
       expect(extractRuffVersionSpecifier("")).toBeUndefined();
     });
@@ -1562,7 +1514,7 @@ enabled = true
       }
     });
 
-    it("should return empty string for complex range constraints so ruff-action uses standard version resolution", () => {
+    it("should return declared range constraint for ruff version resolution", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "ruff-range-temp-"));
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
@@ -1570,7 +1522,7 @@ enabled = true
       );
 
       try {
-        expect(resolveRuffVersion(tempDir)).toBe("");
+        expect(resolveRuffVersion(tempDir)).toBe(">=0.3.0,<0.5.0");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

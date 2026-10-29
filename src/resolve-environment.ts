@@ -112,10 +112,14 @@ function validatePmInfoFields(pmObj: Record<string, unknown>): void {
   if (typeof pmObj.execPrefix !== "string") {
     throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
   }
-  if (typeof pmObj.version !== "string") {
-    throw new Error('Invalid Python environment: "pmInfo.version" must be a string');
-  }
-  const optionalStrings = ["versionSource", "lockfile", "configFile", "lockCommand", "syncCommand"];
+  const optionalStrings = [
+    "version",
+    "versionSource",
+    "lockfile",
+    "configFile",
+    "lockCommand",
+    "syncCommand",
+  ];
   for (const field of optionalStrings) {
     if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
       throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
@@ -287,8 +291,8 @@ function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
 
 function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
   if (!py.packageManager) return undefined;
-  const { name, version, versionSource } = py.packageManager;
-  if (versionSource === "detected" && version) {
+  const { name, version } = py.packageManager;
+  if (version) {
     return `${name} ${version}`;
   }
   return name;

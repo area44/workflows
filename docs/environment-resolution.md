@@ -15,14 +15,13 @@ Environment resolution determines which runtimes and package managers a reposito
 ## Core Principles
 
 - **Domain Independence**: JavaScript/TypeScript and Python project resolution operate as independent domains. Repositories can contain JavaScript, Python, both, or neither. When neither domain is detected, the standalone plain-text message `No JavaScript or Python environment detected.` is emitted and resolution continues without error.
-- **Toolchain Classification**: Vite+ is the only supported JavaScript toolchain (`Toolchain: Vite+`). Standard Vite alone is not classified or reported as a toolchain.
+- **Toolchain Classification**: Vite+ is the only supported JavaScript toolchain (`Toolchain: Vite+`). Standard Vite alone is not classified or reported as a toolchain. When Vite+ is not detected, the `Toolchain` line is omitted entirely.
+- **Project-Declared Version Reporting**: Version information (Python runtime, `uv`, `Ruff`) strictly reflects declared project configuration or constraints (e.g., `requires-python = ">=3.10,<3.14"` resolves to `python-version: ">=3.10,<3.14"`). Range constraints and exact pins are displayed as declared without converting constraints to synthetic exact numbers or inventing default versions. When unconfigured, version outputs remain empty.
+- **Python Package Manager Selection**: Default package manager is `pip`. `uv` is selected when `uv.lock` or explicit `uv` configuration (`[tool.uv]` table or `uv.toml`) is detected.
 - **Python Tooling Boundary**: Ruff is a Python linting and formatting tool, not a toolchain. It is excluded from environment summary logging, while its `ruff-version` output and execution workflow are preserved.
-- **Verified Version Reporting**: Package manager versions (such as `uv` and `pip`) reflect verified execution state from the runtime environment when reported (e.g., `uv 0.7.8`).
 - **Plain-Text Logging**: Summary logs use plain-text output in stable category order (`Runtime`, `Package Manager`, `Toolchain`) without GitHub Actions grouping markers (`::group::`/`::endgroup::`).
 - **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files, version files, and package managers trigger immediate validation errors rather than applying silent tie-breakers.
 - **Pure Setup Planning**: Environment resolution and filesystem inspection are strictly separated from setup plan generation. Setup plans are derived through a pure, deterministic transformation layer with zero filesystem access or action side effects.
-- **Specifier Preservation**: Explicitly declared version specifiers (such as `latest` or exact version pins) are preserved through resolution rather than overwritten by default values.
-- **Context-Appropriate Defaults**: When explicit configuration is absent, the resolver applies deterministic defaults appropriate to the detected environment.
 
 ---
 

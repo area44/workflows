@@ -455,7 +455,7 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
         expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
       } finally {
@@ -517,7 +517,7 @@ describe("resolve-environment", () => {
 
         expect(core.startGroup).not.toHaveBeenCalled();
         expect(core.endGroup).not.toHaveBeenCalled();
-        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python");
         expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/^Package Manager: pip/));
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Ruff:"));
 
@@ -529,7 +529,7 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
         expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
       } finally {
@@ -559,7 +559,7 @@ describe("resolve-environment", () => {
 
         expect(core.startGroup).not.toHaveBeenCalled();
         expect(core.endGroup).not.toHaveBeenCalled();
-        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python 3.12`);
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python`);
         expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/^Package Manager: pnpm 9\.0\.0, uv/));
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
@@ -570,7 +570,7 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
         process.chdir(originalCwd);
@@ -757,7 +757,7 @@ describe("resolve-environment", () => {
 
         expect(env.python.detected).toBe(true);
         expect(env.python.packageManager?.name).toBe("uv");
-        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python");
         expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/^Package Manager: uv/));
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
@@ -779,7 +779,7 @@ describe("resolve-environment", () => {
 
         expect(env.python.detected).toBe(true);
         expect(env.python.packageManager?.name).toBe("pip");
-        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python");
         expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/^Package Manager: pip/));
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
@@ -800,13 +800,13 @@ describe("resolve-environment", () => {
         writeOutput(env);
 
         expect(env.javascript.runtime.version).toBe(DEFAULT_NODE_VERSION);
-        expect(env.python.version).toBe("3.12");
+        expect(env.python.version).toBe("");
 
-        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python 3.12`);
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python`);
         expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/^Package Manager: npm 12, pip/));
 
         expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
-        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1216,7 +1216,7 @@ describe("resolve-environment", () => {
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+        expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
         expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.4.2");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {

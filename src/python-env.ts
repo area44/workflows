@@ -1,4 +1,3 @@
-import child_process from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "smol-toml";
@@ -9,10 +8,6 @@ export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = 
   "uv",
   "pip",
 ] as const;
-
-export const DEFAULT_PYTHON_VERSION = "3.12";
-export const DEFAULT_UV_VERSION = "0.6";
-export const DEFAULT_PIP_VERSION = "24.0";
 
 export const DEFAULT_EXCLUDED_DIRS: readonly string[] = [
   ".git",
@@ -50,7 +45,6 @@ export interface PythonInstallCommand {
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
   version?: string;
-  versionSource?: "detected" | "default";
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -58,38 +52,6 @@ export interface PythonPackageManagerInfo {
   syncCommand?: string;
   execPrefix: string;
   isStandalone?: boolean;
-}
-
-export function getVerifiedUvVersion(): string | undefined {
-  try {
-    const output = child_process
-      .execFileSync("uv", ["--version"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 1000,
-      })
-      .trim();
-    const match = output.match(/^uv\s+(\d+\.\d+\.\d+(?:-[a-z0-9_.-]+)?)/i);
-    return match ? match[1] : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function getVerifiedPipVersion(): string | undefined {
-  try {
-    const output = child_process
-      .execFileSync("pip", ["--version"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 1000,
-      })
-      .trim();
-    const match = output.match(/^pip\s+(\d+\.\d+(?:\.\d+)?)/i);
-    return match ? match[1] : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export interface ResolvedPythonEnvironment {
@@ -530,8 +492,7 @@ export function parsePythonVersionFromConstraint(raw: string): string | undefine
     .trim()
     .replace(/^python-?/i, "")
     .replace(/['"]/g, "");
-  const match = cleaned.match(/(\d+\.\d+(?:\.\d+)?)/);
-  return match ? match[1] : undefined;
+  return cleaned || undefined;
 }
 
 function readPyprojectPythonVersion(
@@ -547,10 +508,6 @@ function readPyprojectPythonVersion(
   return undefined;
 }
 
-/**
- * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
- */
 function readVersionFromFile(filePath: string | undefined): string | undefined {
   if (!filePath || !fs.existsSync(filePath)) return undefined;
   try {
@@ -562,8 +519,10 @@ function readVersionFromFile(filePath: string | undefined): string | undefined {
 }
 
 /**
- * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
+ * Resolves the Python version or constraint declared by project configuration files
+ * (.python-version, pyproject.toml requires-python, runtime.txt).
+ * Preserves the exact declared string or constraint without converting constraints to exact numbers
+ * or fabricating default versions.
  */
 export function resolvePythonVersion(
   cwd: string = process.cwd(),
@@ -609,12 +568,6 @@ export function resolvePythonVersion(
   const ancestorRuntimeVer = readVersionFromFile(ctx.runtimeTxtFile);
   if (ancestorRuntimeVer) {
     return ancestorRuntimeVer;
-  }
-
-  // When a Python project is detected but no version is explicitly configured,
-  // resolve to the latest stable Python version supported by the action.
-  if (hasPythonProject(cwd)) {
-    return DEFAULT_PYTHON_VERSION;
   }
 
   return "";
@@ -1257,24 +1210,12 @@ export function detectPythonPackageManager(
   const detected = detectUvFromContext(ctx) || detectPipFromContext(ctx);
 
   if (detected) {
-    const verifiedVersion =
-      detected.name === "uv" ? getVerifiedUvVersion() : getVerifiedPipVersion();
-    if (verifiedVersion) {
-      detected.version = verifiedVersion;
-      detected.versionSource = "detected";
-    } else {
-      detected.version = detected.name === "uv" ? DEFAULT_UV_VERSION : DEFAULT_PIP_VERSION;
-      detected.versionSource = "default";
-    }
     return detected;
   }
 
   // Standalone Python project without manifest or lockfile
-  const pipVersion = getVerifiedPipVersion();
   return {
     name: "pip",
-    version: pipVersion || DEFAULT_PIP_VERSION,
-    versionSource: pipVersion ? "detected" : "default",
     installCommands: [],
     execPrefix: "",
     isStandalone: true,
@@ -1297,16 +1238,14 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
     cleaned = cleaned.slice(1).trim();
   }
 
-  if (!cleaned) return undefined;
-
-  // Exact pin like ==0.4.2 or 0.4.2 or @0.4.2
-  const exactMatch = cleaned.match(/^(?:==|@)?\s*(\d+\.\d+\.\d+(?:[a-z0-9_.-]+)?)$/i);
-  if (exactMatch) {
-    return exactMatch[1];
+  if (cleaned.startsWith("==")) {
+    cleaned = cleaned.slice(2).trim();
+  } else if (cleaned.startsWith("@")) {
+    cleaned = cleaned.slice(1).trim();
   }
 
-  // Non-exact constraints or ranges like >=0.3.0,<0.5.0, ^0.4.0 return undefined so ruff-action uses standard version resolution without guessing
-  return undefined;
+  if (!cleaned) return undefined;
+  return cleaned;
 }
 
 function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
