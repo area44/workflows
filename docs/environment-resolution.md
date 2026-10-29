@@ -8,19 +8,18 @@ This guide explains the design principles, decision flow, conflict handling, and
 
 Environment resolution is the initial phase of composite action execution (`pages` and `autofix`). It inspects a repository's configuration and source files, resolves the effective execution environment, derives a deterministic tool setup plan, and exports GitHub Actions outputs for downstream execution steps.
 
-Environment resolution determines which runtimes and package managers a repository targets. Downstream composite action steps execute builds, dependency installations, and autofix commands based on the exported outputs without mutating repository files.
+Environment resolution determines which runtimes, package managers, and toolchains a repository targets. Official setup actions (`actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/ruff-action`) natively handle runtime and tool version selection and installation according to their documented capabilities. Downstream composite action steps execute builds, dependency installations, and autofix commands based on the exported outputs without mutating repository files.
 
 ---
 
 ## Core Principles
 
 - **Domain Independence**: JavaScript/TypeScript and Python project resolution operate as independent domains. Repositories can contain JavaScript, Python, both, or neither. When neither domain is detected, the standalone plain-text message `No JavaScript or Python environment detected.` is emitted and resolution continues without error.
+- **Delegated Version Resolution**: Official setup actions own runtime and tool version selection and installation. TypeScript detects ecosystem presence, selects package managers and toolchains, and coordinates setup orchestration without parsing version files or passing version strings to setup steps.
 - **Toolchain Classification**: Vite+ is the only supported JavaScript toolchain (`Toolchain: Vite+`). Standard Vite alone is not classified or reported as a toolchain. When Vite+ is not detected, the `Toolchain` line is omitted entirely.
-- **Project-Declared Version Reporting**: Version information (Python runtime, `uv`, `Ruff`) strictly reflects declared project configuration or constraints (e.g., `requires-python = ">=3.10,<3.14"` resolves to `python-version: ">=3.10,<3.14"`). Range constraints and exact pins are displayed as declared without converting constraints to synthetic exact numbers or inventing default versions. When unconfigured, version outputs remain empty.
 - **Python Package Manager Selection**: Default package manager is `pip`. `uv` is selected when `uv.lock` or explicit `uv` configuration (`[tool.uv]` table or `uv.toml`) is detected.
-- **Python Tooling Boundary**: Ruff is a Python linting and formatting tool, not a toolchain. It is excluded from environment summary logging, while its `ruff-version` output and execution workflow are preserved.
-- **Plain-Text Logging**: Summary logs use plain-text output in stable category order (`Runtime`, `Package Manager`, `Toolchain`) without GitHub Actions grouping markers (`::group::`/`::endgroup::`).
-- **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files, version files, and package managers trigger immediate validation errors rather than applying silent tie-breakers.
+- **Plain-Text Summary Logging**: Summary logs use plain-text output in category order (`Runtime`, `Package Manager`, `Toolchain`) without version numbers or GitHub Actions grouping markers (`::group::`/`::endgroup::`).
+- **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files and package managers trigger immediate validation errors rather than applying silent tie-breakers.
 - **Pure Setup Planning**: Environment resolution and filesystem inspection are strictly separated from setup plan generation. Setup plans are derived through a pure, deterministic transformation layer with zero filesystem access or action side effects.
 
 ---
@@ -64,8 +63,8 @@ flowchart TD
 
 The algorithm distinguishes clearly between missing information (handled by deterministic defaults) and invalid or contradictory configuration (which halts step execution):
 
-- **Successful Resolution**: Valid, non-contradictory configuration signals are resolved to explicit runtime, package manager, version, and toolchain settings.
-- **Undetected Domains or Missing Info**: Absent project files or unspecified versions return valid `detected: false` states or apply context-appropriate defaults without error. When neither domain is detected, an informational log is emitted and resolution completes successfully.
+- **Successful Resolution**: Valid, non-contradictory configuration signals are resolved to explicit runtime, package manager, and toolchain settings.
+- **Undetected Domains**: Absent project files or source code return valid `detected: false` states without error. When neither domain is detected, an informational log is emitted and resolution completes successfully.
 - **Conflicting Signals**: Contradictory declarations (such as declaring conflicting runtimes across configuration files) fail validation immediately and halt execution with an error annotation (`core.setFailed`).
 - **Invalid Configuration State**: Invariant violations (such as lockfiles existing without required project configuration or malformed aggregate environments) trigger explicit error messages and halt execution.
 

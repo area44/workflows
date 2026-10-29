@@ -44,7 +44,6 @@ export interface PythonInstallCommand {
 
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
-  version?: string;
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -56,9 +55,7 @@ export interface PythonPackageManagerInfo {
 
 export interface ResolvedPythonEnvironment {
   detected: boolean;
-  version: string;
   packageManager: PythonPackageManagerInfo | null;
-  ruffVersion: string;
 }
 
 export interface ParsedTomlSuccess {
@@ -119,10 +116,6 @@ export function readUvToml(cwd: string = process.cwd()): ParsedToml | null {
   }
 }
 
-/**
- * Reads and parses pyproject.toml in cwd using parseToml.
- * Returns null if file does not exist, or ParsedToml result if file exists.
- */
 export interface PythonProjectContext {
   cwd: string;
   projectDir: string;
@@ -140,8 +133,6 @@ export interface PythonProjectContext {
   setupPyDir?: string;
   hasSetupCfg: boolean;
   setupCfgDir?: string;
-  pythonVersionFile?: string;
-  runtimeTxtFile?: string;
 }
 
 /**
@@ -378,8 +369,6 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
     setupPyDir: hasSetupPy ? resolvedCwd : undefined,
     hasSetupCfg,
     setupCfgDir: hasSetupCfg ? resolvedCwd : undefined,
-    pythonVersionFile: findFirstExistingPath(allowedDirs, ".python-version"),
-    runtimeTxtFile: findFirstExistingPath(allowedDirs, "runtime.txt"),
   };
 }
 
@@ -432,8 +421,6 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
         setupPyDir: hasSetupPy ? pDir : undefined,
         hasSetupCfg,
         setupCfgDir: hasSetupCfg ? pDir : undefined,
-        pythonVersionFile: findFirstExistingPath(allowedDirs, ".python-version"),
-        runtimeTxtFile: findFirstExistingPath(allowedDirs, "runtime.txt"),
       };
     }
   }
@@ -451,8 +438,6 @@ function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): Pytho
     hasRequirementsTxt: false,
     hasSetupPy: false,
     hasSetupCfg: false,
-    pythonVersionFile: findFirstExistingPath(dirs, ".python-version"),
-    runtimeTxtFile: findFirstExistingPath(dirs, "runtime.txt"),
   };
 }
 
@@ -484,140 +469,6 @@ export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | nul
       error: err instanceof Error ? err : new Error(String(err)),
     };
   }
-}
-
-export function isExactVersion(ver: string): boolean {
-  if (!ver) return false;
-  const cleaned = ver
-    .trim()
-    .replace(/^python-?/i, "")
-    .replace(/^v/i, "")
-    .replace(/['"]/g, "");
-  return /^\d+(?:\.\d+)+$/.test(cleaned);
-}
-
-export function parsePythonVersionFromConstraint(raw: string): string | undefined {
-  if (!raw) return undefined;
-  const cleaned = raw
-    .trim()
-    .replace(/^python-?/i, "")
-    .replace(/['"]/g, "");
-  return cleaned || undefined;
-}
-
-export function resolvePythonSetupVersion(declared: string): string {
-  if (!declared) return "";
-  const cleaned = declared
-    .trim()
-    .replace(/^python-?/i, "")
-    .replace(/['"]/g, "");
-  if (!cleaned) return "";
-
-  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
-    return cleaned;
-  }
-
-  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
-  if (match) {
-    return match[0];
-  }
-
-  return "";
-}
-
-export function resolveRuffSetupVersion(declared: string): string {
-  if (!declared) return "";
-  const cleaned = extractRuffVersionSpecifier(declared) || declared.trim();
-  if (!cleaned) return "";
-
-  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
-    return cleaned;
-  }
-
-  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
-  if (match) {
-    return match[0];
-  }
-
-  return "";
-}
-
-function readPyprojectPythonVersion(
-  cwd: string,
-  pyprojectToml?: ParsedToml | null,
-): string | undefined {
-  const parsed = pyprojectToml !== undefined ? pyprojectToml : readPyprojectToml(cwd);
-  if (parsed?.success !== true) return undefined;
-  const project = parsed.data.project;
-  if (isObject(project) && typeof project["requires-python"] === "string") {
-    return parsePythonVersionFromConstraint(project["requires-python"]);
-  }
-  return undefined;
-}
-
-function readVersionFromFile(filePath: string | undefined): string | undefined {
-  if (!filePath || !fs.existsSync(filePath)) return undefined;
-  try {
-    const content = fs.readFileSync(filePath, "utf8").trim();
-    return parsePythonVersionFromConstraint(content);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Resolves the Python version or constraint declared by project configuration files
- * (.python-version, pyproject.toml requires-python, runtime.txt).
- * Preserves the exact declared string or constraint without converting constraints to exact numbers
- * or fabricating default versions.
- */
-export function resolvePythonVersion(
-  cwd: string = process.cwd(),
-  pyprojectToml?: ParsedToml | null,
-): string {
-  const ctx = findPythonProjectContext(cwd);
-  const pyproject =
-    pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
-
-  // 1. Local .python-version in projectDir
-  const localPyVer = readVersionFromFile(path.join(ctx.projectDir, ".python-version"));
-  if (localPyVer) {
-    return localPyVer;
-  }
-
-  // 2. Local pyproject.toml requires-python in projectDir
-  const pyprojectVer = readPyprojectPythonVersion(ctx.projectDir, pyproject);
-  if (pyprojectVer) {
-    return pyprojectVer;
-  }
-
-  // 3. Local runtime.txt in projectDir
-  const localRuntimeVer = readVersionFromFile(path.join(ctx.projectDir, "runtime.txt"));
-  if (localRuntimeVer) {
-    return localRuntimeVer;
-  }
-
-  // 4. Workspace root pyproject.toml requires-python
-  if (ctx.workspaceRootToml) {
-    const wsVer = readPyprojectPythonVersion(ctx.workspaceRootDir || cwd, ctx.workspaceRootToml);
-    if (wsVer) {
-      return wsVer;
-    }
-  }
-
-  // 5. Ancestor .python-version
-  const ancestorPyVer = readVersionFromFile(ctx.pythonVersionFile);
-  if (ancestorPyVer) {
-    return ancestorPyVer;
-  }
-
-  // 6. Ancestor runtime.txt
-  const ancestorRuntimeVer = readVersionFromFile(ctx.runtimeTxtFile);
-  if (ancestorRuntimeVer) {
-    return ancestorRuntimeVer;
-  }
-
-  return "";
 }
 
 /**
@@ -987,14 +838,12 @@ function detectPipFromContext(ctx: PythonProjectContext): PythonPackageManagerIn
 
 const RUFF_SPECIFIER_REGEX = /^ruff\s*(?:\[[^\]]*\])?\s*(?:[=<>!~@;]|\s|$)/i;
 
-function inspectRuffInSpecifierArray(
-  arr: unknown[],
-): { declared: boolean; version?: string } | undefined {
+function inspectRuffInSpecifierArray(arr: unknown[]): { declared: boolean } | undefined {
   for (const item of arr) {
     if (typeof item === "string") {
       const trimmed = item.trim();
       if (RUFF_SPECIFIER_REGEX.test(trimmed)) {
-        return { declared: true, version: extractRuffVersionSpecifier(trimmed) };
+        return { declared: true };
       }
     } else if (isObject(item)) {
       const pkgName =
@@ -1004,11 +853,7 @@ function inspectRuffInSpecifierArray(
             ? item.name
             : undefined;
       if (pkgName && pkgName.toLowerCase() === "ruff") {
-        const verStr = typeof item.version === "string" ? item.version : undefined;
-        return {
-          declared: true,
-          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
-        };
+        return { declared: true };
       }
     }
   }
@@ -1017,19 +862,9 @@ function inspectRuffInSpecifierArray(
 
 function inspectRuffInDependencyMap(
   map: Record<string, unknown>,
-): { declared: boolean; version?: string } | undefined {
-  for (const [key, val] of Object.entries(map)) {
+): { declared: boolean } | undefined {
+  for (const key of Object.keys(map)) {
     if (key.toLowerCase() === "ruff") {
-      if (typeof val === "string") {
-        return { declared: true, version: extractRuffVersionSpecifier(val) };
-      }
-      if (isObject(val)) {
-        const verStr = typeof val.version === "string" ? val.version : undefined;
-        return {
-          declared: true,
-          version: verStr ? extractRuffVersionSpecifier(verStr) : undefined,
-        };
-      }
       return { declared: true };
     }
   }
@@ -1179,7 +1014,6 @@ function inspectToolRuff(tool: Record<string, unknown>) {
  */
 export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
   declared: boolean;
-  version?: string;
 } {
   // 1. PEP 621 project.dependencies & project.optional-dependencies
   if (isObject(parsed.project)) {
@@ -1269,102 +1103,36 @@ export function detectPythonPackageManager(
   };
 }
 
-export function extractRuffVersionSpecifier(raw: string): string | undefined {
-  if (!raw) return undefined;
-
-  // Remove environment markers after semicolon e.g. "ruff>=0.6; python_version>='3.10'" -> "ruff>=0.6"
-  const withoutMarkers = raw.split(";")[0].trim();
-
-  let cleaned = withoutMarkers
-    .replace(/^ruff\b/i, "")
-    .replace(/\[[^\]]*\]/g, "") // remove extras like [extra]
-    .replace(/['"]/g, "")
-    .trim();
-
-  if (cleaned.startsWith("=") && !cleaned.startsWith("==")) {
-    cleaned = cleaned.slice(1).trim();
-  }
-
-  if (cleaned.startsWith("==")) {
-    cleaned = cleaned.slice(2).trim();
-  } else if (cleaned.startsWith("@")) {
-    cleaned = cleaned.slice(1).trim();
-  }
-
-  if (!cleaned) return undefined;
-  return cleaned;
-}
-
-function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
+function checkRuffInUvLock(cwd: string): boolean {
   const uvLockPath = path.join(cwd, "uv.lock");
-  if (!fs.existsSync(uvLockPath)) return undefined;
+  if (!fs.existsSync(uvLockPath)) return false;
   try {
     const content = fs.readFileSync(uvLockPath, "utf8");
     const blocks = content.split(/^\[\[package\]\]/m);
     for (const block of blocks) {
-      const nameMatch = block.match(/^\s*name\s*=\s*["']ruff["']/m);
-      if (nameMatch) {
-        const versionMatch = block.match(/^\s*version\s*=\s*["']([^"']+)["']/m);
-        if (versionMatch && versionMatch[1]) {
-          return extractRuffVersionSpecifier(versionMatch[1]) || versionMatch[1];
-        }
+      if (/^\s*name\s*=\s*["']ruff["']/m.test(block)) {
+        return true;
       }
     }
   } catch {
     // Ignore read error
   }
-  return undefined;
+  return false;
 }
 
-function resolveRuffVersionFromRequirements(cwd: string): string | undefined {
+function checkRuffInRequirements(cwd: string): boolean {
   const reqPath = path.join(cwd, "requirements.txt");
-  if (!fs.existsSync(reqPath)) return undefined;
+  if (!fs.existsSync(reqPath)) return false;
   try {
     const content = fs.readFileSync(reqPath, "utf8");
-    const lines = content.split("\n");
-    for (const line of lines) {
-      const trimmed = line.replace(/#.*/, "").trim();
-      if (/^ruff\b/i.test(trimmed)) {
-        const ver = extractRuffVersionSpecifier(trimmed);
-        if (ver) return ver;
-      }
+    const stripped = content.replace(/#.*/g, "");
+    if (/^\s*ruff\b/im.test(stripped)) {
+      return true;
     }
   } catch {
     // Ignore read error
   }
-  return undefined;
-}
-
-export function resolveRuffVersion(
-  cwd: string = process.cwd(),
-  pyprojectToml?: ParsedToml | null,
-): string {
-  const ctx = findPythonProjectContext(cwd);
-  const parsedPyproject =
-    pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
-
-  const lockVer = resolveRuffVersionFromUvLock(ctx.uvLockDir || cwd);
-  if (lockVer) return lockVer;
-
-  if (parsedPyproject?.success === true) {
-    const dep = findRuffDependencyInToml(parsedPyproject.data);
-    if (dep.version) return dep.version;
-  }
-
-  if (ctx.workspaceRootToml?.success === true) {
-    const dep = findRuffDependencyInToml(ctx.workspaceRootToml.data);
-    if (dep.version) return dep.version;
-  }
-
-  if (ctx.uvToml?.success === true) {
-    const dep = findRuffDependencyInToml(ctx.uvToml.data);
-    if (dep.version) return dep.version;
-  }
-
-  const reqVer = resolveRuffVersionFromRequirements(ctx.requirementsDir || cwd);
-  if (reqVer) return reqVer;
-
-  return "";
+  return false;
 }
 
 export function isRuffDeclaredInProject(
@@ -1374,10 +1142,9 @@ export function isRuffDeclaredInProject(
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  const ver = resolveRuffVersion(cwd, pyprojectToml);
-  if (ver) return true;
-
   const ctx = findPythonProjectContext(cwd);
+  if (checkRuffInUvLock(ctx.uvLockDir || cwd)) return true;
+
   const parsedPyproject =
     pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
 
@@ -1402,19 +1169,7 @@ export function isRuffDeclaredInProject(
     }
   }
 
-  const reqDir = ctx.requirementsDir || cwd;
-  const reqPath = path.join(reqDir, "requirements.txt");
-  if (fs.existsSync(reqPath)) {
-    try {
-      const content = fs.readFileSync(reqPath, "utf8");
-      const stripped = content.replace(/#.*/g, "");
-      if (/^\s*ruff\b/im.test(stripped)) {
-        return true;
-      }
-    } catch {
-      // Ignore read error
-    }
-  }
+  if (checkRuffInRequirements(ctx.requirementsDir || cwd)) return true;
 
   return false;
 }
@@ -1428,21 +1183,15 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
   if (!isPyProject) {
     return {
       detected: false,
-      version: "",
       packageManager: null,
-      ruffVersion: "",
     };
   }
 
   const ctx = findPythonProjectContext(cwd);
-  const pythonVersion = resolvePythonVersion(cwd, ctx.pyprojectToml);
-  const ruffVersion = resolveRuffVersion(cwd, ctx.pyprojectToml);
   const pmInfo = detectPythonPackageManager(cwd, ctx.pyprojectToml);
 
   return {
     detected: true,
-    version: pythonVersion,
     packageManager: pmInfo,
-    ruffVersion,
   };
 }

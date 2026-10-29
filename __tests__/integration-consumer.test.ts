@@ -61,15 +61,13 @@ describe("Consumer Project Module Integration Suite", () => {
 
       // JS Environment verification
       expect(env.javascript.detected).toBe(true);
-      expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "10.8.2" });
+      expect(env.javascript.packageManager).toMatchObject({ name: "npm" });
       expect(env.javascript.runtime.name).toBe("node");
       expect(env.javascript.toolchain).toBeUndefined();
 
       // Python Environment verification
       expect(env.python.detected).toBe(true);
       expect(env.python.packageManager?.name).toBe("pip");
-      expect(env.python.version).toBe("");
-      expect(env.python.ruffVersion).toBe("0.17.2");
     });
 
     it("writes canonical action outputs for consumer project", () => {
@@ -78,16 +76,13 @@ describe("Consumer Project Module Integration Suite", () => {
 
       expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
       expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
-      expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "10.8.2");
       expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
       expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "");
       expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
-      expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
-      expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 
-    it("resolves Bun runtime with Vite+ toolchain and outputs expected Node version for Vite+ setup step", () => {
+    it("resolves Bun runtime with Vite+ toolchain and sets expected setup flags", () => {
       const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "consumer_bun_vp_test_"));
       createConsumerProject(fixtureDir, {
         action: "pages",
@@ -109,8 +104,6 @@ describe("Consumer Project Module Integration Suite", () => {
         expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite-plus");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
-        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(fixtureDir, { recursive: true, force: true });
