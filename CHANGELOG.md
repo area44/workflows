@@ -1,5 +1,42 @@
 # @area44/workflows
 
+## 10.0.0
+
+### Major Changes
+
+- f94e20e: Delegate runtime and tool version resolution to official setup actions (`actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/ruff-action`). Remove redundant TypeScript version parsing and intermediate version setup outputs.
+- 4920323: Refactor resolved environment architecture to use ecosystem-owned models (`ResolvedJavaScriptEnvironment` and `ResolvedPythonEnvironment`) under a unified `ResolvedEnvironment` aggregate contract.
+
+  ### Public Action Output Renames (Breaking Change)
+
+  The public GitHub Actions outputs for `pages` and `autofix` actions have been standardized with ecosystem prefixes:
+
+  #### JavaScript Outputs:
+  - `javascript-detected` (replaces legacy `has-js-project`)
+  - `javascript-runtime` (replaces generic `runtime`)
+  - `javascript-runtime-version` (replaces `node-version` / `bun-version` in public outputs)
+  - `javascript-package-manager` (replaces `package-manager`)
+  - `javascript-package-manager-version` (replaces `package-manager-version`)
+  - `javascript-toolchain` (replaces `toolchain`)
+
+  #### Python Outputs:
+  - `python-detected` (replaces legacy `has-python-source`)
+  - `python-version`
+  - `python-package-manager`
+  - `ruff-version`
+
+  Internal setup outputs (`node-version`, `bun-version`, `setup-node`, `setup-bun`, `setup-pnpm`, `setup-python`) remain retained internally for step orchestration in composite actions.
+
+- 33a5510: Remove public `runtime` input from `pages` and `autofix` actions. Project runtime selection is now automatically derived from project configuration files (`package.json`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) and established defaults. The `runtime` output remains available to report the detected runtime.
+
+### Patch Changes
+
+- d212a8d: docs: document repository environment resolution algorithm
+- 723cca8: Improve Environment Detection and Resolution Logs
+- 3af5d8c: Fix CI release workflow execution
+- 39add49: refactor(resolve-env): detect JS/TS and Python independently and fix Bun version logging
+- 173542d: refactor: introduce setup plan architecture and remove adapters
+
 ## 9.0.0
 
 ### Major Changes
