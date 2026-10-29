@@ -3,8 +3,6 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  DEFAULT_BUN_VERSION,
-  DEFAULT_NODE_VERSION,
   isSupportedRuntime,
   resolveJsEnvironment,
   validateRuntimePackageManagerCompatibility,
@@ -12,31 +10,28 @@ import {
 } from "./javascript-env.js";
 import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
 import {
+  createSetupPlan,
   resolvePnpmSetupRuntime,
-  setupBun,
-  setupNode,
-  setupPackageManager,
-  type BunSetupConfig,
-  type NodeSetupConfig,
-  type PackageManagerSetupConfig,
-} from "./setup-adapters.js";
+  type BunSetupPlan,
+  type NodeSetupPlan,
+  type PnpmSetupPlan,
+  type PythonSetupPlan,
+  type RuffSetupPlan,
+  type SetupPlan,
+} from "./setup-plan.js";
 
 export type {
   ResolvedJavaScriptEnvironment,
   ResolvedPythonEnvironment,
-  BunSetupConfig,
-  NodeSetupConfig,
-  PackageManagerSetupConfig,
+  NodeSetupPlan,
+  BunSetupPlan,
+  PnpmSetupPlan,
+  PythonSetupPlan,
+  RuffSetupPlan,
+  SetupPlan,
 };
 
-export {
-  resolveJsEnvironment,
-  resolvePythonEnvironment,
-  resolvePnpmSetupRuntime,
-  setupBun,
-  setupNode,
-  setupPackageManager,
-};
+export { resolveJsEnvironment, resolvePythonEnvironment, resolvePnpmSetupRuntime, createSetupPlan };
 
 export interface ResolvedEnvironment {
   javascript: ResolvedJavaScriptEnvironment;
@@ -246,29 +241,20 @@ export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironme
 /**
  * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
  */
-export function writeOutput(env: ResolvedEnvironment): void {
+export function writeOutput(env: ResolvedEnvironment, setupPlan?: SetupPlan): void {
   const js = env.javascript;
   const python = env.python;
-
-  const nodeSetup = setupNode(env);
-  const bunSetup = setupBun(env);
-  const pmSetup = setupPackageManager(env);
+  const plan = setupPlan ?? createSetupPlan(env);
 
   // Internal setup outputs
-  core.setOutput(
-    "node-version",
-    js.runtime.name === "node" ? js.runtime.version : DEFAULT_NODE_VERSION,
-  );
-  core.setOutput(
-    "bun-version",
-    js.runtime.name === "bun" ? js.runtime.version : DEFAULT_BUN_VERSION,
-  );
-  core.setOutput("pnpm-runtime", pmSetup.pnpmRuntime);
-  core.setOutput("setup-node", String(js.detected && nodeSetup.shouldSetup));
-  core.setOutput("setup-node-cache", js.detected ? nodeSetup.cache : "");
-  core.setOutput("setup-bun", String(js.detected && bunSetup.shouldSetup));
-  core.setOutput("setup-pnpm", String(js.detected && pmSetup.shouldSetupPnpm));
-  core.setOutput("setup-python", String(python.detected));
+  core.setOutput("node-version", plan.node.version);
+  core.setOutput("bun-version", plan.bun.version);
+  core.setOutput("pnpm-runtime", plan.pnpm.pnpmRuntime);
+  core.setOutput("setup-node", String(plan.node.shouldSetup));
+  core.setOutput("setup-node-cache", plan.node.cache);
+  core.setOutput("setup-bun", String(plan.bun.shouldSetup));
+  core.setOutput("setup-pnpm", String(plan.pnpm.shouldSetup));
+  core.setOutput("setup-python", String(plan.python.shouldSetup));
 
   // Public ecosystem outputs
   core.setOutput("javascript-detected", String(js.detected));
@@ -279,9 +265,9 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("javascript-toolchain", js.toolchain);
 
   core.setOutput("python-detected", String(python.detected));
-  core.setOutput("python-version", python.version);
-  core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
-  core.setOutput("ruff-version", python.ruffVersion);
+  core.setOutput("python-version", plan.python.version);
+  core.setOutput("python-package-manager", plan.python.packageManager);
+  core.setOutput("ruff-version", plan.ruff.version);
 }
 
 /**
@@ -312,7 +298,8 @@ export function run(): void {
   try {
     const toolchainInput = core.getInput("toolchain");
     const env = resolveEnvironment(toolchainInput);
-    writeOutput(env);
+    const plan = createSetupPlan(env);
+    writeOutput(env, plan);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     core.setFailed(`Environment setup failed: ${msg}`);

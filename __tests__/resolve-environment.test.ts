@@ -14,12 +14,10 @@ import {
 } from "../src/javascript-env.js";
 import type { ResolvedEnvironment } from "../src/resolve-environment.js";
 import {
+  createSetupPlan,
   resolveEnvironment,
   resolvePnpmSetupRuntime,
   run,
-  setupBun,
-  setupNode,
-  setupPackageManager,
   validateEnvironment,
   writeOutput,
 } from "../src/resolve-environment.js";
@@ -363,7 +361,6 @@ describe("resolve-environment", () => {
         'Invalid Python environment: malformed "installCommands" item',
       );
     });
-
   });
 
   describe("CI Workspace Setup and Restoration Safety", () => {
@@ -760,7 +757,6 @@ describe("resolve-environment", () => {
       }
     });
 
-
     it("uses default versions when version declarations are missing", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-missing-vers-"));
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "no-ver-app" }));
@@ -910,258 +906,36 @@ describe("resolve-environment", () => {
     });
   });
 
-  describe("Tool-Specific Setup Adapters", () => {
-    describe("resolvePnpmSetupRuntime", () => {
-      it("should format bun runtime specifier when bun runtime is selected", () => {
-        expect(
-          resolvePnpmSetupRuntime({
-            detected: true,
-            runtime: { name: "bun", version: "1.4" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          }),
-        ).toBe("bun@1.4");
-      });
+  describe("Setup Planning Integration", () => {
+    it("createSetupPlan creates plan from environment without side effects", () => {
+      const existsSpy = vi.spyOn(fs, "existsSync");
+      const readSpy = vi.spyOn(fs, "readFileSync");
 
-      it("should format node runtime specifier when node runtime is selected and not lts", () => {
-        expect(
-          resolvePnpmSetupRuntime({
-            detected: true,
-            runtime: { name: "node", version: "22.1.0" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          }),
-        ).toBe("node@22.1.0");
-      });
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "pnpm", version: "12" },
+          toolchain: "vite",
+        },
+        python: {
+          detected: false,
+          version: "",
+          ruffVersion: "",
+          packageManager: null,
+        },
+      };
 
-      it("should format node@lts when node version starts with lts or is empty", () => {
-        expect(
-          resolvePnpmSetupRuntime({
-            detected: true,
-            runtime: { name: "node", version: "lts/iron" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          }),
-        ).toBe("node@lts");
+      const plan = createSetupPlan(env);
 
-        expect(
-          resolvePnpmSetupRuntime({
-            detected: true,
-            runtime: { name: "node", version: "" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          }),
-        ).toBe("node@lts");
-      });
-    });
+      expect(plan.node.shouldSetup).toBe(false);
+      expect(plan.pnpm.shouldSetup).toBe(true);
+      expect(plan.pnpm.pnpmRuntime).toBe("node@24");
 
-    describe("setupNode adapter", () => {
-      it("should return correct setup options for npm package manager", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "npm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupNode(env)).toEqual({
-          shouldSetup: true,
-          nodeVersion: "24",
-          cache: "npm",
-        });
-      });
-
-      it("should return correct setup options for bun package manager with node runtime", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "22" },
-            packageManager: { name: "bun", version: "1.4" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupNode(env)).toEqual({
-          shouldSetup: true,
-          nodeVersion: "22",
-          cache: "",
-        });
-      });
-
-      it("should return shouldSetup=false when package manager is pnpm", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupNode(env)).toEqual({
-          shouldSetup: false,
-          nodeVersion: "24",
-          cache: "",
-        });
-      });
-
-      it("should return shouldSetup=false when runtime is bun", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "bun", version: "1.4" },
-            packageManager: { name: "bun", version: "1.4" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupNode(env)).toEqual({
-          shouldSetup: false,
-          nodeVersion: "",
-          cache: "",
-        });
-      });
-    });
-
-    describe("setupBun adapter", () => {
-      it("should return shouldSetup=true and bunVersion when package manager is not pnpm and runtime is bun", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "bun", version: "1.4" },
-            packageManager: { name: "bun", version: "1.4" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupBun(env)).toEqual({
-          shouldSetup: true,
-          bunVersion: "1.4",
-        });
-      });
-
-      it("should return shouldSetup=false when package manager is pnpm", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "bun", version: "1.4" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupBun(env)).toEqual({
-          shouldSetup: false,
-          bunVersion: "1.4",
-        });
-      });
-
-      it("should return shouldSetup=false when runtime is node", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "npm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupBun(env)).toEqual({
-          shouldSetup: false,
-          bunVersion: "",
-        });
-      });
-    });
-
-    describe("setupPackageManager adapter", () => {
-      it("should extract package manager options for pnpm", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "pnpm", version: "9.0.0" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupPackageManager(env)).toEqual({
-          name: "pnpm",
-          version: "9.0.0",
-          pnpmRuntime: "node@24",
-          shouldSetupPnpm: true,
-        });
-      });
-
-      it("should extract package manager options for npm", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "npm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupPackageManager(env)).toEqual({
-          name: "npm",
-          version: "12",
-          pnpmRuntime: "node@24",
-          shouldSetupPnpm: false,
-        });
-      });
-
-      it("should extract package manager options for bun", () => {
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "bun", version: "1.4" },
-            packageManager: { name: "bun", version: "1.4" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-        expect(setupPackageManager(env)).toEqual({
-          name: "bun",
-          version: "1.4",
-          pnpmRuntime: "bun@1.4",
-          shouldSetupPnpm: false,
-        });
-      });
-    });
-
-    describe("Boundary Separation (Resolver vs Adapter)", () => {
-      it("adapters take resolved environment and do not re-trigger workspace detection", () => {
-        const existsSpy = vi.spyOn(fs, "existsSync");
-        const readSpy = vi.spyOn(fs, "readFileSync");
-
-        const env: ResolvedEnvironment = {
-          javascript: {
-            detected: true,
-            runtime: { name: "node", version: "24" },
-            packageManager: { name: "pnpm", version: "12" },
-            toolchain: "vite",
-          },
-          python: {} as any,
-        };
-
-        const nodeConfig = setupNode(env);
-        const bunConfig = setupBun(env);
-        const pmConfig = setupPackageManager(env);
-        const pnpmRuntime = resolvePnpmSetupRuntime(env.javascript);
-
-        expect(nodeConfig).toBeDefined();
-        expect(bunConfig).toBeDefined();
-        expect(pmConfig).toBeDefined();
-        expect(pnpmRuntime).toBe("node@24");
-
-        expect(existsSpy).not.toHaveBeenCalled();
-        expect(readSpy).not.toHaveBeenCalled();
-      });
+      expect(existsSpy).not.toHaveBeenCalled();
+      expect(readSpy).not.toHaveBeenCalled();
     });
   });
-
 
   describe("Fixture-based tests", () => {
     const cases = [
@@ -1296,7 +1070,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and adapter step outputs correctly for ResolvedEnvironment", () => {
+    it("should output node-version, bun-version, package manager, runtime, pnpm-runtime, and plan step outputs correctly for ResolvedEnvironment", () => {
       const env: ResolvedEnvironment = {
         javascript: {
           detected: true,
@@ -1446,7 +1220,7 @@ describe("resolve-environment", () => {
   });
 
   describe("run", () => {
-    it("should coordinate environment resolution, execute adapters, and write action output on fixture project", () => {
+    it("should coordinate environment resolution, execute setup plan, and write action output on fixture project", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-npm-basic-"));
       createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
       process.chdir(fixturePath);
@@ -1472,7 +1246,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should resolve bun and set adapter outputs for bun project fixture", () => {
+    it("should resolve bun and set plan outputs for bun project fixture", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-bun-basic-"));
       createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "bun@1.4", type: "basic" });
       process.chdir(fixturePath);
@@ -1498,7 +1272,7 @@ describe("resolve-environment", () => {
       }
     });
 
-    it("should resolve pnpm package manager and set adapter outputs for pnpm fixture in bun runtime", () => {
+    it("should resolve pnpm package manager and set plan outputs for pnpm fixture in bun runtime", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-bun-pnpm-basic-"));
       createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "pnpm@12.15.0", type: "basic" });
       process.chdir(fixturePath);
