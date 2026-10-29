@@ -297,13 +297,9 @@ jobs:
           AUTOFIX_HAS_JS: ${{ steps.autofix.outputs.javascript-detected }}
           AUTOFIX_HAS_PYTHON: ${{ steps.autofix.outputs.python-detected }}
           AUTOFIX_PYTHON_PM: ${{ steps.autofix.outputs.python-package-manager }}
-          AUTOFIX_PYTHON_VER: ${{ steps.autofix.outputs.python-version }}
-          AUTOFIX_RUFF_VER: ${{ steps.autofix.outputs.ruff-version }}
           EXPECTED_HAS_JS_PROJECT: ${{ matrix.has_js_project }}
           EXPECTED_HAS_PYTHON_SOURCE: ${{ matrix.has_python_source }}
           EXPECTED_PYTHON_PM: ${{ matrix.python_pm }}
-          EXPECTED_PYTHON_VER: ${{ matrix.python_version }}
-          EXPECTED_RUFF_VER: ${{ matrix.ruff_version }}
         run: |
           SCENARIO_NAME="${ACTION} (${RUNTIME}, ${PM}, ${TYPE})"
 
@@ -404,24 +400,6 @@ jobs:
               echo "Error: [${ACTION}] Python package manager mismatch stage failed for scenario '${SCENARIO_NAME}'."
               echo "  Expected python-package-manager: ${EXPECTED_PY_PM}"
               echo "  Actual python-package-manager:   ${AUTOFIX_PYTHON_PM}"
-              exit 1
-            fi
-
-            if [[ "$EXPECTED_PYTHON_VER" != "" || "$TYPE" == "python-none" ]]; then
-              EXPECTED_PY_VER="${EXPECTED_PYTHON_VER:-}"
-              if [[ "$AUTOFIX_PYTHON_VER" != "$EXPECTED_PY_VER" ]]; then
-                echo "Error: [${ACTION}] Python version mismatch stage failed for scenario '${SCENARIO_NAME}'."
-                echo "  Expected python-version: '${EXPECTED_PY_VER}'"
-                echo "  Actual python-version:   '${AUTOFIX_PYTHON_VER}'"
-                exit 1
-              fi
-            fi
-
-            EXPECTED_RUFF="${EXPECTED_RUFF_VER:-}"
-            if [[ "$AUTOFIX_RUFF_VER" != "$EXPECTED_RUFF" ]]; then
-              echo "Error: [${ACTION}] Ruff version mismatch stage failed for scenario '${SCENARIO_NAME}'."
-              echo "  Expected ruff-version: ${EXPECTED_RUFF}"
-              echo "  Actual ruff-version:   ${AUTOFIX_RUFF_VER}"
               exit 1
             fi
           fi

@@ -57,14 +57,8 @@ describe("build-command", () => {
       expect(action.outputs["javascript-runtime"].value).toBe(
         "${{ steps.resolve_environment.outputs.javascript-runtime }}",
       );
-      expect(action.outputs["javascript-runtime-version"].value).toBe(
-        "${{ steps.resolve_environment.outputs.javascript-runtime-version }}",
-      );
       expect(action.outputs["javascript-package-manager"].value).toBe(
         "${{ steps.resolve_environment.outputs.javascript-package-manager }}",
-      );
-      expect(action.outputs["javascript-package-manager-version"].value).toBe(
-        "${{ steps.resolve_environment.outputs.javascript-package-manager-version }}",
       );
       expect(action.outputs["javascript-toolchain"].value).toBe(
         "${{ steps.resolve_environment.outputs.javascript-toolchain }}",

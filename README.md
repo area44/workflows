@@ -51,15 +51,13 @@ Each action's `action.yml` serves as the single source of truth for its public A
 
 #### Outputs
 
-| Name                                 | Description                                                |
-| ------------------------------------ | ---------------------------------------------------------- |
-| `javascript-detected`                | Whether a JavaScript project (`package.json`) was detected |
-| `javascript-runtime`                 | The resolved JavaScript runtime (`node` or `bun`)          |
-| `javascript-runtime-version`         | The version of Node.js or Bun used                         |
-| `javascript-package-manager`         | The package manager used (`npm`, `pnpm`, or `bun`)         |
-| `javascript-package-manager-version` | The version of the package manager used                    |
-| `javascript-toolchain`               | The resolved toolchain (`vite-plus` or empty string)       |
-| `vp-version`                         | The version of Vite+ installed                             |
+| Name                         | Description                                                |
+| ---------------------------- | ---------------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
+| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
+| `javascript-toolchain`       | The resolved toolchain (`vite-plus` or empty string)       |
+| `vp-version`                 | The version of Vite+ installed                             |
 
 ### `autofix` (Automatically format and fix code)
 
@@ -69,17 +67,13 @@ This action accepts no inputs.
 
 #### Outputs
 
-| Name                                 | Description                                                           |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| `javascript-detected`                | Whether a JavaScript project (`package.json`) was detected            |
-| `javascript-runtime`                 | The resolved JavaScript runtime (`node` or `bun`)                     |
-| `javascript-runtime-version`         | The version of Node.js or Bun used                                    |
-| `javascript-package-manager`         | The package manager used (`npm`, `pnpm`, or `bun`)                    |
-| `javascript-package-manager-version` | The version of the package manager used                               |
-| `python-detected`                    | Whether Python source code (`.py`/`.pyi`) was detected                |
-| `python-version`                     | The Python version used                                               |
-| `python-package-manager`             | The Python package manager detected (`uv` or `pip`)                   |
-| `ruff-version`                       | The Ruff version specified by the project or empty string for default |
+| Name                         | Description                                                |
+| ---------------------------- | ---------------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
+| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
+| `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected     |
+| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)        |
 
 ## Documentation Index
 
