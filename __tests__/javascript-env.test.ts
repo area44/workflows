@@ -55,10 +55,9 @@ describe("javascript-env", () => {
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
 
       const res = resolveJsEnvironment("vite", tempDir);
-      expect(res.hasJsProject).toBe(true);
-      expect(res.pm).toEqual({ name: "pnpm", version: "9.1.0", source: "packageManager" });
-      expect(res.runtime).toBe("node");
-      expect(res.nodeVersion).toBe("20.10.0");
+      expect(res.detected).toBe(true);
+      expect(res.packageManager).toEqual({ name: "pnpm", version: "9.1.0" });
+      expect(res.runtime).toEqual({ name: "node", version: "20.10.0" });
       expect(res.toolchain).toBe("vite");
 
       expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
@@ -69,7 +68,7 @@ describe("javascript-env", () => {
 
     it("should suppress JS detection logs when package.json is absent", () => {
       const res = resolveJsEnvironment("vite", tempDir);
-      expect(res.hasJsProject).toBe(false);
+      expect(res.detected).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(
         expect.stringContaining("Package manager not specified"),
@@ -85,7 +84,7 @@ describe("javascript-env", () => {
       fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0");
 
       const res = resolveJsEnvironment("vite", tempDir);
-      expect(res.hasJsProject).toBe(false);
+      expect(res.detected).toBe(false);
       expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));

@@ -522,16 +522,16 @@ dev = ["pytest"]
 
       try {
         const memberEnv = resolvePythonEnvironment(memberDir);
-        expect(memberEnv.pythonVersion).toBe("3.11");
+        expect(memberEnv.version).toBe("3.11");
         expect(memberEnv.ruffVersion).toBe("0.4.2");
-        expect(memberEnv.pmInfo?.name).toBe("uv");
-        expect(memberEnv.pmInfo?.lockfile).toBe("uv.lock");
+        expect(memberEnv.packageManager?.name).toBe("uv");
+        expect(memberEnv.packageManager?.lockfile).toBe("uv.lock");
 
         const independentEnv = resolvePythonEnvironment(independentDir);
-        expect(independentEnv.pythonVersion).toBe("3.9");
+        expect(independentEnv.version).toBe("3.9");
         expect(independentEnv.ruffVersion).toBe("");
-        expect(independentEnv.pmInfo?.name).toBe("pip");
-        expect(independentEnv.pmInfo?.lockfile).toBeUndefined();
+        expect(independentEnv.packageManager?.name).toBe("pip");
+        expect(independentEnv.packageManager?.lockfile).toBeUndefined();
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -784,9 +784,9 @@ enabled = true
           expect(pmInfo?.isStandalone).toBe(true);
 
           const resolved = resolvePythonEnvironment(tempDir);
-          expect(resolved.hasPythonSource).toBe(true);
-          expect(resolved.pmInfo?.name).toBe("pip");
-          expect(resolved.pmInfo?.isStandalone).toBe(true);
+          expect(resolved.detected).toBe(true);
+          expect(resolved.packageManager?.name).toBe("pip");
+          expect(resolved.packageManager?.isStandalone).toBe(true);
         } finally {
           fs.rmSync(tempDir, { recursive: true, force: true });
         }
@@ -814,11 +814,11 @@ enabled = true
 
       try {
         const resolved = resolvePythonEnvironment(pkgDir);
-        expect(resolved.hasPythonSource).toBe(true);
-        expect(resolved.pythonVersion).toBe("3.11");
+        expect(resolved.detected).toBe(true);
+        expect(resolved.version).toBe("3.11");
         expect(resolved.ruffVersion).toBe("0.4.2");
-        expect(resolved.pmInfo?.name).toBe("uv");
-        expect(resolved.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+        expect(resolved.packageManager?.name).toBe("uv");
+        expect(resolved.packageManager?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -848,12 +848,12 @@ enabled = true
         const memberEnv = resolvePythonEnvironment(memberDir);
         const deepEnv = resolvePythonEnvironment(deepDir);
 
-        expect(deepEnv.hasPythonSource).toBe(true);
-        expect(deepEnv.pythonVersion).toBe("3.11");
+        expect(deepEnv.detected).toBe(true);
+        expect(deepEnv.version).toBe("3.11");
         expect(deepEnv.ruffVersion).toBe("0.4.2");
-        expect(deepEnv.pmInfo?.name).toBe("uv");
-        expect(deepEnv.pmInfo?.lockfile).toBe("uv.lock");
-        expect(deepEnv.pmInfo?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+        expect(deepEnv.packageManager?.name).toBe("uv");
+        expect(deepEnv.packageManager?.lockfile).toBe("uv.lock");
+        expect(deepEnv.packageManager?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
 
         expect(deepEnv).toEqual(memberEnv);
       } finally {
@@ -923,9 +923,9 @@ enabled = true
         ]);
 
         const resolved = resolvePythonEnvironment(subDir);
-        expect(resolved.hasPythonSource).toBe(true);
-        expect(resolved.pmInfo?.name).toBe("pip");
-        expect(resolved.pmInfo?.installCommands).toEqual([
+        expect(resolved.detected).toBe(true);
+        expect(resolved.packageManager?.name).toBe("pip");
+        expect(resolved.packageManager?.installCommands).toEqual([
           { executable: "pip", args: ["install", "-r", "../../requirements.txt"] },
         ]);
       } finally {
@@ -1227,15 +1227,15 @@ enabled = true
   }
 
   describe("resolvePythonEnvironment()", () => {
-    it("should return hasPythonSource=false and empty fields when no python source exists", () => {
+    it("should return detected=false and empty fields when no python source exists", () => {
       const proj = createConsumerProjectInTmp({ type: "python-none" });
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved).toEqual({
-          hasPythonSource: false,
-          pythonVersion: "",
+          detected: false,
+          version: "",
           ruffVersion: "",
-          pmInfo: null,
+          packageManager: null,
         });
         expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
       } finally {
@@ -1247,10 +1247,10 @@ enabled = true
       const proj = createConsumerProjectInTmp({ type: "python-uv" });
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
-        expect(resolved.hasPythonSource).toBe(true);
-        expect(resolved.pythonVersion).toBe("3.12");
+        expect(resolved.detected).toBe(true);
+        expect(resolved.version).toBe("3.12");
         expect(resolved.ruffVersion).toBe("0.17.2");
-        expect(resolved.pmInfo?.name).toBe("uv");
+        expect(resolved.packageManager?.name).toBe("uv");
         expect(core.info).toHaveBeenCalledWith("Detected Python project.");
         expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
         expect(core.info).toHaveBeenCalledWith("Resolved Ruff version: 0.17.2");
@@ -1668,8 +1668,8 @@ enabled = true
 
       try {
         const resolved = resolvePythonEnvironment(memberDir);
-        expect(resolved.pmInfo?.name).toBe("uv");
-        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
+        expect(resolved.packageManager?.name).toBe("uv");
+        expect(resolved.packageManager?.lockfile).toBe("uv.lock");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -1694,9 +1694,9 @@ enabled = true
 
       try {
         const resolved = resolvePythonEnvironment(memberDir);
-        expect(resolved.pmInfo?.name).toBe("uv");
-        expect(resolved.pmInfo?.lockfile).toBe("uv.lock");
-        expect(resolved.pmInfo?.configFile).toBe("pyproject.toml");
+        expect(resolved.packageManager?.name).toBe("uv");
+        expect(resolved.packageManager?.lockfile).toBe("uv.lock");
+        expect(resolved.packageManager?.configFile).toBe("pyproject.toml");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

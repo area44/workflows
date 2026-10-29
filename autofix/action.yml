@@ -1,27 +1,24 @@
 name: Autofix
 description: "Automatically format and fix code."
 outputs:
-  node-version:
-    description: "The Node.js version used"
-    value: ${{ steps.resolve_environment.outputs.node-version }}
-  bun-version:
-    description: "The Bun version used"
-    value: ${{ steps.resolve_environment.outputs.bun-version }}
-  package-manager:
-    description: "The package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager }}
-  package-manager-version:
-    description: "The version of the package manager used"
-    value: ${{ steps.resolve_environment.outputs.package-manager-version }}
-  runtime:
-    description: "The runtime used (node or bun)"
-    value: ${{ steps.resolve_environment.outputs.runtime }}
-  has-js-project:
-    description: "Whether a JavaScript project (package.json) was detected"
-    value: ${{ steps.resolve_environment.outputs.has-js-project }}
-  has-python-source:
+  javascript-detected:
+    description: "Whether a JavaScript/TypeScript project was detected"
+    value: ${{ steps.resolve_environment.outputs.javascript-detected }}
+  javascript-runtime:
+    description: "The JavaScript runtime used (node or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime }}
+  javascript-runtime-version:
+    description: "The version of the JavaScript runtime used"
+    value: ${{ steps.resolve_environment.outputs.javascript-runtime-version }}
+  javascript-package-manager:
+    description: "The JavaScript package manager used (npm, pnpm, or bun)"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
+  javascript-package-manager-version:
+    description: "The version of the JavaScript package manager used"
+    value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
+  python-detected:
     description: "Whether Python source code was detected"
-    value: ${{ steps.resolve_environment.outputs.has-python-source }}
+    value: ${{ steps.resolve_environment.outputs.python-detected }}
   python-version:
     description: "The Python version used"
     value: ${{ steps.resolve_environment.outputs.python-version }}
@@ -44,7 +41,7 @@ runs:
 
     - name: Setup uv
       id: setup_uv
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
@@ -52,7 +49,7 @@ runs:
 
     - name: Setup Python
       id: setup_python
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: ${{ steps.resolve_environment.outputs.python-version }}
@@ -62,7 +59,7 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3
       with:
-        version: ${{ steps.resolve_environment.outputs.package-manager-version }}
+        version: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
         runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
         install: false
         cache: true
@@ -86,7 +83,7 @@ runs:
 
     - name: Setup Ruff
       id: setup_ruff
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.has-python-source == 'true' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
         version: ${{ steps.resolve_environment.outputs.ruff-version }}
@@ -94,11 +91,11 @@ runs:
 
     - name: Run autofix
       id: run_autofix
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.resolve_environment.outputs.has-js-project == 'true' || steps.resolve_environment.outputs.has-python-source == 'true') }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && (steps.resolve_environment.outputs.javascript-detected == 'true' || steps.resolve_environment.outputs.python-detected == 'true') }}
       shell: bash
       env:
-        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.package-manager }}
-        RUNTIME: ${{ steps.resolve_environment.outputs.runtime }}
+        PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
+        RUNTIME: ${{ steps.resolve_environment.outputs.javascript-runtime }}
         ACTION_PATH: ${{ github.action_path }}
         NODE_SETUP_OUTCOME: ${{ steps.setup_node.outcome }}
         BUN_SETUP_OUTCOME: ${{ steps.setup_bun.outcome }}
