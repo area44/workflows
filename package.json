@@ -21,6 +21,7 @@
   "devDependencies": {
     "@actions/core": "^3.0.1",
     "@actions/exec": "^3.0.0",
+    "@actions/io": "^3.0.2",
     "@changesets/cli": "^3.0.3",
     "@types/node": "^24.19.2",
     "smol-toml": "^1.9.1",
