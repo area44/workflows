@@ -26,7 +26,7 @@ outputs:
     description: "The version of the JavaScript package manager used"
     value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
   javascript-toolchain:
-    description: "The resolved toolchain (vite or vite-plus)"
+    description: "The resolved toolchain (vite-plus or empty string)"
     value: ${{ steps.resolve_environment.outputs.javascript-toolchain }}
   vp-version:
     description: "The version of Vite+ installed"

@@ -1,4 +1,3 @@
-import * as core from "@actions/core";
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "smol-toml";
@@ -9,8 +8,6 @@ export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = 
   "uv",
   "pip",
 ] as const;
-
-export const DEFAULT_PYTHON_VERSION = "3.12";
 
 export const DEFAULT_EXCLUDED_DIRS: readonly string[] = [
   ".git",
@@ -47,6 +44,7 @@ export interface PythonInstallCommand {
 
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
+  version?: string;
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -488,14 +486,60 @@ export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | nul
   }
 }
 
+export function isExactVersion(ver: string): boolean {
+  if (!ver) return false;
+  const cleaned = ver
+    .trim()
+    .replace(/^python-?/i, "")
+    .replace(/^v/i, "")
+    .replace(/['"]/g, "");
+  return /^\d+(?:\.\d+)+$/.test(cleaned);
+}
+
 export function parsePythonVersionFromConstraint(raw: string): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
     .trim()
     .replace(/^python-?/i, "")
     .replace(/['"]/g, "");
-  const match = cleaned.match(/(\d+\.\d+(?:\.\d+)?)/);
-  return match ? match[1] : undefined;
+  return cleaned || undefined;
+}
+
+export function resolvePythonSetupVersion(declared: string): string {
+  if (!declared) return "";
+  const cleaned = declared
+    .trim()
+    .replace(/^python-?/i, "")
+    .replace(/['"]/g, "");
+  if (!cleaned) return "";
+
+  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
+  if (match) {
+    return match[0];
+  }
+
+  return "";
+}
+
+export function resolveRuffSetupVersion(declared: string): string {
+  if (!declared) return "";
+  const cleaned = extractRuffVersionSpecifier(declared) || declared.trim();
+  if (!cleaned) return "";
+
+  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
+  if (match) {
+    return match[0];
+  }
+
+  return "";
 }
 
 function readPyprojectPythonVersion(
@@ -511,10 +555,6 @@ function readPyprojectPythonVersion(
   return undefined;
 }
 
-/**
- * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
- */
 function readVersionFromFile(filePath: string | undefined): string | undefined {
   if (!filePath || !fs.existsSync(filePath)) return undefined;
   try {
@@ -526,8 +566,10 @@ function readVersionFromFile(filePath: string | undefined): string | undefined {
 }
 
 /**
- * Resolves the target Python version from project configuration files (.python-version,
- * pyproject.toml, runtime.txt) or falls back to DEFAULT_PYTHON_VERSION.
+ * Resolves the Python version or constraint declared by project configuration files
+ * (.python-version, pyproject.toml requires-python, runtime.txt).
+ * Preserves the exact declared string or constraint without converting constraints to exact numbers
+ * or fabricating default versions.
  */
 export function resolvePythonVersion(
   cwd: string = process.cwd(),
@@ -575,7 +617,7 @@ export function resolvePythonVersion(
     return ancestorRuntimeVer;
   }
 
-  return DEFAULT_PYTHON_VERSION;
+  return "";
 }
 
 /**
@@ -1165,19 +1207,35 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     return true;
   }
 
-  const ctx = findPythonProjectContext(cwd);
+  const resolvedCwd = path.resolve(cwd);
+  const dirs = collectParentDirs(resolvedCwd);
+  const selfCtx = findSelfManifestContext(resolvedCwd, dirs);
 
-  if (ctx.pyprojectToml?.success === true) {
-    if (isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent)) {
-      return true;
+  if (selfCtx) {
+    if (selfCtx.pyprojectToml?.success === true) {
+      if (isUvProjectConfigPresent(selfCtx.pyprojectToml.data, selfCtx.pyprojectToml.rawContent)) {
+        return true;
+      }
+      if (isRuffDeclaredInProject(cwd, undefined, selfCtx.pyprojectToml)) {
+        return true;
+      }
     }
-    if (isRuffDeclaredInProject(cwd, undefined, ctx.pyprojectToml)) {
+    if (
+      selfCtx.hasUvLock ||
+      selfCtx.hasRequirementsTxt ||
+      selfCtx.hasSetupPy ||
+      selfCtx.hasSetupCfg
+    ) {
       return true;
     }
   }
 
-  if (ctx.hasUvLock || ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg) {
-    return true;
+  const ancestorCtx = findAncestorManifestContext(resolvedCwd, dirs);
+  if (ancestorCtx.workspaceRootDir && ancestorCtx.workspaceRootToml?.success === true) {
+    const wsConfig = getWorkspaceConfigInDir(ancestorCtx.workspaceRootDir);
+    if (wsConfig && isWorkspaceMember(ancestorCtx.workspaceRootDir, resolvedCwd, wsConfig.config)) {
+      return true;
+    }
   }
 
   return false;
@@ -1187,7 +1245,7 @@ export function detectPythonPackageManager(
   cwd: string = process.cwd(),
   pyprojectToml?: ParsedToml | null,
 ): PythonPackageManagerInfo | null {
-  if (!hasPythonSource(cwd)) {
+  if (!hasPythonProject(cwd)) {
     return null;
   }
 
@@ -1227,16 +1285,14 @@ export function extractRuffVersionSpecifier(raw: string): string | undefined {
     cleaned = cleaned.slice(1).trim();
   }
 
-  if (!cleaned) return undefined;
-
-  // Exact pin like ==0.4.2 or 0.4.2 or @0.4.2
-  const exactMatch = cleaned.match(/^(?:==|@)?\s*(\d+\.\d+\.\d+(?:[a-z0-9_.-]+)?)$/i);
-  if (exactMatch) {
-    return exactMatch[1];
+  if (cleaned.startsWith("==")) {
+    cleaned = cleaned.slice(2).trim();
+  } else if (cleaned.startsWith("@")) {
+    cleaned = cleaned.slice(1).trim();
   }
 
-  // Non-exact constraints or ranges like >=0.3.0,<0.5.0, ^0.4.0 return undefined so ruff-action uses standard version resolution without guessing
-  return undefined;
+  if (!cleaned) return undefined;
+  return cleaned;
 }
 
 function resolveRuffVersionFromUvLock(cwd: string): string | undefined {
@@ -1367,9 +1423,9 @@ export function isRuffDeclaredInProject(
  * Cohesive Python environment resolution entry point.
  */
 export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedPythonEnvironment {
-  const pySourcePresent = hasPythonSource(cwd);
+  const isPyProject = hasPythonProject(cwd);
 
-  if (!pySourcePresent) {
+  if (!isPyProject) {
     return {
       detected: false,
       version: "",

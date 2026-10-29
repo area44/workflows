@@ -101,6 +101,30 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(pyproject.project.name).toBe("area44-my-custom-app");
     });
 
+    it("handles pythonVersion as exact version versus constraints without operator duplication or stray files", () => {
+      // 1. Exact version input
+      const exactFiles = generateConsumerProjectFiles({ pythonVersion: "3.11" });
+      expect(exactFiles).toHaveProperty(".python-version");
+      expect(exactFiles[".python-version"]).toBe("3.11\n");
+      expect(exactFiles["pyproject.toml"]).toContain('requires-python = ">=3.11"\n');
+
+      // 2. Lower bound constraint
+      const lowerFiles = generateConsumerProjectFiles({ pythonVersion: ">=3.11" });
+      expect(lowerFiles).not.toHaveProperty(".python-version");
+      expect(lowerFiles["pyproject.toml"]).toContain('requires-python = ">=3.11"\n');
+      expect(lowerFiles["pyproject.toml"]).not.toContain(">>=");
+
+      // 3. Range constraint
+      const rangeFiles = generateConsumerProjectFiles({ pythonVersion: ">=3.10,<3.14" });
+      expect(rangeFiles).not.toHaveProperty(".python-version");
+      expect(rangeFiles["pyproject.toml"]).toContain('requires-python = ">=3.10,<3.14"\n');
+
+      // 4. Missing pythonVersion
+      const noVerFiles = generateConsumerProjectFiles({});
+      expect(noVerFiles).not.toHaveProperty(".python-version");
+      expect(noVerFiles["pyproject.toml"]).not.toContain("requires-python");
+    });
+
     it("supports generateConsumerProjectFiles with specific action, runtime, pm, and type scenario combinations", () => {
       // Pages Astro project scenario
       const pagesFiles = generateConsumerProjectFiles({

@@ -22,7 +22,7 @@ The scenario factory supports explicit options across all tested project dimensi
 | **Action**          | `action`               | `pages`, `autofix`, or empty/unspecified                                                                                                              |
 | **Runtime**         | `runtime`              | `node`, `bun`                                                                                                                                         |
 | **Package Manager** | `pm`, `packageManager` | `npm`, `pnpm`, `bun`, or explicit version string (e.g. `pnpm@12.15.0`)                                                                                |
-| **Toolchain**       | `toolchain`            | `astro`, `vite`, `vite-plus`, `none`                                                                                                                  |
+| **Toolchain**       | `toolchain`            | `vite-plus`, `none`                                                                                                                                   |
 | **Project Type**    | `type`                 | `basic`, `minimal`, `vite`, `vite-plus`, `consumer-integration`, `python-uv`, `python-pip`, `python-conflicting`, `python-none`, `mixed`, `mixed-bun` |
 | **Python Source**   | `hasPythonSource`      | `true`, `false` (controls `.py`/`.pyi` file generation)                                                                                               |
 | **Python PM**       | `pythonPm`             | `uv`, `pip`, or empty                                                                                                                                 |
@@ -62,9 +62,10 @@ Testing is organized across distinct execution boundaries:
   - Node.js and Bun runtime setup and dependency synchronization (`npm`, `pnpm`, `bun`).
   - Python `uv` and `pip` environment detection, Ruff linting/formatting, and multi-language projects (`mixed`, `mixed-bun`).
 - **Negative Scenarios & Machine-Verifiable Failure Logging**:
+  - **Expected Failure Subshell Harness**: Expected-failure negative scenarios execute step scripts (`dist/build-command.mjs`) inside a subshell harness capturing stdout/stderr to prevent unhandled `::error::` workflow command annotations on GitHub Actions run summaries.
   - **Pre-Execution Cleanup**: Step `Clean Build Outputs Before Execution` removes pre-existing build output directories (`rm -rf "$TARGET_PATH" dist`) and clears `${RUNNER_TEMP}/pages_build_error.log` before action execution.
-  - **Invalid Build Command (`invalid_build_command`)**: Asserts step outcome is `failure`, environment setup succeeded, `node_modules` exists, and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"`.
-  - **Missing Output Directory (`missing_output_dir`)**: Asserts step outcome is `failure`, environment setup succeeded, `node_modules` exists, and `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."`.
+  - **Invalid Build Command (`invalid_build_command`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"`.
+  - **Missing Output Directory (`missing_output_dir`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."`.
 
 ### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml`)
 

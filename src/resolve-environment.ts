@@ -8,7 +8,13 @@ import {
   validateRuntimePackageManagerCompatibility,
   type ResolvedJavaScriptEnvironment,
 } from "./javascript-env.js";
-import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
+import {
+  resolvePythonEnvironment,
+  resolvePythonSetupVersion,
+  resolveRuffSetupVersion,
+  isExactVersion,
+  type ResolvedPythonEnvironment,
+} from "./python-env.js";
 import {
   createSetupPlan,
   resolvePnpmSetupRuntime,
@@ -71,11 +77,10 @@ function validateJsEnvironment(js: unknown): void {
     throw new Error("Invalid resolved package manager");
   }
 
-  if (
-    typeof jsObj.toolchain !== "string" ||
-    (jsObj.toolchain !== "vite" && jsObj.toolchain !== "vite-plus")
-  ) {
-    throw new Error(`Invalid resolved toolchain: "${String(jsObj.toolchain)}"`);
+  if (jsObj.toolchain !== undefined && jsObj.toolchain !== "vite-plus") {
+    const val =
+      typeof jsObj.toolchain === "string" ? jsObj.toolchain : JSON.stringify(jsObj.toolchain);
+    throw new Error(`Invalid resolved toolchain: "${val}"`);
   }
 
   validateRuntimePackageManagerCompatibility(runtimeName, pmObj.name);
@@ -112,7 +117,14 @@ function validatePmInfoFields(pmObj: Record<string, unknown>): void {
   if (typeof pmObj.execPrefix !== "string") {
     throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
   }
-  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
+  const optionalStrings = [
+    "version",
+    "versionSource",
+    "lockfile",
+    "configFile",
+    "lockCommand",
+    "syncCommand",
+  ];
   for (const field of optionalStrings) {
     if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
       throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
@@ -259,12 +271,14 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("javascript-runtime-version", js.runtime.version);
   core.setOutput("javascript-package-manager", js.packageManager.name);
   core.setOutput("javascript-package-manager-version", js.packageManager.version);
-  core.setOutput("javascript-toolchain", js.toolchain);
+  core.setOutput("javascript-toolchain", js.toolchain ?? "");
 
   core.setOutput("python-detected", String(python.detected));
   core.setOutput("python-version", python.version);
+  core.setOutput("python-setup-version", resolvePythonSetupVersion(python.version));
   core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
   core.setOutput("ruff-version", python.ruffVersion);
+  core.setOutput("ruff-setup-version", resolveRuffSetupVersion(python.ruffVersion));
 }
 
 function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
@@ -273,7 +287,7 @@ function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
 }
 
 function formatPythonRuntime(py: ResolvedPythonEnvironment): string {
-  return py.version ? `Python ${py.version}` : "Python";
+  return py.version && isExactVersion(py.version) ? `Python ${py.version}` : "Python";
 }
 
 function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
@@ -283,23 +297,22 @@ function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
 }
 
 function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
-  return py.packageManager ? py.packageManager.name : undefined;
+  if (!py.packageManager) return undefined;
+  const { name, version } = py.packageManager;
+  if (version) {
+    return `${name} ${version}`;
+  }
+  return name;
 }
 
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   const js = env.javascript;
   const py = env.python;
 
-  const detectedLangs: string[] = [];
-  if (js.detected) detectedLangs.push("JavaScript");
-  if (py.detected) detectedLangs.push("Python");
-
-  if (detectedLangs.length === 0) {
-    core.info("No supported project environment detected.");
+  if (!js.detected && !py.detected) {
+    core.info("No JavaScript or Python environment detected.");
     return;
   }
-
-  core.info(`Detected: ${detectedLangs.join(", ")}`);
 
   const runtimes: string[] = [];
   if (js.detected) runtimes.push(formatJsRuntime(js));
@@ -318,12 +331,8 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
     core.info(`Package Manager: ${pms.join(", ")}`);
   }
 
-  if (js.detected && js.toolchain) {
-    core.info(`Toolchain: ${js.toolchain}`);
-  }
-
-  if (py.detected && py.ruffVersion) {
-    core.info(`Ruff: ${py.ruffVersion}`);
+  if (js.detected && js.toolchain === "vite-plus") {
+    core.info("Toolchain: Vite+");
   }
 }
 

@@ -44,7 +44,6 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' && steps.resolve_environment.outputs.python-package-manager == 'uv' }}
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
       with:
-        python-version: ${{ steps.resolve_environment.outputs.python-version }}
         enable-cache: true
 
     - name: Setup Python
@@ -52,7 +51,7 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' && steps.resolve_environment.outputs.python-package-manager != 'uv' }}
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
-        python-version: ${{ steps.resolve_environment.outputs.python-version }}
+        python-version: ${{ steps.resolve_environment.outputs.python-setup-version }}
 
     - name: Setup PNPM
       id: setup_pnpm
@@ -86,7 +85,7 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
-        version: ${{ steps.resolve_environment.outputs.ruff-version }}
+        version: ${{ steps.resolve_environment.outputs.ruff-setup-version }}
         args: "--version"
 
     - name: Run autofix

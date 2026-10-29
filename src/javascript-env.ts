@@ -100,8 +100,8 @@ export interface JsPackageManagerInfo {
   source?: "packageManager" | "devEngines" | "lockfile" | "default";
 }
 
-export type Toolchain = "vite" | "vite-plus";
-export type ToolchainInput = "auto" | "vite" | "vite-plus";
+export type Toolchain = "vite-plus" | undefined;
+export type ToolchainInput = "auto" | "vite-plus";
 
 export interface JsInstallationPlan {
   packageManager: SupportedPackageManager;
@@ -119,7 +119,7 @@ export interface ResolvedJavaScriptEnvironment {
     name: "npm" | "pnpm" | "bun";
     version: string;
   };
-  toolchain: "vite" | "vite-plus";
+  toolchain?: "vite-plus";
 }
 
 interface RuntimeSignals {
@@ -447,15 +447,15 @@ export function hasVitePlusDependency(pkg?: JsPackageManifest): boolean {
 export function resolveToolchain(
   toolchainInput?: string,
   project?: JsProjectEnvironment,
-): Toolchain {
+): "vite-plus" | undefined {
   if (toolchainInput) {
     const trimmed = toolchainInput.trim().toLowerCase();
     if (trimmed && trimmed !== "auto") {
-      if (trimmed === "vite" || trimmed === "vite-plus") {
-        return trimmed;
+      if (trimmed === "vite-plus") {
+        return "vite-plus";
       }
       throw new Error(
-        'Invalid toolchain input: unsupported value. Supported values are "auto", "vite", or "vite-plus".',
+        'Invalid toolchain input: unsupported value. Supported values are "auto" or "vite-plus".',
       );
     }
   }
@@ -464,7 +464,7 @@ export function resolveToolchain(
     return "vite-plus";
   }
 
-  return "vite";
+  return undefined;
 }
 
 /**

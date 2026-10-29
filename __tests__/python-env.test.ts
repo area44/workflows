@@ -13,12 +13,15 @@ import {
   extractRuffVersionSpecifier,
   hasPythonSource,
   isDirectoryMatchedByGlobs,
+  isExactVersion,
   isRuffDeclaredInProject,
   parsePythonVersionFromConstraint,
   parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
+  resolvePythonSetupVersion,
   resolvePythonVersion,
+  resolveRuffSetupVersion,
   resolveRuffVersion,
   stripTomlStringsAndComments,
 } from "../src/python-env.js";
@@ -522,7 +525,7 @@ dev = ["pytest"]
 
       try {
         const memberEnv = resolvePythonEnvironment(memberDir);
-        expect(memberEnv.version).toBe("3.11");
+        expect(memberEnv.version).toBe(">=3.11");
         expect(memberEnv.ruffVersion).toBe("0.4.2");
         expect(memberEnv.packageManager?.name).toBe("uv");
         expect(memberEnv.packageManager?.lockfile).toBe("uv.lock");
@@ -815,7 +818,7 @@ enabled = true
       try {
         const resolved = resolvePythonEnvironment(pkgDir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("3.11");
+        expect(resolved.version).toBe(">=3.11");
         expect(resolved.ruffVersion).toBe("0.4.2");
         expect(resolved.packageManager?.name).toBe("uv");
         expect(resolved.packageManager?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
@@ -849,7 +852,7 @@ enabled = true
         const deepEnv = resolvePythonEnvironment(deepDir);
 
         expect(deepEnv.detected).toBe(true);
-        expect(deepEnv.version).toBe("3.11");
+        expect(deepEnv.version).toBe(">=3.11");
         expect(deepEnv.ruffVersion).toBe("0.4.2");
         expect(deepEnv.packageManager?.name).toBe("uv");
         expect(deepEnv.packageManager?.lockfile).toBe("uv.lock");
@@ -1138,12 +1141,12 @@ enabled = true
 
     it("should accurately resolve ruff specifiers and reject ruff-lsp, ruff-tools, ruff-extra", () => {
       const testCases: [string, boolean, string | undefined][] = [
-        ["ruff>=0.6", true, undefined],
-        ["Ruff>=0.6", true, undefined],
+        ["ruff>=0.6", true, ">=0.6"],
+        ["Ruff>=0.6", true, ">=0.6"],
         ["ruff==0.4.2", true, "0.4.2"],
-        ["ruff[extra]>=0.6", true, undefined],
+        ["ruff[extra]>=0.6", true, ">=0.6"],
         ["ruff[extra]==0.4.2", true, "0.4.2"],
-        ["ruff>=0.6; python_version>='3.10'", true, undefined],
+        ["ruff>=0.6; python_version>='3.10'", true, ">=0.6"],
         ["ruff==0.4.2; python_version>='3.10'", true, "0.4.2"],
         ["ruff-lsp>=1.0", false, undefined],
         ["ruff-tools", false, undefined],
@@ -1247,7 +1250,7 @@ enabled = true
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("3.12");
+        expect(resolved.version).toBe("");
         expect(resolved.ruffVersion).toBe("0.17.2");
         expect(resolved.packageManager?.name).toBe("uv");
       } finally {
@@ -1389,13 +1392,66 @@ enabled = true
     });
   });
 
-  describe("resolvePythonVersion() and constraint parsing", () => {
-    it("should parse python versions from constraint strings", () => {
-      expect(parsePythonVersionFromConstraint(">=3.11")).toBe("3.11");
-      expect(parsePythonVersionFromConstraint("^3.12")).toBe("3.12");
+  describe("resolvePythonVersion(), resolvePythonSetupVersion(), and constraint parsing", () => {
+    it("should parse python versions from constraint strings while preserving constraints", () => {
+      expect(parsePythonVersionFromConstraint(">=3.11")).toBe(">=3.11");
+      expect(parsePythonVersionFromConstraint("^3.12")).toBe("^3.12");
       expect(parsePythonVersionFromConstraint("3.12.1")).toBe("3.12.1");
       expect(parsePythonVersionFromConstraint("python-3.11.4")).toBe("3.11.4");
       expect(parsePythonVersionFromConstraint("")).toBeUndefined();
+    });
+
+    it("should correctly distinguish exact versions from constraints with isExactVersion", () => {
+      expect(isExactVersion("3.12")).toBe(true);
+      expect(isExactVersion("3.12.1")).toBe(true);
+      expect(isExactVersion(">=3.11")).toBe(false);
+      expect(isExactVersion(">=3.10,<3.14")).toBe(false);
+      expect(isExactVersion("")).toBe(false);
+    });
+
+    it("should map declared versions/constraints to valid setup inputs with resolvePythonSetupVersion", () => {
+      expect(resolvePythonSetupVersion("3.12")).toBe("3.12");
+      expect(resolvePythonSetupVersion("3.11.4")).toBe("3.11.4");
+      expect(resolvePythonSetupVersion(">=3.11")).toBe("3.11");
+      expect(resolvePythonSetupVersion(">=3.10,<3.14")).toBe("3.10");
+      expect(resolvePythonSetupVersion("")).toBe("");
+      expect(resolvePythonSetupVersion("invalid-input")).toBe("");
+    });
+
+    it("should map declared Ruff versions/constraints to valid setup inputs with resolveRuffSetupVersion", () => {
+      expect(resolveRuffSetupVersion("0.4.2")).toBe("0.4.2");
+      expect(resolveRuffSetupVersion(">=0.3.0,<0.5.0")).toBe("0.3.0");
+      expect(resolveRuffSetupVersion("")).toBe("");
+      expect(resolveRuffSetupVersion("invalid-input")).toBe("");
+    });
+
+    it("should test Python version resolution for exact versions, constraints, and ranges", () => {
+      const tempDir = path.join(fixturesDir, "pyver-types-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print(1)\n");
+
+      // 1. Exact version
+      fs.writeFileSync(path.join(tempDir, ".python-version"), "3.12\n");
+      expect(resolvePythonVersion(tempDir)).toBe("3.12");
+      expect(resolvePythonSetupVersion(resolvePythonVersion(tempDir))).toBe("3.12");
+
+      // 2. Lower-bound constraint
+      fs.rmSync(path.join(tempDir, ".python-version"));
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[project]\nrequires-python = ">=3.11"\n');
+      expect(resolvePythonVersion(tempDir)).toBe(">=3.11");
+      expect(resolvePythonSetupVersion(resolvePythonVersion(tempDir))).toBe("3.11");
+
+      // 3. Range constraint
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), '[project]\nrequires-python = ">=3.10,<3.14"\n');
+      expect(resolvePythonVersion(tempDir)).toBe(">=3.10,<3.14");
+      expect(resolvePythonSetupVersion(resolvePythonVersion(tempDir))).toBe("3.10");
+
+      // 4. No declared Python version
+      fs.rmSync(path.join(tempDir, "pyproject.toml"));
+      expect(resolvePythonVersion(tempDir)).toBe("");
+      expect(resolvePythonSetupVersion(resolvePythonVersion(tempDir))).toBe("");
+
+      fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
     it("should read version from .python-version if present", () => {
@@ -1438,10 +1494,10 @@ enabled = true
       }
     });
 
-    it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
+    it("should return empty string when no version file or constraint is present", () => {
       const proj = createConsumerProjectInTmp({ type: "python-none" });
       try {
-        expect(resolvePythonVersion(proj.dir)).toBe(DEFAULT_PYTHON_VERSION);
+        expect(resolvePythonVersion(proj.dir)).toBe("");
       } finally {
         proj.cleanup();
       }
@@ -1449,11 +1505,11 @@ enabled = true
   });
 
   describe("resolveRuffVersion() and specifier extraction", () => {
-    it("should extract exact pin or version constraint from specifiers", () => {
+    it("should extract exact pin or version constraint from specifiers preserving constraints", () => {
       expect(extractRuffVersionSpecifier("ruff==0.4.2")).toBe("0.4.2");
       expect(extractRuffVersionSpecifier("ruff = '0.4.2'")).toBe("0.4.2");
-      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBeUndefined();
-      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBeUndefined();
+      expect(extractRuffVersionSpecifier("ruff = '^0.4.0'")).toBe("^0.4.0");
+      expect(extractRuffVersionSpecifier("ruff>=0.3.0,<0.5.0")).toBe(">=0.3.0,<0.5.0");
       expect(extractRuffVersionSpecifier("0.4.1")).toBe("0.4.1");
       expect(extractRuffVersionSpecifier("")).toBeUndefined();
     });
@@ -1514,7 +1570,7 @@ enabled = true
       }
     });
 
-    it("should return empty string for complex range constraints so ruff-action uses standard version resolution", () => {
+    it("should return declared range constraint for ruff version resolution", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "ruff-range-temp-"));
       fs.writeFileSync(
         path.join(tempDir, "pyproject.toml"),
@@ -1522,7 +1578,7 @@ enabled = true
       );
 
       try {
-        expect(resolveRuffVersion(tempDir)).toBe("");
+        expect(resolveRuffVersion(tempDir)).toBe(">=0.3.0,<0.5.0");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -2021,14 +2077,15 @@ enabled = true
       }
     });
 
-    it("should return null when no python source files exist, even if pyproject.toml exists", () => {
+    it("should detect package manager for project manifest evidence when no python source files exist", () => {
       const tempDir = path.join(fixturesDir, "manifest-no-source-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
       try {
         const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).toBeNull();
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }

@@ -63,12 +63,12 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(env.javascript.detected).toBe(true);
       expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "10.8.2" });
       expect(env.javascript.runtime.name).toBe("node");
-      expect(env.javascript.toolchain).toBe("vite");
+      expect(env.javascript.toolchain).toBeUndefined();
 
       // Python Environment verification
       expect(env.python.detected).toBe(true);
       expect(env.python.packageManager?.name).toBe("pip");
-      expect(env.python.version).toBe("3.12");
+      expect(env.python.version).toBe("");
       expect(env.python.ruffVersion).toBe("0.17.2");
     });
 
@@ -80,10 +80,10 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
       expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "10.8.2");
       expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
-      expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite");
+      expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "");
       expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
-      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
+      expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 
