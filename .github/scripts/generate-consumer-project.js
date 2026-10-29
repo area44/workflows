@@ -146,7 +146,9 @@ function resolvePythonOptions(options, type, action) {
       ? ""
       : "0.17.2";
 
-  return { hasPython, pythonPm, ruffVersion };
+  const pythonVersion = options.pythonVersion || "";
+
+  return { hasPython, pythonPm, ruffVersion, pythonVersion };
 }
 
 /**
@@ -345,11 +347,15 @@ function buildJsFiles(files, options, jsOpt) {
  * @param {string} pyProjectName
  */
 function buildPythonFiles(files, options, pyOpt, pyProjectName) {
-  const { pythonPm, ruffVersion } = pyOpt;
+  const { pythonPm, ruffVersion, pythonVersion } = pyOpt;
   const type = options.type || "basic";
 
   const mainPy = `def main() -> None:\n    print("AREA44 consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
   files["main.py"] = mainPy;
+
+  if (pythonVersion) {
+    files[".python-version"] = `${pythonVersion}\n`;
+  }
 
   const pyDeps = [];
   if (ruffVersion) {
@@ -358,6 +364,7 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
 
   const pyprojectToml =
     `[project]\nname = "${pyProjectName}"\nversion = "0.1.0"\n` +
+    (pythonVersion ? `requires-python = ">=${pythonVersion}"\n` : "") +
     (pyDeps.length > 0 ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n` : "\n") +
     `[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["*"]\n\n[tool.ruff]\nline-length = 88\n`;
 
