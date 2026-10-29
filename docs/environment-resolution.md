@@ -18,7 +18,7 @@ Environment resolution determines which runtimes, package managers, and toolchai
 - **Delegated Version Resolution**: Official setup actions own runtime and tool version selection and installation. `pnpm/setup` manages pnpm and runtime setup directly when `pnpm` is selected, bypassing dedicated Node.js/Bun setup steps to prevent duplicate setup. TypeScript detects ecosystem presence, selects package managers and toolchains, and coordinates setup orchestration without parsing version files.
 - **Toolchain Classification**: Vite+ is the only supported JavaScript toolchain (`Toolchain: Vite+`). Standard Vite alone is not classified or reported as a toolchain. When Vite+ is not detected, the `Toolchain` line is omitted entirely.
 - **Python Package Manager Selection**: Default package manager is `pip`. `uv` is selected when `uv.lock` or explicit `uv` configuration (`[tool.uv]` table or `uv.toml`) is detected.
-- **Plain-Text Summary Logging**: Summary logs use plain-text output in category order (`Runtime`, `Package Manager`, `Toolchain`) without version numbers or GitHub Actions grouping markers (`::group::`/`::endgroup::`).
+- **Plain-Text Summary Logging**: Summary logs use plain-text output in category order (`Runtime`, `Package Manager`, `Toolchain`).
 - **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files and package managers trigger immediate validation errors rather than applying silent tie-breakers.
 - **Pure Setup Planning**: Environment resolution and filesystem inspection are strictly separated from setup plan generation. Setup plans are derived through a pure, deterministic transformation layer with zero filesystem access or action side effects.
 
