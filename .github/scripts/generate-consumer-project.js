@@ -353,8 +353,13 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
   const mainPy = `def main() -> None:\n    print("AREA44 consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
   files["main.py"] = mainPy;
 
-  if (pythonVersion) {
-    files[".python-version"] = `${pythonVersion}\n`;
+  const trimmedVer = pythonVersion ? pythonVersion.trim() : "";
+  const isExact = /^\d+(?:\.\d+)+$/.test(
+    trimmedVer.replace(/^python-?/i, "").replace(/^v/i, "").replace(/['"]/g, "")
+  );
+
+  if (trimmedVer && isExact) {
+    files[".python-version"] = `${trimmedVer}\n`;
   }
 
   const pyDeps = [];
@@ -362,9 +367,16 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
     pyDeps.push(`ruff==${ruffVersion}`);
   }
 
+  let requiresPythonStr = "";
+  if (trimmedVer) {
+    requiresPythonStr = /^[<>=!~]/.test(trimmedVer)
+      ? `requires-python = "${trimmedVer}"\n`
+      : `requires-python = ">=${trimmedVer}"\n`;
+  }
+
   const pyprojectToml =
     `[project]\nname = "${pyProjectName}"\nversion = "0.1.0"\n` +
-    (pythonVersion ? `requires-python = ">=${pythonVersion}"\n` : "") +
+    requiresPythonStr +
     (pyDeps.length > 0 ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n` : "\n") +
     `[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["*"]\n\n[tool.ruff]\nline-length = 88\n`;
 

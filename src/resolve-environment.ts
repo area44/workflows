@@ -8,7 +8,13 @@ import {
   validateRuntimePackageManagerCompatibility,
   type ResolvedJavaScriptEnvironment,
 } from "./javascript-env.js";
-import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
+import {
+  resolvePythonEnvironment,
+  resolvePythonSetupVersion,
+  resolveRuffSetupVersion,
+  isExactVersion,
+  type ResolvedPythonEnvironment,
+} from "./python-env.js";
 import {
   createSetupPlan,
   resolvePnpmSetupRuntime,
@@ -269,8 +275,10 @@ export function writeOutput(env: ResolvedEnvironment): void {
 
   core.setOutput("python-detected", String(python.detected));
   core.setOutput("python-version", python.version);
+  core.setOutput("python-setup-version", resolvePythonSetupVersion(python.version));
   core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
   core.setOutput("ruff-version", python.ruffVersion);
+  core.setOutput("ruff-setup-version", resolveRuffSetupVersion(python.ruffVersion));
 }
 
 function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
@@ -279,7 +287,7 @@ function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
 }
 
 function formatPythonRuntime(py: ResolvedPythonEnvironment): string {
-  return py.version ? `Python ${py.version}` : "Python";
+  return py.version && isExactVersion(py.version) ? `Python ${py.version}` : "Python";
 }
 
 function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {

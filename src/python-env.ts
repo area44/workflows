@@ -486,6 +486,16 @@ export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | nul
   }
 }
 
+export function isExactVersion(ver: string): boolean {
+  if (!ver) return false;
+  const cleaned = ver
+    .trim()
+    .replace(/^python-?/i, "")
+    .replace(/^v/i, "")
+    .replace(/['"]/g, "");
+  return /^\d+(?:\.\d+)+$/.test(cleaned);
+}
+
 export function parsePythonVersionFromConstraint(raw: string): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
@@ -493,6 +503,43 @@ export function parsePythonVersionFromConstraint(raw: string): string | undefine
     .replace(/^python-?/i, "")
     .replace(/['"]/g, "");
   return cleaned || undefined;
+}
+
+export function resolvePythonSetupVersion(declared: string): string {
+  if (!declared) return "";
+  const cleaned = declared
+    .trim()
+    .replace(/^python-?/i, "")
+    .replace(/['"]/g, "");
+  if (!cleaned) return "";
+
+  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
+  if (match) {
+    return match[0];
+  }
+
+  return "";
+}
+
+export function resolveRuffSetupVersion(declared: string): string {
+  if (!declared) return "";
+  const cleaned = extractRuffVersionSpecifier(declared) || declared.trim();
+  if (!cleaned) return "";
+
+  if (/^\d+(?:\.\d+)*$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const match = cleaned.match(/\d+\.\d+(?:\.\d+)?/);
+  if (match) {
+    return match[0];
+  }
+
+  return "";
 }
 
 function readPyprojectPythonVersion(

@@ -1474,7 +1474,7 @@ describe("resolve-environment", () => {
           detected: false,
           runtime: { name: "node", version: "24" },
           packageManager: { name: "npm", version: "12" },
-          toolchain: "",
+          toolchain: undefined,
         },
         python: {
           detected: true,
@@ -1497,6 +1497,33 @@ describe("resolve-environment", () => {
       expect(core.info).toHaveBeenNthCalledWith(1, "Runtime: Python 3.12");
       expect(core.info).toHaveBeenNthCalledWith(2, "Package Manager: uv 0.7.8");
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Ruff"));
+    });
+
+    it("Scenario 2b: Python with constraint version (>=3.11) logs 'Runtime: Python' without constraint in runtime line", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: false,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
+          toolchain: undefined,
+        },
+        python: {
+          detected: true,
+          version: ">=3.11",
+          ruffVersion: "0.17.2",
+          packageManager: {
+            name: "pip",
+            execPrefix: "",
+            installCommands: [],
+            isStandalone: true,
+          },
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.info).toHaveBeenCalledWith("Runtime: Python");
+      expect(core.info).not.toHaveBeenCalledWith("Runtime: Python >=3.11");
     });
 
     it("Scenario 3: Multiple detected environments (JavaScript and Python) consolidates categories into single lines", () => {
@@ -1567,7 +1594,7 @@ describe("resolve-environment", () => {
           detected: false,
           runtime: { name: "node", version: "24" },
           packageManager: { name: "npm", version: "12" },
-          toolchain: "",
+          toolchain: undefined,
         },
         python: {
           detected: false,
@@ -1582,6 +1609,156 @@ describe("resolve-environment", () => {
       expect(core.startGroup).not.toHaveBeenCalled();
       expect(core.endGroup).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith("No JavaScript or Python environment detected.");
+    });
+
+    describe("Toolchain Logging Contract Enforcement", () => {
+      it("1. Vite+ detected: exactly one 'Toolchain: Vite+' line", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
+            toolchain: "vite-plus",
+          },
+          python: {
+            detected: false,
+            version: "",
+            ruffVersion: "",
+            packageManager: null,
+          },
+        };
+
+        logResolvedEnvironment(env);
+
+        const toolchainLogs = (core.info as any).mock.calls.filter(([arg]: [string]) =>
+          arg.includes("Toolchain"),
+        );
+        expect(toolchainLogs).toHaveLength(1);
+        expect(toolchainLogs[0][0]).toBe("Toolchain: Vite+");
+      });
+
+      it("2. Standard Vite only: no line containing 'Toolchain'", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
+            toolchain: undefined,
+          },
+          python: {
+            detected: false,
+            version: "",
+            ruffVersion: "",
+            packageManager: null,
+          },
+        };
+
+        logResolvedEnvironment(env);
+
+        const toolchainLogs = (core.info as any).mock.calls.filter(([arg]: [string]) =>
+          arg.includes("Toolchain"),
+        );
+        expect(toolchainLogs).toHaveLength(0);
+      });
+
+      it("3. JavaScript project with no Vite+: no line containing 'Toolchain'", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "pnpm", version: "12" },
+            toolchain: undefined,
+          },
+          python: {
+            detected: false,
+            version: "",
+            ruffVersion: "",
+            packageManager: null,
+          },
+        };
+
+        logResolvedEnvironment(env);
+
+        const toolchainLogs = (core.info as any).mock.calls.filter(([arg]: [string]) =>
+          arg.includes("Toolchain"),
+        );
+        expect(toolchainLogs).toHaveLength(0);
+      });
+
+      it("4. Python-only project: no line containing 'Toolchain'", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: false,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
+            toolchain: undefined,
+          },
+          python: {
+            detected: true,
+            version: "3.12",
+            ruffVersion: "0.17.2",
+            packageManager: {
+              name: "uv",
+              version: "0.7.8",
+              execPrefix: "uv run",
+              installCommands: [{ executable: "uv", args: ["sync"] }],
+            },
+          },
+        };
+
+        logResolvedEnvironment(env);
+
+        const toolchainLogs = (core.info as any).mock.calls.filter(([arg]: [string]) =>
+          arg.includes("Toolchain"),
+        );
+        expect(toolchainLogs).toHaveLength(0);
+      });
+
+      it("5. No detected project: no line containing 'Toolchain'", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: false,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
+            toolchain: undefined,
+          },
+          python: {
+            detected: false,
+            version: "",
+            ruffVersion: "",
+            packageManager: null,
+          },
+        };
+
+        logResolvedEnvironment(env);
+
+        const toolchainLogs = (core.info as any).mock.calls.filter(([arg]: [string]) =>
+          arg.includes("Toolchain"),
+        );
+        expect(toolchainLogs).toHaveLength(0);
+      });
+
+      it("6. Missing toolchain represented internally as 'undefined', while public output remains backward-compatible as empty string", () => {
+        const env: ResolvedEnvironment = {
+          javascript: {
+            detected: true,
+            runtime: { name: "node", version: "24" },
+            packageManager: { name: "npm", version: "12" },
+            toolchain: undefined,
+          },
+          python: {
+            detected: false,
+            version: "",
+            ruffVersion: "",
+            packageManager: null,
+          },
+        };
+
+        expect(env.javascript.toolchain).toBeUndefined();
+
+        writeOutput(env);
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "");
+      });
     });
   });
 });
