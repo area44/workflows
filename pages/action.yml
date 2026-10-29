@@ -16,15 +16,9 @@ outputs:
   javascript-runtime:
     description: "The JavaScript runtime used (node or bun)"
     value: ${{ steps.resolve_environment.outputs.javascript-runtime }}
-  javascript-runtime-version:
-    description: "The version of the JavaScript runtime used"
-    value: ${{ steps.resolve_environment.outputs.javascript-runtime-version }}
   javascript-package-manager:
     description: "The JavaScript package manager used (npm, pnpm, or bun)"
     value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
-  javascript-package-manager-version:
-    description: "The version of the JavaScript package manager used"
-    value: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
   javascript-toolchain:
     description: "The resolved toolchain (vite-plus or empty string)"
     value: ${{ steps.resolve_environment.outputs.javascript-toolchain }}
@@ -55,8 +49,7 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-pnpm == 'true' }}
       uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3
       with:
-        version: ${{ steps.resolve_environment.outputs.javascript-package-manager-version }}
-        runtime: ${{ steps.resolve_environment.outputs.pnpm-runtime }}
+        runtime: ${{ steps.resolve_environment.outputs.javascript-runtime }}
         install: false
         cache: true
 
@@ -64,15 +57,12 @@ runs:
       id: setup_bun
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-bun == 'true' }}
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      with:
-        bun-version: ${{ steps.resolve_environment.outputs.bun-version }}
 
     - name: Setup Node.js
       id: setup_node
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.setup-node == 'true' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version: ${{ steps.resolve_environment.outputs.node-version }}
         cache: ${{ steps.resolve_environment.outputs.setup-node-cache }}
         cache-dependency-path: |
           **/package-lock.json
@@ -82,7 +72,6 @@ runs:
       if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.javascript-toolchain == 'vite-plus' }}
       uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
       with:
-        node-version: ${{ steps.resolve_environment.outputs.node-version }}
         cache: true
         run-install: true
 

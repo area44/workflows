@@ -47,21 +47,19 @@ This action accepts no inputs.
 
 ### Outputs
 
-| Name                                 | Description                                                           |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| `javascript-detected`                | Whether a JavaScript project (`package.json`) was detected            |
-| `javascript-runtime`                 | The resolved JavaScript runtime (`node` or `bun`)                     |
-| `javascript-runtime-version`         | The version of Node.js or Bun used                                    |
-| `javascript-package-manager`         | The package manager used (`npm`, `pnpm`, or `bun`)                    |
-| `javascript-package-manager-version` | The version of the package manager used                               |
-| `python-detected`                    | Whether Python source code (`.py`/`.pyi`) was detected                |
-| `python-version`                     | The Python version used                                               |
-| `python-package-manager`             | The Python package manager detected (`uv` or `pip`)                   |
-| `ruff-version`                       | The Ruff version specified by the project or empty string for default |
+| Name                         | Description                                                |
+| ---------------------------- | ---------------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
+| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
+| `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected     |
+| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)        |
 
 ## Environment Resolution & Runtime Selection
 
 This action automatically inspects the repository to resolve JavaScript/TypeScript and Python environments, target runtimes, package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`), and formatting/linting tools.
+
+When `pnpm` is selected, `pnpm/setup` handles pnpm and runtime setup directly without invoking redundant dedicated `actions/setup-node` or `oven-sh/setup-bun` steps. Dedicated runtime setup steps run when other package managers (`npm` or `bun`) are selected.
 
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
@@ -79,7 +77,7 @@ When `package.json` is present, the action selects package scripts based on dete
 
 When `.py` or `.pyi` source files exist outside excluded directories (`.venv`, `node_modules`, `dist`, `build`, `.git`, `__pycache__`), the action:
 
-1. Resolves the target Python version and package manager (`uv` or `pip`).
+1. Resolves the Python package manager (`uv` or `pip`).
 2. Provisions Ruff using `astral-sh/ruff-action`.
 3. Runs `ruff check --fix .` to apply automated lint fixes.
 4. Runs `ruff format .` to format Python source files.

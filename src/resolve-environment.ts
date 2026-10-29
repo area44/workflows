@@ -8,16 +8,9 @@ import {
   validateRuntimePackageManagerCompatibility,
   type ResolvedJavaScriptEnvironment,
 } from "./javascript-env.js";
-import {
-  resolvePythonEnvironment,
-  resolvePythonSetupVersion,
-  resolveRuffSetupVersion,
-  isExactVersion,
-  type ResolvedPythonEnvironment,
-} from "./python-env.js";
+import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
 import {
   createSetupPlan,
-  resolvePnpmSetupRuntime,
   type BunSetupPlan,
   type NodeSetupPlan,
   type PnpmSetupPlan,
@@ -33,7 +26,7 @@ export type {
   SetupPlan,
 };
 
-export { resolveJsEnvironment, resolvePythonEnvironment, resolvePnpmSetupRuntime, createSetupPlan };
+export { resolveJsEnvironment, resolvePythonEnvironment, createSetupPlan };
 
 export interface ResolvedEnvironment {
   javascript: ResolvedJavaScriptEnvironment;
@@ -61,19 +54,8 @@ function validateJsEnvironment(js: unknown): void {
     throw new Error(`Invalid resolved runtime: "${String(runtimeName)}"`);
   }
 
-  if (typeof runtimeObj.version !== "string") {
-    throw new Error('Invalid JavaScript environment: "runtime.version" must be a string');
-  }
-
   const pmObj = jsObj.packageManager as Record<string, unknown> | undefined;
-  if (
-    !pmObj ||
-    typeof pmObj !== "object" ||
-    typeof pmObj.name !== "string" ||
-    typeof pmObj.version !== "string" ||
-    !pmObj.name ||
-    !pmObj.version
-  ) {
+  if (!pmObj || typeof pmObj !== "object" || typeof pmObj.name !== "string" || !pmObj.name) {
     throw new Error("Invalid resolved package manager");
   }
 
@@ -117,14 +99,7 @@ function validatePmInfoFields(pmObj: Record<string, unknown>): void {
   if (typeof pmObj.execPrefix !== "string") {
     throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
   }
-  const optionalStrings = [
-    "version",
-    "versionSource",
-    "lockfile",
-    "configFile",
-    "lockCommand",
-    "syncCommand",
-  ];
+  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
   for (const field of optionalStrings) {
     if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
       throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
@@ -187,16 +162,6 @@ function validateNoPythonSourceEnv(pyObj: Record<string, unknown>): void {
       'Invalid Python environment: "packageManager" must be null when detected is false',
     );
   }
-  if (pyObj.version !== "") {
-    throw new Error(
-      'Invalid Python environment: "version" must be empty string when detected is false',
-    );
-  }
-  if (pyObj.ruffVersion !== "") {
-    throw new Error(
-      'Invalid Python environment: "ruffVersion" must be empty string when detected is false',
-    );
-  }
 }
 
 function validatePythonEnvironment(python: unknown): void {
@@ -208,12 +173,6 @@ function validatePythonEnvironment(python: unknown): void {
 
   if (typeof pyObj.detected !== "boolean") {
     throw new Error('Invalid Python environment: "detected" must be a boolean');
-  }
-  if (typeof pyObj.version !== "string") {
-    throw new Error('Invalid Python environment: "version" must be a string');
-  }
-  if (typeof pyObj.ruffVersion !== "string") {
-    throw new Error('Invalid Python environment: "ruffVersion" must be a string');
   }
   if (!("packageManager" in pyObj) || pyObj.packageManager === undefined) {
     throw new Error('Invalid Python environment: "packageManager" property is required');
@@ -256,9 +215,6 @@ export function writeOutput(env: ResolvedEnvironment): void {
   const plan = createSetupPlan(env);
 
   // Internal setup outputs
-  core.setOutput("node-version", plan.node.version);
-  core.setOutput("bun-version", plan.bun.version);
-  core.setOutput("pnpm-runtime", plan.pnpm.pnpmRuntime);
   core.setOutput("setup-node", String(plan.node.shouldSetup));
   core.setOutput("setup-node-cache", plan.node.cache);
   core.setOutput("setup-bun", String(plan.bun.shouldSetup));
@@ -268,41 +224,28 @@ export function writeOutput(env: ResolvedEnvironment): void {
   // Public ecosystem outputs
   core.setOutput("javascript-detected", String(js.detected));
   core.setOutput("javascript-runtime", js.runtime.name);
-  core.setOutput("javascript-runtime-version", js.runtime.version);
   core.setOutput("javascript-package-manager", js.packageManager.name);
-  core.setOutput("javascript-package-manager-version", js.packageManager.version);
   core.setOutput("javascript-toolchain", js.toolchain ?? "");
 
   core.setOutput("python-detected", String(python.detected));
-  core.setOutput("python-version", python.version);
-  core.setOutput("python-setup-version", resolvePythonSetupVersion(python.version));
   core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
-  core.setOutput("ruff-version", python.ruffVersion);
-  core.setOutput("ruff-setup-version", resolveRuffSetupVersion(python.ruffVersion));
 }
 
 function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
-  const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
-  return js.runtime.version ? `${runtimeName} ${js.runtime.version}` : runtimeName;
+  return js.runtime.name === "bun" ? "Bun" : "Node.js";
 }
 
-function formatPythonRuntime(py: ResolvedPythonEnvironment): string {
-  return py.version && isExactVersion(py.version) ? `Python ${py.version}` : "Python";
+function formatPythonRuntime(_py: ResolvedPythonEnvironment): string {
+  return "Python";
 }
 
 function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
-  return js.packageManager.version
-    ? `${js.packageManager.name} ${js.packageManager.version}`
-    : js.packageManager.name;
+  return js.packageManager.name;
 }
 
 function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
   if (!py.packageManager) return undefined;
-  const { name, version } = py.packageManager;
-  if (version) {
-    return `${name} ${version}`;
-  }
-  return name;
+  return py.packageManager.name;
 }
 
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
