@@ -58,7 +58,7 @@ This action automatically detects project environments, resolves target runtimes
 - **Runtime Resolution Precedence:** After conflict validation, runtime selection follows strict precedence: `package.json` `devEngines` > Version files > Package manager (`bun`) > Default fallback (`node`).
 - **Toolchain Resolution:** Detects Vite+ projects from `package.json` dependencies (using `voidzero-dev/setup-vp`) or defaults to standard Vite with package manager build commands.
 
-For full technical specifications, precedence algorithms, decision tables, and worked examples, see the canonical **[Environment Resolution Architecture](../docs/environment-resolution.md)** document.
+For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
 ## Exported Environment Variables
 

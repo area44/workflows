@@ -67,7 +67,7 @@ This action automatically detects JavaScript/TypeScript and Python environments,
 - **Runtime Resolution Precedence:** After conflict validation, JavaScript runtime selection follows strict precedence: `package.json` `devEngines` > Version files > Package manager (`bun`) > Default fallback (`node`).
 - **Python & Ruff Resolution:** Python source files (`.py`/`.pyi`) trigger Python environment setup (`uv` or `pip`). Ruff is provisioned using `astral-sh/ruff-action` using version pins extracted from `uv.lock`, manifests (`pyproject.toml`, `uv.toml`), or `requirements.txt`.
 
-For full technical specifications, precedence algorithms, decision tables, and worked examples, see the canonical **[Environment Resolution Architecture](../docs/environment-resolution.md)** document.
+For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
 ## Runtime and Workflow Behavior
 
