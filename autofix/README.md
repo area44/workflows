@@ -61,11 +61,7 @@ This action accepts no inputs.
 
 ## Environment Resolution & Runtime Selection
 
-This action automatically detects JavaScript/TypeScript and Python environments, resolves runtimes and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`), and provisions formatting/linting tools.
-
-- **Conflict Validation:** Configuration signals across `package.json` (`devEngines`, `packageManager`), version files (`.nvmrc`, `.node-version`, `.bun-version`), and lockfiles are validated for contradictions before runtime selection. Contradictory declarations trigger explicit errors.
-- **Runtime Resolution Precedence:** After conflict validation, JavaScript runtime selection follows strict precedence: `package.json` `devEngines` > Version files > Package manager (`bun`) > Default fallback (`node`).
-- **Python & Ruff Resolution:** Python source files (`.py`/`.pyi`) trigger Python environment setup (`uv` or `pip`). Ruff is provisioned using `astral-sh/ruff-action` using version pins extracted from `uv.lock`, manifests (`pyproject.toml`, `uv.toml`), or `requirements.txt`.
+This action automatically inspects the repository to resolve JavaScript/TypeScript and Python environments, target runtimes, package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`), and formatting/linting tools.
 
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 

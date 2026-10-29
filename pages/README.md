@@ -52,11 +52,7 @@ jobs:
 
 ## Environment Resolution & Runtime Selection
 
-This action automatically detects project environments, resolves target runtimes (`node` or `bun`) and package managers (`npm`, `pnpm`, or `bun`), and plans tool setup steps.
-
-- **Conflict Validation:** Configuration signals across `package.json` (`devEngines`, `packageManager`), version files (`.nvmrc`, `.node-version`, `.bun-version`), and lockfiles are validated for contradictions before runtime selection. Contradictory declarations trigger explicit errors.
-- **Runtime Resolution Precedence:** After conflict validation, runtime selection follows strict precedence: `package.json` `devEngines` > Version files > Package manager (`bun`) > Default fallback (`node`).
-- **Toolchain Resolution:** Detects Vite+ projects from `package.json` dependencies (using `voidzero-dev/setup-vp`) or defaults to standard Vite with package manager build commands.
+This action automatically inspects the repository, resolves target runtimes (`node` or `bun`), package managers (`npm`, `pnpm`, or `bun`), and toolchains (`vite` or `vite-plus`), and validates configuration signals for contradictions before setup execution.
 
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
