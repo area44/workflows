@@ -59,9 +59,3 @@
 
 - c5ef03e: refactor: dynamic consumer projects and fixture consolidation
 - 3f9fe3f: Refactor Autofix action to use GitHub Actions Toolkit APIs
-
-## 8.0.1
-
-### Patch Changes
-
-- 74c5aeb: Rename step from 'Update project with autofix' to 'Run autofix'
