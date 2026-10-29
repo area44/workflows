@@ -267,97 +267,64 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("ruff-version", python.ruffVersion);
 }
 
-function logJsSingleEnv(js: ResolvedJavaScriptEnvironment): void {
+function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
   const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
-  const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
-  core.info(`Runtime: ${runtimeName}${runtimeVer}`);
-
-  const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
-  core.info(`Package manager: ${js.packageManager.name}${pmVer}`);
-
-  if (js.toolchain) {
-    core.info(`Toolchain: ${js.toolchain}`);
-  }
+  return js.runtime.version ? `${runtimeName} ${js.runtime.version}` : runtimeName;
 }
 
-function logPythonSingleEnv(py: ResolvedPythonEnvironment): void {
-  const pyVer = py.version ? ` ${py.version}` : "";
-  core.info(`Runtime: Python${pyVer}`);
-
-  if (py.packageManager) {
-    core.info(`Package manager: ${py.packageManager.name}`);
-  }
-
-  if (py.ruffVersion) {
-    core.info(`Ruff: ${py.ruffVersion}`);
-  }
+function formatPythonRuntime(py: ResolvedPythonEnvironment): string {
+  return py.version ? `Python ${py.version}` : "Python";
 }
 
-function logSingleEnvironmentConfig(env: ResolvedEnvironment): void {
-  if (env.javascript.detected) {
-    logJsSingleEnv(env.javascript);
-  } else if (env.python.detected) {
-    logPythonSingleEnv(env.python);
-  }
+function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
+  return js.packageManager.version
+    ? `${js.packageManager.name} ${js.packageManager.version}`
+    : js.packageManager.name;
 }
 
-function logJsMultiEnv(js: ResolvedJavaScriptEnvironment): void {
-  if (!js.detected) return;
-  const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
-  const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
-  core.info(`JavaScript runtime: ${runtimeName}${runtimeVer}`);
-
-  const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
-  core.info(`JavaScript package manager: ${js.packageManager.name}${pmVer}`);
-
-  if (js.toolchain) {
-    core.info(`JavaScript toolchain: ${js.toolchain}`);
-  }
-}
-
-function logPythonMultiEnv(py: ResolvedPythonEnvironment): void {
-  if (!py.detected) return;
-  const pyVer = py.version ? ` ${py.version}` : "";
-  core.info(`Python runtime: Python${pyVer}`);
-
-  if (py.packageManager) {
-    core.info(`Python package manager: ${py.packageManager.name}`);
-  }
-
-  if (py.ruffVersion) {
-    core.info(`Python Ruff: ${py.ruffVersion}`);
-  }
-}
-
-function logMultiEnvironmentConfig(env: ResolvedEnvironment): void {
-  logJsMultiEnv(env.javascript);
-  logPythonMultiEnv(env.python);
+function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
+  return py.packageManager ? py.packageManager.name : undefined;
 }
 
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   const js = env.javascript;
-  const python = env.python;
+  const py = env.python;
 
   const detectedLangs: string[] = [];
   if (js.detected) detectedLangs.push("JavaScript");
-  if (python.detected) detectedLangs.push("Python");
+  if (py.detected) detectedLangs.push("Python");
 
   if (detectedLangs.length === 0) {
     core.info("Neither JavaScript/TypeScript nor Python project detected.");
     return;
   }
 
-  core.startGroup("Environment");
   core.info(`Detected: ${detectedLangs.join(", ")}`);
-  core.endGroup();
 
-  core.startGroup("Resolved Configuration");
-  if (detectedLangs.length === 1) {
-    logSingleEnvironmentConfig(env);
-  } else {
-    logMultiEnvironmentConfig(env);
+  const runtimes: string[] = [];
+  if (js.detected) runtimes.push(formatJsRuntime(js));
+  if (py.detected) runtimes.push(formatPythonRuntime(py));
+  if (runtimes.length > 0) {
+    core.info(`Runtime: ${runtimes.join(", ")}`);
   }
-  core.endGroup();
+
+  const pms: string[] = [];
+  if (js.detected) pms.push(formatJsPackageManager(js));
+  if (py.detected) {
+    const pyPm = formatPythonPackageManager(py);
+    if (pyPm) pms.push(pyPm);
+  }
+  if (pms.length > 0) {
+    core.info(`Package Manager: ${pms.join(", ")}`);
+  }
+
+  if (js.detected && js.toolchain) {
+    core.info(`Toolchain: ${js.toolchain}`);
+  }
+
+  if (py.detected && py.ruffVersion) {
+    core.info(`Ruff: ${py.ruffVersion}`);
+  }
 }
 
 /**
