@@ -59,6 +59,8 @@ This action accepts no inputs.
 
 This action automatically inspects the repository to resolve JavaScript/TypeScript and Python environments, target runtimes, package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`), and formatting/linting tools.
 
+When `pnpm` is selected, `pnpm/setup` handles pnpm and runtime setup directly without invoking redundant dedicated `actions/setup-node` or `oven-sh/setup-bun` steps. Dedicated runtime setup steps run when other package managers (`npm` or `bun`) are selected.
+
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
 ## Runtime and Workflow Behavior

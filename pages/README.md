@@ -9,7 +9,7 @@ The `pages` composite action automates static site builds and artifact generatio
 ## Features and Supported Behavior
 
 - **Automatic Environment Resolution:** Automatically detects project package manager (`npm`, `pnpm`, `bun`) and runtime (`node`, `bun`).
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic detection from project configuration (`packageManager` and `devEngines`).
+- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic detection from project configuration (`.bun-version`, `.nvmrc`, `.node-version`, `packageManager`, and `devEngines`).
 - **Automatic Vite+ Detection:** Automatically detects Vite+ project configuration and executes `vp build` (or falls back to `vpr build` if `vp` is unavailable).
 - **Custom Build Commands:** Supports custom build commands via `build-command` input.
 - **Site Environment Export:** Automatically exports `SITE` (`https://<owner>.github.io`), `BASE`, and `BASE_URL` (`/` for primary user/org site, `/<repo>/` for project sites) environment variables for build steps.
@@ -75,6 +75,8 @@ jobs:
 ## Environment Resolution & Runtime Selection
 
 This action automatically inspects the repository to resolve JavaScript/TypeScript environment, target runtime, package manager, and toolchain.
+
+When `pnpm` is selected, `pnpm/setup` handles pnpm and runtime setup directly without invoking redundant dedicated `actions/setup-node` or `oven-sh/setup-bun` steps. Dedicated runtime setup steps run when other package managers (`npm` or `bun`) are selected.
 
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
