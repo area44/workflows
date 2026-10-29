@@ -1237,7 +1237,6 @@ enabled = true
           ruffVersion: "",
           packageManager: null,
         });
-        expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
       } finally {
         proj.cleanup();
       }
@@ -1251,9 +1250,6 @@ enabled = true
         expect(resolved.version).toBe("3.12");
         expect(resolved.ruffVersion).toBe("0.17.2");
         expect(resolved.packageManager?.name).toBe("uv");
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
-        expect(core.info).toHaveBeenCalledWith("Resolved Ruff version: 0.17.2");
       } finally {
         proj.cleanup();
       }

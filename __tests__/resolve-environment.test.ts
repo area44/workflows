@@ -15,6 +15,7 @@ import {
 import type { ResolvedEnvironment } from "../src/resolve-environment.js";
 import {
   createSetupPlan,
+  logResolvedEnvironment,
   resolveEnvironment,
   resolvePnpmSetupRuntime,
   run,
@@ -444,10 +445,10 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(false);
         expect(env.python.detected).toBe(true);
 
-        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
+        expect(core.info).not.toHaveBeenCalledWith("Detected: JavaScript");
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .nvmrc"));
         expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Found .bun-version"));
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+        expect(core.info).toHaveBeenCalledWith("Detected: Python");
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
@@ -478,9 +479,12 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(true);
         expect(env.python.detected).toBe(false);
 
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
-        expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
+        expect(core.startGroup).not.toHaveBeenCalled();
+        expect(core.endGroup).not.toHaveBeenCalled();
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript");
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}`);
+        expect(core.info).toHaveBeenCalledWith(`Package Manager: npm ${DEFAULT_NPM_VERSION}`);
+        expect(core.info).toHaveBeenCalledWith("Toolchain: vite");
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "true");
@@ -515,9 +519,12 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(false);
         expect(env.python.detected).toBe(true);
 
-        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
+        expect(core.startGroup).not.toHaveBeenCalled();
+        expect(core.endGroup).not.toHaveBeenCalled();
+        expect(core.info).toHaveBeenCalledWith("Detected: Python");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Package Manager: pip");
+        expect(core.info).toHaveBeenCalledWith("Ruff: 0.4.2");
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
@@ -555,8 +562,11 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(true);
         expect(env.python.detected).toBe(true);
 
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
+        expect(core.startGroup).not.toHaveBeenCalled();
+        expect(core.endGroup).not.toHaveBeenCalled();
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript, Python");
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python 3.12`);
+        expect(core.info).toHaveBeenCalledWith("Package Manager: pnpm 9.0.0, uv");
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "true");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
@@ -586,10 +596,9 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(false);
         expect(env.python.detected).toBe(false);
 
-        expect(core.info).not.toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).not.toHaveBeenCalledWith("Detected Python project.");
+        expect(core.startGroup).not.toHaveBeenCalled();
         expect(core.info).toHaveBeenCalledWith(
-          "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
+          "No supported project environment detected.",
         );
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
@@ -623,9 +632,9 @@ describe("resolve-environment", () => {
 
         expect(env.javascript.runtime.name).toBe("node");
         expect(env.javascript.packageManager).toMatchObject({ name: "npm", version: "12.0.0" });
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
-        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: npm@12.0.0");
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript");
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}`);
+        expect(core.info).toHaveBeenCalledWith("Package Manager: npm 12.0.0");
         expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
         expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "12.0.0");
       } finally {
@@ -649,9 +658,9 @@ describe("resolve-environment", () => {
 
         expect(env.javascript.runtime.name).toBe("node");
         expect(env.javascript.packageManager).toMatchObject({ name: "pnpm", version: "9.5.0" });
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Node.js.");
-        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: pnpm@9.5.0");
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript");
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}`);
+        expect(core.info).toHaveBeenCalledWith("Package Manager: pnpm 9.5.0");
         expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
         expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "pnpm");
       } finally {
@@ -675,9 +684,9 @@ describe("resolve-environment", () => {
 
         expect(env.javascript.runtime.name).toBe("bun");
         expect(env.javascript.packageManager).toMatchObject({ name: "bun", version: "1.4.0" });
-        expect(core.info).toHaveBeenCalledWith("Detected JavaScript/TypeScript project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved runtime: Bun.");
-        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@1.4.0");
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Bun 1.4.0");
+        expect(core.info).toHaveBeenCalledWith("Package Manager: bun 1.4.0");
         expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4.0");
       } finally {
@@ -734,8 +743,9 @@ describe("resolve-environment", () => {
         expect(env.javascript.runtime.name).toBe("bun");
         expect(env.javascript.runtime.version).toBe("latest");
         expect(env.javascript.packageManager).toMatchObject({ name: "bun", version: "latest" });
-        expect(core.info).toHaveBeenCalledWith("Found packageManager in package.json: bun@latest");
-        expect(core.info).toHaveBeenCalledWith("Found Bun version in packageManager: latest");
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Bun latest");
+        expect(core.info).toHaveBeenCalledWith("Package Manager: bun latest");
         expect(core.setOutput).toHaveBeenCalledWith("bun-version", "latest");
         expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager-version", "latest");
       } finally {
@@ -757,8 +767,9 @@ describe("resolve-environment", () => {
 
         expect(env.python.detected).toBe(true);
         expect(env.python.packageManager?.name).toBe("uv");
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: uv");
+        expect(core.info).toHaveBeenCalledWith("Detected: Python");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Package Manager: uv");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
@@ -779,8 +790,9 @@ describe("resolve-environment", () => {
 
         expect(env.python.detected).toBe(true);
         expect(env.python.packageManager?.name).toBe("pip");
-        expect(core.info).toHaveBeenCalledWith("Detected Python project.");
-        expect(core.info).toHaveBeenCalledWith("Resolved Python package manager: pip");
+        expect(core.info).toHaveBeenCalledWith("Detected: Python");
+        expect(core.info).toHaveBeenCalledWith("Runtime: Python 3.12");
+        expect(core.info).toHaveBeenCalledWith("Package Manager: pip");
         expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
@@ -802,12 +814,9 @@ describe("resolve-environment", () => {
         expect(env.javascript.runtime.version).toBe(DEFAULT_NODE_VERSION);
         expect(env.python.version).toBe("3.12");
 
-        expect(core.info).toHaveBeenCalledWith(
-          `Node.js version not specified; using default: ${DEFAULT_NODE_VERSION}`,
-        );
-        expect(core.info).toHaveBeenCalledWith(
-          `Python version not specified; using default: 3.12`,
-        );
+        expect(core.info).toHaveBeenCalledWith("Detected: JavaScript, Python");
+        expect(core.info).toHaveBeenCalledWith(`Runtime: Node.js ${DEFAULT_NODE_VERSION}, Python 3.12`);
+        expect(core.info).toHaveBeenCalledWith(`Package Manager: npm ${DEFAULT_NPM_VERSION}, pip`);
 
         expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
         expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
@@ -1444,6 +1453,148 @@ describe("resolve-environment", () => {
           `| \`${legacyName}\` |`,
         );
       }
+    });
+  });
+
+  describe("Log Formatting and Presentation Requirements (logResolvedEnvironment)", () => {
+    it("Scenario 1: Single-environment resolution (JavaScript) formats plain consolidated lines without groups", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "22" },
+          packageManager: { name: "pnpm", version: "10.5.2" },
+          toolchain: "vite",
+        },
+        python: {
+          detected: false,
+          version: "",
+          ruffVersion: "",
+          packageManager: null,
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.startGroup).not.toHaveBeenCalled();
+      expect(core.endGroup).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenNthCalledWith(1, "Detected: JavaScript");
+      expect(core.info).toHaveBeenNthCalledWith(2, "Runtime: Node.js 22");
+      expect(core.info).toHaveBeenNthCalledWith(3, "Package Manager: pnpm 10.5.2");
+      expect(core.info).toHaveBeenNthCalledWith(4, "Toolchain: vite");
+    });
+
+    it("Scenario 2: Single-environment resolution (Python) formats plain consolidated lines without groups", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: false,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
+          toolchain: "vite",
+        },
+        python: {
+          detected: true,
+          version: "3.12",
+          ruffVersion: "0.17.2",
+          packageManager: {
+            name: "uv",
+            execPrefix: "uv run",
+            installCommands: [{ executable: "uv", args: ["sync"] }],
+          },
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.startGroup).not.toHaveBeenCalled();
+      expect(core.endGroup).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenNthCalledWith(1, "Detected: Python");
+      expect(core.info).toHaveBeenNthCalledWith(2, "Runtime: Python 3.12");
+      expect(core.info).toHaveBeenNthCalledWith(3, "Package Manager: uv");
+      expect(core.info).toHaveBeenNthCalledWith(4, "Ruff: 0.17.2");
+    });
+
+    it("Scenario 3: Multiple detected environments (JavaScript and Python) consolidates categories into single lines", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: true,
+          runtime: { name: "node", version: "22" },
+          packageManager: { name: "pnpm", version: "10.5.2" },
+          toolchain: "vite-plus",
+        },
+        python: {
+          detected: true,
+          version: "3.12",
+          ruffVersion: "0.17.2",
+          packageManager: {
+            name: "uv",
+            execPrefix: "uv run",
+            installCommands: [{ executable: "uv", args: ["sync"] }],
+          },
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.startGroup).not.toHaveBeenCalled();
+      expect(core.endGroup).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenNthCalledWith(1, "Detected: JavaScript, Python");
+      expect(core.info).toHaveBeenNthCalledWith(2, "Runtime: Node.js 22, Python 3.12");
+      expect(core.info).toHaveBeenNthCalledWith(3, "Package Manager: pnpm 10.5.2, uv");
+      expect(core.info).toHaveBeenNthCalledWith(4, "Toolchain: vite-plus");
+      expect(core.info).toHaveBeenNthCalledWith(5, "Ruff: 0.17.2");
+    });
+
+    it("Scenario 4: Unavailable optional values (empty ruffVersion) are omitted without placeholder lines", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: false,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
+          toolchain: "vite",
+        },
+        python: {
+          detected: true,
+          version: "3.12",
+          ruffVersion: "",
+          packageManager: {
+            name: "pip",
+            execPrefix: "",
+            installCommands: [],
+            isStandalone: true,
+          },
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.startGroup).not.toHaveBeenCalled();
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Ruff"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("null"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("undefined"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("unknown"));
+    });
+
+    it("Scenario 5: No supported environment detected logs concise message without groups or runtime lines", () => {
+      const env: ResolvedEnvironment = {
+        javascript: {
+          detected: false,
+          runtime: { name: "node", version: "24" },
+          packageManager: { name: "npm", version: "12" },
+          toolchain: "vite",
+        },
+        python: {
+          detected: false,
+          version: "",
+          ruffVersion: "",
+          packageManager: null,
+        },
+      };
+
+      logResolvedEnvironment(env);
+
+      expect(core.startGroup).not.toHaveBeenCalled();
+      expect(core.endGroup).not.toHaveBeenCalled();
+      expect(core.info).toHaveBeenCalledWith("No supported project environment detected.");
     });
   });
 });

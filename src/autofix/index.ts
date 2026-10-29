@@ -31,7 +31,6 @@ async function runScriptCommand(
 
   const exitCode = await exec.exec(safePm, ["run", name], { cwd, ignoreReturnCode: true });
   if (exitCode !== 0) {
-    core.error(`Script "${name}" failed`);
     throw new Error(`Script "${name}" failed while executing "${displayCmd}".`);
   }
 }
@@ -45,7 +44,6 @@ async function runJsInstallationPlan(
 
   const exitCode = await exec.exec(plan.command, plan.args, { cwd, ignoreReturnCode: true });
   if (exitCode !== 0) {
-    core.error(`JS dependency installation failed: ${displayCmd}`);
     throw new Error(
       `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`,
     );
@@ -101,7 +99,6 @@ async function runPythonCommand(
   core.info(`Executing: ${displayCmd}`);
   const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
   if (exitCode !== 0) {
-    core.error(`Python command "${displayCmd}" failed`);
     throw new Error(
       `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`,
     );
@@ -141,14 +138,11 @@ export async function executePythonWorkflow(
 ): Promise<void> {
   validatePythonWorkflowPmInfo(pmInfo);
 
-  core.info(`Detected Python package manager: ${pmInfo.name}`);
-
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
   const hasPmBin = Boolean(await io.which(requiredBin, false));
 
   if (!hasPmBin && !pmInfo.isStandalone) {
     const message = `Required Python package manager '${requiredBin}' is not available in PATH.`;
-    core.error(message);
     throw new Error(message);
   }
 
@@ -170,7 +164,6 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
   const hasRuff = Boolean(await io.which("ruff", false));
   if (!hasRuff) {
     const message = "Required Python binary 'ruff' is not available in PATH.";
-    core.error(message);
     throw new Error(message);
   }
 
@@ -184,7 +177,6 @@ export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<v
     core.info(`Executing: ${displayCmd}`);
     const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
     if (exitCode !== 0) {
-      core.error(`Ruff command "${displayCmd}" failed`);
       throw new Error(`Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`);
     }
   }

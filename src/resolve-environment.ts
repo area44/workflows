@@ -267,6 +267,66 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("ruff-version", python.ruffVersion);
 }
 
+function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
+  const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
+  return js.runtime.version ? `${runtimeName} ${js.runtime.version}` : runtimeName;
+}
+
+function formatPythonRuntime(py: ResolvedPythonEnvironment): string {
+  return py.version ? `Python ${py.version}` : "Python";
+}
+
+function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
+  return js.packageManager.version
+    ? `${js.packageManager.name} ${js.packageManager.version}`
+    : js.packageManager.name;
+}
+
+function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
+  return py.packageManager ? py.packageManager.name : undefined;
+}
+
+export function logResolvedEnvironment(env: ResolvedEnvironment): void {
+  const js = env.javascript;
+  const py = env.python;
+
+  const detectedLangs: string[] = [];
+  if (js.detected) detectedLangs.push("JavaScript");
+  if (py.detected) detectedLangs.push("Python");
+
+  if (detectedLangs.length === 0) {
+    core.info("No supported project environment detected.");
+    return;
+  }
+
+  core.info(`Detected: ${detectedLangs.join(", ")}`);
+
+  const runtimes: string[] = [];
+  if (js.detected) runtimes.push(formatJsRuntime(js));
+  if (py.detected) runtimes.push(formatPythonRuntime(py));
+  if (runtimes.length > 0) {
+    core.info(`Runtime: ${runtimes.join(", ")}`);
+  }
+
+  const pms: string[] = [];
+  if (js.detected) pms.push(formatJsPackageManager(js));
+  if (py.detected) {
+    const pyPm = formatPythonPackageManager(py);
+    if (pyPm) pms.push(pyPm);
+  }
+  if (pms.length > 0) {
+    core.info(`Package Manager: ${pms.join(", ")}`);
+  }
+
+  if (js.detected && js.toolchain) {
+    core.info(`Toolchain: ${js.toolchain}`);
+  }
+
+  if (py.detected && py.ruffVersion) {
+    core.info(`Ruff: ${py.ruffVersion}`);
+  }
+}
+
 /**
  * Executes the full environment resolution pipeline:
  * Input Parsing -> Language Resolution (JS & Python) -> Validation -> Aggregate Environment
@@ -277,18 +337,15 @@ export function resolveEnvironment(
   const javascript = resolveJsEnvironment(toolchainInput);
   const python = resolvePythonEnvironment();
 
-  if (!javascript.detected && !python.detected) {
-    core.info(
-      "Neither JavaScript/TypeScript nor Python project detected. Default configuration will be used for any required resolution.",
-    );
-  }
-
   const env: ResolvedEnvironment = {
     javascript,
     python,
   };
 
-  return validateEnvironment(env);
+  const validated = validateEnvironment(env);
+  logResolvedEnvironment(validated);
+
+  return validated;
 }
 
 export function run(): void {
