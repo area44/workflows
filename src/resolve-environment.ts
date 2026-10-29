@@ -73,7 +73,7 @@ function validateJsEnvironment(js: unknown): void {
 
   if (
     typeof jsObj.toolchain !== "string" ||
-    (jsObj.toolchain !== "vite" && jsObj.toolchain !== "vite-plus")
+    (jsObj.toolchain !== "" && jsObj.toolchain !== "vite-plus")
   ) {
     throw new Error(`Invalid resolved toolchain: "${String(jsObj.toolchain)}"`);
   }
@@ -112,7 +112,7 @@ function validatePmInfoFields(pmObj: Record<string, unknown>): void {
   if (typeof pmObj.execPrefix !== "string") {
     throw new Error('Invalid Python environment: "pmInfo.execPrefix" must be a string');
   }
-  const optionalStrings = ["lockfile", "configFile", "lockCommand", "syncCommand"];
+  const optionalStrings = ["version", "lockfile", "configFile", "lockCommand", "syncCommand"];
   for (const field of optionalStrings) {
     if (pmObj[field] !== undefined && typeof pmObj[field] !== "string") {
       throw new Error(`Invalid Python environment: "pmInfo.${field}" must be a string`);
@@ -283,23 +283,19 @@ function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
 }
 
 function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
-  return py.packageManager ? py.packageManager.name : undefined;
+  if (!py.packageManager) return undefined;
+  const { name, version } = py.packageManager;
+  return version ? `${name} ${version}` : name;
 }
 
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   const js = env.javascript;
   const py = env.python;
 
-  const detectedLangs: string[] = [];
-  if (js.detected) detectedLangs.push("JavaScript");
-  if (py.detected) detectedLangs.push("Python");
-
-  if (detectedLangs.length === 0) {
-    core.info("No supported project environment detected.");
+  if (!js.detected && !py.detected) {
+    core.info("No JavaScript or Python environment detected.");
     return;
   }
-
-  core.info(`Detected: ${detectedLangs.join(", ")}`);
 
   const runtimes: string[] = [];
   if (js.detected) runtimes.push(formatJsRuntime(js));
@@ -318,12 +314,8 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
     core.info(`Package Manager: ${pms.join(", ")}`);
   }
 
-  if (js.detected && js.toolchain) {
-    core.info(`Toolchain: ${js.toolchain}`);
-  }
-
-  if (py.detected && py.ruffVersion) {
-    core.info(`Ruff: ${py.ruffVersion}`);
+  if (js.detected && js.toolchain === "vite-plus") {
+    core.info("Toolchain: Vite+");
   }
 }
 

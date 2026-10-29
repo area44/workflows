@@ -52,7 +52,7 @@ jobs:
 
 ## Environment Resolution & Runtime Selection
 
-This action automatically inspects the repository, resolves target runtimes (`node` or `bun`), package managers (`npm`, `pnpm`, or `bun`), and toolchains (`vite` or `vite-plus`), and validates configuration signals for contradictions before setup execution.
+This action automatically inspects the repository, resolves target runtimes (`node` or `bun`), package managers (`npm`, `pnpm`, or `bun`), and toolchains (`vite-plus` or empty string when absent), and validates configuration signals for contradictions before setup execution.
 
 For design principles, decision flow, conflict handling, and setup planning details, see the **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**.
 
@@ -75,7 +75,7 @@ The action automatically resolves and exports the following environment variable
 | `javascript-runtime-version`         | The version of Node.js or Bun used                         |
 | `javascript-package-manager`         | The package manager used (`npm`, `pnpm`, or `bun`)         |
 | `javascript-package-manager-version` | The version of the package manager used                    |
-| `javascript-toolchain`               | The resolved toolchain (`vite` or `vite-plus`)             |
+| `javascript-toolchain`               | The resolved toolchain (`vite-plus` or empty string)       |
 | `vp-version`                         | The version of Vite+ installed                             |
 
 ## Constraints and Failure Behavior

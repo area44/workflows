@@ -58,7 +58,7 @@ describe("javascript-env", () => {
       expect(res.detected).toBe(true);
       expect(res.packageManager).toEqual({ name: "pnpm", version: "9.1.0" });
       expect(res.runtime).toEqual({ name: "node", version: "20.10.0" });
-      expect(res.toolchain).toBe("vite");
+      expect(res.toolchain).toBe("");
     });
 
     it("should suppress JS detection logs when package.json is absent", () => {
@@ -125,9 +125,9 @@ describe("javascript-env", () => {
 
   describe("resolveToolchain", () => {
     it("should resolve toolchain correctly and sanitize unknown toolchain inputs", () => {
-      expect(resolveToolchain("vite")).toBe("vite");
+      expect(resolveToolchain("vite")).toBe("");
       expect(resolveToolchain("vite-plus")).toBe("vite-plus");
-      expect(resolveToolchain("auto")).toBe("vite");
+      expect(resolveToolchain("auto")).toBe("");
 
       const sensitiveToolchainInput = "invalid_toolchain_token_xyz123";
       let err: Error | undefined;

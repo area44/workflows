@@ -87,9 +87,7 @@ function resolveJsOptions(options) {
 
   const toolchain =
     options.toolchain ||
-    (type === "vite"
-      ? "vite"
-      : type === "vite-plus"
+    (type === "vite-plus"
       ? "vite-plus"
       : action === "pages" && type !== "consumer-integration" && options.fixture !== "consumer-project"
       ? "astro"

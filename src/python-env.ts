@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import child_process from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "smol-toml";
@@ -47,6 +48,7 @@ export interface PythonInstallCommand {
 
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
+  version?: string;
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -54,6 +56,38 @@ export interface PythonPackageManagerInfo {
   syncCommand?: string;
   execPrefix: string;
   isStandalone?: boolean;
+}
+
+export function getVerifiedUvVersion(): string | undefined {
+  try {
+    const output = child_process
+      .execFileSync("uv", ["--version"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+      })
+      .trim();
+    const match = output.match(/^uv\s+(\d+\.\d+\.\d+(?:-[a-z0-9_.-]+)?)/i);
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getVerifiedPipVersion(): string | undefined {
+  try {
+    const output = child_process
+      .execFileSync("pip", ["--version"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+      })
+      .trim();
+    const match = output.match(/^pip\s+(\d+\.\d+(?:\.\d+)?)/i);
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface ResolvedPythonEnvironment {
@@ -1199,12 +1233,19 @@ export function detectPythonPackageManager(
   const detected = detectUvFromContext(ctx) || detectPipFromContext(ctx);
 
   if (detected) {
+    const verifiedVersion =
+      detected.name === "uv" ? getVerifiedUvVersion() : getVerifiedPipVersion();
+    if (verifiedVersion) {
+      detected.version = verifiedVersion;
+    }
     return detected;
   }
 
   // Standalone Python project without manifest or lockfile
+  const pipVersion = getVerifiedPipVersion();
   return {
     name: "pip",
+    ...(pipVersion ? { version: pipVersion } : {}),
     installCommands: [],
     execPrefix: "",
     isStandalone: true,

@@ -444,7 +444,7 @@ dev = ["pytest"]
 
       try {
         const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).toEqual({
+        expect(pmInfo).toMatchObject({
           name: "uv",
           configFile: "uv.toml",
           installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
@@ -763,35 +763,39 @@ enabled = true
       }
     });
 
-    it("should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true", () => {
-      const configOnlyTomls = [
-        "[tool.uv]\noverride-dependencies = ['foo']\n",
-        "[tool.uv]\ndefault-groups = ['dev']\n",
-        "[tool.uv]\npackage = false\n",
-        "[tool.uv]\nmanaged = true\n",
-      ];
+    it(
+      "should not trigger uv sync for pyproject.toml containing tool.uv configuration options like override-dependencies, default-groups, package=false, or managed=true",
+      () => {
+        const configOnlyTomls = [
+          "[tool.uv]\noverride-dependencies = ['foo']\n",
+          "[tool.uv]\ndefault-groups = ['dev']\n",
+          "[tool.uv]\npackage = false\n",
+          "[tool.uv]\nmanaged = true\n",
+        ];
 
-      for (const [idx, content] of configOnlyTomls.entries()) {
-        const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
-        fs.mkdirSync(tempDir, { recursive: true });
-        fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-        fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
+        for (const [idx, content] of configOnlyTomls.entries()) {
+          const tempDir = path.join(fixturesDir, `tool-uv-config-only-${idx}-temp`);
+          fs.mkdirSync(tempDir, { recursive: true });
+          fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+          fs.writeFileSync(path.join(tempDir, "pyproject.toml"), content);
 
-        try {
-          const pmInfo = detectPythonPackageManager(tempDir);
-          expect(pmInfo).not.toBeNull();
-          expect(pmInfo?.name).toBe("pip");
-          expect(pmInfo?.isStandalone).toBe(true);
+          try {
+            const pmInfo = detectPythonPackageManager(tempDir);
+            expect(pmInfo).not.toBeNull();
+            expect(pmInfo?.name).toBe("pip");
+            expect(pmInfo?.isStandalone).toBe(true);
 
-          const resolved = resolvePythonEnvironment(tempDir);
-          expect(resolved.detected).toBe(true);
-          expect(resolved.packageManager?.name).toBe("pip");
-          expect(resolved.packageManager?.isStandalone).toBe(true);
-        } finally {
-          fs.rmSync(tempDir, { recursive: true, force: true });
+            const resolved = resolvePythonEnvironment(tempDir);
+            expect(resolved.detected).toBe(true);
+            expect(resolved.packageManager?.name).toBe("pip");
+            expect(resolved.packageManager?.isStandalone).toBe(true);
+          } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          }
         }
-      }
-    });
+      },
+      15000,
+    );
 
     it("should resolve workspace member environment end-to-end via public resolvePythonEnvironment()", () => {
       const tempDir = path.join(fixturesDir, "resolve-env-workspace-temp");

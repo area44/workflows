@@ -58,7 +58,7 @@ Each action's `action.yml` serves as the single source of truth for its public A
 | `javascript-runtime-version`         | The version of Node.js or Bun used                         |
 | `javascript-package-manager`         | The package manager used (`npm`, `pnpm`, or `bun`)         |
 | `javascript-package-manager-version` | The version of the package manager used                    |
-| `javascript-toolchain`               | The resolved toolchain (`vite` or `vite-plus`)             |
+| `javascript-toolchain`               | The resolved toolchain (`vite-plus` or empty string)       |
 | `vp-version`                         | The version of Vite+ installed                             |
 
 ### `autofix` (Automatically format and fix code)
