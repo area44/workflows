@@ -611,6 +611,12 @@ export function resolvePythonVersion(
     return ancestorRuntimeVer;
   }
 
+  // When a Python project is detected but no version is explicitly configured,
+  // resolve to the latest stable Python version supported by the action.
+  if (hasPythonProject(cwd)) {
+    return DEFAULT_PYTHON_VERSION;
+  }
+
   return "";
 }
 

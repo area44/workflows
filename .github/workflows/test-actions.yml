@@ -187,27 +187,86 @@ jobs:
           ACTION_PATH: ${{ github.workspace }}/action-source/pages
           BUILD_COMMAND: ${{ matrix.build_command }}
           BUILD_PATH: ${{ matrix.build_path }}
-          PACKAGE_MANAGER: ${{ matrix.pm }}
+          EXPECTED_PM: ${{ matrix.pm }}
+          EXPECTED_RUNTIME: ${{ matrix.runtime }}
+          NEGATIVE_TYPE: ${{ matrix.negative_type }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
+          set -e
           node "$ACTION_PATH/../dist/resolve-environment.mjs"
           node "$ACTION_PATH/../dist/site-variables.mjs"
-          PM="${PACKAGE_MANAGER:-npm}"
-          case "$PM" in
+
+          ACTUAL_PM=$(node -e '
+            const fs = require("fs");
+            const file = process.env.GITHUB_OUTPUT;
+            if (!file || !fs.existsSync(file)) process.exit(1);
+            const content = fs.readFileSync(file, "utf8");
+            const m = content.match(/javascript-package-manager<<(ghadelimiter_[^\n]+)\n([\s\S]*?)\n\1/) || content.match(/javascript-package-manager=(.*)/);
+            if (m) console.log(m[2] !== undefined ? m[2].trim() : m[1].trim());
+          ')
+
+          ACTUAL_RUNTIME=$(node -e '
+            const fs = require("fs");
+            const file = process.env.GITHUB_OUTPUT;
+            if (!file || !fs.existsSync(file)) process.exit(1);
+            const content = fs.readFileSync(file, "utf8");
+            const m = content.match(/javascript-runtime<<(ghadelimiter_[^\n]+)\n([\s\S]*?)\n\1/) || content.match(/javascript-runtime=(.*)/);
+            if (m) console.log(m[2] !== undefined ? m[2].trim() : m[1].trim());
+          ')
+
+          if [ "$ACTUAL_PM" != "$EXPECTED_PM" ]; then
+            echo "Error: Resolved package manager '$ACTUAL_PM' does not match expected '$EXPECTED_PM'"
+            exit 1
+          fi
+
+          if [ "$ACTUAL_RUNTIME" != "$EXPECTED_RUNTIME" ]; then
+            echo "Error: Resolved runtime '$ACTUAL_RUNTIME' does not match expected '$EXPECTED_RUNTIME'"
+            exit 1
+          fi
+
+          export PACKAGE_MANAGER="$ACTUAL_PM"
+
+          case "$ACTUAL_PM" in
             pnpm) pnpm install --frozen-lockfile ;;
             bun) bun install --frozen-lockfile ;;
             npm) if [ -f "package-lock.json" ]; then npm ci; else npm install; fi ;;
-            *) "$PM" install ;;
+            *) "$ACTUAL_PM" install ;;
           esac
+
           set +e
-          HARNESS_OUTPUT=$(node "$ACTION_PATH/../dist/build-command.mjs" 2>&1)
+          node "$ACTION_PATH/../dist/build-command.mjs" > /dev/null 2>&1
           EXIT_CODE=$?
           set -e
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "Error: Expected build-command.mjs execution to fail for scenario '${{ matrix.negative_type }}', but exited with code 0."
+
+          if [ $EXIT_CODE -ne 1 ]; then
+            echo "Error: Expected build-command.mjs execution to fail with exit code 1 for scenario '$NEGATIVE_TYPE', but got $EXIT_CODE."
             exit 1
           fi
-          echo "Captured expected failure in harness with exit code $EXIT_CODE."
+
+          ERROR_LOG_PATH="${RUNNER_TEMP}/pages_build_error.log"
+          if [ ! -f "$ERROR_LOG_PATH" ]; then
+            echo "Error: Build failure log '$ERROR_LOG_PATH' was not produced."
+            exit 1
+          fi
+
+          ACTUAL_ERROR_MSG=$(cat "$ERROR_LOG_PATH")
+          if [ "$NEGATIVE_TYPE" == "invalid_build_command" ]; then
+            EXPECTED_SUBSTRING="Build command execution failed with exit code"
+          elif [ "$NEGATIVE_TYPE" == "missing_output_dir" ]; then
+            EXPECTED_SUBSTRING="Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."
+          else
+            echo "Error: Unknown negative scenario type '$NEGATIVE_TYPE'."
+            exit 1
+          fi
+
+          if [[ "$ACTUAL_ERROR_MSG" != *"$EXPECTED_SUBSTRING"* ]]; then
+            echo "Error: Build error log content mismatch for '$NEGATIVE_TYPE'."
+            echo "  Expected substring: '$EXPECTED_SUBSTRING'"
+            echo "  Actual error log:   '$ACTUAL_ERROR_MSG'"
+            exit 1
+          fi
+
+          echo "Captured expected failure in harness with exit code $EXIT_CODE and verified failure reason: '$ACTUAL_ERROR_MSG'"
 
       - name: Test Autofix Action
         if: matrix.action == 'autofix'

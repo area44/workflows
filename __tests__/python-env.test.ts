@@ -1295,7 +1295,7 @@ enabled = true
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("");
+        expect(resolved.version).toBe("3.12");
         expect(resolved.ruffVersion).toBe("0.17.2");
         expect(resolved.packageManager?.name).toBe("uv");
       } finally {

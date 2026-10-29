@@ -68,7 +68,7 @@ describe("Consumer Project Module Integration Suite", () => {
       // Python Environment verification
       expect(env.python.detected).toBe(true);
       expect(env.python.packageManager?.name).toBe("pip");
-      expect(env.python.version).toBe("");
+      expect(env.python.version).toBe("3.12");
       expect(env.python.ruffVersion).toBe("0.17.2");
     });
 
@@ -83,7 +83,7 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "");
       expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
-      expect(core.setOutput).toHaveBeenCalledWith("python-version", "");
+      expect(core.setOutput).toHaveBeenCalledWith("python-version", "3.12");
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 
