@@ -267,6 +267,73 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("ruff-version", python.ruffVersion);
 }
 
+function logJsSingleEnv(js: ResolvedJavaScriptEnvironment): void {
+  const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
+  const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
+  core.info(`Runtime: ${runtimeName}${runtimeVer}`);
+
+  const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
+  core.info(`Package manager: ${js.packageManager.name}${pmVer}`);
+
+  if (js.toolchain) {
+    core.info(`Toolchain: ${js.toolchain}`);
+  }
+}
+
+function logPythonSingleEnv(py: ResolvedPythonEnvironment): void {
+  const pyVer = py.version ? ` ${py.version}` : "";
+  core.info(`Runtime: Python${pyVer}`);
+
+  if (py.packageManager) {
+    core.info(`Package manager: ${py.packageManager.name}`);
+  }
+
+  if (py.ruffVersion) {
+    core.info(`Ruff: ${py.ruffVersion}`);
+  }
+}
+
+function logSingleEnvironmentConfig(env: ResolvedEnvironment): void {
+  if (env.javascript.detected) {
+    logJsSingleEnv(env.javascript);
+  } else if (env.python.detected) {
+    logPythonSingleEnv(env.python);
+  }
+}
+
+function logJsMultiEnv(js: ResolvedJavaScriptEnvironment): void {
+  if (!js.detected) return;
+  const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
+  const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
+  core.info(`JavaScript runtime: ${runtimeName}${runtimeVer}`);
+
+  const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
+  core.info(`JavaScript package manager: ${js.packageManager.name}${pmVer}`);
+
+  if (js.toolchain) {
+    core.info(`JavaScript toolchain: ${js.toolchain}`);
+  }
+}
+
+function logPythonMultiEnv(py: ResolvedPythonEnvironment): void {
+  if (!py.detected) return;
+  const pyVer = py.version ? ` ${py.version}` : "";
+  core.info(`Python runtime: Python${pyVer}`);
+
+  if (py.packageManager) {
+    core.info(`Python package manager: ${py.packageManager.name}`);
+  }
+
+  if (py.ruffVersion) {
+    core.info(`Python Ruff: ${py.ruffVersion}`);
+  }
+}
+
+function logMultiEnvironmentConfig(env: ResolvedEnvironment): void {
+  logJsMultiEnv(env.javascript);
+  logPythonMultiEnv(env.python);
+}
+
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   const js = env.javascript;
   const python = env.python;
@@ -285,59 +352,11 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   core.endGroup();
 
   core.startGroup("Resolved Configuration");
-
   if (detectedLangs.length === 1) {
-    if (js.detected) {
-      const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
-      const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
-      core.info(`Runtime: ${runtimeName}${runtimeVer}`);
-
-      const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
-      core.info(`Package manager: ${js.packageManager.name}${pmVer}`);
-
-      if (js.toolchain) {
-        core.info(`Toolchain: ${js.toolchain}`);
-      }
-    } else if (python.detected) {
-      const pyVer = python.version ? ` ${python.version}` : "";
-      core.info(`Runtime: Python${pyVer}`);
-
-      if (python.packageManager) {
-        core.info(`Package manager: ${python.packageManager.name}`);
-      }
-
-      if (python.ruffVersion) {
-        core.info(`Ruff: ${python.ruffVersion}`);
-      }
-    }
+    logSingleEnvironmentConfig(env);
   } else {
-    if (js.detected) {
-      const runtimeName = js.runtime.name === "bun" ? "Bun" : "Node.js";
-      const runtimeVer = js.runtime.version ? ` ${js.runtime.version}` : "";
-      core.info(`JavaScript runtime: ${runtimeName}${runtimeVer}`);
-
-      const pmVer = js.packageManager.version ? ` ${js.packageManager.version}` : "";
-      core.info(`JavaScript package manager: ${js.packageManager.name}${pmVer}`);
-
-      if (js.toolchain) {
-        core.info(`JavaScript toolchain: ${js.toolchain}`);
-      }
-    }
-
-    if (python.detected) {
-      const pyVer = python.version ? ` ${python.version}` : "";
-      core.info(`Python runtime: Python${pyVer}`);
-
-      if (python.packageManager) {
-        core.info(`Python package manager: ${python.packageManager.name}`);
-      }
-
-      if (python.ruffVersion) {
-        core.info(`Python Ruff: ${python.ruffVersion}`);
-      }
-    }
+    logMultiEnvironmentConfig(env);
   }
-
   core.endGroup();
 }
 
