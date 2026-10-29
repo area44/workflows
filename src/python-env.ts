@@ -1,4 +1,3 @@
-import * as core from "@actions/core";
 import child_process from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +11,8 @@ export const PYTHON_PACKAGE_MANAGER_PRIORITY: readonly PythonPackageManager[] = 
 ] as const;
 
 export const DEFAULT_PYTHON_VERSION = "3.12";
+export const DEFAULT_UV_VERSION = "0.6";
+export const DEFAULT_PIP_VERSION = "24.0";
 
 export const DEFAULT_EXCLUDED_DIRS: readonly string[] = [
   ".git",
@@ -49,6 +50,7 @@ export interface PythonInstallCommand {
 export interface PythonPackageManagerInfo {
   name: PythonPackageManager;
   version?: string;
+  versionSource?: "detected" | "default";
   lockfile?: string;
   configFile?: string;
   installCommands: PythonInstallCommand[];
@@ -609,7 +611,7 @@ export function resolvePythonVersion(
     return ancestorRuntimeVer;
   }
 
-  return DEFAULT_PYTHON_VERSION;
+  return "";
 }
 
 /**
@@ -1199,19 +1201,35 @@ export function hasPythonProject(cwd: string = process.cwd()): boolean {
     return true;
   }
 
-  const ctx = findPythonProjectContext(cwd);
+  const resolvedCwd = path.resolve(cwd);
+  const dirs = collectParentDirs(resolvedCwd);
+  const selfCtx = findSelfManifestContext(resolvedCwd, dirs);
 
-  if (ctx.pyprojectToml?.success === true) {
-    if (isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent)) {
-      return true;
+  if (selfCtx) {
+    if (selfCtx.pyprojectToml?.success === true) {
+      if (isUvProjectConfigPresent(selfCtx.pyprojectToml.data, selfCtx.pyprojectToml.rawContent)) {
+        return true;
+      }
+      if (isRuffDeclaredInProject(cwd, undefined, selfCtx.pyprojectToml)) {
+        return true;
+      }
     }
-    if (isRuffDeclaredInProject(cwd, undefined, ctx.pyprojectToml)) {
+    if (
+      selfCtx.hasUvLock ||
+      selfCtx.hasRequirementsTxt ||
+      selfCtx.hasSetupPy ||
+      selfCtx.hasSetupCfg
+    ) {
       return true;
     }
   }
 
-  if (ctx.hasUvLock || ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg) {
-    return true;
+  const ancestorCtx = findAncestorManifestContext(resolvedCwd, dirs);
+  if (ancestorCtx.workspaceRootDir && ancestorCtx.workspaceRootToml?.success === true) {
+    const wsConfig = getWorkspaceConfigInDir(ancestorCtx.workspaceRootDir);
+    if (wsConfig && isWorkspaceMember(ancestorCtx.workspaceRootDir, resolvedCwd, wsConfig.config)) {
+      return true;
+    }
   }
 
   return false;
@@ -1221,7 +1239,7 @@ export function detectPythonPackageManager(
   cwd: string = process.cwd(),
   pyprojectToml?: ParsedToml | null,
 ): PythonPackageManagerInfo | null {
-  if (!hasPythonSource(cwd)) {
+  if (!hasPythonProject(cwd)) {
     return null;
   }
 
@@ -1237,6 +1255,10 @@ export function detectPythonPackageManager(
       detected.name === "uv" ? getVerifiedUvVersion() : getVerifiedPipVersion();
     if (verifiedVersion) {
       detected.version = verifiedVersion;
+      detected.versionSource = "detected";
+    } else {
+      detected.version = detected.name === "uv" ? DEFAULT_UV_VERSION : DEFAULT_PIP_VERSION;
+      detected.versionSource = "default";
     }
     return detected;
   }
@@ -1245,7 +1267,8 @@ export function detectPythonPackageManager(
   const pipVersion = getVerifiedPipVersion();
   return {
     name: "pip",
-    ...(pipVersion ? { version: pipVersion } : {}),
+    version: pipVersion || DEFAULT_PIP_VERSION,
+    versionSource: pipVersion ? "detected" : "default",
     installCommands: [],
     execPrefix: "",
     isStandalone: true,
@@ -1408,9 +1431,9 @@ export function isRuffDeclaredInProject(
  * Cohesive Python environment resolution entry point.
  */
 export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedPythonEnvironment {
-  const pySourcePresent = hasPythonSource(cwd);
+  const isPyProject = hasPythonProject(cwd);
 
-  if (!pySourcePresent) {
+  if (!isPyProject) {
     return {
       detected: false,
       version: "",

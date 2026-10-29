@@ -1,5 +1,6 @@
 import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import * as core from "@actions/core";
+import child_process from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -1246,12 +1247,55 @@ enabled = true
       }
     });
 
+    it("should retain uv selection and use DEFAULT_UV_VERSION when uv is selected but version query fails", () => {
+      const tempDir = path.join(fixturesDir, "uv-ver-fail-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hi')\n");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n[tool.uv]\ndev-dependencies = []\n");
+
+      vi.spyOn(child_process, "execFileSync").mockImplementation((cmd) => {
+        if (cmd === "uv") throw new Error("uv command failed");
+        return "pip 24.0";
+      });
+
+      try {
+        const resolved = resolvePythonEnvironment(tempDir);
+        expect(resolved.detected).toBe(true);
+        expect(resolved.packageManager?.name).toBe("uv");
+        expect(resolved.packageManager?.version).toBe("0.6");
+        expect(resolved.packageManager?.versionSource).toBe("default");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should use DEFAULT_PIP_VERSION when pip is selected but version query fails", () => {
+      const tempDir = path.join(fixturesDir, "pip-ver-fail-temp");
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hi')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      vi.spyOn(child_process, "execFileSync").mockImplementation(() => {
+        throw new Error("pip command failed");
+      });
+
+      try {
+        const resolved = resolvePythonEnvironment(tempDir);
+        expect(resolved.detected).toBe(true);
+        expect(resolved.packageManager?.name).toBe("pip");
+        expect(resolved.packageManager?.version).toBe("24.0");
+        expect(resolved.packageManager?.versionSource).toBe("default");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("should resolve python version, package manager, and ruff version when python source exists", () => {
       const proj = createConsumerProjectInTmp({ type: "python-uv" });
       try {
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
-        expect(resolved.version).toBe("3.12");
+        expect(resolved.version).toBe("");
         expect(resolved.ruffVersion).toBe("0.17.2");
         expect(resolved.packageManager?.name).toBe("uv");
       } finally {
@@ -1442,10 +1486,10 @@ enabled = true
       }
     });
 
-    it("should fallback to default python version 3.12 when no version file or constraint is present", () => {
+    it("should return empty string when no version file or constraint is present", () => {
       const proj = createConsumerProjectInTmp({ type: "python-none" });
       try {
-        expect(resolvePythonVersion(proj.dir)).toBe(DEFAULT_PYTHON_VERSION);
+        expect(resolvePythonVersion(proj.dir)).toBe("");
       } finally {
         proj.cleanup();
       }
@@ -2025,14 +2069,15 @@ enabled = true
       }
     });
 
-    it("should return null when no python source files exist, even if pyproject.toml exists", () => {
+    it("should detect package manager for project manifest evidence when no python source files exist", () => {
       const tempDir = path.join(fixturesDir, "manifest-no-source-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
       try {
         const pmInfo = detectPythonPackageManager(tempDir);
-        expect(pmInfo).toBeNull();
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("pip");
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
