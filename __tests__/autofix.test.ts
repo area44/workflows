@@ -12,6 +12,7 @@ import { executePythonWorkflow, executeRuffAutofix, run, sanitizePackageManager 
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");
+vi.mock("@actions/io");
 
 describe("autofix", () => {
   const originalEnv = { ...process.env };
