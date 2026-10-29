@@ -686,6 +686,38 @@ describe("resolve-environment", () => {
       }
     });
 
+    it("reports Bun runtime and Vite+ toolchain outputs correctly when Bun runtime is selected with Vite+", () => {
+      const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-bun-vite-plus-"));
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          name: "bun-vp-app",
+          packageManager: "bun@1.4.0",
+          devDependencies: { "@voidzero-dev/vite-plus": "^1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
+
+      process.chdir(tempDir);
+      try {
+        const env = resolveEnvironment();
+        writeOutput(env);
+
+        expect(env.javascript.runtime.name).toBe("bun");
+        expect(env.javascript.toolchain).toBe("vite-plus");
+
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "bun");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite-plus");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", DEFAULT_NODE_VERSION);
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4.0");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("preserves latest when Bun is configured through packageManager", () => {
       const tempDir = fs.mkdtempSync(path.join(fixturesDir, "matrix-bun-latest-"));
       fs.writeFileSync(

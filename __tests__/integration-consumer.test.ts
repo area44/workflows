@@ -87,6 +87,35 @@ describe("Consumer Project Module Integration Suite", () => {
       expect(core.setOutput).toHaveBeenCalledWith("ruff-version", "0.17.2");
     });
 
+    it("resolves Bun runtime with Vite+ toolchain and outputs expected Node version for Vite+ setup step", () => {
+      const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "consumer_bun_vp_test_"));
+      createConsumerProject(fixtureDir, {
+        action: "pages",
+        runtime: "bun",
+        pm: "bun@1.4",
+        toolchain: "vite-plus",
+        type: "vite-plus",
+      });
+      process.chdir(fixtureDir);
+
+      try {
+        const env = resolveEnvironment();
+        expect(env.javascript.runtime.name).toBe("bun");
+        expect(env.javascript.toolchain).toBe("vite-plus");
+
+        writeOutput(env);
+
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "bun");
+        expect(core.setOutput).toHaveBeenCalledWith("javascript-toolchain", "vite-plus");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-bun", "true");
+        expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
+        expect(core.setOutput).toHaveBeenCalledWith("node-version", "24");
+        expect(core.setOutput).toHaveBeenCalledWith("bun-version", "1.4");
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("Site Variables Resolution", () => {

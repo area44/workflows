@@ -1,4 +1,3 @@
-import type { ResolvedPythonEnvironment } from "./python-env.js";
 import type { ResolvedEnvironment } from "./resolve-environment.js";
 
 import {
@@ -24,23 +23,10 @@ export interface PnpmSetupPlan {
   pnpmRuntime: string;
 }
 
-export interface PythonSetupPlan {
-  shouldSetup: boolean;
-  version: string;
-  packageManager: "uv" | "pip" | "";
-}
-
-export interface RuffSetupPlan {
-  shouldSetup: boolean;
-  version: string;
-}
-
 export interface SetupPlan {
   node: NodeSetupPlan;
   bun: BunSetupPlan;
   pnpm: PnpmSetupPlan;
-  python: PythonSetupPlan;
-  ruff: RuffSetupPlan;
 }
 
 /**
@@ -83,21 +69,6 @@ export function planPnpmSetup(js: ResolvedJavaScriptEnvironment): PnpmSetupPlan 
   };
 }
 
-export function planPythonSetup(python: ResolvedPythonEnvironment): PythonSetupPlan {
-  return {
-    shouldSetup: python.detected,
-    version: python.version,
-    packageManager: python.packageManager ? python.packageManager.name : "",
-  };
-}
-
-export function planRuffSetup(python: ResolvedPythonEnvironment): RuffSetupPlan {
-  return {
-    shouldSetup: python.detected,
-    version: python.ruffVersion,
-  };
-}
-
 /**
  * Pure, deterministic function that constructs a complete SetupPlan from a ResolvedEnvironment.
  *
@@ -112,7 +83,5 @@ export function createSetupPlan(env: ResolvedEnvironment): SetupPlan {
     node: planNodeSetup(env.javascript),
     bun: planBunSetup(env.javascript),
     pnpm: planPnpmSetup(env.javascript),
-    python: planPythonSetup(env.python),
-    ruff: planRuffSetup(env.python),
   };
 }

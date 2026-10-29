@@ -15,8 +15,6 @@ import {
   type BunSetupPlan,
   type NodeSetupPlan,
   type PnpmSetupPlan,
-  type PythonSetupPlan,
-  type RuffSetupPlan,
   type SetupPlan,
 } from "./setup-plan.js";
 
@@ -26,8 +24,6 @@ export type {
   NodeSetupPlan,
   BunSetupPlan,
   PnpmSetupPlan,
-  PythonSetupPlan,
-  RuffSetupPlan,
   SetupPlan,
 };
 
@@ -240,11 +236,12 @@ export function validateEnvironment(env: ResolvedEnvironment): ResolvedEnvironme
 
 /**
  * Writes the resolved environment values and tool setup parameters to GitHub Actions outputs.
+ * Setup plan is derived directly from the supplied environment to guarantee environment/plan consistency.
  */
-export function writeOutput(env: ResolvedEnvironment, setupPlan?: SetupPlan): void {
+export function writeOutput(env: ResolvedEnvironment): void {
   const js = env.javascript;
   const python = env.python;
-  const plan = setupPlan ?? createSetupPlan(env);
+  const plan = createSetupPlan(env);
 
   // Internal setup outputs
   core.setOutput("node-version", plan.node.version);
@@ -254,7 +251,7 @@ export function writeOutput(env: ResolvedEnvironment, setupPlan?: SetupPlan): vo
   core.setOutput("setup-node-cache", plan.node.cache);
   core.setOutput("setup-bun", String(plan.bun.shouldSetup));
   core.setOutput("setup-pnpm", String(plan.pnpm.shouldSetup));
-  core.setOutput("setup-python", String(plan.python.shouldSetup));
+  core.setOutput("setup-python", String(python.detected));
 
   // Public ecosystem outputs
   core.setOutput("javascript-detected", String(js.detected));
@@ -265,9 +262,9 @@ export function writeOutput(env: ResolvedEnvironment, setupPlan?: SetupPlan): vo
   core.setOutput("javascript-toolchain", js.toolchain);
 
   core.setOutput("python-detected", String(python.detected));
-  core.setOutput("python-version", plan.python.version);
-  core.setOutput("python-package-manager", plan.python.packageManager);
-  core.setOutput("ruff-version", plan.ruff.version);
+  core.setOutput("python-version", python.version);
+  core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
+  core.setOutput("ruff-version", python.ruffVersion);
 }
 
 /**
@@ -298,8 +295,7 @@ export function run(): void {
   try {
     const toolchainInput = core.getInput("toolchain");
     const env = resolveEnvironment(toolchainInput);
-    const plan = createSetupPlan(env);
-    writeOutput(env, plan);
+    writeOutput(env);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     core.setFailed(`Environment setup failed: ${msg}`);

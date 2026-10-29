@@ -11,8 +11,6 @@ import {
   planBunSetup,
   planNodeSetup,
   planPnpmSetup,
-  planPythonSetup,
-  planRuffSetup,
   resolvePnpmSetupRuntime,
 } from "../src/setup-plan.js";
 
@@ -131,7 +129,7 @@ describe("setup-plan", () => {
       });
     });
 
-    it("should disable node setup when runtime is bun", () => {
+    it("should disable node setup when runtime is bun but preserve default node version for toolchain setup", () => {
       const env = createSampleEnvironment({
         javascript: {
           detected: true,
@@ -231,66 +229,6 @@ describe("setup-plan", () => {
     });
   });
 
-  describe("planPythonSetup and planRuffSetup", () => {
-    it("should plan python and ruff setup when python project is detected with uv", () => {
-      const env = createSampleEnvironment();
-      expect(planPythonSetup(env.python)).toEqual({
-        shouldSetup: true,
-        version: "3.12",
-        packageManager: "uv",
-      });
-      expect(planRuffSetup(env.python)).toEqual({
-        shouldSetup: true,
-        version: "0.4.2",
-      });
-    });
-
-    it("should plan python setup for pip package manager", () => {
-      const env = createSampleEnvironment({
-        python: {
-          detected: true,
-          version: "3.11",
-          ruffVersion: "",
-          packageManager: {
-            name: "pip",
-            execPrefix: "",
-            installCommands: [{ executable: "pip", args: ["install", "-r", "requirements.txt"] }],
-            isStandalone: false,
-          },
-        },
-      });
-      expect(planPythonSetup(env.python)).toEqual({
-        shouldSetup: true,
-        version: "3.11",
-        packageManager: "pip",
-      });
-      expect(planRuffSetup(env.python)).toEqual({
-        shouldSetup: true,
-        version: "",
-      });
-    });
-
-    it("should disable python and ruff setup when python is not detected", () => {
-      const env = createSampleEnvironment({
-        python: {
-          detected: false,
-          version: "",
-          ruffVersion: "",
-          packageManager: null,
-        },
-      });
-      expect(planPythonSetup(env.python)).toEqual({
-        shouldSetup: false,
-        version: "",
-        packageManager: "",
-      });
-      expect(planRuffSetup(env.python)).toEqual({
-        shouldSetup: false,
-        version: "",
-      });
-    });
-  });
-
   describe("createSetupPlan", () => {
     it("should generate complete SetupPlan for dual JS and Python project", () => {
       const env = createSampleEnvironment();
@@ -311,50 +249,30 @@ describe("setup-plan", () => {
           version: "12",
           pnpmRuntime: "node@24",
         },
-        python: {
-          shouldSetup: true,
-          version: "3.12",
-          packageManager: "uv",
-        },
-        ruff: {
-          shouldSetup: true,
-          version: "0.4.2",
-        },
       });
     });
 
-    it("should generate complete SetupPlan for JS-only project", () => {
-      const env = createSampleEnvironment({
-        python: {
-          detected: false,
-          version: "",
-          ruffVersion: "",
-          packageManager: null,
-        },
-      });
-      const plan = createSetupPlan(env);
-
-      expect(plan.node.shouldSetup).toBe(true);
-      expect(plan.python.shouldSetup).toBe(false);
-      expect(plan.ruff.shouldSetup).toBe(false);
-    });
-
-    it("should generate complete SetupPlan for Python-only project", () => {
+    it("should plan setup correctly when Bun runtime is selected with Vite+ toolchain", () => {
       const env = createSampleEnvironment({
         javascript: {
-          detected: false,
-          runtime: { name: "node", version: "24" },
-          packageManager: { name: "npm", version: "12" },
-          toolchain: "vite",
+          detected: true,
+          runtime: { name: "bun", version: "1.4" },
+          packageManager: { name: "bun", version: "1.4" },
+          toolchain: "vite-plus",
         },
       });
       const plan = createSetupPlan(env);
 
-      expect(plan.node.shouldSetup).toBe(false);
-      expect(plan.bun.shouldSetup).toBe(false);
+      expect(plan.bun).toEqual({
+        shouldSetup: true,
+        version: "1.4",
+      });
+      expect(plan.node).toEqual({
+        shouldSetup: false,
+        version: DEFAULT_NODE_VERSION,
+        cache: "",
+      });
       expect(plan.pnpm.shouldSetup).toBe(false);
-      expect(plan.python.shouldSetup).toBe(true);
-      expect(plan.ruff.shouldSetup).toBe(true);
     });
 
     it("should generate complete SetupPlan when neither ecosystem is detected", () => {
@@ -377,8 +295,6 @@ describe("setup-plan", () => {
       expect(plan.node.shouldSetup).toBe(false);
       expect(plan.bun.shouldSetup).toBe(false);
       expect(plan.pnpm.shouldSetup).toBe(false);
-      expect(plan.python.shouldSetup).toBe(false);
-      expect(plan.ruff.shouldSetup).toBe(false);
     });
   });
 
