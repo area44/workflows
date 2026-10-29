@@ -54,6 +54,9 @@ export interface JsProjectEnvironment {
   packageJsonError?: string;
   packageJsonErrorType?: "read" | "parse";
   packageJsonErrorCause?: unknown;
+  hasBunVersionFile: boolean;
+  hasNodeVersionFile: boolean;
+  nodeFileVersionFile?: string;
   hasPnpmLock: boolean;
   hasPackageLock: boolean;
   hasBunLock: boolean;
@@ -86,8 +89,11 @@ export interface ResolvedJavaScriptEnvironment {
 
 interface RuntimeSignals {
   hasBunPm: boolean;
+  hasBunVersionFile: boolean;
+  hasNodeVersionFile: boolean;
   hasBunDevEngine: boolean;
   hasNodeDevEngine: boolean;
+  nodeFileVersionFile?: string;
 }
 
 export function hasDevEngineRuntime(
@@ -131,18 +137,31 @@ export function hasDevEngineRuntime(
 function collectRuntimeSignals(pm: PackageManager, project?: JsProjectEnvironment): RuntimeSignals {
   const pkg = project?.packageJson;
   const hasBunPm = pm.name === "bun";
+  const hasBunVersionFile = Boolean(project?.hasBunVersionFile);
+  const hasNodeVersionFile = Boolean(project?.hasNodeVersionFile);
   const hasBunDevEngine = hasDevEngineRuntime(pkg, "bun");
   const hasNodeDevEngine = hasDevEngineRuntime(pkg, "node");
+  const nodeFileVersionFile = project?.nodeFileVersionFile;
 
   return {
     hasBunPm,
+    hasBunVersionFile,
+    hasNodeVersionFile,
     hasBunDevEngine,
     hasNodeDevEngine,
+    nodeFileVersionFile,
   };
 }
 
 function validateRuntimeConflicts(signals: RuntimeSignals): void {
-  const { hasBunPm, hasBunDevEngine, hasNodeDevEngine } = signals;
+  const {
+    hasBunPm,
+    hasBunVersionFile,
+    hasNodeVersionFile,
+    hasBunDevEngine,
+    hasNodeDevEngine,
+    nodeFileVersionFile,
+  } = signals;
 
   if (hasBunDevEngine && hasNodeDevEngine) {
     throw new Error(
@@ -150,9 +169,37 @@ function validateRuntimeConflicts(signals: RuntimeSignals): void {
     );
   }
 
-  if (hasBunPm && hasNodeDevEngine) {
+  if (hasBunPm) {
+    if (hasNodeDevEngine) {
+      throw new Error(
+        "Conflicting runtime configuration: packageManager indicates Bun but package.json devEngines specifies Node.js runtime.",
+      );
+    }
+    if (hasNodeVersionFile) {
+      const nodeFile = nodeFileVersionFile || ".nvmrc / .node-version";
+      throw new Error(
+        `Conflicting runtime configuration: packageManager indicates Bun but Node.js version file (${nodeFile}) specifies Node.js runtime.`,
+      );
+    }
+  }
+
+  if (hasBunVersionFile && hasNodeVersionFile && !hasBunDevEngine && !hasNodeDevEngine) {
+    const nodeFile = nodeFileVersionFile || ".nvmrc / .node-version";
     throw new Error(
-      "Conflicting runtime configuration: packageManager indicates Bun but package.json devEngines specifies Node.js runtime.",
+      `Conflicting runtime version files detected: found both .bun-version and Node.js version file (${nodeFile}).`,
+    );
+  }
+
+  if (hasBunVersionFile && hasNodeDevEngine) {
+    throw new Error(
+      "Conflicting runtime configuration: found .bun-version file but package.json devEngines specifies Node.js runtime.",
+    );
+  }
+
+  if (hasNodeVersionFile && hasBunDevEngine) {
+    const nodeFile = nodeFileVersionFile || ".nvmrc / .node-version";
+    throw new Error(
+      `Conflicting runtime configuration: found Node.js version file (${nodeFile}) but package.json devEngines specifies Bun runtime.`,
     );
   }
 }
@@ -164,8 +211,9 @@ function validateRuntimeConflicts(signals: RuntimeSignals): void {
  * Precedence Rules:
  * 1. Validate all collected runtime signals for conflicts before applying precedence.
  * 2. Explicit `devEngines` runtime declarations in `package.json` (`devEngines.bun` vs `devEngines.node`).
- * 3. Package manager (`pm.name === "bun"` via `packageManager`, `devEngines.packageManager`, or `bun.lock`).
- * 4. Default fallback -> Node.js.
+ * 3. Version files (`.bun-version` vs `.nvmrc` / `.node-version`).
+ * 4. Package manager (`pm.name === "bun"` via `packageManager`, `devEngines.packageManager`, or `bun.lock`).
+ * 5. Default fallback -> Node.js.
  */
 export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironment): "node" | "bun" {
   const hasJsProject = Boolean(
@@ -183,6 +231,8 @@ export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironmen
 
   if (signals.hasBunDevEngine) return "bun";
   if (signals.hasNodeDevEngine) return "node";
+  if (signals.hasBunVersionFile) return "bun";
+  if (signals.hasNodeVersionFile) return "node";
   if (signals.hasBunPm) return "bun";
 
   return "node";
@@ -374,6 +424,11 @@ function detectLockfiles(cwd: string): {
 export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProjectEnvironment {
   const pkgInfo = inspectPackageJson(cwd);
   const lockfiles = detectLockfiles(cwd);
+  const hasBunVersionFile = fs.existsSync(resolveFilePath(".bun-version", cwd));
+  const hasNvmRc = fs.existsSync(resolveFilePath(".nvmrc", cwd));
+  const hasNodeVersion = fs.existsSync(resolveFilePath(".node-version", cwd));
+  const hasNodeVersionFile = hasNvmRc || hasNodeVersion;
+  const nodeFileVersionFile = hasNvmRc ? ".nvmrc" : hasNodeVersion ? ".node-version" : undefined;
 
   return {
     hasPackageJson: pkgInfo.hasPackageJson,
@@ -381,6 +436,9 @@ export function inspectJsProjectEnvironment(cwd: string = process.cwd()): JsProj
     packageJsonError: pkgInfo.packageJsonError,
     packageJsonErrorType: pkgInfo.packageJsonErrorType,
     packageJsonErrorCause: pkgInfo.packageJsonErrorCause,
+    hasBunVersionFile,
+    hasNodeVersionFile,
+    nodeFileVersionFile,
     hasPnpmLock: lockfiles.hasPnpmLock,
     hasPackageLock: lockfiles.hasPackageLock,
     hasBunLock: lockfiles.hasBunLock,

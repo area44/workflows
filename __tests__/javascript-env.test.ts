@@ -52,6 +52,19 @@ describe("javascript-env", () => {
       expect(res.toolchain).toBeUndefined();
     });
 
+    it("should resolve Bun runtime for Bun project using pnpm with .bun-version file", () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ name: "bun-pnpm-app", packageManager: "pnpm@9.1.0" }),
+      );
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
+
+      const res = resolveJsEnvironment("auto", tempDir);
+      expect(res.detected).toBe(true);
+      expect(res.packageManager).toEqual({ name: "pnpm" });
+      expect(res.runtime).toEqual({ name: "bun" });
+    });
+
     it("should suppress JS detection logs when package.json is absent", () => {
       const res = resolveJsEnvironment("auto", tempDir);
       expect(res.detected).toBe(false);
@@ -134,6 +147,8 @@ describe("javascript-env", () => {
       const project = {
         hasPackageJson: true,
         packageJson: { devEngines: { node: "22.0.0", bun: "1.4.0" } },
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: false,
         hasBunLock: true,
@@ -147,6 +162,8 @@ describe("javascript-env", () => {
       const project = {
         hasPackageJson: true,
         packageJson: { devEngines: { node: "22.0.0" } },
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: false,
         hasBunLock: true,
@@ -156,10 +173,27 @@ describe("javascript-env", () => {
       );
     });
 
+    it("should fail when packageManager indicates Bun but a Node.js version file is present", () => {
+      const project = {
+        hasPackageJson: true,
+        hasBunVersionFile: false,
+        hasNodeVersionFile: true,
+        nodeFileVersionFile: ".nvmrc",
+        hasPnpmLock: false,
+        hasPackageLock: false,
+        hasBunLock: true,
+      };
+      expect(() => resolveRuntime({ name: "bun" }, project)).toThrow(
+        "Conflicting runtime configuration: packageManager indicates Bun but Node.js version file (.nvmrc) specifies Node.js runtime.",
+      );
+    });
+
     it("should fail when both devEngines.node and devEngines.bun are declared", () => {
       const project = {
         hasPackageJson: true,
         packageJson: { devEngines: { node: "22.0.0", bun: "1.4.0" } },
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: true,
         hasBunLock: false,
@@ -169,10 +203,39 @@ describe("javascript-env", () => {
       );
     });
 
+    it("should fail when both .bun-version and .nvmrc are present without explicit devEngines", () => {
+      const project = {
+        hasPackageJson: true,
+        hasBunVersionFile: true,
+        hasNodeVersionFile: true,
+        nodeFileVersionFile: ".nvmrc",
+        hasPnpmLock: true,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(() => resolveRuntime({ name: "pnpm" }, project)).toThrow(
+        "Conflicting runtime version files detected: found both .bun-version and Node.js version file (.nvmrc).",
+      );
+    });
+
     it("should resolve Bun when only devEngines.bun is declared", () => {
       const project = {
         hasPackageJson: true,
         packageJson: { devEngines: { bun: "1.4.0" } },
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
+        hasPnpmLock: true,
+        hasPackageLock: false,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "pnpm" }, project)).toBe("bun");
+    });
+
+    it("should resolve Bun for a project using pnpm with a .bun-version file", () => {
+      const project = {
+        hasPackageJson: true,
+        hasBunVersionFile: true,
+        hasNodeVersionFile: false,
         hasPnpmLock: true,
         hasPackageLock: false,
         hasBunLock: false,
@@ -184,6 +247,8 @@ describe("javascript-env", () => {
       const project = {
         hasPackageJson: true,
         packageJson: { devEngines: { node: "22.0.0" } },
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: true,
         hasBunLock: false,
@@ -191,9 +256,35 @@ describe("javascript-env", () => {
       expect(resolveRuntime({ name: "npm" }, project)).toBe("node");
     });
 
+    it("should resolve Node.js when a Node.js version file (.nvmrc or .node-version) is present", () => {
+      const projectNvm = {
+        hasPackageJson: true,
+        hasBunVersionFile: false,
+        hasNodeVersionFile: true,
+        nodeFileVersionFile: ".nvmrc",
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "npm" }, projectNvm)).toBe("node");
+
+      const projectNodeVer = {
+        hasPackageJson: true,
+        hasBunVersionFile: false,
+        hasNodeVersionFile: true,
+        nodeFileVersionFile: ".node-version",
+        hasPnpmLock: false,
+        hasPackageLock: true,
+        hasBunLock: false,
+      };
+      expect(resolveRuntime({ name: "npm" }, projectNodeVer)).toBe("node");
+    });
+
     it("should infer Bun when packageManager is Bun with no conflicting declarations", () => {
       const project = {
         hasPackageJson: true,
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: false,
         hasBunLock: true,
@@ -204,6 +295,8 @@ describe("javascript-env", () => {
     it("should resolve default node runtime when no explicit runtime declaration is present", () => {
       const project = {
         hasPackageJson: true,
+        hasBunVersionFile: false,
+        hasNodeVersionFile: false,
         hasPnpmLock: false,
         hasPackageLock: true,
         hasBunLock: false,
@@ -228,12 +321,17 @@ describe("javascript-env", () => {
   });
 
   describe("inspectJsProjectEnvironment", () => {
-    it("should detect package.json and lockfiles", () => {
+    it("should detect package.json, .bun-version, .nvmrc, .node-version, and lockfiles", () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test-pkg" }));
+      fs.writeFileSync(path.join(tempDir, ".bun-version"), "1.2.0\n");
+      fs.writeFileSync(path.join(tempDir, ".nvmrc"), "20.10.0\n");
 
       const env = inspectJsProjectEnvironment(tempDir);
       expect(env.hasPackageJson).toBe(true);
       expect(env.packageJson?.name).toBe("test-pkg");
+      expect(env.hasBunVersionFile).toBe(true);
+      expect(env.hasNodeVersionFile).toBe(true);
+      expect(env.nodeFileVersionFile).toBe(".nvmrc");
     });
 
     it("should detect pnpm-lock.yaml", () => {
