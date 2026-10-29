@@ -19,7 +19,6 @@ export interface BunSetupPlan {
 
 export interface PnpmSetupPlan {
   shouldSetup: boolean;
-  version: string;
   pnpmRuntime: string;
 }
 
@@ -64,7 +63,6 @@ export function planPnpmSetup(js: ResolvedJavaScriptEnvironment): PnpmSetupPlan 
   const shouldSetup = js.detected && js.packageManager.name === "pnpm";
   return {
     shouldSetup,
-    version: js.packageManager.version,
     pnpmRuntime: resolvePnpmSetupRuntime(js),
   };
 }

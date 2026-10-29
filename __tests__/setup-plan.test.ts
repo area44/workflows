@@ -198,7 +198,6 @@ describe("setup-plan", () => {
       });
       expect(planPnpmSetup(env.javascript)).toEqual({
         shouldSetup: true,
-        version: "9.0.0",
         pnpmRuntime: "node@24",
       });
     });
@@ -214,7 +213,6 @@ describe("setup-plan", () => {
       });
       expect(planPnpmSetup(env.javascript)).toEqual({
         shouldSetup: true,
-        version: "12",
         pnpmRuntime: "bun@1.4",
       });
     });
@@ -223,7 +221,6 @@ describe("setup-plan", () => {
       const env = createSampleEnvironment();
       expect(planPnpmSetup(env.javascript)).toEqual({
         shouldSetup: false,
-        version: "12",
         pnpmRuntime: "node@24",
       });
     });
@@ -246,7 +243,6 @@ describe("setup-plan", () => {
         },
         pnpm: {
           shouldSetup: false,
-          version: "12",
           pnpmRuntime: "node@24",
         },
       });
