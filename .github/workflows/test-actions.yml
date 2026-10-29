@@ -192,6 +192,13 @@ jobs:
         run: |
           node "$ACTION_PATH/../dist/resolve-environment.mjs"
           node "$ACTION_PATH/../dist/site-variables.mjs"
+          PM="${PACKAGE_MANAGER:-npm}"
+          case "$PM" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            bun) bun install --frozen-lockfile ;;
+            npm) if [ -f "package-lock.json" ]; then npm ci; else npm install; fi ;;
+            *) "$PM" install ;;
+          esac
           set +e
           HARNESS_OUTPUT=$(node "$ACTION_PATH/../dist/build-command.mjs" 2>&1)
           EXIT_CODE=$?
