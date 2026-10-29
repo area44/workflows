@@ -295,7 +295,7 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   if (py.detected) detectedLangs.push("Python");
 
   if (detectedLangs.length === 0) {
-    core.info("Neither JavaScript/TypeScript nor Python project detected.");
+    core.info("No supported project environment detected.");
     return;
   }
 

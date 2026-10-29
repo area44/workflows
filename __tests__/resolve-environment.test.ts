@@ -598,7 +598,7 @@ describe("resolve-environment", () => {
 
         expect(core.startGroup).not.toHaveBeenCalled();
         expect(core.info).toHaveBeenCalledWith(
-          "Neither JavaScript/TypeScript nor Python project detected.",
+          "No supported project environment detected.",
         );
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
@@ -1594,7 +1594,7 @@ describe("resolve-environment", () => {
 
       expect(core.startGroup).not.toHaveBeenCalled();
       expect(core.endGroup).not.toHaveBeenCalled();
-      expect(core.info).toHaveBeenCalledWith("Neither JavaScript/TypeScript nor Python project detected.");
+      expect(core.info).toHaveBeenCalledWith("No supported project environment detected.");
     });
   });
 });
