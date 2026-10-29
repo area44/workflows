@@ -14,7 +14,7 @@ Environment resolution determines which runtimes and package managers a reposito
 
 ## Core Principles
 
-- **Domain Independence**: JavaScript/TypeScript and Python project resolution operate as independent domains. A repository can contain JavaScript, Python, both, or neither.
+- **Domain Independence**: JavaScript/TypeScript and Python project resolution operate as independent domains. Repositories can contain JavaScript, Python, both, or neither. When neither domain is detected, an informational log is emitted and default resolution continues without error.
 - **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files, version files, and package managers trigger immediate validation errors rather than applying silent tie-breakers.
 - **Pure Setup Planning**: Environment resolution and filesystem inspection are strictly separated from setup plan generation. Setup plans are derived through a pure, deterministic transformation layer with zero filesystem access or action side effects.
 - **Specifier Preservation**: Explicitly declared version specifiers (such as `latest` or exact version pins) are preserved through resolution rather than overwritten by default values.
@@ -24,45 +24,37 @@ Environment resolution determines which runtimes and package managers a reposito
 
 ## Resolution Algorithm
 
-The environment resolution pipeline executes domain discovery, conflict validation, aggregate environment construction, setup planning, and output export sequentially:
+The environment resolution entrypoint (`run()` in `src/resolve-environment.ts`) executes environment discovery, domain resolution, aggregate validation, setup planning, and output export sequentially:
 
 ```mermaid
 flowchart TD
-    A[Repository Files & Config] --> B[Discover Domain Signals]
+    A[Repository Files & Config] --> B1[Resolve JS Domain]
+    A --> B2[Resolve Python Domain]
 
-    subgraph Environment Resolution
-        B --> C1[JavaScript Domain]
-        B --> C2[Python Domain]
+    subgraph Domain Resolution & Conflict Handling
+        B1 --> C1{Validate JS Signals}
+        B2 --> C2{Validate Python Config}
 
-        C1 --> D1{Validate JS Signals}
-        C2 --> D2{Validate Python Config}
+        C1 -- Conflicting Signals --> FAIL[Execution Failure: core.setFailed]
+        C2 -- Invalid Config / Lock --> FAIL
 
-        D1 -- Conflicting Signals --> FAIL[Execution Failure]
-        D2 -- Invalid State --> FAIL
-
-        D1 -- Valid Signals --> E1[Resolved JS State]
-        D2 -- Valid Config --> E2[Resolved Python State]
-
-        E1 --> F[Aggregate Environment]
-        E2 --> F
+        C1 -- Valid / Not Detected --> D1[Resolved JS Environment]
+        C2 -- Valid / Not Detected --> D2[Resolved Python Environment]
     end
 
-    subgraph Output & Setup Planning
-        F --> G[Write Output Pipeline]
-        G --> H[Derive Pure Setup Plan]
-        H --> I[Export Action Outputs]
+    D1 --> E[Aggregate Environment]
+    D2 --> E
+
+    subgraph Aggregate Validation & Output Pipeline
+        E --> F{validateEnvironment}
+        F -- Invariant Violation --> FAIL
+        F -- Valid Aggregate Env --> G[writeOutput Pipeline]
+        G --> H[createSetupPlan\nPure Setup Plan]
+        H --> I[core.setOutput\nExport Action Outputs]
     end
 
-    I --> J[Downstream Action Step Execution]
+    I --> J[Downstream Action Step Guards\npages / autofix]
 ```
-
-### Conceptual Resolution Stages
-
-1. **Signal Discovery**: Scans the repository for project configuration files, runtime version declarations, package manager manifests, lockfiles, and Python source files.
-2. **Conflict Validation & Domain Resolution**: Validates collected signals for contradictory runtime declarations or invalid lockfile states. If signals are valid, resolves the target runtimes, package managers, toolchains, and versions independently for each domain.
-3. **Aggregate Environment Validation**: Combines domain outcomes into a single aggregate environment structure and asserts structural validity.
-4. **Setup Planning & Output Export**: Derives a pure setup plan determining which setup actions are required for the resolved environment, then exports internal setup control flags and public ecosystem outputs to GitHub Actions runner context.
-5. **Action Step Guard Evaluation**: Downstream composite action steps evaluate output conditions to conditionally provision toolchains and execute workflow tasks.
 
 ---
 
@@ -71,9 +63,9 @@ flowchart TD
 The algorithm distinguishes clearly between missing information (handled by deterministic defaults) and invalid or contradictory configuration (which halts step execution):
 
 - **Successful Resolution**: Valid, non-contradictory configuration signals are resolved to explicit runtime, package manager, version, and toolchain settings.
-- **Missing Information**: Absent manifest files or unspecified versions apply context-appropriate default versions without error.
-- **Conflicting Signals**: Contradictory declarations (such as declaring conflicting runtimes across configuration files) fail validation immediately and halt execution with an error annotation.
-- **Invalid Configuration State**: Invariant violations (such as lockfiles existing without required project configuration) trigger explicit error messages and halt execution.
+- **Undetected Domains or Missing Info**: Absent project files or unspecified versions return valid `detected: false` states or apply context-appropriate defaults without error. When neither domain is detected, an informational log is emitted and resolution completes successfully.
+- **Conflicting Signals**: Contradictory declarations (such as declaring conflicting runtimes across configuration files) fail validation immediately and halt execution with an error annotation (`core.setFailed`).
+- **Invalid Configuration State**: Invariant violations (such as lockfiles existing without required project configuration or malformed aggregate environments) trigger explicit error messages and halt execution.
 
 ---
 
@@ -82,5 +74,5 @@ The algorithm distinguishes clearly between missing information (handled by dete
 When modifying or extending the environment resolution algorithm:
 
 - **Implementation as Authority**: The source code and automated test suites serve as the authoritative specification for exact behavioral details and edge cases.
-- **Automated Test Coverage**: Add or update automated tests when resolution logic or edge-case handling changes.
+- **Automated Test Coverage**: Add or update automated tests in `__tests__/` when resolution logic or edge-case handling changes.
 - **Documentation Synchronization**: Keep the Mermaid flowchart and core principles in this document synchronized with implementation changes, and ensure README references remain accurate.
