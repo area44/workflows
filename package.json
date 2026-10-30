@@ -1,6 +1,6 @@
 {
   "name": "@area44/workflows",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "private": true,
   "description": "GitHub Actions workflows for the AREA44 ecosystem",
   "license": "MIT",
