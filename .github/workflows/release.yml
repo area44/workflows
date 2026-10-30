@@ -39,11 +39,6 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       - name: Create Version PR or Tag Release
         id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
@@ -52,22 +47,3 @@ jobs:
           publish-script: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push Git Tags and Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAGS=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
-          if [ -n "$TAGS" ]; then
-            echo "Pushing git tags: $TAGS"
-            git push origin $TAGS
-            for tag in $TAGS; do
-              if ! gh release view "$tag" >/dev/null 2>&1; then
-                echo "Creating GitHub Release for $tag"
-                gh release create "$tag" --generate-notes --title "$tag"
-              else
-                echo "GitHub Release for $tag already exists."
-              fi
-            done
-          fi
