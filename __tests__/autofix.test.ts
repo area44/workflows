@@ -314,7 +314,7 @@ describe("autofix", () => {
       expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
       expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
       expect(core.info).toHaveBeenCalledWith(
-        "No matching scripts (check, format, lint, etc.) found in package.json.",
+        "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
     });
 
@@ -717,13 +717,13 @@ describe("autofix", () => {
   describe("script execution routing", () => {
     const scriptCases = [
       {
-        name: "check script priority",
-        scripts: { check: "echo check", format: "echo format", lint: "echo lint" },
-        expectedCalls: [["npm", ["run", "check"]]],
+        name: "fix script priority over all",
+        scripts: { fix: "echo fix", format: "echo format", lint: "echo lint", check: "echo check" },
+        expectedCalls: [["npm", ["run", "fix"]]],
       },
       {
-        name: "format and lint scripts",
-        scripts: { format: "echo format", lint: "echo lint" },
+        name: "format and lint scripts when fix is absent",
+        scripts: { format: "echo format", lint: "echo lint", check: "echo check" },
         expectedCalls: [["npm", ["run", "format"]], ["npm", ["run", "lint"]]],
       },
       {
@@ -745,6 +745,11 @@ describe("autofix", () => {
         name: "lint script only",
         scripts: { lint: "echo lint" },
         expectedCalls: [["npm", ["run", "lint"]]],
+      },
+      {
+        name: "check script as lowest priority fallback",
+        scripts: { check: "echo check" },
+        expectedCalls: [["npm", ["run", "check"]]],
       },
     ];
 
@@ -800,7 +805,7 @@ describe("autofix", () => {
       expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
       expect(exec.exec).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
-        "No matching scripts (check, format, lint, etc.) found in package.json.",
+        "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
     });
 
@@ -813,7 +818,7 @@ describe("autofix", () => {
       expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
       expect(exec.exec).toHaveBeenCalledTimes(1);
       expect(core.info).toHaveBeenCalledWith(
-        "No matching scripts (check, format, lint, etc.) found in package.json.",
+        "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
     });
   });

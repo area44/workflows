@@ -599,8 +599,8 @@ export function selectAutofixScripts(scripts?: Record<string, string>): string[]
     return [];
   }
 
-  if (scripts.check) {
-    return ["check"];
+  if (scripts.fix) {
+    return ["fix"];
   }
   if (scripts.format && scripts.lint) {
     return ["format", "lint"];
@@ -616,6 +616,9 @@ export function selectAutofixScripts(scripts?: Record<string, string>): string[]
   }
   if (scripts.lint) {
     return ["lint"];
+  }
+  if (scripts.check) {
+    return ["check"];
   }
 
   return [];
