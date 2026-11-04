@@ -82,7 +82,7 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   const selectedScripts = selectAutofixScripts(scripts);
 
   if (selectedScripts.length === 0) {
-    core.info("No matching scripts (check, format, lint, etc.) found in package.json.");
+    core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
     return;
   }
 

@@ -10,7 +10,7 @@ The `autofix` composite action automatically formats and fixes code.
 
 - **Automatic Environment Detection:** Automatically detects Node.js, Bun, and Python environments and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`).
 - **Dependency Synchronization:** Synchronizes dependencies and lockfiles when a supported JavaScript or Python project configuration is present.
-- **JavaScript/TypeScript Project Scripts:** Selects and executes repository-configured scripts (`check`, `format`, `fmt`, `lint`) from `package.json`.
+- **JavaScript/TypeScript Project Scripts:** Selects and executes repository-configured scripts (`fix`, `format`, `fmt`, `lint`, `check`) from `package.json`.
 - **Python Formatting and Linting:** Provisions Ruff and executes `ruff check --fix .` and `ruff format .` sequentially whenever Python source code (`.py`/`.pyi`) is detected.
 - **Independent Execution:** JavaScript and Python workflows run independently within the same action step, aggregating diagnostics and failures.
 - **autofix.ci Integration:** Automatically invokes `autofix-ci/action` when running inside the `autofix.ci` workflow context.
