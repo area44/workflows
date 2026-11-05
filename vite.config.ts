@@ -7,7 +7,6 @@ const ignorePatterns = [
   "**/build",
   "**/dist",
   "**/out",
-  "**/tests",
   "**/.github",
   "**/.next",
   "**/.astro",

@@ -1,8 +1,6 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   getJsInstallationPlan,
@@ -14,10 +12,13 @@ import {
 } from "../javascript-env.js";
 import {
   detectPythonPackageManager,
+  findPythonProjectContext,
   hasPythonSource,
   validatePythonPmInfoStructure,
   type PythonPackageManagerInfo,
+  type PythonProjectContext,
 } from "../python-env.js";
+import { isMainModule } from "../utils/is-main-module.js";
 
 export { sanitizePackageManager };
 
@@ -104,15 +105,11 @@ async function runPythonCommand(
   }
 }
 
-function validatePythonWorkflowPmInfo(pmInfo: unknown): void {
-  validatePythonPmInfoStructure(pmInfo, 'Invalid Python environment: "pmInfo" must be an object');
-}
-
 export async function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
 ): Promise<void> {
-  validatePythonWorkflowPmInfo(pmInfo);
+  validatePythonPmInfoStructure(pmInfo, 'Invalid Python environment: "pmInfo" must be an object');
 
   const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
   const hasPmBin = Boolean(await io.which(requiredBin, false));
@@ -177,7 +174,14 @@ async function runJsWorkflowStep(cwd: string): Promise<Error | null> {
   }
 }
 
-async function runPythonDepsStep(cwd: string): Promise<Error | null> {
+async function runPythonDepsStep(
+  cwd: string,
+  precomputed?: {
+    ctx?: PythonProjectContext;
+    hasSource?: boolean;
+    pmInfo?: PythonPackageManagerInfo | null;
+  },
+): Promise<Error | null> {
   const pythonEnvSetupFailed =
     process.env.PYTHON_SETUP_OUTCOME === "failure" ||
     process.env.UV_SETUP_OUTCOME === "failure" ||
@@ -187,7 +191,14 @@ async function runPythonDepsStep(cwd: string): Promise<Error | null> {
     return new Error("Python runtime or package manager setup failed.");
   }
 
-  const pythonPmInfo = detectPythonPackageManager(cwd);
+  const pythonPmInfo =
+    precomputed && "pmInfo" in precomputed
+      ? precomputed.pmInfo
+      : detectPythonPackageManager(cwd, undefined, {
+          ctx: precomputed?.ctx,
+          hasSource: precomputed?.hasSource,
+        });
+
   if (!pythonPmInfo) {
     return null;
   }
@@ -215,14 +226,22 @@ async function runRuffStep(cwd: string): Promise<Error | null> {
   }
 }
 
-async function runPythonWorkflowStep(cwd: string): Promise<Error[]> {
-  if (!hasPythonSource(cwd)) {
+async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<Error[]> {
+  const hasSourceCode = hasSource ?? hasPythonSource(cwd);
+  if (!hasSourceCode) {
     return [];
   }
 
   const errors: Error[] = [];
 
-  const depsErr = await runPythonDepsStep(cwd);
+  const ctx = findPythonProjectContext(cwd);
+  const pmInfo = detectPythonPackageManager(cwd, undefined, {
+    ctx,
+    hasSource: true,
+    isProject: true,
+  });
+
+  const depsErr = await runPythonDepsStep(cwd, { ctx, hasSource: true, pmInfo });
   if (depsErr) {
     errors.push(depsErr);
   }
@@ -243,7 +262,8 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
     errors.push(jsErr);
   }
 
-  const pythonErrs = await runPythonWorkflowStep(cwd);
+  const hasSource = hasPythonSource(cwd);
+  const pythonErrs = await runPythonWorkflowStep(cwd, hasSource);
   errors.push(...pythonErrs);
 
   if (errors.length > 0) {
@@ -252,15 +272,6 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
     if (process.env.NODE_ENV !== "test") {
       process.exit(1);
     }
-  }
-}
-
-function isMainModule(metaUrl: string): boolean {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
-  } catch {
-    return false;
   }
 }
 

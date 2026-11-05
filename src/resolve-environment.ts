@@ -1,6 +1,4 @@
 import * as core from "@actions/core";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   isSupportedRuntime,
@@ -20,6 +18,7 @@ import {
   type PnpmSetupPlan,
   type SetupPlan,
 } from "./setup-plan.js";
+import { isMainModule } from "./utils/is-main-module.js";
 
 export type {
   ResolvedJavaScriptEnvironment,
@@ -199,7 +198,6 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("setup-node-cache", plan.node.cache);
   core.setOutput("setup-bun", String(plan.bun.shouldSetup));
   core.setOutput("setup-pnpm", String(plan.pnpm.shouldSetup));
-  core.setOutput("setup-python", String(python.detected));
 
   // Public ecosystem outputs
   core.setOutput("javascript-detected", String(js.detected));
@@ -215,19 +213,6 @@ function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
   return js.runtime.name === "bun" ? "Bun" : "Node.js";
 }
 
-function formatPythonRuntime(): string {
-  return "Python";
-}
-
-function formatJsPackageManager(js: ResolvedJavaScriptEnvironment): string {
-  return js.packageManager.name;
-}
-
-function formatPythonPackageManager(py: ResolvedPythonEnvironment): string | undefined {
-  if (!py.packageManager) return undefined;
-  return py.packageManager.name;
-}
-
 export function logResolvedEnvironment(env: ResolvedEnvironment): void {
   const js = env.javascript;
   const py = env.python;
@@ -239,16 +224,15 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
 
   const runtimes: string[] = [];
   if (js.detected) runtimes.push(formatJsRuntime(js));
-  if (py.detected) runtimes.push(formatPythonRuntime());
+  if (py.detected) runtimes.push("Python");
   if (runtimes.length > 0) {
     core.info(`Runtime: ${runtimes.join(", ")}`);
   }
 
   const pms: string[] = [];
-  if (js.detected) pms.push(formatJsPackageManager(js));
-  if (py.detected) {
-    const pyPm = formatPythonPackageManager(py);
-    if (pyPm) pms.push(pyPm);
+  if (js.detected) pms.push(js.packageManager.name);
+  if (py.detected && py.packageManager) {
+    pms.push(py.packageManager.name);
   }
   if (pms.length > 0) {
     core.info(`Package Manager: ${pms.join(", ")}`);
@@ -288,15 +272,6 @@ export function run(): void {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     core.setFailed(`Environment setup failed: ${msg}`);
-  }
-}
-
-function isMainModule(metaUrl: string): boolean {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
-  } catch {
-    return false;
   }
 }
 

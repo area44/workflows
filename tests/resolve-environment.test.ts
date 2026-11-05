@@ -1,11 +1,12 @@
-import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
-import os from "node:os";
 import * as core from "@actions/core";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ResolvedEnvironment } from "../src/resolve-environment.js";
+
+import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import {
   createSetupPlan,
   logResolvedEnvironment,
@@ -179,11 +180,15 @@ describe("resolve-environment", () => {
     it("should throw error for invalid runtime in javascript section", () => {
       const env = createValidEnvironment();
       (env.javascript as any).runtime = "invalid-runtime";
-      expect(() => validateEnvironment(env)).toThrow('Invalid JavaScript environment: "runtime" must be an object');
+      expect(() => validateEnvironment(env)).toThrow(
+        'Invalid JavaScript environment: "runtime" must be an object',
+      );
 
       const env2 = createValidEnvironment();
       (env2.javascript.runtime as any).name = "invalid-runtime";
-      expect(() => validateEnvironment(env2)).toThrow('Invalid resolved runtime: "invalid-runtime"');
+      expect(() => validateEnvironment(env2)).toThrow(
+        'Invalid resolved runtime: "invalid-runtime"',
+      );
     });
 
     it("should throw error for invalid or missing package manager in javascript section", () => {
@@ -320,7 +325,6 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
         process.chdir(originalCwd);
@@ -352,7 +356,6 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("javascript-package-manager", "npm");
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
       } finally {
         process.chdir(originalCwd);
@@ -383,7 +386,6 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
         process.chdir(originalCwd);
@@ -419,7 +421,6 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("javascript-runtime", "node");
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "true");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
         process.chdir(originalCwd);
@@ -439,9 +440,7 @@ describe("resolve-environment", () => {
         expect(env.javascript.detected).toBe(false);
         expect(env.python.detected).toBe(false);
 
-        expect(core.info).toHaveBeenCalledWith(
-          "No JavaScript or Python environment detected.",
-        );
+        expect(core.info).toHaveBeenCalledWith("No JavaScript or Python environment detected.");
 
         expect(core.setOutput).toHaveBeenCalledWith("javascript-detected", "false");
         expect(core.setOutput).toHaveBeenCalledWith("setup-node", "false");
@@ -450,7 +449,6 @@ describe("resolve-environment", () => {
         expect(core.setOutput).toHaveBeenCalledWith("setup-node-cache", "");
 
         expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
       } finally {
         process.chdir(originalCwd);
@@ -575,7 +573,6 @@ describe("resolve-environment", () => {
         expect(env.python.packageManager?.name).toBe("uv");
         expect(core.info).toHaveBeenCalledWith("Runtime: Python");
         expect(core.info).toHaveBeenCalledWith("Package Manager: uv");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "uv");
       } finally {
         process.chdir(originalCwd);
@@ -597,7 +594,6 @@ describe("resolve-environment", () => {
         expect(env.python.packageManager?.name).toBe("pip");
         expect(core.info).toHaveBeenCalledWith("Runtime: Python");
         expect(core.info).toHaveBeenCalledWith("Package Manager: pip");
-        expect(core.setOutput).toHaveBeenCalledWith("setup-python", "true");
         expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "pip");
       } finally {
         process.chdir(originalCwd);
@@ -716,7 +712,9 @@ describe("resolve-environment", () => {
     it.each(cases)(
       "should resolve correct environment for fixture $action/$runtime/$pm/$type",
       ({ action, runtime: rt, pm, type, expectedPm, expectedRuntime }) => {
-        const scenarioPath = fs.mkdtempSync(path.join(fixturesDir, `res-env-${action}-${rt}-${type}-`));
+        const scenarioPath = fs.mkdtempSync(
+          path.join(fixturesDir, `res-env-${action}-${rt}-${type}-`),
+        );
         createConsumerProject(scenarioPath, { action, runtime: rt, pm, type });
         process.chdir(scenarioPath);
 
@@ -780,7 +778,7 @@ describe("resolve-environment", () => {
       expect(core.setOutput).toHaveBeenCalledWith("setup-pnpm", "true");
     });
 
-    it("should set python-detected and setup-python to false when no Python source files exist", () => {
+    it("should set python-detected to false when no Python source files exist", () => {
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
 
       const env: ResolvedEnvironment = {
@@ -799,7 +797,6 @@ describe("resolve-environment", () => {
       writeOutput(env);
 
       expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
-      expect(core.setOutput).toHaveBeenCalledWith("setup-python", "false");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
     });
   });
@@ -807,7 +804,12 @@ describe("resolve-environment", () => {
   describe("run", () => {
     it("should coordinate environment resolution, execute setup plan, and write action output on fixture project", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-npm-basic-"));
-      createConsumerProject(fixturePath, { action: "pages", runtime: "node", pm: "npm@11.19.0", type: "basic" });
+      createConsumerProject(fixturePath, {
+        action: "pages",
+        runtime: "node",
+        pm: "npm@11.19.0",
+        type: "basic",
+      });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
@@ -830,7 +832,12 @@ describe("resolve-environment", () => {
 
     it("should resolve bun and set plan outputs for bun project fixture", () => {
       const fixturePath = fs.mkdtempSync(path.join(fixturesDir, "pages-bun-basic-"));
-      createConsumerProject(fixturePath, { action: "pages", runtime: "bun", pm: "bun@1.4", type: "basic" });
+      createConsumerProject(fixturePath, {
+        action: "pages",
+        runtime: "bun",
+        pm: "bun@1.4",
+        type: "basic",
+      });
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
@@ -873,23 +880,28 @@ describe("resolve-environment", () => {
 
       for (const legacyName of legacyNames) {
         // Check outputs section of pages/action.yml and autofix/action.yml
-        expect(pagesActionYml, `pages/action.yml should not contain public output '${legacyName}'`).not.toMatch(
-          new RegExp(`^\\s*${legacyName}:`, "m"),
-        );
-        expect(autofixActionYml, `autofix/action.yml should not contain public output '${legacyName}'`).not.toMatch(
-          new RegExp(`^\\s*${legacyName}:`, "m"),
-        );
+        expect(
+          pagesActionYml,
+          `pages/action.yml should not contain public output '${legacyName}'`,
+        ).not.toMatch(new RegExp(`^\\s*${legacyName}:`, "m"));
+        expect(
+          autofixActionYml,
+          `autofix/action.yml should not contain public output '${legacyName}'`,
+        ).not.toMatch(new RegExp(`^\\s*${legacyName}:`, "m"));
 
         // Check documentation output tables
-        expect(rootReadme, `README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
-          `| \`${legacyName}\` |`,
-        );
-        expect(pagesReadme, `pages/README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
-          `| \`${legacyName}\` |`,
-        );
-        expect(autofixReadme, `autofix/README.md should not list legacy output '| \`${legacyName}\` |'`).not.toContain(
-          `| \`${legacyName}\` |`,
-        );
+        expect(
+          rootReadme,
+          `README.md should not list legacy output '| \`${legacyName}\` |'`,
+        ).not.toContain(`| \`${legacyName}\` |`);
+        expect(
+          pagesReadme,
+          `pages/README.md should not list legacy output '| \`${legacyName}\` |'`,
+        ).not.toContain(`| \`${legacyName}\` |`);
+        expect(
+          autofixReadme,
+          `autofix/README.md should not list legacy output '| \`${legacyName}\` |'`,
+        ).not.toContain(`| \`${legacyName}\` |`);
       }
     });
   });

@@ -31,9 +31,7 @@ describe("site-variables", () => {
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/project-repo/");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE_URL", "/project-repo/");
       expect(core.info).toHaveBeenCalledWith("Set SITE=https://owner.github.io");
-      expect(core.info).toHaveBeenCalledWith(
-        "Set BASE=/project-repo/ (also exported as BASE_URL)",
-      );
+      expect(core.info).toHaveBeenCalledWith("Set BASE=/project-repo/ (also exported as BASE_URL)");
     });
 
     it("should automatically set SITE, BASE, and BASE_URL variables for a primary repository in the pages action", () => {

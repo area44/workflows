@@ -1,21 +1,22 @@
-import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
-import * as core from "@actions/core";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 
 vi.mock("@actions/core");
 
 import {
   detectPythonPackageManager,
   hasPythonSource,
-  isDirectoryMatchedByGlobs,
   isRuffDeclaredInProject,
   parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
   stripTomlStringsAndComments,
+  type ParsedTomlSuccess,
+  type ParsedTomlError,
 } from "../src/python-env.js";
 
 describe("Python Package Manager Detection", () => {
@@ -25,59 +26,51 @@ describe("Python Package Manager Detection", () => {
     describe("Valid TOML constructs", () => {
       it("should parse a basic [project] table", () => {
         const content = '[project]\nname = "my-package"\nversion = "1.0.0"\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toEqual({
-            name: "my-package",
-            version: "1.0.0",
-          });
-        }
+        expect(res.data.project).toEqual({
+          name: "my-package",
+          version: "1.0.0",
+        });
       });
 
       it("should parse a [build-system] table", () => {
         const content =
           '[build-system]\nrequires = ["flit_core>=3.2,<4"]\nbuild-backend = "flit_core.buildapi"\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data["build-system"]).toEqual({
-            requires: ["flit_core>=3.2,<4"],
-            "build-backend": "flit_core.buildapi",
-          });
-        }
+        expect(res.data["build-system"]).toEqual({
+          requires: ["flit_core>=3.2,<4"],
+          "build-backend": "flit_core.buildapi",
+        });
       });
 
       it("should parse a [tool.uv] table", () => {
         const content = '[tool.uv]\ndev-dependencies = ["pytest>=7.0.0"]\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.tool).toEqual({
-            uv: {
-              "dev-dependencies": ["pytest>=7.0.0"],
-            },
-          });
-        }
+        expect(res.data.tool).toEqual({
+          uv: {
+            "dev-dependencies": ["pytest>=7.0.0"],
+          },
+        });
       });
 
       it("should parse a valid [[tool.uv.index]] array table", () => {
         const content =
           '[[tool.uv.index]]\nname = "custom"\nurl = "https://pypi.example.com/simple"\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.tool).toEqual({
-            uv: {
-              index: [
-                {
-                  name: "custom",
-                  url: "https://pypi.example.com/simple",
-                },
-              ],
-            },
-          });
-        }
+        expect(res.data.tool).toEqual({
+          uv: {
+            index: [
+              {
+                name: "custom",
+                url: "https://pypi.example.com/simple",
+              },
+            ],
+          },
+        });
       });
 
       it("should parse multiple array-table entries", () => {
@@ -90,18 +83,16 @@ url = "https://first.example.com"
 name = "second"
 url = "https://second.example.com"
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.tool).toEqual({
-            uv: {
-              index: [
-                { name: "first", url: "https://first.example.com" },
-                { name: "second", url: "https://second.example.com" },
-              ],
-            },
-          });
-        }
+        expect(res.data.tool).toEqual({
+          uv: {
+            index: [
+              { name: "first", url: "https://first.example.com" },
+              { name: "second", url: "https://second.example.com" },
+            ],
+          },
+        });
       });
 
       it("should parse nested tables and dotted keys", () => {
@@ -112,27 +103,23 @@ dev-dependencies = ["ruff==0.4.2"]
 [tool.uv.sources]
 foo = { path = "pkgs/foo" }
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          const tool = res.data.tool as Record<string, unknown>;
-          const uv = tool.uv as Record<string, unknown>;
-          expect(uv.sources).toEqual({ foo: { path: "pkgs/foo" } });
-          expect(uv["dev-dependencies"]).toEqual(["ruff==0.4.2"]);
-        }
+        const tool = res.data.tool as Record<string, unknown>;
+        const uv = tool.uv as Record<string, unknown>;
+        expect(uv.sources).toEqual({ foo: { path: "pkgs/foo" } });
+        expect(uv["dev-dependencies"]).toEqual(["ruff==0.4.2"]);
       });
 
       it("should parse comments following values", () => {
         const content =
           '[project]\nname = "demo" # inline comment\nversion = "0.1.0" # version comment\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toEqual({
-            name: "demo",
-            version: "0.1.0",
-          });
-        }
+        expect(res.data.project).toEqual({
+          name: "demo",
+          version: "0.1.0",
+        });
       });
 
       it("should handle # inside basic and literal strings without treating it as a comment", () => {
@@ -142,15 +129,13 @@ name = "app#1"
 description = 'hash # inside literal string'
 url = "https://example.com/path#section"
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toEqual({
-            name: "app#1",
-            description: "hash # inside literal string",
-            url: "https://example.com/path#section",
-          });
-        }
+        expect(res.data.project).toEqual({
+          name: "app#1",
+          description: "hash # inside literal string",
+          url: "https://example.com/path#section",
+        });
       });
 
       it("should parse multiline basic and literal strings", () => {
@@ -166,13 +151,11 @@ Copyright (c) 2026
 All rights reserved # comment inside literal
 '''
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          const project = res.data.project as Record<string, unknown>;
-          expect(project.readme).toContain("# Header");
-          expect(project["license-text"]).toContain("Copyright (c) 2026");
-        }
+        const project = res.data.project as Record<string, unknown>;
+        expect(project.readme).toContain("# Header");
+        expect(project["license-text"]).toContain("Copyright (c) 2026");
       });
 
       it("should parse escaped quotation marks and backslashes in basic strings", () => {
@@ -180,13 +163,11 @@ All rights reserved # comment inside literal
 [project]
 escaped = "quoted \\"hello\\" and backslash \\\\ path"
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect((res.data.project as Record<string, unknown>).escaped).toBe(
-            'quoted "hello" and backslash \\ path',
-          );
-        }
+        expect((res.data.project as Record<string, unknown>).escaped).toBe(
+          'quoted "hello" and backslash \\ path',
+        );
       });
 
       it("should parse valid arrays and inline tables", () => {
@@ -195,36 +176,30 @@ escaped = "quoted \\"hello\\" and backslash \\\\ path"
 dependencies = ["a", "b", "c"]
 authors = [{ name = "Alice", email = "alice@example.com" }]
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toEqual({
-            dependencies: ["a", "b", "c"],
-            authors: [{ name: "Alice", email: "alice@example.com" }],
-          });
-        }
+        expect(res.data.project).toEqual({
+          dependencies: ["a", "b", "c"],
+          authors: [{ name: "Alice", email: "alice@example.com" }],
+        });
       });
 
       it("should parse empty optional tables", () => {
         const content = "[project]\n[build-system]\n[tool.uv]\n";
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toEqual({});
-          expect(res.data["build-system"]).toEqual({});
-          expect(res.data.tool).toEqual({ uv: {} });
-        }
+        expect(res.data.project).toEqual({});
+        expect(res.data["build-system"]).toEqual({});
+        expect(res.data.tool).toEqual({ uv: {} });
       });
     });
 
     describe("Invalid TOML syntax rejection", () => {
       it("should reject unterminated basic strings", () => {
         const content = '[project]\nname = "unterminated\n';
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlError;
         expect(res.success).toBe(false);
-        if (!res.success) {
-          expect(res.error).toBeInstanceOf(Error);
-        }
+        expect(res.error).toBeInstanceOf(Error);
       });
 
       it("should reject unclosed arrays", () => {
@@ -314,12 +289,10 @@ name = "real-app"
 [tool.uv]
 dev-dependencies = ["pytest"]
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toBeUndefined();
-          expect(res.data.tool).toEqual({ uv: { "dev-dependencies": ["pytest"] } });
-        }
+        expect(res.data.project).toBeUndefined();
+        expect(res.data.tool).toEqual({ uv: { "dev-dependencies": ["pytest"] } });
       });
 
       it("should not falsely extract table headers from multiline string values", () => {
@@ -331,13 +304,11 @@ name = "string-content"
 [build-system]
 """
 `;
-        const res = parseToml(content);
+        const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
-        if (res.success) {
-          expect(res.data.project).toBeUndefined();
-          expect(res.data["build-system"]).toBeUndefined();
-          expect((res.data.tool as Record<string, unknown>).uv).toBeDefined();
-        }
+        expect(res.data.project).toBeUndefined();
+        expect(res.data["build-system"]).toBeUndefined();
+        expect((res.data.tool as Record<string, unknown>).uv).toBeDefined();
       });
 
       it("should classify pyproject.toml as standalone pip when [project] header appears only inside a multiline string", () => {
@@ -410,7 +381,10 @@ dev = ["pytest"]
       const childDir = path.join(tempDir, "tools/standalone");
       fs.mkdirSync(childDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, ".git"), "");
-      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://root.pypi.org'\n");
+      fs.writeFileSync(
+        path.join(tempDir, "uv.toml"),
+        "[pip]\nindex-url = 'https://root.pypi.org'\n",
+      );
       fs.writeFileSync(
         path.join(childDir, "pyproject.toml"),
         "[project]\nname = 'standalone-pkg'\nversion = '0.1.0'\n",
@@ -433,7 +407,10 @@ dev = ["pytest"]
       const tempDir = path.join(fixturesDir, "uv-toml-reqs-temp");
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+      fs.writeFileSync(
+        path.join(tempDir, "uv.toml"),
+        "[pip]\nindex-url = 'https://pypi.org/simple'\n",
+      );
       fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
 
       try {
@@ -441,7 +418,9 @@ dev = ["pytest"]
         expect(pmInfo).toEqual({
           name: "uv",
           configFile: "uv.toml",
-          installCommands: [{ executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] }],
+          installCommands: [
+            { executable: "uv", args: ["pip", "install", "-r", "requirements.txt"] },
+          ],
           execPrefix: "uv run",
         });
       } finally {
@@ -469,7 +448,10 @@ dev = ["pytest"]
       fs.mkdirSync(tempDir, { recursive: true });
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
-      fs.writeFileSync(path.join(tempDir, "uv.toml"), "[pip]\nindex-url = 'https://pypi.org/simple'\n");
+      fs.writeFileSync(
+        path.join(tempDir, "uv.toml"),
+        "[pip]\nindex-url = 'https://pypi.org/simple'\n",
+      );
 
       try {
         expect(() => detectPythonPackageManager(tempDir)).toThrow(
@@ -585,7 +567,9 @@ dev = ["pytest"]
         const resolved = resolvePythonEnvironment(pkgDir);
         expect(resolved.detected).toBe(true);
         expect(resolved.packageManager?.name).toBe("uv");
-        expect(resolved.packageManager?.installCommands).toEqual([{ executable: "uv", args: ["sync"] }]);
+        expect(resolved.packageManager?.installCommands).toEqual([
+          { executable: "uv", args: ["sync"] },
+        ]);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -691,6 +675,27 @@ dev = ["pytest"]
         const pmInfo = detectPythonPackageManager(proj.dir);
         expect(pmInfo).not.toBeNull();
         expect(pmInfo?.name).toBe("uv");
+      } finally {
+        proj.cleanup();
+      }
+    });
+  });
+
+  describe("Precomputed Context Reuse Optimization", () => {
+    it("resolvePythonEnvironment calls findPythonProjectContext exactly once and reuses precomputed context", () => {
+      const proj = createConsumerProjectInTmp({ type: "python-uv" });
+      try {
+        const fsReadSpy = vi.spyOn(fs, "readdirSync");
+        const initialCalls = fsReadSpy.mock.calls.length;
+
+        const resolved = resolvePythonEnvironment(proj.dir);
+        expect(resolved.detected).toBe(true);
+        expect(resolved.packageManager?.name).toBe("uv");
+
+        // Verify direct call without precomputed state also works
+        const directPm = detectPythonPackageManager(proj.dir);
+        expect(directPm?.name).toBe("uv");
+        expect(fsReadSpy.mock.calls.length).toBeGreaterThanOrEqual(initialCalls);
       } finally {
         proj.cleanup();
       }

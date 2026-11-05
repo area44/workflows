@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+
+import { isMainModule } from "../utils/is-main-module.js";
 
 export interface SiteVariables {
   site: string;
@@ -88,15 +88,6 @@ export function setSiteVariables(): void {
     core.warning(
       "Failed to resolve site variables from repository metadata. Skipping site variables.",
     );
-  }
-}
-
-function isMainModule(metaUrl: string): boolean {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
-  } catch {
-    return false;
   }
 }
 
