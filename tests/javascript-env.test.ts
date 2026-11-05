@@ -551,20 +551,12 @@ describe("javascript-env", () => {
     ];
 
     it.each(planCases)("should return expected installation plan for $pm", ({ pm, expected }) => {
-      const project = inspectJsProjectEnvironment(tempDir);
-      const planLegacy = getJsInstallationPlan(project, pm);
-      expect(planLegacy).toEqual(expected);
-
-      const planDirect = getJsInstallationPlan(pm);
-      expect(planDirect).toEqual(expected);
+      const plan = getJsInstallationPlan(pm);
+      expect(plan).toEqual(expected);
     });
 
     it("should throw Error for unsupported package manager", () => {
-      const project = inspectJsProjectEnvironment(tempDir);
-      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(Error);
-      expect(() => getJsInstallationPlan(project, "yarn")).toThrow(
-        /Unsupported package manager 'yarn'/,
-      );
+      expect(() => getJsInstallationPlan("yarn")).toThrow(Error);
       expect(() => getJsInstallationPlan("yarn")).toThrow(
         /Unsupported package manager 'yarn'/,
       );

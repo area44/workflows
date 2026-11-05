@@ -555,15 +555,8 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   return { name: "npm", source: "default" };
 }
 
-export function getJsInstallationPlan(
-  pmInputOrProject: string | JsPackageManagerInfo | JsProjectEnvironment,
-  legacyPmInput?: string | JsPackageManagerInfo,
-): JsInstallationPlan {
-  const actualInput = legacyPmInput !== undefined ? legacyPmInput : pmInputOrProject;
-  const pmNameRaw =
-    typeof actualInput === "string"
-      ? sanitizePackageManager(actualInput)
-      : (actualInput as JsPackageManagerInfo).name;
+export function getJsInstallationPlan(pmInput: string | JsPackageManagerInfo): JsInstallationPlan {
+  const pmNameRaw = typeof pmInput === "string" ? sanitizePackageManager(pmInput) : pmInput.name;
 
   if (!isSupportedPackageManager(pmNameRaw)) {
     throw new Error(
