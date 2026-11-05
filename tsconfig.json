@@ -11,5 +11,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/**/*", "__tests__/**/*", "vite.config.ts"]
+  "include": ["src/**/*", "tests/**/*", "vite.config.ts"]
 }

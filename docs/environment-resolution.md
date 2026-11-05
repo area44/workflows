@@ -75,5 +75,5 @@ The algorithm distinguishes clearly between missing information (handled by dete
 When modifying or extending the environment resolution algorithm:
 
 - **Implementation as Authority**: The source code and automated test suites serve as the authoritative specification for exact behavioral details and edge cases.
-- **Automated Test Coverage**: Add or update automated tests in `__tests__/` when resolution logic or edge-case handling changes.
+- **Automated Test Coverage**: Add or update automated tests in `tests/` when resolution logic or edge-case handling changes.
 - **Documentation Synchronization**: Keep the Mermaid flowchart and core principles in this document synchronized with implementation changes, and ensure README references remain accurate.
