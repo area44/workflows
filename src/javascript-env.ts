@@ -556,10 +556,14 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
 }
 
 export function getJsInstallationPlan(
-  _project: JsProjectEnvironment,
-  pmInput: string | JsPackageManagerInfo,
+  pmInputOrProject: string | JsPackageManagerInfo | JsProjectEnvironment,
+  legacyPmInput?: string | JsPackageManagerInfo,
 ): JsInstallationPlan {
-  const pmNameRaw = typeof pmInput === "string" ? sanitizePackageManager(pmInput) : pmInput.name;
+  const actualInput = legacyPmInput !== undefined ? legacyPmInput : pmInputOrProject;
+  const pmNameRaw =
+    typeof actualInput === "string"
+      ? sanitizePackageManager(actualInput)
+      : (actualInput as JsPackageManagerInfo).name;
 
   if (!isSupportedPackageManager(pmNameRaw)) {
     throw new Error(

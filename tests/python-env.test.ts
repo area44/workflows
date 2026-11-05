@@ -684,5 +684,16 @@ dev = ["pytest"]
     it("should define priority order as uv > pip", () => {
       expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
     });
+
+    it("should prioritize uv over pip when both uv and pip configuration files exist", () => {
+      const proj = createConsumerProjectInTmp({ type: "python-conflicting" });
+      try {
+        const pmInfo = detectPythonPackageManager(proj.dir);
+        expect(pmInfo).not.toBeNull();
+        expect(pmInfo?.name).toBe("uv");
+      } finally {
+        proj.cleanup();
+      }
+    });
   });
 });

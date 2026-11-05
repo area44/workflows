@@ -79,6 +79,11 @@ describe("build-command", () => {
       expect(siteVarsStep.run).toContain('node "$ACTION_PATH/../dist/site-variables.mjs"');
       expect(siteVarsStep.if).toContain("steps.resolve_environment.outcome == 'success'");
 
+      const installDepsStep = steps.find((s: any) => s.id === "install_dependencies");
+      expect(installDepsStep).toBeDefined();
+      expect(installDepsStep.if).toContain("steps.resolve_environment.outputs.javascript-detected == 'true'");
+      expect(installDepsStep.if).toContain("steps.resolve_environment.outputs.javascript-toolchain != 'vite-plus'");
+
       const buildSiteStep = steps.find((s: any) => s.id === "build_site");
       expect(buildSiteStep).toBeDefined();
       expect(buildSiteStep.run).toContain('node "$ACTION_PATH/../dist/build-command.mjs"');

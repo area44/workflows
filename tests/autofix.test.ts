@@ -305,14 +305,14 @@ describe("autofix", () => {
       expect(exec.exec).toHaveBeenCalledWith("bun", ["run", "check"], expect.objectContaining({ cwd: tempDir }));
     });
 
-    it("should install JS dependencies even when package.json has no applicable scripts", async () => {
+    it("should skip JS dependency installation when package.json has no applicable scripts", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
       await run(tempDir);
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
+      expect(core.info).not.toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(exec.exec).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
@@ -802,8 +802,7 @@ describe("autofix", () => {
 
       await run();
 
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
-      expect(exec.exec).toHaveBeenCalledTimes(1);
+      expect(exec.exec).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
@@ -815,8 +814,7 @@ describe("autofix", () => {
 
       await run();
 
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: process.cwd() }));
-      expect(exec.exec).toHaveBeenCalledTimes(1);
+      expect(exec.exec).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
@@ -1082,15 +1080,14 @@ describe("autofix", () => {
       );
     });
 
-    it("should perform JS dependency installation when package.json has no supported autofix script, and succeed if Python succeeds", async () => {
+    it("should skip JS dependency installation when package.json has no supported autofix script, and succeed if Python succeeds", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ scripts: { build: "tsc" } }));
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
       await run(tempDir);
 
-      expect(exec.exec).toHaveBeenCalledWith("npm", ["install"], expect.objectContaining({ cwd: tempDir }));
-      expect(exec.exec).not.toHaveBeenCalledWith("npm", ["run", expect.anything()], expect.anything());
+      expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
       expect(exec.exec).toHaveBeenCalledWith("ruff", ["check", "--fix", "."], expect.objectContaining({ cwd: tempDir }));
       expect(core.setFailed).not.toHaveBeenCalled();
     });

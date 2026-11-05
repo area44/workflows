@@ -9,7 +9,8 @@ The `autofix` composite action automatically formats and fixes code.
 ## Features and Supported Behavior
 
 - **Automatic Environment Detection:** Automatically detects Node.js, Bun, and Python environments and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`).
-- **Dependency Synchronization:** Synchronizes dependencies and lockfiles when a supported JavaScript or Python project configuration is present.
+- **Separation of Setup and Installation:** Official setup actions (`actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/setup-uv`, `astral-sh/ruff-action`) provision runtimes, CLI tools, and tool caches. Dependency installations (`npm install`, `pnpm install --no-frozen-lockfile`, `bun install`, `uv sync`, `pip install`) and autofix executions are performed reliably in TypeScript.
+- **Dependency Synchronization & Early Skip:** Inspects project scripts before installing dependencies. If no matching autofix script exists in `package.json`, JavaScript dependency installation is cleanly skipped without modifying lockfiles or running package manager commands.
 - **JavaScript/TypeScript Project Scripts:** Selects and executes repository-configured scripts (`fix`, `format`, `fmt`, `lint`, `check`) from `package.json`.
 - **Python Formatting and Linting:** Provisions Ruff and executes `ruff check --fix .` and `ruff format .` sequentially whenever Python source code (`.py`/`.pyi`) is detected.
 - **Independent Execution:** JavaScript and Python workflows run independently within the same action step, aggregating diagnostics and failures.

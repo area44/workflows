@@ -67,10 +67,10 @@ Testing is organized across distinct execution boundaries:
   - **Invalid Build Command (`invalid_build_command`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"`.
   - **Missing Output Directory (`missing_output_dir`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."`.
 
-### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml`)
+### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml` & `.github/workflows/check-dist.yml`)
 
-- **`quality-test` Job**: Provisions Node 24 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format --check`), and unit tests (`npm test`).
-- **`check-dist` Job**: Provisions Node 24, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`).
+- **`quality-test` Job (`.github/workflows/ci.yml`)**: Provisions Node 26 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format --check`), and unit tests (`npm test`).
+- **`check-dist` Job (`.github/workflows/check-dist.yml`)**: Provisions Node 26, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`).
 
 ---
 

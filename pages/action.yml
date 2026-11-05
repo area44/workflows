@@ -77,7 +77,7 @@ runs:
 
     - name: Install dependencies
       id: install_dependencies
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.javascript-toolchain != 'vite-plus' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.javascript-detected == 'true' && steps.resolve_environment.outputs.javascript-toolchain != 'vite-plus' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
