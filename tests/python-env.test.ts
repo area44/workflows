@@ -3,12 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
+import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/core");
 
 import {
   detectPythonPackageManager,
+  findPythonProjectContext,
   hasPythonSource,
   isRuffDeclaredInProject,
   parseToml,
@@ -682,21 +683,45 @@ dev = ["pytest"]
   });
 
   describe("Precomputed Context Reuse Optimization", () => {
-    it("resolvePythonEnvironment calls findPythonProjectContext exactly once and reuses precomputed context", () => {
+    it("resolvePythonEnvironment reuses precomputed context and avoids redundant manifest file reads", () => {
       const proj = createConsumerProjectInTmp({ type: "python-uv" });
-      try {
-        const fsReadSpy = vi.spyOn(fs, "readdirSync");
-        const initialCalls = fsReadSpy.mock.calls.length;
+      const readFileSyncSpy = vi.spyOn(fs, "readFileSync");
 
+      try {
+        // 1. Initial resolution: pyproject.toml is read from disk exactly once during context discovery and reused for PM detection
+        readFileSyncSpy.mockClear();
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
         expect(resolved.packageManager?.name).toBe("uv");
+        const pyprojectReads = readFileSyncSpy.mock.calls.filter((call) =>
+          String(call[0]).endsWith("pyproject.toml"),
+        );
+        expect(pyprojectReads.length).toBe(1);
 
-        // Verify direct call without precomputed state also works
+        // 2. Direct call without precomputed context reads pyproject.toml independently
+        readFileSyncSpy.mockClear();
         const directPm = detectPythonPackageManager(proj.dir);
         expect(directPm?.name).toBe("uv");
-        expect(fsReadSpy.mock.calls.length).toBeGreaterThanOrEqual(initialCalls);
+        const directReads = readFileSyncSpy.mock.calls.filter((call) =>
+          String(call[0]).endsWith("pyproject.toml"),
+        );
+        expect(directReads.length).toBe(1);
+
+        // 3. Passing precomputed context directly into detectPythonPackageManager avoids redundant file reads
+        const precomputedCtx = findPythonProjectContext(proj.dir);
+        readFileSyncSpy.mockClear();
+        const reusedPm = detectPythonPackageManager(proj.dir, undefined, {
+          ctx: precomputedCtx,
+          hasSource: true,
+          isProject: true,
+        });
+        expect(reusedPm?.name).toBe("uv");
+        const reusedReads = readFileSyncSpy.mock.calls.filter((call) =>
+          String(call[0]).endsWith("pyproject.toml"),
+        );
+        expect(reusedReads.length).toBe(0);
       } finally {
+        readFileSyncSpy.mockRestore();
         proj.cleanup();
       }
     });

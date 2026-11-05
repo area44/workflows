@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { ResolvedEnvironment } from "../src/resolve-environment.js";
 
-import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import {
   createSetupPlan,
   logResolvedEnvironment,
@@ -15,6 +14,7 @@ import {
   validateEnvironment,
   writeOutput,
 } from "../src/resolve-environment.js";
+import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/core");
 

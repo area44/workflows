@@ -7,13 +7,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import YAML from "yaml";
 
-import { createConsumerProject } from "../.github/scripts/generate-consumer-project.js";
 import {
   executePythonWorkflow,
   executeRuffAutofix,
   run,
   sanitizePackageManager,
 } from "../src/autofix/index";
+import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");

@@ -10,7 +10,7 @@ import {
   generateConsumerProjectFiles,
   getLockfileTemplates,
   normalizePythonProjectName,
-} from "../.github/scripts/generate-consumer-project.js";
+} from "./helpers/consumer-project/index.js";
 
 describe("Consumer Project Generator Unit & Regression Suite", () => {
   let tempDir: string;
@@ -457,14 +457,15 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
   describe("CLI Invocation Safety", () => {
     const generatorScript = path.resolve(
       process.cwd(),
-      ".github/scripts/generate-consumer-project.js",
+      "tests/helpers/consumer-project/generate-consumer-project.ts",
     );
+    const nodeCmd = `node --experimental-strip-types "${generatorScript}"`;
 
     it("fails with error code 1 when CLI is invoked without a target directory argument", () => {
       let failed = false;
       let output = "";
       try {
-        execSync(`node "${generatorScript}"`, { encoding: "utf8", stdio: "pipe" });
+        execSync(nodeCmd, { encoding: "utf8", stdio: "pipe" });
       } catch (err: any) {
         failed = true;
         output = err.stderr || err.stdout || err.message;
@@ -476,7 +477,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
     it("generates project files when target directory is explicitly provided to CLI", () => {
       const target = path.join(tempDir, "cli_target");
-      execSync(`node "${generatorScript}" "${target}"`, { encoding: "utf8" });
+      execSync(`${nodeCmd} "${target}"`, { encoding: "utf8" });
 
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
       expect(fs.existsSync(path.join(target, "index.html"))).toBe(true);
@@ -489,11 +490,11 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
       // Without flag, CLI fails
       expect(() => {
-        execSync(`node "${generatorScript}" "${target}"`, { stdio: "pipe" });
+        execSync(`${nodeCmd} "${target}"`, { stdio: "pipe" });
       }).toThrow("Command failed");
 
       // With flag, CLI succeeds
-      execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { encoding: "utf8" });
+      execSync(`${nodeCmd} "${target}" --allow-non-empty`, { encoding: "utf8" });
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     });
 
@@ -504,13 +505,13 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
       // With --allow-non-empty alone, it fails because package.json collides
       expect(() => {
-        execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { stdio: "pipe" });
+        execSync(`${nodeCmd} "${target}" --allow-non-empty`, { stdio: "pipe" });
       }).toThrow("Command failed");
 
       expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe("pre-existing-json");
 
       // With --overwrite, it succeeds
-      execSync(`node "${generatorScript}" "${target}" --allow-non-empty --overwrite`, {
+      execSync(`${nodeCmd} "${target}" --allow-non-empty --overwrite`, {
         encoding: "utf8",
       });
       expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe(
