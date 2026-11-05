@@ -555,10 +555,7 @@ export function resolveJsPackageManager(project: JsProjectEnvironment): JsPackag
   return { name: "npm", source: "default" };
 }
 
-export function getJsInstallationPlan(
-  _project: JsProjectEnvironment,
-  pmInput: string | JsPackageManagerInfo,
-): JsInstallationPlan {
+export function getJsInstallationPlan(pmInput: string | JsPackageManagerInfo): JsInstallationPlan {
   const pmNameRaw = typeof pmInput === "string" ? sanitizePackageManager(pmInput) : pmInput.name;
 
   if (!isSupportedPackageManager(pmNameRaw)) {

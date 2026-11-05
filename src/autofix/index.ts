@@ -15,6 +15,7 @@ import {
 import {
   detectPythonPackageManager,
   hasPythonSource,
+  validatePythonPmInfoStructure,
   type PythonPackageManagerInfo,
 } from "../python-env.js";
 
@@ -51,12 +52,11 @@ async function runJsInstallationPlan(
 }
 
 async function executeJsScripts(
-  scripts: Record<string, string>,
+  selectedScripts: string[],
   pm: string,
   cwd: string = process.cwd(),
 ): Promise<void> {
-  const selected = selectAutofixScripts(scripts);
-  for (const scriptName of selected) {
+  for (const scriptName of selectedScripts) {
     await runScriptCommand(pm, scriptName, cwd);
   }
 }
@@ -72,12 +72,6 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
     throw new Error(jsEnv.packageJsonError);
   }
 
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-  const pm = sanitizePackageManager(rawPm);
-
-  const plan = getJsInstallationPlan(jsEnv, pm);
-  await runJsInstallationPlan(plan, cwd);
-
   const scripts = jsEnv.packageJson?.scripts || {};
   const selectedScripts = selectAutofixScripts(scripts);
 
@@ -86,13 +80,18 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
     return;
   }
 
-  await executeJsScripts(scripts, pm, cwd);
+  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+  const pm = sanitizePackageManager(rawPm);
+
+  const plan = getJsInstallationPlan(pm);
+  await runJsInstallationPlan(plan, cwd);
+
+  await executeJsScripts(selectedScripts, pm, cwd);
 }
 
 async function runPythonCommand(
   executable: string,
   args: string[],
-  _pmName: string,
   cwd: string = process.cwd(),
 ): Promise<void> {
   const displayCmd = `${executable} ${args.join(" ")}`.trim();
@@ -106,30 +105,7 @@ async function runPythonCommand(
 }
 
 function validatePythonWorkflowPmInfo(pmInfo: unknown): void {
-  if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
-    throw new Error('Invalid Python environment: "pmInfo" must be an object');
-  }
-  const obj = pmInfo as Record<string, unknown>;
-  if (obj.name !== "uv" && obj.name !== "pip") {
-    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
-  }
-  if (!Array.isArray(obj.installCommands)) {
-    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
-  }
-  for (const cmd of obj.installCommands) {
-    if (!cmd || typeof cmd !== "object") {
-      throw new Error('Invalid Python environment: malformed "installCommands" item');
-    }
-    const item = cmd as Record<string, unknown>;
-    if (
-      typeof item.executable !== "string" ||
-      !item.executable.trim() ||
-      !Array.isArray(item.args) ||
-      !item.args.every((a: unknown) => typeof a === "string")
-    ) {
-      throw new Error('Invalid Python environment: malformed "installCommands" item');
-    }
-  }
+  validatePythonPmInfoStructure(pmInfo, 'Invalid Python environment: "pmInfo" must be an object');
 }
 
 export async function executePythonWorkflow(
@@ -151,7 +127,7 @@ export async function executePythonWorkflow(
     const displayCmd = installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
     core.info(`Installing Python dependencies: ${displayCmd}`);
     for (const { executable, args } of installCmds) {
-      await runPythonCommand(executable, args, pmInfo.name, cwd);
+      await runPythonCommand(executable, args, cwd);
     }
   }
 }

@@ -1088,10 +1088,14 @@ export function detectPythonPackageManager(
     ctx.pyprojectToml = pyprojectToml;
   }
 
-  const detected = detectUvFromContext(ctx) || detectPipFromContext(ctx);
-
-  if (detected) {
-    return detected;
+  for (const pm of PYTHON_PACKAGE_MANAGER_PRIORITY) {
+    if (pm === "uv") {
+      const uvInfo = detectUvFromContext(ctx);
+      if (uvInfo) return uvInfo;
+    } else if (pm === "pip") {
+      const pipInfo = detectPipFromContext(ctx);
+      if (pipInfo) return pipInfo;
+    }
   }
 
   // Standalone Python project without manifest or lockfile
@@ -1172,6 +1176,44 @@ export function isRuffDeclaredInProject(
   if (checkRuffInRequirements(ctx.requirementsDir || cwd)) return true;
 
   return false;
+}
+
+/**
+ * Cohesive Python environment resolution entry point.
+ */
+export function validateInstallCommands(commands: unknown): void {
+  if (!Array.isArray(commands)) {
+    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
+  }
+  for (const cmd of commands) {
+    if (!cmd || typeof cmd !== "object") {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+    const item = cmd as Record<string, unknown>;
+    if (
+      typeof item.executable !== "string" ||
+      !item.executable.trim() ||
+      !Array.isArray(item.args) ||
+      !item.args.every((a: unknown) => typeof a === "string")
+    ) {
+      throw new Error('Invalid Python environment: malformed "installCommands" item');
+    }
+  }
+}
+
+export function validatePythonPmInfoStructure(
+  pmInfo: unknown,
+  errorMessageWhenNonObject: string = 'Invalid Python environment: "pmInfo" must be an object',
+): Record<string, unknown> {
+  if (!pmInfo || typeof pmInfo !== "object" || Array.isArray(pmInfo)) {
+    throw new Error(errorMessageWhenNonObject);
+  }
+  const obj = pmInfo as Record<string, unknown>;
+  if (obj.name !== "uv" && obj.name !== "pip") {
+    throw new Error(`Invalid Python environment: pmInfo name must be "uv" or "pip"`);
+  }
+  validateInstallCommands(obj.installCommands);
+  return obj;
 }
 
 /**

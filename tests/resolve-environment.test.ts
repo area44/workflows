@@ -901,7 +901,7 @@ describe("resolve-environment", () => {
           detected: true,
           runtime: { name: "node" },
           packageManager: { name: "pnpm" },
-          toolchain: "",
+          toolchain: undefined,
         },
         python: {
           detected: false,

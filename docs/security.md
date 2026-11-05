@@ -9,7 +9,7 @@ This document specifies the security boundaries and defensive measures implement
 ## Trust Boundaries & Input Validation
 
 - **Untrusted User Inputs**: Composite action inputs (`build-command`, `path`) supplied in workflow files and repository manifest files (`package.json`, `pyproject.toml`, `uv.toml`, `.nvmrc`, `.node-version`, `.bun-version`, lockfiles) are treated as untrusted user input.
-- **Package Manager Sanitization**: Package manager identifiers are sanitized before executing package manager binaries, restricting characters to alphanumeric names and hyphens.
+- **Package Manager Sanitization**: Package manager identifiers are sanitized before executing package manager binaries, restricting characters to lowercase alphanumeric characters, underscores, dots, and hyphens (`/^[a-z0-9_.-]+$/`). Any value containing invalid characters defaults safely to `npm`.
 
 ## Command Execution & Subshell Avoidance
 

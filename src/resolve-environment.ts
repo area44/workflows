@@ -8,7 +8,11 @@ import {
   validateRuntimePackageManagerCompatibility,
   type ResolvedJavaScriptEnvironment,
 } from "./javascript-env.js";
-import { resolvePythonEnvironment, type ResolvedPythonEnvironment } from "./python-env.js";
+import {
+  resolvePythonEnvironment,
+  validateInstallCommands,
+  type ResolvedPythonEnvironment,
+} from "./python-env.js";
 import {
   createSetupPlan,
   type BunSetupPlan,
@@ -66,30 +70,6 @@ function validateJsEnvironment(js: unknown): void {
   }
 
   validateRuntimePackageManagerCompatibility(runtimeName, pmObj.name);
-}
-
-function validateInstallCommandItem(cmd: unknown): void {
-  if (!cmd || typeof cmd !== "object") {
-    throw new Error('Invalid Python environment: malformed "installCommands" item');
-  }
-  const item = cmd as Record<string, unknown>;
-  if (
-    typeof item.executable !== "string" ||
-    !item.executable.trim() ||
-    !Array.isArray(item.args) ||
-    !item.args.every((a: unknown) => typeof a === "string")
-  ) {
-    throw new Error('Invalid Python environment: malformed "installCommands" item');
-  }
-}
-
-function validateInstallCommands(commands: unknown): void {
-  if (!Array.isArray(commands)) {
-    throw new Error('Invalid Python environment: "pmInfo.installCommands" must be an array');
-  }
-  for (const cmd of commands) {
-    validateInstallCommandItem(cmd);
-  }
 }
 
 function validatePmInfoFields(pmObj: Record<string, unknown>): void {
@@ -235,7 +215,7 @@ function formatJsRuntime(js: ResolvedJavaScriptEnvironment): string {
   return js.runtime.name === "bun" ? "Bun" : "Node.js";
 }
 
-function formatPythonRuntime(_py: ResolvedPythonEnvironment): string {
+function formatPythonRuntime(): string {
   return "Python";
 }
 
@@ -259,7 +239,7 @@ export function logResolvedEnvironment(env: ResolvedEnvironment): void {
 
   const runtimes: string[] = [];
   if (js.detected) runtimes.push(formatJsRuntime(js));
-  if (py.detected) runtimes.push(formatPythonRuntime(py));
+  if (py.detected) runtimes.push(formatPythonRuntime());
   if (runtimes.length > 0) {
     core.info(`Runtime: ${runtimes.join(", ")}`);
   }
