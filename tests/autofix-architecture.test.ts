@@ -186,6 +186,28 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(tasks.map((t) => t.scriptName)).toEqual(["fix"]);
     });
 
+    it("rejects false positives from strings inside echo or comments in doesFixScriptDelegateTo", () => {
+      const scripts = {
+        fix: 'echo "&& npm run format:write;" && npm run lint:fix',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      // "format:write" was inside quotes in echo, so fix does NOT delegate to format:write!
+      expect(tasks.map((t) => t.scriptName)).toEqual(["fix", "format:write"]);
+    });
+
+    it("evaluates Python detection accurately when planExecution receives { cwd } without precomputed hasPythonSource", async () => {
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      expect(plan.tasks.some((t) => t.toolId === "ruff")).toBe(true);
+      expect(plan.selectedTools.some((t) => t.id === "ruff")).toBe(true);
+      expect(plan.summary).toContain("Python: true");
+      expect(plan.summary).toContain("Ruff: default tool");
+    });
+
     it("distinguishes fix mode and check mode for lint scripts", () => {
       expect(resolveScriptTasks({ "lint:check": "eslint ." }, "fix")).toEqual([]);
       expect(resolveScriptTasks({ lint: "eslint ." }, "fix")).toEqual([]);

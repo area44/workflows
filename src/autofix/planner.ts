@@ -8,6 +8,8 @@ import type {
   ToolAdapter,
 } from "./types.js";
 
+import { hasPythonSource } from "../python-env.js";
+
 interface CandidateTool {
   adapter: ToolAdapter;
   reason?: string;
@@ -132,6 +134,13 @@ export async function planExecution(
   context: ProjectContext,
   mode: ExecutionMode = "fix",
 ): Promise<PlannedExecution> {
+  // Ensure consistent Python source detection across provider, adapter, and plan diagnostics
+  const resolvedHasPythonSource = context.hasPythonSource ?? hasPythonSource(context.cwd);
+  const effectiveContext: ProjectContext = {
+    ...context,
+    hasPythonSource: resolvedHasPythonSource,
+  };
+
   const selectedTools: Array<{ id: string; name: string; reason?: string }> = [];
   const skippedTools: Array<{ id: string; name: string; reason: string }> = [];
   const tasks: ExecutionTask[] = [];
@@ -140,7 +149,7 @@ export async function planExecution(
   const coveredCapabilities = new Map<string, Set<Capability>>();
 
   for (const provider of providers) {
-    const isDetected = await provider.detect(context);
+    const isDetected = await provider.detect(effectiveContext);
     if (!isDetected) {
       continue;
     }
@@ -148,12 +157,12 @@ export async function planExecution(
     const providerCapabilities = new Set<Capability>();
     coveredCapabilities.set(provider.id, providerCapabilities);
 
-    const adapters = provider.getAdapters(context);
+    const adapters = provider.getAdapters(effectiveContext);
     const candidateTools: CandidateTool[] = [];
 
     // Detect tools
     for (const adapter of adapters) {
-      const result = await adapter.detect(context);
+      const result = await adapter.detect(effectiveContext);
       if (result.detected) {
         candidateTools.push({ adapter, reason: result.reason });
       } else if (result.reason && !result.reason.startsWith("no ")) {
@@ -164,7 +173,7 @@ export async function planExecution(
     await processCandidateTools(
       candidateTools,
       providerCapabilities,
-      context,
+      effectiveContext,
       mode,
       selectedTools,
       skippedTools,
@@ -172,14 +181,14 @@ export async function planExecution(
     );
   }
 
-  await processStandaloneAdapters(registry, context, mode, selectedTools, tasks);
+  await processStandaloneAdapters(registry, effectiveContext, mode, selectedTools, tasks);
 
   const deduplicatedTasks = deduplicateTasks(tasks);
 
-  // Generate explainable summary
+  // Generate explainable summary using effectiveContext with consistent Python detection
   const summary = formatExecutionPlanSummary(
     registry,
-    context,
+    effectiveContext,
     selectedTools,
     skippedTools,
     deduplicatedTasks,

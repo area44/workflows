@@ -56,22 +56,139 @@ function resolveLintScript(
 }
 
 /**
+ * Splits a shell command string into pipeline/chained commands (;, &&, ||, |)
+ * while respecting single quotes ('...'), double quotes ("..."), and backslash escapes (\).
+ * Replaces any quoted content with blank tokens so text inside strings is never mistaken for commands.
+ */
+function tokenizeShellCommands(shellText: string): string[] {
+  const commands: string[] = [];
+  let currentCmd = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < shellText.length; i++) {
+    const ch = shellText[i];
+
+    if (isEscaped) {
+      currentCmd += " ";
+      isEscaped = false;
+      continue;
+    }
+
+    if (ch === "\\" && !inSingleQuote) {
+      isEscaped = true;
+      currentCmd += " ";
+      continue;
+    }
+
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      currentCmd += " ";
+      continue;
+    }
+
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      currentCmd += " ";
+      continue;
+    }
+
+    // Inside quotes: suppress content
+    if (inSingleQuote || inDoubleQuote) {
+      currentCmd += " ";
+      continue;
+    }
+
+    // Shell comment: rest of the line is ignored
+    if (ch === "#") {
+      while (i < shellText.length && shellText[i] !== "\n") {
+        i++;
+      }
+      continue;
+    }
+
+    // Command separators: ;, &&, ||, |
+    if (ch === ";" || ch === "\n") {
+      if (currentCmd.trim()) {
+        commands.push(currentCmd.trim());
+      }
+      currentCmd = "";
+      continue;
+    }
+
+    if (ch === "&" && shellText[i + 1] === "&") {
+      if (currentCmd.trim()) {
+        commands.push(currentCmd.trim());
+      }
+      currentCmd = "";
+      i++;
+      continue;
+    }
+
+    if (ch === "|" && shellText[i + 1] === "|") {
+      if (currentCmd.trim()) {
+        commands.push(currentCmd.trim());
+      }
+      currentCmd = "";
+      i++;
+      continue;
+    }
+
+    if (ch === "|") {
+      if (currentCmd.trim()) {
+        commands.push(currentCmd.trim());
+      }
+      currentCmd = "";
+      continue;
+    }
+
+    currentCmd += ch;
+  }
+
+  if (currentCmd.trim()) {
+    commands.push(currentCmd.trim());
+  }
+
+  return commands;
+}
+
+/**
  * Recognizes actual supported package-manager script invocation commands:
  * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`
  * Does not match `echo format`, comments, quoted explanatory text, or substrings.
  */
 export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
   if (!fixScriptBody) return false;
-  const escapedTarget = targetScriptName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-  // Matches explicit package manager invocation:
-  // e.g. npm run <target>, pnpm run <target>, bun run <target>, yarn run <target>, pnpm <target>, bun <target>
-  const pattern = new RegExp(
-    `(?:^|[;&|]|&&)\\s*(?:npm\\s+run|pnpm\\s+run|bun\\s+run|yarn\\s+run|pnpm|bun|yarn)\\s+${escapedTarget}(?:\\s+[^-;&|]+)*(?:\\s*([;&|]|&&)|$)`,
-  );
-  return pattern.test(fixScriptBody.trim());
+
+  const commands = tokenizeShellCommands(fixScriptBody);
+
+  for (const cmd of commands) {
+    // Split into whitespace-separated words
+    const tokens = cmd.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+
+    const [first, second, third] = tokens;
+
+    // Check `npm run <target>`, `pnpm run <target>`, `yarn run <target>`, `bun run <target>`
+    if (
+      (first === "npm" || first === "pnpm" || first === "yarn" || first === "bun") &&
+      second === "run" &&
+      third === targetScriptName
+    ) {
+      return true;
+    }
+
+    // Check `pnpm <target>`, `bun <target>`, `yarn <target>`
+    if ((first === "pnpm" || first === "bun" || first === "yarn") && second === targetScriptName) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
-function shouldIncludeIndependentFormat(
+function shouldIncludeFormatWithFix(
   scripts: Record<string, string>,
   fixScript: string,
   formatScript?: string,
@@ -81,7 +198,7 @@ function shouldIncludeIndependentFormat(
   return !doesFixScriptDelegateTo(fixBody, formatScript);
 }
 
-function shouldIncludeIndependentLint(
+function shouldIncludeLintWithFix(
   scripts: Record<string, string>,
   fixScript: string,
   lintScript?: string,
@@ -104,10 +221,10 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
   }
 
   const mappings: ScriptMapping[] = [{ capability: "autofix", scriptName: fixScript }];
-  if (formatScript && shouldIncludeIndependentFormat(scripts, fixScript, formatScript)) {
+  if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
     mappings.push({ capability: "format", scriptName: formatScript });
   }
-  if (lintScript && shouldIncludeIndependentLint(scripts, fixScript, lintScript)) {
+  if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
     mappings.push({ capability: "lint", scriptName: lintScript });
   }
 
