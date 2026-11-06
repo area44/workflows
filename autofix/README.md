@@ -23,11 +23,12 @@ The `autofix` composite action automatically formats and fixes code across multi
 - **JavaScript/TypeScript Hybrid Detection:**
   - **Explicit Script Priority:** Recognizes standard script conventions:
     - Combined autofix: `fix`, `check:fix`
-    - Format write: `format`, `fmt`, `format:write`
+    - Format write: `format`, `fmt`, `format:write`, `format:fix`
     - Format check: `format:check`, `fmt:check`
     - Lint fix: `lint:fix`, `lint:write`
     - Lint check: `lint`, `lint:check`
-  - **Excluded Scripts:** Generic validation scripts such as `check`, `test`, and `typecheck` are strictly excluded from execution as autofix commands in fix mode.
+  - **Excluded Scripts:** Validation-only scripts such as plain `lint`, `lint:check`, `check`, `test`, and `typecheck` are strictly excluded from execution as autofix commands in fix mode.
+  - **Generic "fix" Interaction:** A generic `fix` script does not blindly suppress independently declared format or lint fix scripts unless it demonstrably delegates to them.
   - **Tool Adapters:** When explicit scripts are absent or specialized, detects configured tools:
     - **Vite+:** Project-native toolchain (`vp fmt` and `vp lint --fix` in fix mode, avoiding unnecessary type-checking or validation).
     - **Biome:** Fast unified formatter and linter (`biome check --write .`).

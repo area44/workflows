@@ -36,8 +36,6 @@ export interface ToolAdapter {
   name: string;
   capabilities: readonly Capability[];
 
-  getCapabilities?(context: ProjectContext, mode?: ExecutionMode): Capability[];
-
   detect(context: ProjectContext): Promise<AdapterDetectionResult> | AdapterDetectionResult;
 
   plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> | ExecutionTask[];

@@ -144,7 +144,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
     });
 
-    it("does NOT execute 'check', 'test', or 'typecheck' scripts as autofix commands in fix mode", async () => {
+    it("does NOT execute 'check', 'test', 'typecheck', 'lint', or 'lint:check' as autofix commands in fix mode", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -152,6 +152,8 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
             check: "tsc --noEmit",
             test: "vitest run",
             typecheck: "tsc",
+            lint: "eslint .",
+            "lint:check": "eslint .",
           },
         }),
       );
@@ -186,11 +188,18 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
     it("distinguishes fix mode and check mode for lint scripts", () => {
       expect(resolveScriptTasks({ "lint:check": "eslint ." }, "fix")).toEqual([]);
+      expect(resolveScriptTasks({ lint: "eslint ." }, "fix")).toEqual([]);
       expect(resolveScriptTasks({ "lint:check": "eslint ." }, "check")).toEqual([
         { capability: "lint", scriptName: "lint:check" },
       ]);
+      expect(resolveScriptTasks({ lint: "eslint ." }, "check")).toEqual([
+        { capability: "lint", scriptName: "lint" },
+      ]);
       expect(resolveScriptTasks({ "lint:fix": "eslint --fix ." }, "fix")).toEqual([
         { capability: "lint", scriptName: "lint:fix" },
+      ]);
+      expect(resolveScriptTasks({ "lint:write": "eslint --fix ." }, "fix")).toEqual([
+        { capability: "lint", scriptName: "lint:write" },
       ]);
     });
   });
@@ -296,6 +305,38 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         ["--fix", "."],
         expect.objectContaining({ cwd: tempDir }),
       );
+    });
+
+    it("resolves capabilities dynamically: 'format:write' script + Vite+ runs Vite+ lint while skipping Vite+ fmt", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => {
+        if (bin === "vp") return "/usr/local/bin/vp";
+        return "";
+      });
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+          },
+          devDependencies: { "vite-plus": "^1.4.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith(
+        "npm",
+        ["run", "format:write"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(exec.exec).toHaveBeenCalledWith(
+        "/usr/local/bin/vp",
+        ["lint", "--fix"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(exec.exec).not.toHaveBeenCalledWith("/usr/local/bin/vp", ["fmt"], expect.anything());
     });
   });
 

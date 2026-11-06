@@ -59,7 +59,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "npm",
         installArgs: ["install"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
       {
         action: "autofix",
@@ -68,7 +68,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "pnpm",
         installArgs: ["install", "--no-frozen-lockfile"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
       {
         action: "autofix",
@@ -77,7 +77,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "bun",
         installArgs: ["install"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
     ];
 
@@ -934,24 +934,28 @@ describe("autofix", () => {
   describe("script execution routing", () => {
     const scriptCases = [
       {
-        name: "fix script priority over all",
-        scripts: { fix: "echo fix", format: "echo format", lint: "echo lint" },
+        name: "fix script delegates to format:write and lint:fix",
+        scripts: {
+          fix: "npm run format:write && npm run lint:fix",
+          "format:write": "echo format",
+          "lint:fix": "echo lint",
+        },
         expectedCalls: [["npm", ["run", "fix"]]],
       },
       {
-        name: "format and lint scripts when fix is absent",
-        scripts: { format: "echo format", lint: "echo lint" },
+        name: "format:write and lint:fix scripts when fix is absent",
+        scripts: { "format:write": "echo format", "lint:fix": "echo lint" },
         expectedCalls: [
-          ["npm", ["run", "format"]],
-          ["npm", ["run", "lint"]],
+          ["npm", ["run", "format:write"]],
+          ["npm", ["run", "lint:fix"]],
         ],
       },
       {
-        name: "fmt and lint scripts when format is absent",
-        scripts: { fmt: "echo fmt", lint: "echo lint" },
+        name: "fmt and lint:fix scripts when format is absent",
+        scripts: { fmt: "echo fmt", "lint:fix": "echo lint" },
         expectedCalls: [
           ["npm", ["run", "fmt"]],
-          ["npm", ["run", "lint"]],
+          ["npm", ["run", "lint:fix"]],
         ],
       },
       {
@@ -965,12 +969,12 @@ describe("autofix", () => {
         expectedCalls: [["npm", ["run", "fmt"]]],
       },
       {
-        name: "lint script only",
-        scripts: { lint: "echo lint" },
-        expectedCalls: [["npm", ["run", "lint"]]],
+        name: "lint:fix script only",
+        scripts: { "lint:fix": "echo lint" },
+        expectedCalls: [["npm", ["run", "lint:fix"]]],
       },
       {
-        name: "check script as lowest priority fallback",
+        name: "combined fix script fallback",
         scripts: { fix: "echo fix" },
         expectedCalls: [["npm", ["run", "fix"]]],
       },

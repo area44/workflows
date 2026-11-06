@@ -10,41 +10,38 @@ import type {
 
 interface CandidateTool {
   adapter: ToolAdapter;
-  capabilities: Capability[];
   reason?: string;
 }
 
-function checkCapabilityConflict(
-  capabilities: Capability[],
-  providerCapabilities: Set<Capability>,
-): string | null {
-  const hasAutofixCovered = providerCapabilities.has("autofix");
-  const hasFormatCovered = providerCapabilities.has("format");
-  const hasLintCovered = providerCapabilities.has("lint");
+function isTaskCapabilityCovered(
+  taskCapability: Capability,
+  coveredCapabilities: Set<Capability>,
+): boolean {
+  if (coveredCapabilities.has("autofix")) {
+    return true;
+  }
+  if (taskCapability === "autofix") {
+    return coveredCapabilities.has("format") && coveredCapabilities.has("lint");
+  }
+  return coveredCapabilities.has(taskCapability);
+}
 
-  if (capabilities.includes("autofix")) {
-    if (hasAutofixCovered || (hasFormatCovered && hasLintCovered)) {
-      return "overlapping capabilities already covered by higher priority tool";
+function filterCandidateTasks(
+  plannedTasks: ExecutionTask[],
+  providerCapabilities: Set<Capability>,
+): { kept: ExecutionTask[]; skipped: ExecutionTask[] } {
+  const kept: ExecutionTask[] = [];
+  const skipped: ExecutionTask[] = [];
+
+  for (const task of plannedTasks) {
+    if (isTaskCapabilityCovered(task.capability, providerCapabilities)) {
+      skipped.push(task);
+    } else {
+      kept.push(task);
     }
   }
 
-  if (
-    capabilities.length === 1 &&
-    capabilities[0] === "format" &&
-    (hasAutofixCovered || hasFormatCovered)
-  ) {
-    return "formatting capability already covered by higher priority tool";
-  }
-
-  if (
-    capabilities.length === 1 &&
-    capabilities[0] === "lint" &&
-    (hasAutofixCovered || hasLintCovered)
-  ) {
-    return "linting capability already covered by higher priority tool";
-  }
-
-  return null;
+  return { kept, skipped };
 }
 
 async function processCandidateTools(
@@ -58,25 +55,37 @@ async function processCandidateTools(
 ): Promise<void> {
   for (const candidate of candidateTools) {
     const adapter = candidate.adapter;
-    const capabilities = candidate.capabilities;
+    const plannedTasks = await adapter.plan(context, mode);
 
-    const conflictReason = checkCapabilityConflict(capabilities, providerCapabilities);
-    if (conflictReason) {
+    if (plannedTasks.length === 0) {
+      continue;
+    }
+
+    const { kept, skipped } = filterCandidateTasks(plannedTasks, providerCapabilities);
+
+    if (kept.length === 0) {
       skippedTools.push({
         id: adapter.id,
         name: adapter.name,
-        reason: conflictReason,
+        reason: "all capabilities already covered by higher priority tool",
       });
       continue;
     }
 
     selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
-    for (const cap of capabilities) {
-      providerCapabilities.add(cap);
+    for (const task of kept) {
+      providerCapabilities.add(task.capability);
     }
+    tasks.push(...kept);
 
-    const toolTasks = await adapter.plan(context, mode);
-    tasks.push(...toolTasks);
+    if (skipped.length > 0) {
+      const skippedCaps = Array.from(new Set(skipped.map((t) => t.capability))).join(", ");
+      skippedTools.push({
+        id: adapter.id,
+        name: adapter.name,
+        reason: `partially skipped (${skippedCaps} covered by higher priority tool)`,
+      });
+    }
   }
 }
 
@@ -114,11 +123,9 @@ function deduplicateTasks(tasks: ExecutionTask[]): ExecutionTask[] {
  *
  * Conflict Resolution Rules:
  * 1. Explicit scripts have top priority for JS/TS tasks.
- * 2. If a tool or script covers "autofix" (combined lint and format), standalone formatters or linters
- *    for the same language are skipped to prevent duplicate work or overwriting changes.
- * 3. Do not run multiple formatters over the same files (e.g. Biome vs Prettier vs Oxfmt).
- * 4. Do not run multiple linters over the same files (e.g. Biome vs ESLint vs Oxlint).
- * 5. Execution ordering is deterministic: lint before format for safety and consistency, or toolchain standard.
+ * 2. Treat actual planned tasks as the authoritative source of capability coverage.
+ * 3. Partial capability overlap skips only overlapping tasks while retaining independent tasks.
+ * 4. Deduplicate genuinely equivalent tasks deterministically.
  */
 export async function planExecution(
   registry: AutofixRegistry,
@@ -130,8 +137,6 @@ export async function planExecution(
   const tasks: ExecutionTask[] = [];
 
   const providers = registry.getProviders();
-
-  // Track covered capabilities per language to prevent duplicate runs
   const coveredCapabilities = new Map<string, Set<Capability>>();
 
   for (const provider of providers) {
@@ -150,12 +155,8 @@ export async function planExecution(
     for (const adapter of adapters) {
       const result = await adapter.detect(context);
       if (result.detected) {
-        const caps = adapter.getCapabilities
-          ? adapter.getCapabilities(context, mode)
-          : Array.from(adapter.capabilities);
-        candidateTools.push({ adapter, capabilities: caps, reason: result.reason });
+        candidateTools.push({ adapter, reason: result.reason });
       } else if (result.reason && !result.reason.startsWith("no ")) {
-        // Reason worth logging as skipped (e.g. dependency present without configuration)
         skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
       }
     }

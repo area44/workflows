@@ -19,13 +19,16 @@ function resolveFormatScript(
   mode: ExecutionMode,
 ): string | undefined {
   if (mode === "fix") {
+    // Formatter scripts that modify files
     return scripts["format:write"]
       ? "format:write"
-      : scripts.format
-        ? "format"
-        : scripts.fmt
-          ? "fmt"
-          : undefined;
+      : scripts["format:fix"]
+        ? "format:fix"
+        : scripts.format
+          ? "format"
+          : scripts.fmt
+            ? "fmt"
+            : undefined;
   }
   return scripts["format:check"]
     ? "format:check"
@@ -43,60 +46,62 @@ function resolveLintScript(
   mode: ExecutionMode,
 ): string | undefined {
   if (mode === "fix") {
-    // In fix mode, prefer scripts explicitly indicating modifications:
-    // lint:fix, lint:write.
-    // If only lint is defined (and neither lint:fix nor lint:check exist),
-    // and format/fmt is also defined in supported script conventions,
-    // "lint" is recognized for compatibility with legacy test suites / conventions.
-    // However, standalone "lint:check" is never run in fix mode.
+    // In fix mode, ONLY select scripts that clearly express an autofix or write operation.
+    // Plain "lint", "lint:check", "check", "test", or "typecheck" are never run as autofix tasks!
     if (scripts["lint:fix"]) return "lint:fix";
     if (scripts["lint:write"]) return "lint:write";
-    if (scripts.lint && !scripts["lint:check"]) return "lint";
     return undefined;
   }
   return scripts["lint:check"] ? "lint:check" : scripts.lint ? "lint" : undefined;
 }
 
+function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
+  if (!fixScriptBody) return false;
+  // Check if target script is explicitly invoked (e.g. `npm run format`, `pnpm format`, `run format`)
+  const pattern = new RegExp(`(?:run\\s+)?\\b${targetScriptName}\\b`);
+  return pattern.test(fixScriptBody);
+}
+
+function shouldIncludeFormatWithFix(
+  scripts: Record<string, string>,
+  fixScript: string,
+  formatScript?: string,
+): boolean {
+  if (!formatScript || formatScript === fixScript) return false;
+  const fixBody = scripts[fixScript] || "";
+  // Do not suppress independent format script unless fix demonstrably delegates to it
+  return !doesFixScriptDelegateTo(fixBody, formatScript);
+}
+
+function shouldIncludeLintWithFix(
+  scripts: Record<string, string>,
+  fixScript: string,
+  lintScript?: string,
+): boolean {
+  if (!lintScript || lintScript === fixScript) return false;
+  const fixBody = scripts[fixScript] || "";
+  // Do not suppress independent lint fix script unless fix demonstrably delegates to it
+  return !doesFixScriptDelegateTo(fixBody, lintScript);
+}
+
 function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[] {
-  const mappings: ScriptMapping[] = [];
   const fixScript = scripts.fix ? "fix" : scripts["check:fix"] ? "check:fix" : undefined;
   const formatScript = resolveFormatScript(scripts, "fix");
   const lintScript = resolveLintScript(scripts, "fix");
 
-  if (fixScript) {
-    mappings.push({ capability: "autofix", scriptName: fixScript });
-    // If independent format or lint scripts exist, check if fix delegates to them or if they should run
-    // When a project defines both "fix" and independent format / lint scripts:
-    // If fix is "fix", check whether it covers them:
-    const fixBody = scripts[fixScript] || "";
-    const coversFormat =
-      fixBody.includes(formatScript || "") || fixBody.includes("format") || fixBody.includes("fmt");
-    const coversLint = fixBody.includes(lintScript || "") || fixBody.includes("lint");
+  if (!fixScript) {
+    const fallbackMappings: ScriptMapping[] = [];
+    if (formatScript) fallbackMappings.push({ capability: "format", scriptName: formatScript });
+    if (lintScript) fallbackMappings.push({ capability: "lint", scriptName: lintScript });
+    return fallbackMappings;
+  }
 
-    // Only add independent scripts if fix does not already cover them
-    if (
-      formatScript &&
-      formatScript !== fixScript &&
-      !coversFormat &&
-      (scripts["format:write"] || !scripts.fix)
-    ) {
-      mappings.push({ capability: "format", scriptName: formatScript });
-    }
-    if (
-      lintScript &&
-      lintScript !== fixScript &&
-      !coversLint &&
-      (scripts["lint:fix"] || scripts["lint:write"])
-    ) {
-      mappings.push({ capability: "lint", scriptName: lintScript });
-    }
-  } else {
-    if (formatScript) {
-      mappings.push({ capability: "format", scriptName: formatScript });
-    }
-    if (lintScript) {
-      mappings.push({ capability: "lint", scriptName: lintScript });
-    }
+  const mappings: ScriptMapping[] = [{ capability: "autofix", scriptName: fixScript }];
+  if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
+    mappings.push({ capability: "format", scriptName: formatScript });
+  }
+  if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
+    mappings.push({ capability: "lint", scriptName: lintScript });
   }
 
   return mappings;
@@ -128,13 +133,6 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
   public readonly id = "npm-scripts";
   public readonly name = "package.json scripts";
   public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
-
-  public getCapabilities(context: ProjectContext, mode: ExecutionMode = "fix"): Capability[] {
-    const scripts = context.jsEnv?.packageJson?.scripts;
-    if (!scripts) return [];
-    const tasks = resolveScriptTasks(scripts, mode);
-    return Array.from(new Set(tasks.map((t) => t.capability)));
-  }
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const scripts = context.jsEnv?.packageJson?.scripts;
