@@ -13,6 +13,7 @@ import {
   run,
   sanitizePackageManager,
 } from "../src/autofix/index";
+import * as pythonEnv from "../src/python-env";
 import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/exec");
@@ -1559,6 +1560,36 @@ describe("autofix", () => {
       expect(core.setFailed).toHaveBeenCalled();
       expect(fs.existsSync(userFile)).toBe(true);
       expect(fs.readFileSync(userFile, "utf8")).toBe("important user content");
+    });
+  });
+
+  describe("Python Source Detection Optimization in Workflow", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-py-scan-"));
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should perform Python source detection only once during autofix run", async () => {
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      vi.mocked(io.which).mockResolvedValue("/usr/bin/ruff");
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const hasSourceSpy = vi.spyOn(pythonEnv, "hasPythonSource");
+
+      try {
+        hasSourceSpy.mockClear();
+        await run(tempDir);
+        expect(hasSourceSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        hasSourceSpy.mockRestore();
+      }
     });
   });
 });

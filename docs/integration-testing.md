@@ -10,7 +10,7 @@ This guide details how `@area44/workflows` verifies composite action behavior (`
 
 To ensure action workflows function reliably across diverse project configurations, the repository uses a unified scenario factory to dynamically generate consumer projects:
 
-- **Canonical Generator Script (`tests/helpers/consumer-project/generate-consumer-project.ts`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node --experimental-strip-types tests/helpers/consumer-project/generate-consumer-project.ts <target-directory> [options]`).
+- **Canonical Generator Script (`tests/helpers/consumer-project/generate-consumer-project.ts`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node --import tests/helpers/consumer-project/resolver.js tests/helpers/consumer-project/generate-consumer-project.ts <target-directory> [options]`).
 - **TypeScript Test Helper (`tests/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from `tests/helpers/consumer-project/index.ts` so unit and module-level integration tests share identical generation logic.
 
 ### Scenario Dimensions & Factory Options

@@ -150,7 +150,7 @@ jobs:
 
       - name: Generate Consumer Project Workspace
         run: |
-          node --experimental-strip-types action-source/tests/helpers/consumer-project/generate-consumer-project.ts . \
+          node --import action-source/tests/helpers/consumer-project/resolver.js action-source/tests/helpers/consumer-project/generate-consumer-project.ts . \
             --allow-non-empty \
             --action "${{ matrix.action }}" \
             --runtime "${{ matrix.runtime }}" \

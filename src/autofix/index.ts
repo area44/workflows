@@ -129,8 +129,12 @@ export async function executePythonWorkflow(
   }
 }
 
-export async function executeRuffAutofix(cwd: string = process.cwd()): Promise<void> {
-  if (!hasPythonSource(cwd)) {
+export async function executeRuffAutofix(
+  cwd: string = process.cwd(),
+  hasSource?: boolean,
+): Promise<void> {
+  const hasSourceCode = hasSource ?? hasPythonSource(cwd);
+  if (!hasSourceCode) {
     return;
   }
 
@@ -211,7 +215,7 @@ async function runPythonDepsStep(
   }
 }
 
-async function runRuffStep(cwd: string): Promise<Error | null> {
+async function runRuffStep(cwd: string, hasSource?: boolean): Promise<Error | null> {
   const ruffSetupFailed = process.env.RUFF_SETUP_OUTCOME === "failure";
 
   if (ruffSetupFailed) {
@@ -219,7 +223,7 @@ async function runRuffStep(cwd: string): Promise<Error | null> {
   }
 
   try {
-    await executeRuffAutofix(cwd);
+    await executeRuffAutofix(cwd, hasSource);
     return null;
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
@@ -246,7 +250,7 @@ async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<
     errors.push(depsErr);
   }
 
-  const ruffErr = await runRuffStep(cwd);
+  const ruffErr = await runRuffStep(cwd, hasSourceCode);
   if (ruffErr) {
     errors.push(ruffErr);
   }

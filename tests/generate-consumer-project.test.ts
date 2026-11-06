@@ -459,7 +459,11 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       process.cwd(),
       "tests/helpers/consumer-project/generate-consumer-project.ts",
     );
-    const nodeCmd = `node --experimental-strip-types "${generatorScript}"`;
+    const resolverScript = path.resolve(
+      process.cwd(),
+      "tests/helpers/consumer-project/resolver.js",
+    );
+    const nodeCmd = `node --import "${resolverScript}" "${generatorScript}"`;
 
     it("fails with error code 1 when CLI is invoked without a target directory argument", () => {
       let failed = false;
