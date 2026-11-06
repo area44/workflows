@@ -2,13 +2,15 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 
+import type { ProjectContext } from "./types.js";
+
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
   sanitizePackageManager,
-  selectAutofixScripts,
   type JsInstallationPlan,
+  type SupportedPackageManager,
 } from "../javascript-env.js";
 import {
   detectPythonPackageManager,
@@ -19,23 +21,11 @@ import {
   type PythonProjectContext,
 } from "../python-env.js";
 import { isMainModule } from "../utils/is-main-module.js";
+import { ExecutionEngine } from "./engine.js";
+import { planExecution } from "./planner.js";
+import { defaultRegistry } from "./registry.js";
 
 export { sanitizePackageManager };
-
-async function runScriptCommand(
-  pm: string,
-  name: string,
-  cwd: string = process.cwd(),
-): Promise<void> {
-  const safePm = sanitizePackageManager(pm);
-  const displayCmd = `${safePm} run ${name}`;
-  core.info(`Executing: ${displayCmd}`);
-
-  const exitCode = await exec.exec(safePm, ["run", name], { cwd, ignoreReturnCode: true });
-  if (exitCode !== 0) {
-    throw new Error(`Script "${name}" failed while executing "${displayCmd}".`);
-  }
-}
 
 async function runJsInstallationPlan(
   plan: JsInstallationPlan,
@@ -52,16 +42,6 @@ async function runJsInstallationPlan(
   }
 }
 
-async function executeJsScripts(
-  selectedScripts: string[],
-  pm: string,
-  cwd: string = process.cwd(),
-): Promise<void> {
-  for (const scriptName of selectedScripts) {
-    await runScriptCommand(pm, scriptName, cwd);
-  }
-}
-
 export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<void> {
   const jsEnv = inspectJsProjectEnvironment(cwd);
   if (!jsEnv.hasPackageJson) {
@@ -73,21 +53,33 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
     throw new Error(jsEnv.packageJsonError);
   }
 
-  const scripts = jsEnv.packageJson?.scripts || {};
-  const selectedScripts = selectAutofixScripts(scripts);
+  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+  const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
 
-  if (selectedScripts.length === 0) {
+  const context: ProjectContext = {
+    cwd,
+    jsEnv,
+    jsPm: pm,
+    hasPythonSource: false,
+  };
+
+  const plan = await planExecution(defaultRegistry, context, "fix");
+  const jsTasks = plan.tasks.filter((t) => t.toolId !== "ruff");
+
+  if (jsTasks.length === 0) {
     core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
     return;
   }
 
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-  const pm = sanitizePackageManager(rawPm);
+  const installPlan = getJsInstallationPlan(pm);
+  await runJsInstallationPlan(installPlan, cwd);
 
-  const plan = getJsInstallationPlan(pm);
-  await runJsInstallationPlan(plan, cwd);
-
-  await executeJsScripts(selectedScripts, pm, cwd);
+  const engine = new ExecutionEngine();
+  const results = await engine.executeTasks(jsTasks);
+  const failure = results.find((r) => r.error);
+  if (failure?.error) {
+    throw failure.error;
+  }
 }
 
 async function runPythonCommand(
@@ -144,18 +136,23 @@ export async function executeRuffAutofix(
     throw new Error(message);
   }
 
-  const ruffCommandSpecs = [
-    { executable: "ruff", args: ["check", "--fix", "."] },
-    { executable: "ruff", args: ["format", "."] },
-  ];
+  const context: ProjectContext = {
+    cwd,
+    hasPythonSource: true,
+  };
 
-  for (const { executable, args } of ruffCommandSpecs) {
-    const displayCmd = `${executable} ${args.join(" ")}`;
-    core.info(`Executing: ${displayCmd}`);
-    const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
-    if (exitCode !== 0) {
-      throw new Error(`Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`);
-    }
+  const ruffProvider = defaultRegistry.getProvider("python");
+  const ruffAdapter = ruffProvider?.getAdapters(context).find((a) => a.id === "ruff");
+  if (!ruffAdapter) {
+    throw new Error("Ruff adapter not found in registry.");
+  }
+
+  const tasks = await ruffAdapter.plan(context, "fix");
+  const engine = new ExecutionEngine();
+  const results = await engine.executeTasks(tasks);
+  const failure = results.find((r) => r.error);
+  if (failure?.error) {
+    throw failure.error;
   }
 }
 
