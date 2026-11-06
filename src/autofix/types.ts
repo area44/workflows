@@ -15,6 +15,8 @@ export interface ExecutionTask {
   mode: ExecutionMode;
   env?: Record<string, string>;
   description?: string;
+  toolName?: string;
+  requiredPackage?: string;
 }
 
 export interface ProjectContext {

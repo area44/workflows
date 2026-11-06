@@ -55,32 +55,39 @@ function resolveLintScript(
   return scripts["lint:check"] ? "lint:check" : scripts.lint ? "lint" : undefined;
 }
 
-function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
+/**
+ * Recognizes actual supported package-manager script invocation commands:
+ * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`
+ * Does not match `echo format`, comments, quoted explanatory text, or substrings.
+ */
+export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
   if (!fixScriptBody) return false;
-  // Check if target script is explicitly invoked (e.g. `npm run format`, `pnpm format`, `run format`)
-  const pattern = new RegExp(`(?:run\\s+)?\\b${targetScriptName}\\b`);
-  return pattern.test(fixScriptBody);
+  const escapedTarget = targetScriptName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  // Matches explicit package manager invocation:
+  // e.g. npm run <target>, pnpm run <target>, bun run <target>, yarn run <target>, pnpm <target>, bun <target>
+  const pattern = new RegExp(
+    `(?:^|[;&|]|&&)\\s*(?:npm\\s+run|pnpm\\s+run|bun\\s+run|yarn\\s+run|pnpm|bun|yarn)\\s+${escapedTarget}(?:\\s+[^-;&|]+)*(?:\\s*([;&|]|&&)|$)`,
+  );
+  return pattern.test(fixScriptBody.trim());
 }
 
-function shouldIncludeFormatWithFix(
+function shouldIncludeIndependentFormat(
   scripts: Record<string, string>,
   fixScript: string,
   formatScript?: string,
 ): boolean {
   if (!formatScript || formatScript === fixScript) return false;
   const fixBody = scripts[fixScript] || "";
-  // Do not suppress independent format script unless fix demonstrably delegates to it
   return !doesFixScriptDelegateTo(fixBody, formatScript);
 }
 
-function shouldIncludeLintWithFix(
+function shouldIncludeIndependentLint(
   scripts: Record<string, string>,
   fixScript: string,
   lintScript?: string,
 ): boolean {
   if (!lintScript || lintScript === fixScript) return false;
   const fixBody = scripts[fixScript] || "";
-  // Do not suppress independent lint fix script unless fix demonstrably delegates to it
   return !doesFixScriptDelegateTo(fixBody, lintScript);
 }
 
@@ -97,10 +104,10 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
   }
 
   const mappings: ScriptMapping[] = [{ capability: "autofix", scriptName: fixScript }];
-  if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
+  if (formatScript && shouldIncludeIndependentFormat(scripts, fixScript, formatScript)) {
     mappings.push({ capability: "format", scriptName: formatScript });
   }
-  if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
+  if (lintScript && shouldIncludeIndependentLint(scripts, fixScript, lintScript)) {
     mappings.push({ capability: "lint", scriptName: lintScript });
   }
 

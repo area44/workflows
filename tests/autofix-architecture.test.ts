@@ -420,11 +420,12 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       const engine = new ExecutionEngine();
       vi.mocked(exec.exec).mockResolvedValue(0);
+      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/cargo");
       const results = await engine.executeTasks(plan.tasks);
       expect(results).toHaveLength(1);
       expect(results[0].exitCode).toBe(0);
       expect(exec.exec).toHaveBeenCalledWith(
-        "cargo",
+        "/usr/bin/cargo",
         ["fmt"],
         expect.objectContaining({ cwd: tempDir }),
       );

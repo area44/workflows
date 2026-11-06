@@ -1,4 +1,3 @@
-import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -32,43 +31,6 @@ function hasAnyConfigFile(cwd: string, filenames: string[]): boolean {
   return false;
 }
 
-/**
- * Resolves local project binary safely without falling back to `npx` (which could download unpinned packages).
- * Checks node_modules/.bin/<tool> first, then PATH via io.which.
- */
-export async function resolveProjectBinary(
-  cwd: string,
-  toolBinary: string,
-): Promise<string | undefined> {
-  const localBinPath = path.join(cwd, "node_modules", ".bin", toolBinary);
-  if (fs.existsSync(localBinPath)) {
-    return localBinPath;
-  }
-
-  const pathBin = await io.which(toolBinary, false);
-  if (pathBin) {
-    return pathBin;
-  }
-
-  return undefined;
-}
-
-async function requireToolBinary(
-  cwd: string,
-  toolId: string,
-  toolName: string,
-  binName: string,
-  depName: string,
-): Promise<string> {
-  const resolved = await resolveProjectBinary(cwd, binName);
-  if (!resolved) {
-    throw new Error(
-      `Configured tool "${toolName}" could not run: executable "${binName}" is not available in node_modules/.bin or PATH. Please install "${depName}" in project dependencies.`,
-    );
-  }
-  return resolved;
-}
-
 // 1. Vite+ Adapter
 export class VitePlusAdapter implements ToolAdapter {
   public readonly id = "vite-plus";
@@ -94,17 +56,16 @@ export class VitePlusAdapter implements ToolAdapter {
     return { detected: false, reason: "no Vite+ dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(context.cwd, this.id, this.name, "vp", "vite-plus");
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
-      // In fix mode, run formatting and lint fixes without triggering validation/typechecking
       return [
         {
           id: "vite-plus-fmt",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "vite-plus",
           capability: "format",
-          executable,
+          executable: "vp",
           args: ["fmt"],
           cwd: context.cwd,
           mode: "fix",
@@ -113,8 +74,10 @@ export class VitePlusAdapter implements ToolAdapter {
         {
           id: "vite-plus-lint-fix",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "vite-plus",
           capability: "lint",
-          executable,
+          executable: "vp",
           args: ["lint", "--fix"],
           cwd: context.cwd,
           mode: "fix",
@@ -127,8 +90,10 @@ export class VitePlusAdapter implements ToolAdapter {
       {
         id: "vite-plus-fmt-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "vite-plus",
         capability: "format",
-        executable,
+        executable: "vp",
         args: ["fmt", "--check"],
         cwd: context.cwd,
         mode: "check",
@@ -137,8 +102,10 @@ export class VitePlusAdapter implements ToolAdapter {
       {
         id: "vite-plus-lint",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "vite-plus",
         capability: "lint",
-        executable,
+        executable: "vp",
         args: ["lint"],
         cwd: context.cwd,
         mode: "check",
@@ -171,22 +138,16 @@ export class BiomeAdapter implements ToolAdapter {
     return { detected: false, reason: "no Biome dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(
-      context.cwd,
-      this.id,
-      this.name,
-      "biome",
-      "@biomejs/biome",
-    );
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
       return [
         {
           id: "biome-check-fix",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "@biomejs/biome",
           capability: "autofix",
-          executable,
+          executable: "biome",
           args: ["check", "--write", "."],
           cwd: context.cwd,
           mode: "fix",
@@ -199,8 +160,10 @@ export class BiomeAdapter implements ToolAdapter {
       {
         id: "biome-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "@biomejs/biome",
         capability: "autofix",
-        executable,
+        executable: "biome",
         args: ["check", "."],
         cwd: context.cwd,
         mode: "check",
@@ -246,22 +209,16 @@ export class PrettierAdapter implements ToolAdapter {
     return { detected: false, reason: "no Prettier dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(
-      context.cwd,
-      this.id,
-      this.name,
-      "prettier",
-      "prettier",
-    );
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
       return [
         {
           id: "prettier-format",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "prettier",
           capability: "format",
-          executable,
+          executable: "prettier",
           args: ["--write", "."],
           cwd: context.cwd,
           mode: "fix",
@@ -274,8 +231,10 @@ export class PrettierAdapter implements ToolAdapter {
       {
         id: "prettier-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "prettier",
         capability: "format",
-        executable,
+        executable: "prettier",
         args: ["--check", "."],
         cwd: context.cwd,
         mode: "check",
@@ -320,16 +279,16 @@ export class EslintAdapter implements ToolAdapter {
     return { detected: false, reason: "no ESLint dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(context.cwd, this.id, this.name, "eslint", "eslint");
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
       return [
         {
           id: "eslint-lint-fix",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "eslint",
           capability: "lint",
-          executable,
+          executable: "eslint",
           args: ["--fix", "."],
           cwd: context.cwd,
           mode: "fix",
@@ -342,8 +301,10 @@ export class EslintAdapter implements ToolAdapter {
       {
         id: "eslint-lint-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "eslint",
         capability: "lint",
-        executable,
+        executable: "eslint",
         args: ["."],
         cwd: context.cwd,
         mode: "check",
@@ -381,16 +342,16 @@ export class OxlintAdapter implements ToolAdapter {
     return { detected: false, reason: "no Oxlint dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(context.cwd, this.id, this.name, "oxlint", "oxlint");
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
       return [
         {
           id: "oxlint-lint-fix",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "oxlint",
           capability: "lint",
-          executable,
+          executable: "oxlint",
           args: ["--fix", "."],
           cwd: context.cwd,
           mode: "fix",
@@ -403,8 +364,10 @@ export class OxlintAdapter implements ToolAdapter {
       {
         id: "oxlint-lint-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "oxlint",
         capability: "lint",
-        executable,
+        executable: "oxlint",
         args: ["."],
         cwd: context.cwd,
         mode: "check",
@@ -442,16 +405,16 @@ export class OxfmtAdapter implements ToolAdapter {
     return { detected: false, reason: "no Oxfmt dependency or configuration" };
   }
 
-  public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const executable = await requireToolBinary(context.cwd, this.id, this.name, "oxfmt", "oxfmt");
-
+  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
     if (mode === "fix") {
       return [
         {
           id: "oxfmt-format",
           toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "oxfmt",
           capability: "format",
-          executable,
+          executable: "oxfmt",
           args: ["--write", "."],
           cwd: context.cwd,
           mode: "fix",
@@ -464,8 +427,10 @@ export class OxfmtAdapter implements ToolAdapter {
       {
         id: "oxfmt-check",
         toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "oxfmt",
         capability: "format",
-        executable,
+        executable: "oxfmt",
         args: ["--check", "."],
         cwd: context.cwd,
         mode: "check",

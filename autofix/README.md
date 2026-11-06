@@ -37,6 +37,7 @@ The `autofix` composite action automatically formats and fixes code across multi
     - **Oxlint:** High-performance JavaScript linter (`oxlint --fix .`).
     - **Oxfmt:** High-performance code formatter (`oxfmt --write .`).
   - **Intentional Configuration Requirement:** Dependency presence alone is not sufficient to run a tool; active configuration files (e.g., `biome.json`, `.prettierrc`, `eslint.config.js`) or manifest configuration sections must be detected.
+  - **Execution-Time Executable Resolution:** Adapters construct declarative task definitions during planning without requiring local executables to exist in `node_modules/.bin` beforehand. Dependencies are installed and provisioned prior to task execution, at which point local project binaries are safely resolved (with actionable missing-dependency diagnostics if absent).
 - **Explainable Execution Plan:** Logs a readable execution summary detailing detected environments, selected tools, skipped tools with reasons (e.g. overlapping capabilities), and the planned tasks.
 - **Independent Execution:** JavaScript and Python workflows run independently within the same action step, aggregating diagnostics and failures.
 - **autofix.ci Integration:** Automatically invokes `autofix-ci/action` when running inside the `autofix.ci` workflow context.

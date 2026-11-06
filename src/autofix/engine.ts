@@ -1,5 +1,8 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as io from "@actions/io";
+import fs from "node:fs";
+import path from "node:path";
 
 import type { ExecutionTask } from "./types.js";
 
@@ -9,7 +12,56 @@ export interface ExecutionResult {
   error?: Error;
 }
 
+/**
+ * Resolves local project binary safely without falling back to `npx` (which could download unpinned packages).
+ * Checks node_modules/.bin/<tool> first, then PATH via io.which.
+ */
+export async function resolveProjectBinary(
+  cwd: string,
+  toolBinary: string,
+): Promise<string | undefined> {
+  const localBinPath = path.join(cwd, "node_modules", ".bin", toolBinary);
+  if (fs.existsSync(localBinPath)) {
+    return localBinPath;
+  }
+
+  const pathBin = await io.which(toolBinary, false);
+  if (pathBin) {
+    return pathBin;
+  }
+
+  return undefined;
+}
+
 export class ExecutionEngine {
+  /**
+   * Resolves the executable path for a task at execution time (after dependencies are provisioned).
+   */
+  public async resolveTaskExecutable(task: ExecutionTask): Promise<string> {
+    if (task.toolId === "npm-scripts") {
+      return task.executable;
+    }
+
+    if (task.toolId === "ruff") {
+      const hasRuff = Boolean(await io.which("ruff", false));
+      if (!hasRuff) {
+        throw new Error("Required Python binary 'ruff' is not available in PATH.");
+      }
+      return "ruff";
+    }
+
+    // Tool adapters: resolve from node_modules/.bin or PATH
+    const resolved = await resolveProjectBinary(task.cwd, task.executable);
+    if (!resolved) {
+      const toolName = task.toolName || task.toolId;
+      const depName = task.requiredPackage || task.executable;
+      throw new Error(
+        `Configured tool "${toolName}" could not run: executable "${task.executable}" is not available in node_modules/.bin or PATH. Please install "${depName}" in project dependencies.`,
+      );
+    }
+    return resolved;
+  }
+
   /**
    * Executes tasks sequentially, capturing diagnostics and aggregating any task errors.
    */
@@ -18,9 +70,11 @@ export class ExecutionEngine {
 
     for (const task of tasks) {
       const displayCmd = `${task.executable} ${task.args.join(" ")}`.trim();
-      core.info(`Executing: ${displayCmd}`);
 
       try {
+        const resolvedExecutable = await this.resolveTaskExecutable(task);
+        core.info(`Executing: ${displayCmd}`);
+
         const env = task.env
           ? (Object.fromEntries(
               Object.entries({ ...process.env, ...task.env }).filter(
@@ -29,7 +83,7 @@ export class ExecutionEngine {
             ) as Record<string, string>)
           : undefined;
 
-        const exitCode = await exec.exec(task.executable, task.args, {
+        const exitCode = await exec.exec(resolvedExecutable, task.args, {
           cwd: task.cwd,
           env,
           ignoreReturnCode: true,
