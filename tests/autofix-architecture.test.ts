@@ -197,6 +197,110 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(tasks.map((t) => t.scriptName)).toEqual(["fix", "format:write"]);
     });
 
+    it("recognizes delegation when URL fragments or ordinary words contain '#' characters", () => {
+      // Case A: URL fragment
+      const scriptsUrl = {
+        fix: "echo https://example.com/#fragment && npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasksUrl = resolveScriptTasks(scriptsUrl, "fix");
+      expect(tasksUrl.map((t) => t.scriptName)).toEqual(["fix"]);
+
+      // Case B: Hash inside ordinary word
+      const scriptsWord = {
+        fix: "echo value#fragment && npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasksWord = resolveScriptTasks(scriptsWord, "fix");
+      expect(tasksWord.map((t) => t.scriptName)).toEqual(["fix"]);
+
+      const scriptsPath = {
+        fix: "echo path/to/file#section && npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasksPath = resolveScriptTasks(scriptsPath, "fix");
+      expect(tasksPath.map((t) => t.scriptName)).toEqual(["fix"]);
+    });
+
+    it("properly handles actual shell comments and commented-out delegations", () => {
+      // Case C: Actual shell comments
+      // echo hello # npm run format:write\nnpm run lint:fix
+      const scriptsComment = {
+        fix: "echo hello # npm run format:write\nnpm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksComment = resolveScriptTasks(scriptsComment, "fix");
+      // The format:write delegation is commented out, so format:write must NOT be suppressed by fix!
+      // But lint:fix is on the next line and is executed by fix, so lint:fix is suppressed.
+      expect(tasksComment.map((t) => t.scriptName)).toEqual(["fix", "format:write"]);
+
+      const scriptsCommentStart = {
+        fix: "echo hello\n# npm run format:write\nnpm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksCommentStart = resolveScriptTasks(scriptsCommentStart, "fix");
+      expect(tasksCommentStart.map((t) => t.scriptName)).toEqual(["fix", "format:write"]);
+    });
+
+    it("handles hashes inside quoted strings and escaped hashes", () => {
+      // Case D: Hash inside quotes
+      const scriptsQuotedHash = {
+        fix: 'echo "# npm run format:write" && npm run lint:fix',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksQuotedHash = resolveScriptTasks(scriptsQuotedHash, "fix");
+      expect(tasksQuotedHash.map((t) => t.scriptName)).toEqual(["fix", "format:write"]);
+
+      const scriptsSingleQuoteHash = {
+        fix: "echo 'value#fragment' && npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasksSingleQuote = resolveScriptTasks(scriptsSingleQuoteHash, "fix");
+      expect(tasksSingleQuote.map((t) => t.scriptName)).toEqual(["fix"]);
+
+      // Case E: Escaped hash
+      const scriptsEscapedHash = {
+        fix: "echo \\#fragment && npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasksEscaped = resolveScriptTasks(scriptsEscapedHash, "fix");
+      expect(tasksEscaped.map((t) => t.scriptName)).toEqual(["fix"]);
+    });
+
+    it("verifies planner integration with URL fragment vs commented-out delegation", async () => {
+      // 1. URL fragment before real delegation: planner schedules ONLY fix, not format:write
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "echo https://example.com/#fragment && npm run format:write",
+            "format:write": "prettier --write .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const planDelegated = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planDelegated.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+
+      // 2. Commented out delegation: planner schedules BOTH fix and format:write
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "echo hello # npm run format:write\nexit 0",
+            "format:write": "prettier --write .",
+          },
+        }),
+      );
+
+      const planCommented = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCommented.tasks.map((t) => t.id)).toEqual(["script-fix", "script-format:write"]);
+    });
+
     it("evaluates Python detection accurately when planExecution receives { cwd } without precomputed hasPythonSource", async () => {
       fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
       const registry = createDefaultRegistry();

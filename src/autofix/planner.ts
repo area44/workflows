@@ -8,6 +8,7 @@ import type {
   ToolAdapter,
 } from "./types.js";
 
+import { inspectJsProjectEnvironment } from "../javascript-env.js";
 import { hasPythonSource } from "../python-env.js";
 
 interface CandidateTool {
@@ -134,10 +135,12 @@ export async function planExecution(
   context: ProjectContext,
   mode: ExecutionMode = "fix",
 ): Promise<PlannedExecution> {
-  // Ensure consistent Python source detection across provider, adapter, and plan diagnostics
+  // Ensure consistent Python source detection and JS project inspection across provider, adapter, and plan diagnostics
   const resolvedHasPythonSource = context.hasPythonSource ?? hasPythonSource(context.cwd);
+  const resolvedJsEnv = context.jsEnv ?? inspectJsProjectEnvironment(context.cwd);
   const effectiveContext: ProjectContext = {
     ...context,
+    jsEnv: resolvedJsEnv,
     hasPythonSource: resolvedHasPythonSource,
   };
 

@@ -95,7 +95,14 @@ function skipComment(text: string, index: number): number {
   while (i < text.length && text[i] !== "\n") {
     i++;
   }
-  return i;
+  // Return index immediately before newline so the main loop processes the newline separator
+  return i > index ? i - 1 : index;
+}
+
+function isShellCommentStart(currentCmd: string): boolean {
+  if (currentCmd.length === 0) return true;
+  const lastChar = currentCmd[currentCmd.length - 1];
+  return /\s/.test(lastChar);
 }
 
 /**
@@ -116,7 +123,7 @@ function tokenizeShellCommands(shellText: string): string[] {
       continue;
     }
 
-    if (ch === "#") {
+    if (ch === "#" && isShellCommentStart(currentCmd)) {
       i = skipComment(shellText, i);
       continue;
     }
