@@ -55,6 +55,49 @@ function resolveLintScript(
   return scripts["lint:check"] ? "lint:check" : scripts.lint ? "lint" : undefined;
 }
 
+interface TokenizerState {
+  inSingleQuote: boolean;
+  inDoubleQuote: boolean;
+  isEscaped: boolean;
+}
+
+function processQuoteOrEscape(ch: string, state: TokenizerState): boolean {
+  if (state.isEscaped) {
+    state.isEscaped = false;
+    return true;
+  }
+  if (ch === "\\" && !state.inSingleQuote) {
+    state.isEscaped = true;
+    return true;
+  }
+  if (ch === "'" && !state.inDoubleQuote) {
+    state.inSingleQuote = !state.inSingleQuote;
+    return true;
+  }
+  if (ch === '"' && !state.inSingleQuote) {
+    state.inDoubleQuote = !state.inDoubleQuote;
+    return true;
+  }
+  return state.inSingleQuote || state.inDoubleQuote;
+}
+
+function getSeparatorLength(text: string, index: number): number {
+  const ch = text[index];
+  if (ch === ";" || ch === "\n") return 1;
+  if (ch === "&" && text[index + 1] === "&") return 2;
+  if (ch === "|" && text[index + 1] === "|") return 2;
+  if (ch === "|") return 1;
+  return 0;
+}
+
+function skipComment(text: string, index: number): number {
+  let i = index;
+  while (i < text.length && text[i] !== "\n") {
+    i++;
+  }
+  return i;
+}
+
 /**
  * Splits a shell command string into pipeline/chained commands (;, &&, ||, |)
  * while respecting single quotes ('...'), double quotes ("..."), and backslash escapes (\).
@@ -63,83 +106,26 @@ function resolveLintScript(
 function tokenizeShellCommands(shellText: string): string[] {
   const commands: string[] = [];
   let currentCmd = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let isEscaped = false;
+  const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
 
   for (let i = 0; i < shellText.length; i++) {
     const ch = shellText[i];
 
-    if (isEscaped) {
-      currentCmd += " ";
-      isEscaped = false;
-      continue;
-    }
-
-    if (ch === "\\" && !inSingleQuote) {
-      isEscaped = true;
+    if (processQuoteOrEscape(ch, state)) {
       currentCmd += " ";
       continue;
     }
 
-    if (ch === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-      currentCmd += " ";
-      continue;
-    }
-
-    if (ch === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      currentCmd += " ";
-      continue;
-    }
-
-    // Inside quotes: suppress content
-    if (inSingleQuote || inDoubleQuote) {
-      currentCmd += " ";
-      continue;
-    }
-
-    // Shell comment: rest of the line is ignored
     if (ch === "#") {
-      while (i < shellText.length && shellText[i] !== "\n") {
-        i++;
-      }
+      i = skipComment(shellText, i);
       continue;
     }
 
-    // Command separators: ;, &&, ||, |
-    if (ch === ";" || ch === "\n") {
-      if (currentCmd.trim()) {
-        commands.push(currentCmd.trim());
-      }
+    const sepLen = getSeparatorLength(shellText, i);
+    if (sepLen > 0) {
+      if (currentCmd.trim()) commands.push(currentCmd.trim());
       currentCmd = "";
-      continue;
-    }
-
-    if (ch === "&" && shellText[i + 1] === "&") {
-      if (currentCmd.trim()) {
-        commands.push(currentCmd.trim());
-      }
-      currentCmd = "";
-      i++;
-      continue;
-    }
-
-    if (ch === "|" && shellText[i + 1] === "|") {
-      if (currentCmd.trim()) {
-        commands.push(currentCmd.trim());
-      }
-      currentCmd = "";
-      i++;
-      continue;
-    }
-
-    if (ch === "|") {
-      if (currentCmd.trim()) {
-        commands.push(currentCmd.trim());
-      }
-      currentCmd = "";
+      i += sepLen - 1;
       continue;
     }
 
