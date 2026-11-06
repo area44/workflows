@@ -1,12 +1,12 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import YAML from "yaml";
+
 import {
   parseCommand,
   resolveBuildCommandToParse,
@@ -88,7 +88,9 @@ describe("build-command", () => {
       );
 
       // Upload artifact step guard
-      const uploadStep = steps.find((s: any) => s.uses?.startsWith("actions/upload-pages-artifact"));
+      const uploadStep = steps.find((s: any) =>
+        s.uses?.startsWith("actions/upload-pages-artifact"),
+      );
       expect(uploadStep).toBeDefined();
       expect(uploadStep.if).toContain("steps.resolve_environment.outcome == 'success'");
       expect(uploadStep.if).toContain("steps.build_site.outcome == 'success'");
@@ -201,9 +203,9 @@ describe("build-command", () => {
         args: ["build script.js", "--flag"],
       });
 
-      expect(parseCommand("echo \"hello \\\"world\\\"\"")).toEqual({
+      expect(parseCommand('echo "hello \\"world\\""')).toEqual({
         command: "echo",
-        args: ["hello \"world\""],
+        args: ['hello "world"'],
       });
     });
 
@@ -515,14 +517,18 @@ describe("build-command", () => {
       expect(exitCode).toBe(2);
       expect(exec.exec).toHaveBeenCalledWith("vp", ["build"], { ignoreReturnCode: true });
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
-      expect(core.setFailed).toHaveBeenCalledWith("Build command execution failed with exit code 2.");
+      expect(core.setFailed).toHaveBeenCalledWith(
+        "Build command execution failed with exit code 2.",
+      );
     });
 
     it("vp is unavailable and vpr is available -> Run vpr build", async () => {
       delete process.env.BUILD_COMMAND;
       process.env.DEFAULT_BUILD_COMMAND = "vp build";
 
-      vi.spyOn(io, "which").mockImplementation(async (bin) => (bin === "vpr" ? "/usr/bin/vpr" : ""));
+      vi.spyOn(io, "which").mockImplementation(async (bin) =>
+        bin === "vpr" ? "/usr/bin/vpr" : "",
+      );
       vi.mocked(exec.exec).mockResolvedValue(0);
 
       const exitCode = await runBuildCommand({ exitOnFailure: false });
@@ -565,7 +571,9 @@ describe("build-command", () => {
       const exitCode = await runBuildCommand({ exitOnFailure: false });
 
       expect(exitCode).toBe(1);
-      expect(exec.exec).toHaveBeenCalledWith("custom-builder", ["build"], { ignoreReturnCode: true });
+      expect(exec.exec).toHaveBeenCalledWith("custom-builder", ["build"], {
+        ignoreReturnCode: true,
+      });
       expect(exec.exec).not.toHaveBeenCalledWith("vpr", expect.anything(), expect.anything());
     });
   });
@@ -573,7 +581,9 @@ describe("build-command", () => {
   describe("validateBuildOutput", () => {
     it("should throw error if output directory does not exist", () => {
       const testDir = "non_existent_output_dir_12345";
-      expect(() => validateBuildOutput(testDir)).toThrow("Configured build output directory 'non_existent_output_dir_12345' does not exist.");
+      expect(() => validateBuildOutput(testDir)).toThrow(
+        "Configured build output directory 'non_existent_output_dir_12345' does not exist.",
+      );
     });
 
     it("should throw error if output path is a file rather than a directory", () => {
@@ -582,7 +592,9 @@ describe("build-command", () => {
       fs.writeFileSync(testFile, "hello");
 
       try {
-        expect(() => validateBuildOutput(testFile)).toThrow(`Configured build output path '${testFile}' is not a directory.`);
+        expect(() => validateBuildOutput(testFile)).toThrow(
+          `Configured build output path '${testFile}' is not a directory.`,
+        );
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -592,7 +604,9 @@ describe("build-command", () => {
       const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-build-cmd-empty-"));
 
       try {
-        expect(() => validateBuildOutput(testDir)).toThrow(`Configured build output directory '${testDir}' is empty.`);
+        expect(() => validateBuildOutput(testDir)).toThrow(
+          `Configured build output directory '${testDir}' is empty.`,
+        );
       } finally {
         fs.rmSync(testDir, { recursive: true, force: true });
       }

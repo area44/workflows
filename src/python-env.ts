@@ -97,16 +97,15 @@ export function parseToml(content: string): ParsedToml {
 }
 
 /**
- * Reads and parses uv.toml in cwd using parseToml.
- * Returns null if file does not exist, or ParsedToml result if file exists.
+ * Reads and parses a TOML file from disk.
+ * Returns null if the file does not exist, or a ParsedToml result if present.
  */
-export function readUvToml(cwd: string = process.cwd()): ParsedToml | null {
-  const uvTomlPath = path.join(cwd, "uv.toml");
-  if (!fs.existsSync(uvTomlPath)) {
+export function parseTomlFile(filePath: string): ParsedToml | null {
+  if (!fs.existsSync(filePath)) {
     return null;
   }
   try {
-    const content = fs.readFileSync(uvTomlPath, "utf8");
+    const content = fs.readFileSync(filePath, "utf8");
     return parseToml(content);
   } catch (err) {
     return {
@@ -372,21 +371,6 @@ function findSelfManifestContext(resolvedCwd: string, dirs: string[]): PythonPro
   };
 }
 
-function parseTomlFile(filePath: string): ParsedToml | null {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-  try {
-    const content = fs.readFileSync(filePath, "utf8");
-    return parseToml(content);
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err : new Error(String(err)),
-    };
-  }
-}
-
 function findAncestorManifestContext(resolvedCwd: string, dirs: string[]): PythonProjectContext {
   for (let i = 1; i < dirs.length; i++) {
     const pDir = dirs[i];
@@ -456,19 +440,7 @@ export function findPythonProjectContext(cwd: string = process.cwd()): PythonPro
 }
 
 export function readPyprojectToml(cwd: string = process.cwd()): ParsedToml | null {
-  const pyprojectPath = path.join(cwd, "pyproject.toml");
-  if (!fs.existsSync(pyprojectPath)) {
-    return null;
-  }
-  try {
-    const content = fs.readFileSync(pyprojectPath, "utf8");
-    return parseToml(content);
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err : new Error(String(err)),
-    };
-  }
+  return parseTomlFile(path.join(cwd, "pyproject.toml"));
 }
 
 /**
@@ -1036,77 +1008,6 @@ export function findRuffDependencyInToml(parsed: Record<string, unknown>): {
   return { declared: false };
 }
 
-export function hasPythonProject(cwd: string = process.cwd()): boolean {
-  if (hasPythonSource(cwd)) {
-    return true;
-  }
-
-  const resolvedCwd = path.resolve(cwd);
-  const dirs = collectParentDirs(resolvedCwd);
-  const selfCtx = findSelfManifestContext(resolvedCwd, dirs);
-
-  if (selfCtx) {
-    if (selfCtx.pyprojectToml?.success === true) {
-      if (isUvProjectConfigPresent(selfCtx.pyprojectToml.data, selfCtx.pyprojectToml.rawContent)) {
-        return true;
-      }
-      if (isRuffDeclaredInProject(cwd, undefined, selfCtx.pyprojectToml)) {
-        return true;
-      }
-    }
-    if (
-      selfCtx.hasUvLock ||
-      selfCtx.hasRequirementsTxt ||
-      selfCtx.hasSetupPy ||
-      selfCtx.hasSetupCfg
-    ) {
-      return true;
-    }
-  }
-
-  const ancestorCtx = findAncestorManifestContext(resolvedCwd, dirs);
-  if (ancestorCtx.workspaceRootDir && ancestorCtx.workspaceRootToml?.success === true) {
-    const wsConfig = getWorkspaceConfigInDir(ancestorCtx.workspaceRootDir);
-    if (wsConfig && isWorkspaceMember(ancestorCtx.workspaceRootDir, resolvedCwd, wsConfig.config)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export function detectPythonPackageManager(
-  cwd: string = process.cwd(),
-  pyprojectToml?: ParsedToml | null,
-): PythonPackageManagerInfo | null {
-  if (!hasPythonProject(cwd)) {
-    return null;
-  }
-
-  const ctx = findPythonProjectContext(cwd);
-  if (pyprojectToml !== undefined && pyprojectToml !== null) {
-    ctx.pyprojectToml = pyprojectToml;
-  }
-
-  for (const pm of PYTHON_PACKAGE_MANAGER_PRIORITY) {
-    if (pm === "uv") {
-      const uvInfo = detectUvFromContext(ctx);
-      if (uvInfo) return uvInfo;
-    } else if (pm === "pip") {
-      const pipInfo = detectPipFromContext(ctx);
-      if (pipInfo) return pipInfo;
-    }
-  }
-
-  // Standalone Python project without manifest or lockfile
-  return {
-    name: "pip",
-    installCommands: [],
-    execPrefix: "",
-    isStandalone: true,
-  };
-}
-
 function checkRuffInUvLock(cwd: string): boolean {
   const uvLockPath = path.join(cwd, "uv.lock");
   if (!fs.existsSync(uvLockPath)) return false;
@@ -1139,15 +1040,17 @@ function checkRuffInRequirements(cwd: string): boolean {
   return false;
 }
 
-export function isRuffDeclaredInProject(
-  cwd: string = process.cwd(),
+/**
+ * Checks whether Ruff dependency is declared in project configuration using an existing context.
+ */
+function isRuffDeclaredInContext(
+  ctx: PythonProjectContext,
   pmInfo?: PythonPackageManagerInfo,
   pyprojectToml?: ParsedToml | null,
 ): boolean {
   if (pmInfo?.isStandalone) return false;
 
-  const ctx = findPythonProjectContext(cwd);
-  if (checkRuffInUvLock(ctx.uvLockDir || cwd)) return true;
+  if (checkRuffInUvLock(ctx.uvLockDir || ctx.cwd)) return true;
 
   const parsedPyproject =
     pyprojectToml !== undefined && pyprojectToml !== null ? pyprojectToml : ctx.pyprojectToml;
@@ -1173,9 +1076,104 @@ export function isRuffDeclaredInProject(
     }
   }
 
-  if (checkRuffInRequirements(ctx.requirementsDir || cwd)) return true;
+  if (checkRuffInRequirements(ctx.requirementsDir || ctx.cwd)) return true;
 
   return false;
+}
+
+export function isRuffDeclaredInProject(
+  cwd: string = process.cwd(),
+  pmInfo?: PythonPackageManagerInfo,
+  pyprojectToml?: ParsedToml | null,
+): boolean {
+  if (pmInfo?.isStandalone) return false;
+  const ctx = findPythonProjectContext(cwd);
+  return isRuffDeclaredInContext(ctx, pmInfo, pyprojectToml);
+}
+
+/**
+ * Determines whether a directory contains a Python project, optionally reusing precomputed context and source check.
+ */
+export function hasPythonProject(
+  cwd: string = process.cwd(),
+  precomputed?: { ctx?: PythonProjectContext; hasSource?: boolean },
+): boolean {
+  const hasSource = precomputed?.hasSource ?? hasPythonSource(cwd);
+  if (hasSource) {
+    return true;
+  }
+
+  const ctx = precomputed?.ctx ?? findPythonProjectContext(cwd);
+
+  const isSelf = ctx.projectDir === ctx.cwd && hasOwnManifestFiles(ctx.cwd);
+  if (isSelf) {
+    if (ctx.pyprojectToml?.success === true) {
+      if (isUvProjectConfigPresent(ctx.pyprojectToml.data, ctx.pyprojectToml.rawContent)) {
+        return true;
+      }
+      if (isRuffDeclaredInContext(ctx, undefined, ctx.pyprojectToml)) {
+        return true;
+      }
+    }
+    if (ctx.hasUvLock || ctx.hasRequirementsTxt || ctx.hasSetupPy || ctx.hasSetupCfg) {
+      return true;
+    }
+  }
+
+  if (ctx.workspaceRootDir && ctx.workspaceRootToml?.success === true) {
+    const wsConfig = getWorkspaceConfigInDir(ctx.workspaceRootDir);
+    if (wsConfig && isWorkspaceMember(ctx.workspaceRootDir, path.resolve(cwd), wsConfig.config)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Detects Python package manager info from precomputed context without repeating filesystem scans.
+ */
+function detectPythonPackageManagerFromContext(
+  ctx: PythonProjectContext,
+  pyprojectToml?: ParsedToml | null,
+): PythonPackageManagerInfo {
+  if (pyprojectToml !== undefined && pyprojectToml !== null) {
+    ctx.pyprojectToml = pyprojectToml;
+  }
+
+  for (const pm of PYTHON_PACKAGE_MANAGER_PRIORITY) {
+    if (pm === "uv") {
+      const uvInfo = detectUvFromContext(ctx);
+      if (uvInfo) return uvInfo;
+    } else if (pm === "pip") {
+      const pipInfo = detectPipFromContext(ctx);
+      if (pipInfo) return pipInfo;
+    }
+  }
+
+  // Standalone Python project without manifest or lockfile
+  return {
+    name: "pip",
+    installCommands: [],
+    execPrefix: "",
+    isStandalone: true,
+  };
+}
+
+export function detectPythonPackageManager(
+  cwd: string = process.cwd(),
+  pyprojectToml?: ParsedToml | null,
+  precomputed?: { ctx?: PythonProjectContext; hasSource?: boolean; isProject?: boolean },
+): PythonPackageManagerInfo | null {
+  const ctx = precomputed?.ctx ?? findPythonProjectContext(cwd);
+  const isProject =
+    precomputed?.isProject ?? hasPythonProject(cwd, { ctx, hasSource: precomputed?.hasSource });
+
+  if (!isProject) {
+    return null;
+  }
+
+  return detectPythonPackageManagerFromContext(ctx, pyprojectToml);
 }
 
 /**
@@ -1220,7 +1218,9 @@ export function validatePythonPmInfoStructure(
  * Cohesive Python environment resolution entry point.
  */
 export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedPythonEnvironment {
-  const isPyProject = hasPythonProject(cwd);
+  const hasSource = hasPythonSource(cwd);
+  const ctx = findPythonProjectContext(cwd);
+  const isPyProject = hasPythonProject(cwd, { ctx, hasSource });
 
   if (!isPyProject) {
     return {
@@ -1229,8 +1229,11 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     };
   }
 
-  const ctx = findPythonProjectContext(cwd);
-  const pmInfo = detectPythonPackageManager(cwd, ctx.pyprojectToml);
+  const pmInfo = detectPythonPackageManager(cwd, ctx.pyprojectToml, {
+    ctx,
+    hasSource,
+    isProject: true,
+  });
 
   return {
     detected: true,

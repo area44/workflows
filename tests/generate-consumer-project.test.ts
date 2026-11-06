@@ -10,7 +10,8 @@ import {
   generateConsumerProjectFiles,
   getLockfileTemplates,
   normalizePythonProjectName,
-} from "../.github/scripts/generate-consumer-project.js";
+  parseCliArgs,
+} from "./helpers/consumer-project/index.js";
 
 describe("Consumer Project Generator Unit & Regression Suite", () => {
   let tempDir: string;
@@ -182,7 +183,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
           return `bun ${subCmd}`;
         } catch {
           throw new Error(
-            "Bun runtime is required for this integration test but 'bun' executable was not found on PATH or at /usr/local/bun/bin/bun. Please install Bun (e.g. via oven-sh/setup-bun) before running tests."
+            "Bun runtime is required for this integration test but 'bun' executable was not found on PATH or at /usr/local/bun/bin/bun. Please install Bun (e.g. via oven-sh/setup-bun) before running tests.",
           );
         }
       }
@@ -197,95 +198,112 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
         const stdout = err.stdout || "";
         const stderr = err.stderr || "";
         throw new Error(
-          `Command failed: '${resolvedCmd}' in directory '${cwd}' (exit code: ${err.status}).\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`
+          `Command failed: '${resolvedCmd}' in directory '${cwd}' (exit code: ${err.status}).\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`,
         );
       }
     }
 
-    it("verifies Bun Astro scenario can perform frozen lockfile install and build cleanly", { timeout: 120000 }, () => {
-      const target = path.join(tempDir, "bun_astro_scenario");
-      createConsumerProject(target, {
-        action: "pages",
-        runtime: "bun",
-        pm: "bun",
-        type: "basic",
-      });
+    it(
+      "verifies Bun Astro scenario can perform frozen lockfile install and build cleanly",
+      { timeout: 120000 },
+      () => {
+        const target = path.join(tempDir, "bun_astro_scenario");
+        createConsumerProject(target, {
+          action: "pages",
+          runtime: "bun",
+          pm: "bun",
+          type: "basic",
+        });
 
-      expect(fs.existsSync(path.join(target, "bun.lock"))).toBe(true);
-      expect(fs.readFileSync(path.join(target, "bun.lock"), "utf8").length).toBeGreaterThan(100);
+        expect(fs.existsSync(path.join(target, "bun.lock"))).toBe(true);
+        expect(fs.readFileSync(path.join(target, "bun.lock"), "utf8").length).toBeGreaterThan(100);
 
-      // Verify bun install --frozen-lockfile
-      const bunBin = fs.existsSync("/usr/local/bun/bin/bun") ? "/usr/local/bun/bin/bun" : "bun";
-      runCommandWithDiagnostics(`${bunBin} install --frozen-lockfile`, target);
-      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+        // Verify bun install --frozen-lockfile
+        const bunBin = fs.existsSync("/usr/local/bun/bin/bun") ? "/usr/local/bun/bin/bun" : "bun";
+        runCommandWithDiagnostics(`${bunBin} install --frozen-lockfile`, target);
+        expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
 
-      // Verify real astro build command execution
-      runCommandWithDiagnostics(`${bunBin} run build`, target);
-      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
-      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-        "AREA44 Workflows Consumer Project"
-      );
-    });
+        // Verify real astro build command execution
+        runCommandWithDiagnostics(`${bunBin} run build`, target);
+        expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+        expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+          "AREA44 Workflows Consumer Project",
+        );
+      },
+    );
 
-    it("verifies npm Vite scenario can perform npm ci and real vite build cleanly", { timeout: 120000 }, () => {
-      const target = path.join(tempDir, "npm_vite_scenario");
-      createConsumerProject(target, {
-        action: "pages",
-        runtime: "node",
-        pm: "npm",
-        type: "vite",
-      });
+    it(
+      "verifies npm Vite scenario can perform npm ci and real vite build cleanly",
+      { timeout: 120000 },
+      () => {
+        const target = path.join(tempDir, "npm_vite_scenario");
+        createConsumerProject(target, {
+          action: "pages",
+          runtime: "node",
+          pm: "npm",
+          type: "vite",
+        });
 
-      expect(fs.existsSync(path.join(target, "package-lock.json"))).toBe(true);
+        expect(fs.existsSync(path.join(target, "package-lock.json"))).toBe(true);
 
-      // Verify npm ci
-      runCommandWithDiagnostics("npm ci", target);
-      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+        // Verify npm ci
+        runCommandWithDiagnostics("npm ci", target);
+        expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
 
-      // Verify real vite build command execution
-      runCommandWithDiagnostics("npm run build", target);
-      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
-      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-        "AREA44 Workflows Consumer Project"
-      );
-    });
+        // Verify real vite build command execution
+        runCommandWithDiagnostics("npm run build", target);
+        expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+        expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+          "AREA44 Workflows Consumer Project",
+        );
+      },
+    );
 
-    it("verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install and real vp build cleanly", { timeout: 120000 }, () => {
-      const target = path.join(tempDir, "pnpm_vp_scenario");
-      createConsumerProject(target, {
-        action: "pages",
-        runtime: "node",
-        pm: "pnpm",
-        type: "vite-plus",
-      });
+    it(
+      "verifies pnpm Vite+ scenario generates valid pnpm-lock.yaml for frozen pnpm install and real vp build cleanly",
+      { timeout: 120000 },
+      () => {
+        const target = path.join(tempDir, "pnpm_vp_scenario");
+        createConsumerProject(target, {
+          action: "pages",
+          runtime: "node",
+          pm: "pnpm",
+          type: "vite-plus",
+        });
 
-      expect(fs.existsSync(path.join(target, "pnpm-lock.yaml"))).toBe(true);
-      expect(fs.existsSync(path.join(target, "pnpm-workspace.yaml"))).toBe(true);
+        expect(fs.existsSync(path.join(target, "pnpm-lock.yaml"))).toBe(true);
+        expect(fs.existsSync(path.join(target, "pnpm-workspace.yaml"))).toBe(true);
 
-      // Verify pnpm install --frozen-lockfile
-      runCommandWithDiagnostics("pnpm install --frozen-lockfile", target);
-      expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
+        // Verify pnpm install --frozen-lockfile
+        runCommandWithDiagnostics("pnpm install --frozen-lockfile", target);
+        expect(fs.existsSync(path.join(target, "node_modules"))).toBe(true);
 
-      // Verify real vp build execution
-      runCommandWithDiagnostics("pnpm run build", target);
-      expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
-      expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-        "AREA44 Workflows Consumer Project"
-      );
-    });
+        // Verify real vp build execution
+        runCommandWithDiagnostics("pnpm run build", target);
+        expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
+        expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
+          "AREA44 Workflows Consumer Project",
+        );
+      },
+    );
 
-    it("verifies no-framework Bun scenario (none:bun) generates valid project and frozen install passes cleanly", { timeout: 120000 }, () => {
-      const target = path.join(tempDir, "bun_none_scenario");
-      createConsumerProject(target, {
-        runtime: "bun",
-        pm: "bun",
-        toolchain: "none",
-        type: "basic",
-      });
+    it(
+      "verifies no-framework Bun scenario (none:bun) generates valid project and frozen install passes cleanly",
+      { timeout: 120000 },
+      () => {
+        const target = path.join(tempDir, "bun_none_scenario");
+        createConsumerProject(target, {
+          runtime: "bun",
+          pm: "bun",
+          toolchain: "none",
+          type: "basic",
+        });
 
-      const bunBin = fs.existsSync("/usr/local/bun/bin/bun") ? "/usr/local/bun/bin/bun" : "bun";
-      runCommandWithDiagnostics(`${bunBin} install --frozen-lockfile`, target);
-    });
+        const bunBin = fs.existsSync("/usr/local/bun/bin/bun") ? "/usr/local/bun/bin/bun" : "bun";
+        runCommandWithDiagnostics(`${bunBin} install --frozen-lockfile`, target);
+        expect(fs.existsSync(path.join(target, "bun.lock"))).toBe(true);
+      },
+    );
   });
 
   describe("Template Error Handling & Validation Suite", () => {
@@ -310,13 +328,17 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
     it("throws explicit error when template file is missing", () => {
       const nonExistentPath = path.join(tempDir, "non_existent_templates.json");
-      expect(() => getLockfileTemplates(nonExistentPath)).toThrow("Missing lockfile templates file");
+      expect(() => getLockfileTemplates(nonExistentPath)).toThrow(
+        "Missing lockfile templates file",
+      );
     });
 
     it("throws explicit error when template JSON is malformed", () => {
       const malformedPath = path.join(tempDir, "malformed.json");
       fs.writeFileSync(malformedPath, "{ invalid json content }");
-      expect(() => getLockfileTemplates(malformedPath)).toThrow("Malformed JSON in lockfile templates file");
+      expect(() => getLockfileTemplates(malformedPath)).toThrow(
+        "Malformed JSON in lockfile templates file",
+      );
     });
 
     it("throws explicit error when template file structure is not an object", () => {
@@ -328,13 +350,17 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
     it("throws explicit error when template value is empty or whitespace-only", () => {
       const emptyValPath = path.join(tempDir, "empty_val.json");
       fs.writeFileSync(emptyValPath, JSON.stringify({ "astro:npm": "   " }));
-      expect(() => getLockfileTemplates(emptyValPath)).toThrow("Invalid or empty template value for key 'astro:npm'");
+      expect(() => getLockfileTemplates(emptyValPath)).toThrow(
+        "Invalid or empty template value for key 'astro:npm'",
+      );
     });
 
     it("throws explicit error when template value is an invalid type (number, object, null)", () => {
       const invalidTypePath = path.join(tempDir, "invalid_type.json");
       fs.writeFileSync(invalidTypePath, JSON.stringify({ "astro:npm": 123 }));
-      expect(() => getLockfileTemplates(invalidTypePath)).toThrow("Invalid or empty template value for key 'astro:npm'");
+      expect(() => getLockfileTemplates(invalidTypePath)).toThrow(
+        "Invalid or empty template value for key 'astro:npm'",
+      );
     });
 
     it("throws explicit error during project creation when template key is missing", () => {
@@ -348,7 +374,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
           pm: "pnpm",
           toolchain: "astro",
           customTemplatePath: incompletePath,
-        } as any)
+        } as any),
       ).toThrow("Missing lockfile template for key 'astro:pnpm'");
     });
   });
@@ -387,12 +413,16 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
 
       // Pre-existing file remains untouched
-      expect(fs.readFileSync(path.join(target, "pre_existing.txt"), "utf8")).toBe("pre-existing content");
+      expect(fs.readFileSync(path.join(target, "pre_existing.txt"), "utf8")).toBe(
+        "pre-existing content",
+      );
 
       // Succeeds when allowNonEmpty is true
       createConsumerProject(target, { allowNonEmpty: true });
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
-      expect(fs.readFileSync(path.join(target, "pre_existing.txt"), "utf8")).toBe("pre-existing content");
+      expect(fs.readFileSync(path.join(target, "pre_existing.txt"), "utf8")).toBe(
+        "pre-existing content",
+      );
     });
 
     it("refuses to overwrite colliding generated files even when allowNonEmpty is true unless overwrite is true", () => {
@@ -405,32 +435,42 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       );
 
       // Colliding file remains untouched
-      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe("original-package-json");
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe(
+        "original-package-json",
+      );
 
       // Succeeds when overwrite: true is passed
       createConsumerProject(target, { allowNonEmpty: true, overwrite: true });
-      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe("original-package-json");
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe(
+        "original-package-json",
+      );
     });
 
     it("refuses to write if target path exists and is a file", () => {
       const filePath = path.join(tempDir, "existing_file.txt");
       fs.writeFileSync(filePath, "file data");
 
-      expect(() => createConsumerProject(filePath)).toThrow(
-        "exists and is not a directory",
-      );
+      expect(() => createConsumerProject(filePath)).toThrow("exists and is not a directory");
       expect(fs.readFileSync(filePath, "utf8")).toBe("file data");
     });
   });
 
   describe("CLI Invocation Safety", () => {
-    const generatorScript = path.resolve(process.cwd(), ".github/scripts/generate-consumer-project.js");
+    const generatorScript = path.resolve(
+      process.cwd(),
+      "tests/helpers/consumer-project/generate-consumer-project.ts",
+    );
+    const resolverScript = path.resolve(
+      process.cwd(),
+      "tests/helpers/consumer-project/resolver.js",
+    );
+    const nodeCmd = `node --import "${resolverScript}" "${generatorScript}"`;
 
     it("fails with error code 1 when CLI is invoked without a target directory argument", () => {
       let failed = false;
       let output = "";
       try {
-        execSync(`node "${generatorScript}"`, { encoding: "utf8", stdio: "pipe" });
+        execSync(nodeCmd, { encoding: "utf8", stdio: "pipe" });
       } catch (err: any) {
         failed = true;
         output = err.stderr || err.stdout || err.message;
@@ -442,7 +482,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
     it("generates project files when target directory is explicitly provided to CLI", () => {
       const target = path.join(tempDir, "cli_target");
-      execSync(`node "${generatorScript}" "${target}"`, { encoding: "utf8" });
+      execSync(`${nodeCmd} "${target}"`, { encoding: "utf8" });
 
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
       expect(fs.existsSync(path.join(target, "index.html"))).toBe(true);
@@ -455,11 +495,11 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
       // Without flag, CLI fails
       expect(() => {
-        execSync(`node "${generatorScript}" "${target}"`, { stdio: "pipe" });
-      }).toThrow();
+        execSync(`${nodeCmd} "${target}"`, { stdio: "pipe" });
+      }).toThrow("Command failed");
 
       // With flag, CLI succeeds
-      execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { encoding: "utf8" });
+      execSync(`${nodeCmd} "${target}" --allow-non-empty`, { encoding: "utf8" });
       expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     });
 
@@ -470,14 +510,52 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
       // With --allow-non-empty alone, it fails because package.json collides
       expect(() => {
-        execSync(`node "${generatorScript}" "${target}" --allow-non-empty`, { stdio: "pipe" });
-      }).toThrow();
+        execSync(`${nodeCmd} "${target}" --allow-non-empty`, { stdio: "pipe" });
+      }).toThrow("Command failed");
 
       expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).toBe("pre-existing-json");
 
       // With --overwrite, it succeeds
-      execSync(`node "${generatorScript}" "${target}" --allow-non-empty --overwrite`, { encoding: "utf8" });
-      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe("pre-existing-json");
+      execSync(`${nodeCmd} "${target}" --allow-non-empty --overwrite`, {
+        encoding: "utf8",
+      });
+      expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe(
+        "pre-existing-json",
+      );
+    });
+  });
+
+  describe("parseCliArgs Argument Handling Suite", () => {
+    it("parses normal option value correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "0.17.2"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("0.17.2");
+    });
+
+    it("parses empty string option value correctly without treating it as boolean", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", ""]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("");
+    });
+
+    it("parses boolean flags correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--allow-non-empty"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.allowNonEmpty).toBe(true);
+    });
+
+    it("handles option with missing value before another flag without consuming flag", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe(true);
+      expect(parsed.options.action).toBe("pages");
+    });
+
+    it("handles empty option value followed by another option correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("");
+      expect(parsed.options.action).toBe("pages");
     });
   });
 });

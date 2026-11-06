@@ -10,8 +10,8 @@ This guide details how `@area44/workflows` verifies composite action behavior (`
 
 To ensure action workflows function reliably across diverse project configurations, the repository uses a unified scenario factory to dynamically generate consumer projects:
 
-- **Canonical Generator Script (`.github/scripts/generate-consumer-project.js`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node .github/scripts/generate-consumer-project.js <target-directory> [options]`).
-- **TypeScript Test Helper (`tests/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from the canonical generator module so unit and module-level integration tests share identical generation logic.
+- **Canonical Generator Script (`tests/helpers/consumer-project/generate-consumer-project.ts`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node --import tests/helpers/consumer-project/resolver.js tests/helpers/consumer-project/generate-consumer-project.ts <target-directory> [options]`).
+- **TypeScript Test Helper (`tests/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from `tests/helpers/consumer-project/index.ts` so unit and module-level integration tests share identical generation logic.
 
 ### Scenario Dimensions & Factory Options
 
@@ -77,7 +77,7 @@ Testing is organized across distinct execution boundaries:
 ## How to Add a New Test Scenario
 
 1. Pass required scenario options to `generateConsumerProjectFiles(options)` or `createConsumerProject(targetDir, options)`.
-2. If new file templates or option dimensions are needed, update `.github/scripts/generate-consumer-project.js`.
+2. If new file templates or option dimensions are needed, update `tests/helpers/consumer-project/generate-consumer-project.ts`.
 3. Add unit test assertions in `tests/generate-consumer-project.test.ts`.
 4. Add module-level integration assertions in `tests/integration-consumer.test.ts` or add matrix entries to `.github/workflows/test-actions.yml`.
 

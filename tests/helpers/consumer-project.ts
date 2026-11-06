@@ -1,8 +1,8 @@
-import {
+export {
   createConsumerProject,
   generateConsumerProjectFiles,
+  getLockfileTemplates,
+  normalizePythonProjectName,
+  parseCliArgs,
   type ConsumerProjectOptions,
-} from "../../.github/scripts/generate-consumer-project.js";
-
-export type { ConsumerProjectOptions };
-export { createConsumerProject, generateConsumerProjectFiles };
+} from "./consumer-project/index.js";

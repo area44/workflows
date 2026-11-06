@@ -1,14 +1,13 @@
+import * as core from "@actions/core";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import * as core from "@actions/core";
 import {
   hasDevEngineRuntime,
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
-  isSupportedPackageManager,
   isSupportedRuntime,
   resolveJsEnvironment,
   resolveJsPackageManager,
@@ -557,9 +556,7 @@ describe("javascript-env", () => {
 
     it("should throw Error for unsupported package manager", () => {
       expect(() => getJsInstallationPlan("yarn")).toThrow(Error);
-      expect(() => getJsInstallationPlan("yarn")).toThrow(
-        /Unsupported package manager 'yarn'/,
-      );
+      expect(() => getJsInstallationPlan("yarn")).toThrow(/Unsupported package manager 'yarn'/);
     });
   });
 

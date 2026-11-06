@@ -1,46 +1,67 @@
-#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "../../../src/utils/is-main-module.js";
+
 /**
  * Normalizes a project name for Python package compatibility (PEP 508 / PEP 621).
- * @param {string} [name]
- * @returns {string}
  */
-export function normalizePythonProjectName(name) {
+export function normalizePythonProjectName(name?: string): string {
   if (!name || typeof name !== "string") {
     return "consumer-project";
   }
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "consumer-project";
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "consumer-project"
+  );
+}
+
+export interface ConsumerProjectOptions {
+  name?: string;
+  action?: string;
+  runtime?: string;
+  pm?: string;
+  packageManager?: string;
+  toolchain?: string;
+  type?: string;
+  fixture?: string;
+  hasJsProject?: boolean | string;
+  hasPythonSource?: boolean | string;
+  pythonPm?: string;
+  pythonVersion?: string;
+  ruffVersion?: string;
+  markerContent?: string;
+  allowNonEmpty?: boolean;
+  overwrite?: boolean;
+  customTemplatePath?: string;
+  [key: string]: unknown;
+}
+
+interface ResolvedJsOptions {
+  hasJs: boolean;
+  action: string;
+  runtime: string;
+  rawPm: string;
+  pmType: string;
+  type: string;
+  packageManager: string | undefined;
+  toolchain: string;
+}
+
+interface ResolvedPythonOptions {
+  hasPython: boolean;
+  pythonPm: string;
+  ruffVersion: string;
+  pythonVersion: string;
 }
 
 /**
- * @typedef {Object} ConsumerProjectOptions
- * @property {string} [name]
- * @property {string} [action]
- * @property {string} [runtime]
- * @property {string} [pm]
- * @property {string} [packageManager]
- * @property {string} [toolchain]
- * @property {string} [type]
- * @property {string} [fixture]
- * @property {boolean|string} [hasJsProject]
- * @property {boolean|string} [hasPythonSource]
- * @property {string} [pythonPm]
- * @property {string} [pythonVersion]
- * @property {string} [ruffVersion]
- * @property {string} [markerContent]
- * @property {boolean} [allowNonEmpty]
- * @property {boolean} [overwrite]
- */
-
-/**
  * Determines whether a JavaScript project is present for the scenario.
- * @param {ConsumerProjectOptions} options
- * @param {string} type
  */
-function isJsProjectPresent(options, type) {
+function isJsProjectPresent(options: ConsumerProjectOptions, type: string): boolean {
   if (typeof options.hasJsProject === "boolean") {
     return options.hasJsProject;
   }
@@ -52,11 +73,8 @@ function isJsProjectPresent(options, type) {
 
 /**
  * Resolves the JS package manager string for package.json.
- * @param {string} rawPm
- * @param {string} pmType
- * @param {string} type
  */
-function resolveJsPackageManager(rawPm, pmType, type) {
+function resolveJsPackageManager(rawPm: string, pmType: string, type: string): string | undefined {
   if (rawPm.includes("@")) {
     return rawPm;
   }
@@ -74,9 +92,8 @@ function resolveJsPackageManager(rawPm, pmType, type) {
 
 /**
  * Resolves JavaScript configuration options for scenario generation.
- * @param {ConsumerProjectOptions} options
  */
-function resolveJsOptions(options) {
+function resolveJsOptions(options: ConsumerProjectOptions): ResolvedJsOptions {
   const type = options.type || "basic";
   const action = options.action || "";
   const runtime = options.runtime || "node";
@@ -89,20 +106,23 @@ function resolveJsOptions(options) {
     options.toolchain ||
     (type === "vite-plus"
       ? "vite-plus"
-      : action === "pages" && type !== "consumer-integration" && options.fixture !== "consumer-project"
-      ? "astro"
-      : "none");
+      : action === "pages" &&
+          type !== "consumer-integration" &&
+          options.fixture !== "consumer-project"
+        ? "astro"
+        : "none");
 
   return { hasJs, action, runtime, rawPm, pmType, type, packageManager, toolchain };
 }
 
 /**
  * Resolves Python configuration options for scenario generation.
- * @param {ConsumerProjectOptions} options
- * @param {string} type
- * @param {string} action
  */
-function resolvePythonOptions(options, type, action) {
+function resolvePythonOptions(
+  options: ConsumerProjectOptions,
+  type: string,
+  action: string,
+): ResolvedPythonOptions {
   let hasPython = true;
   if (typeof options.hasPythonSource === "boolean") {
     hasPython = options.hasPythonSource;
@@ -110,7 +130,11 @@ function resolvePythonOptions(options, type, action) {
     hasPython = options.hasPythonSource === "true";
   } else if (type === "python-none") {
     hasPython = false;
-  } else if (action === "pages" && type !== "consumer-integration" && options.fixture !== "consumer-project") {
+  } else if (
+    action === "pages" &&
+    type !== "consumer-integration" &&
+    options.fixture !== "consumer-project"
+  ) {
     hasPython = false;
   } else if (
     action === "autofix" &&
@@ -143,8 +167,8 @@ function resolvePythonOptions(options, type, action) {
     options.ruffVersion !== undefined
       ? options.ruffVersion
       : type === "python-pip" || type === "python-none"
-      ? ""
-      : "0.17.2";
+        ? ""
+        : "0.17.2";
 
   const pythonVersion = options.pythonVersion || "";
 
@@ -153,16 +177,17 @@ function resolvePythonOptions(options, type, action) {
 
 /**
  * Builds JS scripts and html/astro files.
- * @param {Record<string, string>} files
- * @param {ConsumerProjectOptions} options
- * @param {ReturnType<typeof resolveJsOptions>} jsOpt
  */
-function buildJsScriptsAndHtml(files, options, jsOpt) {
+function buildJsScriptsAndHtml(
+  files: Record<string, string>,
+  options: ConsumerProjectOptions,
+  jsOpt: ResolvedJsOptions,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
   const { action, toolchain, type, pmType } = jsOpt;
   const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
 
-  let scripts = {};
-  let devDependencies = {};
+  let scripts: Record<string, string> = {};
+  let devDependencies: Record<string, string> = {};
 
   if (
     type === "consumer-integration" ||
@@ -171,23 +196,27 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
   ) {
     scripts = {
       build: "mkdir -p dist && cp index.html dist/index.html",
-      lint: 'node -e "console.log(\'Linting JS...\')"',
-      format: 'node -e "console.log(\'Formatting JS...\')"',
+      lint: "node -e \"console.log('Linting JS...')\"",
+      format: "node -e \"console.log('Formatting JS...')\"",
     };
     if (pmType === "bun") {
       devDependencies = { "@types/node": "^24.0.0" };
     }
-    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+    files["index.html"] =
+      `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
     scripts = { build: "vp build" };
     devDependencies = { "vite-plus": "^1.4.0" };
     files["vite.config.ts"] = `export default {};\n`;
-    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+    files["index.html"] =
+      `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (toolchain === "vite" || type === "vite") {
     scripts = { build: "vite build" };
     devDependencies = { vite: "^6.0.0" };
-    files["vite.config.ts"] = `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
-    files["index.html"] = `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
+    files["vite.config.ts"] =
+      `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
+    files["index.html"] =
+      `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
     files["src/main.ts"] = `console.log('vite app');\n`;
   } else if (
     action === "pages" ||
@@ -196,12 +225,14 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
   ) {
     scripts = { build: "astro build" };
     devDependencies = { astro: "^5.0.0" };
-    files["astro.config.mjs"] = `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
-    files["src/pages/index.astro"] = `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+    files["astro.config.mjs"] =
+      `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
+    files["src/pages/index.astro"] =
+      `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
   } else if (action === "autofix") {
     scripts = {
-      format: 'node -e "console.log(\'Formatting JS...\')"',
-      lint: 'node -e "console.log(\'Linting JS...\')"',
+      format: "node -e \"console.log('Formatting JS...')\"",
+      lint: "node -e \"console.log('Linting JS...')\"",
     };
     if (pmType === "bun") {
       devDependencies = { "@types/node": "^24.0.0" };
@@ -209,21 +240,25 @@ function buildJsScriptsAndHtml(files, options, jsOpt) {
   } else {
     scripts = {
       build: "mkdir -p dist && cp index.html dist/index.html",
-      lint: 'node -e "console.log(\'Linting JS...\')"',
-      format: 'node -e "console.log(\'Formatting JS...\')"',
+      lint: "node -e \"console.log('Linting JS...')\"",
+      format: "node -e \"console.log('Formatting JS...')\"",
     };
     if (pmType === "bun") {
       devDependencies = { "@types/node": "^24.0.0" };
     }
-    files["index.html"] = `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+    files["index.html"] =
+      `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" /><title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
   }
 
   return { scripts, devDependencies };
 }
 
-// Pre-generated canonical lockfile templates loaded lazily from lockfile-templates.json
-let lockfileTemplates = null;
-export function getLockfileTemplates(customTemplatePath) {
+let lockfileTemplates: Record<string, string> | null = null;
+
+/**
+ * Loads canonical lockfile templates lazily from lockfile-templates.json.
+ */
+export function getLockfileTemplates(customTemplatePath?: string): Record<string, string> {
   const templatePath =
     customTemplatePath ||
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "lockfile-templates.json");
@@ -240,55 +275,65 @@ export function getLockfileTemplates(customTemplatePath) {
   try {
     rawContent = fs.readFileSync(templatePath, "utf8");
   } catch (err) {
-    throw new Error(`Failed to read lockfile templates file at '${templatePath}': ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to read lockfile templates file at '${templatePath}': ${msg}`);
   }
 
-  let parsed = null;
+  let parsed: unknown = null;
   try {
     parsed = JSON.parse(rawContent);
   } catch (err) {
-    throw new Error(`Malformed JSON in lockfile templates file at '${templatePath}': ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Malformed JSON in lockfile templates file at '${templatePath}': ${msg}`);
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Invalid template structure in lockfile templates file at '${templatePath}': expected object.`);
+    throw new Error(
+      `Invalid template structure in lockfile templates file at '${templatePath}': expected object.`,
+    );
   }
 
   for (const [key, val] of Object.entries(parsed)) {
     if (typeof val !== "string" || val.trim().length === 0) {
       throw new Error(
-        `Invalid or empty template value for key '${key}' in lockfile templates file at '${templatePath}'.`
+        `Invalid or empty template value for key '${key}' in lockfile templates file at '${templatePath}'.`,
       );
     }
   }
 
   if (!customTemplatePath) {
-    lockfileTemplates = parsed;
+    lockfileTemplates = parsed as Record<string, string>;
   }
-  return parsed;
+  return parsed as Record<string, string>;
 }
 
 /**
- * Builds JS lockfiles.
- * @param {Record<string, string>} files
- * @param {string} name
- * @param {string} pmType
- * @param {string} type
- * @param {string} toolchain
- * @param {string} [customTemplatePath]
+ * Builds package lockfiles (package-lock.json, pnpm-lock.yaml, bun.lock) using canonical templates.
  */
-function buildJsLockfile(files, name, pmType, type, toolchain, customTemplatePath) {
+function buildJsLockfile(
+  files: Record<string, string>,
+  name: string,
+  pmType: string,
+  type: string,
+  toolchain: string,
+  customTemplatePath?: string,
+): void {
   const templates = getLockfileTemplates(customTemplatePath);
   const templateKey = `${toolchain || "none"}:${pmType}`;
 
   if (!Object.prototype.hasOwnProperty.call(templates, templateKey)) {
-    throw new Error(`Missing lockfile template for key '${templateKey}' in lockfile-templates.json.`);
+    throw new Error(
+      `Missing lockfile template for key '${templateKey}' in lockfile-templates.json.`,
+    );
   }
 
   const lockfileContent = templates[templateKey];
 
   if (pmType === "npm") {
-    files["package-lock.json"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
+    files["package-lock.json"] = lockfileContent.replaceAll(
+      "CONSUMER_PROJECT_NAME_PLACEHOLDER",
+      name,
+    );
   } else if (pmType === "pnpm") {
     files["pnpm-lock.yaml"] = lockfileContent.replaceAll("CONSUMER_PROJECT_NAME_PLACEHOLDER", name);
     files["pnpm-workspace.yaml"] =
@@ -301,12 +346,13 @@ function buildJsLockfile(files, name, pmType, type, toolchain, customTemplatePat
 }
 
 /**
- * Generates JavaScript files for a given scenario.
- * @param {Record<string, string>} files
- * @param {ConsumerProjectOptions} options
- * @param {ReturnType<typeof resolveJsOptions>} jsOpt
+ * Builds JavaScript project files.
  */
-function buildJsFiles(files, options, jsOpt) {
+function buildJsFiles(
+  files: Record<string, string>,
+  options: ConsumerProjectOptions,
+  jsOpt: ResolvedJsOptions,
+): void {
   const { action, runtime, pmType, type, packageManager, toolchain } = jsOpt;
   const name =
     options.name ||
@@ -318,7 +364,7 @@ function buildJsFiles(files, options, jsOpt) {
 
   const { scripts, devDependencies } = buildJsScriptsAndHtml(files, options, jsOpt);
 
-  const packageJson = {
+  const packageJson: Record<string, unknown> = {
     name,
     version: "1.0.0",
     private: true,
@@ -340,13 +386,14 @@ function buildJsFiles(files, options, jsOpt) {
 }
 
 /**
- * Generates Python files for a given scenario.
- * @param {Record<string, string>} files
- * @param {ConsumerProjectOptions} options
- * @param {ReturnType<typeof resolvePythonOptions>} pyOpt
- * @param {string} pyProjectName
+ * Builds Python project files and manifests.
  */
-function buildPythonFiles(files, options, pyOpt, pyProjectName) {
+function buildPythonFiles(
+  files: Record<string, string>,
+  options: ConsumerProjectOptions,
+  pyOpt: ResolvedPythonOptions,
+  pyProjectName: string,
+): void {
   const { pythonPm, ruffVersion, pythonVersion } = pyOpt;
   const type = options.type || "basic";
 
@@ -355,14 +402,17 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
 
   const trimmedVer = pythonVersion ? pythonVersion.trim() : "";
   const isExact = /^\d+(?:\.\d+)+$/.test(
-    trimmedVer.replace(/^python-?/i, "").replace(/^v/i, "").replace(/['"]/g, "")
+    trimmedVer
+      .replace(/^python-?/i, "")
+      .replace(/^v/i, "")
+      .replace(/['"]/g, ""),
   );
 
   if (trimmedVer && isExact) {
     files[".python-version"] = `${trimmedVer}\n`;
   }
 
-  const pyDeps = [];
+  const pyDeps: string[] = [];
   if (ruffVersion) {
     pyDeps.push(`ruff==${ruffVersion}`);
   }
@@ -377,7 +427,9 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
   const pyprojectToml =
     `[project]\nname = "${pyProjectName}"\nversion = "0.1.0"\n` +
     requiresPythonStr +
-    (pyDeps.length > 0 ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n` : "\n") +
+    (pyDeps.length > 0
+      ? `dependencies = [\n${pyDeps.map((d) => `  "${d}",`).join("\n")}\n]\n\n`
+      : "\n") +
     `[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["*"]\n\n[tool.ruff]\nline-length = 88\n`;
 
   files["pyproject.toml"] = pyprojectToml;
@@ -399,11 +451,11 @@ function buildPythonFiles(files, options, pyOpt, pyProjectName) {
 }
 
 /**
- * Generates consumer project file contents as a map of filename -> string.
- * @param {ConsumerProjectOptions} [options]
- * @returns {Record<string, string>}
+ * Generates an in-memory map of filename to content for a test consumer project.
  */
-export function generateConsumerProjectFiles(options = {}) {
+export function generateConsumerProjectFiles(
+  options: ConsumerProjectOptions = {},
+): Record<string, string> {
   const jsOpt = resolveJsOptions(options);
   const pyOpt = resolvePythonOptions(options, jsOpt.type, jsOpt.action);
 
@@ -416,8 +468,7 @@ export function generateConsumerProjectFiles(options = {}) {
       : "consumer-project");
   const pyProjectName = normalizePythonProjectName(name);
 
-  /** @type {Record<string, string>} */
-  const files = {};
+  const files: Record<string, string> = {};
 
   if (jsOpt.hasJs) {
     buildJsFiles(files, options, jsOpt);
@@ -434,11 +485,11 @@ export function generateConsumerProjectFiles(options = {}) {
 
 /**
  * Creates consumer project files in the specified target directory.
- * @param {string} targetDir
- * @param {ConsumerProjectOptions} [options]
- * @returns {string}
  */
-export function createConsumerProject(targetDir, options = {}) {
+export function createConsumerProject(
+  targetDir: string,
+  options: ConsumerProjectOptions = {},
+): string {
   if (!targetDir || typeof targetDir !== "string") {
     throw new Error("Target directory path must be a non-empty string.");
   }
@@ -461,17 +512,17 @@ export function createConsumerProject(targetDir, options = {}) {
   if (existingItems.length > 0) {
     if (!options.allowNonEmpty && !options.overwrite) {
       throw new Error(
-        `Refusing to generate consumer project into non-empty directory '${resolvedTarget}'.`
+        `Refusing to generate consumer project into non-empty directory '${resolvedTarget}'.`,
       );
     }
 
     if (!options.overwrite) {
       const colliding = Object.keys(files).filter((filename) =>
-        fs.existsSync(path.join(resolvedTarget, filename))
+        fs.existsSync(path.join(resolvedTarget, filename)),
       );
       if (colliding.length > 0) {
         throw new Error(
-          `Refusing to overwrite existing generated files in '${resolvedTarget}': ${colliding.join(", ")}. Pass 'overwrite: true' or '--overwrite' to allow.`
+          `Refusing to overwrite existing generated files in '${resolvedTarget}': ${colliding.join(", ")}. Pass 'overwrite: true' or '--overwrite' to allow.`,
         );
       }
     }
@@ -491,13 +542,13 @@ export function createConsumerProject(targetDir, options = {}) {
 
 /**
  * Parses CLI arguments into targetDir and options object.
- * @param {string[]} args
- * @returns {{ targetDir: string|null, options: ConsumerProjectOptions }}
  */
-function parseCliArgs(args) {
-  /** @type {ConsumerProjectOptions} */
-  const options = {};
-  let targetDir = null;
+export function parseCliArgs(args: string[]): {
+  targetDir: string | null;
+  options: ConsumerProjectOptions;
+} {
+  const options: ConsumerProjectOptions = {};
+  let targetDir: string | null = null;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -508,7 +559,7 @@ function parseCliArgs(args) {
     } else if (arg.startsWith("--")) {
       const key = arg.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       const val = args[i + 1];
-      if (val && !val.startsWith("--")) {
+      if (val !== undefined && !val.startsWith("--")) {
         options[key] = val;
         i++;
       } else {
@@ -522,14 +573,12 @@ function parseCliArgs(args) {
   return { targetDir, options };
 }
 
-// CLI entrypoint when run directly
-const currentScriptPath = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentScriptPath)) {
+if (isMainModule(import.meta.url)) {
   const { targetDir, options } = parseCliArgs(process.argv.slice(2));
 
   if (!targetDir || targetDir.startsWith("-")) {
     console.error(
-      "Error: Missing target directory argument. Usage: generate-consumer-project.js <target-directory> [options]"
+      "Error: Missing target directory argument. Usage: generate-consumer-project.ts <target-directory> [options]",
     );
     process.exit(1);
   }
