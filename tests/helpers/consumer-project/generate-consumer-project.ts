@@ -543,7 +543,7 @@ export function createConsumerProject(
 /**
  * Parses CLI arguments into targetDir and options object.
  */
-function parseCliArgs(args: string[]): {
+export function parseCliArgs(args: string[]): {
   targetDir: string | null;
   options: ConsumerProjectOptions;
 } {
@@ -559,7 +559,7 @@ function parseCliArgs(args: string[]): {
     } else if (arg.startsWith("--")) {
       const key = arg.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       const val = args[i + 1];
-      if (val && !val.startsWith("--")) {
+      if (val !== undefined && !val.startsWith("--")) {
         options[key] = val;
         i++;
       } else {

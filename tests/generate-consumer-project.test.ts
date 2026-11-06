@@ -10,6 +10,7 @@ import {
   generateConsumerProjectFiles,
   getLockfileTemplates,
   normalizePythonProjectName,
+  parseCliArgs,
 } from "./helpers/consumer-project/index.js";
 
 describe("Consumer Project Generator Unit & Regression Suite", () => {
@@ -521,6 +522,40 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(fs.readFileSync(path.join(target, "package.json"), "utf8")).not.toBe(
         "pre-existing-json",
       );
+    });
+  });
+
+  describe("parseCliArgs Argument Handling Suite", () => {
+    it("parses normal option value correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "0.17.2"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("0.17.2");
+    });
+
+    it("parses empty string option value correctly without treating it as boolean", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", ""]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("");
+    });
+
+    it("parses boolean flags correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--allow-non-empty"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.allowNonEmpty).toBe(true);
+    });
+
+    it("handles option with missing value before another flag without consuming flag", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe(true);
+      expect(parsed.options.action).toBe("pages");
+    });
+
+    it("handles empty option value followed by another option correctly", () => {
+      const parsed = parseCliArgs(["my-target", "--ruff-version", "", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("my-target");
+      expect(parsed.options.ruffVersion).toBe("");
+      expect(parsed.options.action).toBe("pages");
     });
   });
 });
