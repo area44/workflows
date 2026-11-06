@@ -34,7 +34,9 @@ export interface AdapterDetectionResult {
 export interface ToolAdapter {
   id: string;
   name: string;
-  capabilities: Capability[];
+  capabilities: readonly Capability[];
+
+  getCapabilities?(context: ProjectContext, mode?: ExecutionMode): Capability[];
 
   detect(context: ProjectContext): Promise<AdapterDetectionResult> | AdapterDetectionResult;
 

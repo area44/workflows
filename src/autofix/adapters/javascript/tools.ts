@@ -32,11 +32,48 @@ function hasAnyConfigFile(cwd: string, filenames: string[]): boolean {
   return false;
 }
 
+/**
+ * Resolves local project binary safely without falling back to `npx` (which could download unpinned packages).
+ * Checks node_modules/.bin/<tool> first, then PATH via io.which.
+ */
+export async function resolveProjectBinary(
+  cwd: string,
+  toolBinary: string,
+): Promise<string | undefined> {
+  const localBinPath = path.join(cwd, "node_modules", ".bin", toolBinary);
+  if (fs.existsSync(localBinPath)) {
+    return localBinPath;
+  }
+
+  const pathBin = await io.which(toolBinary, false);
+  if (pathBin) {
+    return pathBin;
+  }
+
+  return undefined;
+}
+
+async function requireToolBinary(
+  cwd: string,
+  toolId: string,
+  toolName: string,
+  binName: string,
+  depName: string,
+): Promise<string> {
+  const resolved = await resolveProjectBinary(cwd, binName);
+  if (!resolved) {
+    throw new Error(
+      `Configured tool "${toolName}" could not run: executable "${binName}" is not available in node_modules/.bin or PATH. Please install "${depName}" in project dependencies.`,
+    );
+  }
+  return resolved;
+}
+
 // 1. Vite+ Adapter
 export class VitePlusAdapter implements ToolAdapter {
   public readonly id = "vite-plus";
   public readonly name = "Vite+";
-  public readonly capabilities: Capability[] = ["autofix", "format", "lint"];
+  public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -58,35 +95,54 @@ export class VitePlusAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasVp = Boolean(await io.which("vp", false));
-    const executable = hasVp ? "vp" : "npx";
-    const baseArgs = hasVp ? [] : ["vp"];
+    const executable = await requireToolBinary(context.cwd, this.id, this.name, "vp", "vite-plus");
 
     if (mode === "fix") {
+      // In fix mode, run formatting and lint fixes without triggering validation/typechecking
       return [
         {
-          id: "vite-plus-fix",
+          id: "vite-plus-fmt",
           toolId: this.id,
-          capability: "autofix",
+          capability: "format",
           executable,
-          args: [...baseArgs, "check", "--fix"],
+          args: ["fmt"],
           cwd: context.cwd,
           mode: "fix",
-          description: "Vite+: vp check --fix",
+          description: "Vite+: vp fmt",
+        },
+        {
+          id: "vite-plus-lint-fix",
+          toolId: this.id,
+          capability: "lint",
+          executable,
+          args: ["lint", "--fix"],
+          cwd: context.cwd,
+          mode: "fix",
+          description: "Vite+: vp lint --fix",
         },
       ];
     }
 
     return [
       {
-        id: "vite-plus-check",
+        id: "vite-plus-fmt-check",
         toolId: this.id,
-        capability: "autofix",
+        capability: "format",
         executable,
-        args: [...baseArgs, "check"],
+        args: ["fmt", "--check"],
         cwd: context.cwd,
         mode: "check",
-        description: "Vite+: vp check",
+        description: "Vite+: vp fmt --check",
+      },
+      {
+        id: "vite-plus-lint",
+        toolId: this.id,
+        capability: "lint",
+        executable,
+        args: ["lint"],
+        cwd: context.cwd,
+        mode: "check",
+        description: "Vite+: vp lint",
       },
     ];
   }
@@ -96,15 +152,13 @@ export class VitePlusAdapter implements ToolAdapter {
 export class BiomeAdapter implements ToolAdapter {
   public readonly id = "biome";
   public readonly name = "Biome";
-  public readonly capabilities: Capability[] = ["autofix", "format", "lint"];
+  public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
     const hasDep = hasDependency(pkg, "@biomejs/biome");
     const hasConfig = hasAnyConfigFile(context.cwd, ["biome.json", "biome.jsonc"]);
 
-    // "Do not treat package installation alone as proof that a tool should run.
-    // A tool should only be selected when the detector has sufficient evidence that it is intentionally configured for the project."
     if (hasDep && hasConfig) {
       return { detected: true, reason: "Biome dependency and configuration detected" };
     }
@@ -118,9 +172,13 @@ export class BiomeAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasBiome = Boolean(await io.which("biome", false));
-    const executable = hasBiome ? "biome" : "npx";
-    const baseArgs = hasBiome ? [] : ["biome"];
+    const executable = await requireToolBinary(
+      context.cwd,
+      this.id,
+      this.name,
+      "biome",
+      "@biomejs/biome",
+    );
 
     if (mode === "fix") {
       return [
@@ -129,7 +187,7 @@ export class BiomeAdapter implements ToolAdapter {
           toolId: this.id,
           capability: "autofix",
           executable,
-          args: [...baseArgs, "check", "--write", "."],
+          args: ["check", "--write", "."],
           cwd: context.cwd,
           mode: "fix",
           description: "Biome: check --write .",
@@ -143,7 +201,7 @@ export class BiomeAdapter implements ToolAdapter {
         toolId: this.id,
         capability: "autofix",
         executable,
-        args: [...baseArgs, "check", "."],
+        args: ["check", "."],
         cwd: context.cwd,
         mode: "check",
         description: "Biome: check .",
@@ -156,7 +214,7 @@ export class BiomeAdapter implements ToolAdapter {
 export class PrettierAdapter implements ToolAdapter {
   public readonly id = "prettier";
   public readonly name = "Prettier";
-  public readonly capabilities: Capability[] = ["format"];
+  public readonly capabilities: readonly Capability[] = ["format"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -189,9 +247,13 @@ export class PrettierAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasPrettier = Boolean(await io.which("prettier", false));
-    const executable = hasPrettier ? "prettier" : "npx";
-    const baseArgs = hasPrettier ? [] : ["prettier"];
+    const executable = await requireToolBinary(
+      context.cwd,
+      this.id,
+      this.name,
+      "prettier",
+      "prettier",
+    );
 
     if (mode === "fix") {
       return [
@@ -200,7 +262,7 @@ export class PrettierAdapter implements ToolAdapter {
           toolId: this.id,
           capability: "format",
           executable,
-          args: [...baseArgs, "--write", "."],
+          args: ["--write", "."],
           cwd: context.cwd,
           mode: "fix",
           description: "Prettier: format",
@@ -214,7 +276,7 @@ export class PrettierAdapter implements ToolAdapter {
         toolId: this.id,
         capability: "format",
         executable,
-        args: [...baseArgs, "--check", "."],
+        args: ["--check", "."],
         cwd: context.cwd,
         mode: "check",
         description: "Prettier: format check",
@@ -227,7 +289,7 @@ export class PrettierAdapter implements ToolAdapter {
 export class EslintAdapter implements ToolAdapter {
   public readonly id = "eslint";
   public readonly name = "ESLint";
-  public readonly capabilities: Capability[] = ["lint"];
+  public readonly capabilities: readonly Capability[] = ["lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -259,9 +321,7 @@ export class EslintAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasEslint = Boolean(await io.which("eslint", false));
-    const executable = hasEslint ? "eslint" : "npx";
-    const baseArgs = hasEslint ? [] : ["eslint"];
+    const executable = await requireToolBinary(context.cwd, this.id, this.name, "eslint", "eslint");
 
     if (mode === "fix") {
       return [
@@ -270,7 +330,7 @@ export class EslintAdapter implements ToolAdapter {
           toolId: this.id,
           capability: "lint",
           executable,
-          args: [...baseArgs, "--fix", "."],
+          args: ["--fix", "."],
           cwd: context.cwd,
           mode: "fix",
           description: "ESLint: lint autofix",
@@ -284,7 +344,7 @@ export class EslintAdapter implements ToolAdapter {
         toolId: this.id,
         capability: "lint",
         executable,
-        args: [...baseArgs, "."],
+        args: ["."],
         cwd: context.cwd,
         mode: "check",
         description: "ESLint: lint check",
@@ -297,7 +357,7 @@ export class EslintAdapter implements ToolAdapter {
 export class OxlintAdapter implements ToolAdapter {
   public readonly id = "oxlint";
   public readonly name = "Oxlint";
-  public readonly capabilities: Capability[] = ["lint"];
+  public readonly capabilities: readonly Capability[] = ["lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -322,9 +382,7 @@ export class OxlintAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasOxlint = Boolean(await io.which("oxlint", false));
-    const executable = hasOxlint ? "oxlint" : "npx";
-    const baseArgs = hasOxlint ? [] : ["oxlint"];
+    const executable = await requireToolBinary(context.cwd, this.id, this.name, "oxlint", "oxlint");
 
     if (mode === "fix") {
       return [
@@ -333,7 +391,7 @@ export class OxlintAdapter implements ToolAdapter {
           toolId: this.id,
           capability: "lint",
           executable,
-          args: [...baseArgs, "--fix", "."],
+          args: ["--fix", "."],
           cwd: context.cwd,
           mode: "fix",
           description: "Oxlint: lint autofix",
@@ -347,7 +405,7 @@ export class OxlintAdapter implements ToolAdapter {
         toolId: this.id,
         capability: "lint",
         executable,
-        args: [...baseArgs, "."],
+        args: ["."],
         cwd: context.cwd,
         mode: "check",
         description: "Oxlint: lint check",
@@ -360,7 +418,7 @@ export class OxlintAdapter implements ToolAdapter {
 export class OxfmtAdapter implements ToolAdapter {
   public readonly id = "oxfmt";
   public readonly name = "Oxfmt";
-  public readonly capabilities: Capability[] = ["format"];
+  public readonly capabilities: readonly Capability[] = ["format"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -385,9 +443,7 @@ export class OxfmtAdapter implements ToolAdapter {
   }
 
   public async plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> {
-    const hasOxfmt = Boolean(await io.which("oxfmt", false));
-    const executable = hasOxfmt ? "oxfmt" : "npx";
-    const baseArgs = hasOxfmt ? [] : ["oxfmt"];
+    const executable = await requireToolBinary(context.cwd, this.id, this.name, "oxfmt", "oxfmt");
 
     if (mode === "fix") {
       return [
@@ -396,7 +452,7 @@ export class OxfmtAdapter implements ToolAdapter {
           toolId: this.id,
           capability: "format",
           executable,
-          args: [...baseArgs, "--write", "."],
+          args: ["--write", "."],
           cwd: context.cwd,
           mode: "fix",
           description: "Oxfmt: format",
@@ -410,7 +466,7 @@ export class OxfmtAdapter implements ToolAdapter {
         toolId: this.id,
         capability: "format",
         executable,
-        args: [...baseArgs, "--check", "."],
+        args: ["--check", "."],
         cwd: context.cwd,
         mode: "check",
         description: "Oxfmt: format check",

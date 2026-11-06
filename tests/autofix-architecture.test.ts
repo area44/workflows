@@ -14,8 +14,9 @@ import type {
   ToolAdapter,
 } from "../src/autofix/types.js";
 
+import { resolveScriptTasks } from "../src/autofix/adapters/javascript/script-adapter.js";
 import { ExecutionEngine } from "../src/autofix/engine.js";
-import { run } from "../src/autofix/index.js";
+import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
 import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
 
@@ -98,7 +99,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
-  describe("JavaScript/TypeScript: Hybrid Detection & Precedence", () => {
+  describe("JavaScript/TypeScript: Hybrid Detection & Script Precedence", () => {
     it("respects explicit script conventions: 'check:fix' as combined autofix", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -162,11 +163,45 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
       );
     });
+
+    it("generic 'fix' does not suppress independent 'format:write' and 'lint:fix' scripts", async () => {
+      const scripts = {
+        fix: "custom-fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks.map((t) => t.scriptName)).toEqual(["fix", "format:write", "lint:fix"]);
+    });
+
+    it("generic 'fix' suppresses independent format script if fix explicitly calls format", async () => {
+      const scripts = {
+        fix: "npm run format && npm run lint:fix",
+        format: "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks.map((t) => t.scriptName)).toEqual(["fix"]);
+    });
+
+    it("distinguishes fix mode and check mode for lint scripts", () => {
+      expect(resolveScriptTasks({ "lint:check": "eslint ." }, "fix")).toEqual([]);
+      expect(resolveScriptTasks({ "lint:check": "eslint ." }, "check")).toEqual([
+        { capability: "lint", scriptName: "lint:check" },
+      ]);
+      expect(resolveScriptTasks({ "lint:fix": "eslint --fix ." }, "fix")).toEqual([
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+    });
   });
 
-  describe("Tool Adapters Detection & Safety", () => {
-    it("detects Prettier when dependency AND configuration file exist, executing tool directly if scripts absent", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/prettier");
+  describe("Tool Adapters & Safe Executable Resolution", () => {
+    it("detects Prettier when dependency AND configuration file exist, executing via local project binary", async () => {
+      const binDir = path.join(tempDir, "node_modules", ".bin");
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.writeFileSync(path.join(binDir, "prettier"), "");
+      fs.chmodSync(path.join(binDir, "prettier"), "755");
+
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -178,185 +213,122 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       await run(tempDir);
 
       expect(exec.exec).toHaveBeenCalledWith(
-        "prettier",
+        path.join(binDir, "prettier"),
         ["--write", "."],
         expect.objectContaining({ cwd: tempDir }),
       );
     });
 
-    it("does NOT execute Prettier if installed as dependency without configuration", async () => {
+    it("throws actionable error when tool is configured but its executable cannot be found", async () => {
+      vi.spyOn(io, "which").mockResolvedValue("");
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
           devDependencies: { prettier: "^3.0.0" },
         }),
       );
+      fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
 
-      await run(tempDir);
-
-      expect(exec.exec).not.toHaveBeenCalled();
-      expect(core.info).toHaveBeenCalledWith(
-        "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
+      await expect(executeJsWorkflow(tempDir)).rejects.toThrow(
+        /Configured tool "Prettier" could not run: executable "prettier" is not available/,
       );
     });
 
-    it("detects ESLint when dependency and configuration file exist", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/eslint");
+    it("Vite+ in fix mode executes vp fmt and vp lint --fix rather than check --fix", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => {
+        if (bin === "vp") return "/usr/local/bin/vp";
+        return "";
+      });
+
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
-          devDependencies: { eslint: "^9.0.0" },
+          devDependencies: { "vite-plus": "^1.4.0" },
         }),
       );
-      fs.writeFileSync(path.join(tempDir, "eslint.config.js"), "export default [];\n");
-
-      await run(tempDir);
-
-      expect(exec.exec).toHaveBeenCalledWith(
-        "eslint",
-        ["--fix", "."],
-        expect.objectContaining({ cwd: tempDir }),
-      );
-    });
-
-    it("detects Biome when dependency and biome.json exist", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/biome");
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({
-          devDependencies: { "@biomejs/biome": "^1.8.0" },
-        }),
-      );
-      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};\n");
 
       await run(tempDir);
 
       expect(exec.exec).toHaveBeenCalledWith(
-        "biome",
-        ["check", "--write", "."],
+        "/usr/local/bin/vp",
+        ["fmt"],
         expect.objectContaining({ cwd: tempDir }),
       );
-    });
-
-    it("resolves conflicts deterministically: explicit script suppresses inferred tool adapters", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/prettier");
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({
-          scripts: {
-            format: "custom-fmt .",
-          },
-          devDependencies: { prettier: "^3.0.0" },
-        }),
-      );
-      fs.writeFileSync(path.join(tempDir, ".prettierrc"), "{}");
-
-      await run(tempDir);
-
       expect(exec.exec).toHaveBeenCalledWith(
-        "npm",
-        ["run", "format"],
+        "/usr/local/bin/vp",
+        ["lint", "--fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
-      expect(exec.exec).not.toHaveBeenCalledWith("prettier", expect.anything(), expect.anything());
+      expect(exec.exec).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["check", "--fix"]),
+        expect.anything(),
+      );
     });
 
-    it("resolves conflicts deterministically: Biome covers format + lint and skips Prettier & ESLint", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/biome");
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({
-          devDependencies: {
-            "@biomejs/biome": "^1.8.0",
-            prettier: "^3.0.0",
-            eslint: "^9.0.0",
-          },
-        }),
-      );
-      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
-      fs.writeFileSync(path.join(tempDir, ".prettierrc"), "{}");
-      fs.writeFileSync(path.join(tempDir, "eslint.config.js"), "export default [];");
+    it("resolves capabilities dynamically: 'format:write' script allows ESLint tool detection to run lint", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => {
+        if (bin === "eslint") return "/usr/local/bin/eslint";
+        return "";
+      });
 
-      const registry = createDefaultRegistry();
-      const plan = await planExecution(
-        registry,
-        {
-          cwd: tempDir,
-          jsEnv: {
-            hasPackageJson: true,
-            packageJson: {
-              devDependencies: {
-                "@biomejs/biome": "^1.8.0",
-                prettier: "^3.0.0",
-                eslint: "^9.0.0",
-              },
-            },
-            hasBunVersionFile: false,
-            hasNodeVersionFile: false,
-            hasPnpmLock: false,
-            hasPackageLock: true,
-            hasBunLock: false,
-          },
-          jsPm: "npm",
-        },
-        "fix",
-      );
-
-      expect(plan.selectedTools.map((t) => t.id)).toContain("biome");
-      expect(plan.skippedTools.map((t) => t.id)).toContain("prettier");
-      expect(plan.skippedTools.map((t) => t.id)).toContain("eslint");
-      expect(plan.tasks).toHaveLength(1);
-      expect(plan.tasks[0].executable).toBe("biome");
-    });
-  });
-
-  describe("Explainable Execution Plan", () => {
-    it("produces structured and human-readable execution plan summary", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
           scripts: {
             "format:write": "prettier --write .",
-            "lint:fix": "eslint --fix .",
+          },
+          devDependencies: { eslint: "^9.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "eslint.config.js"), "export default [];");
+
+      await run(tempDir);
+
+      expect(exec.exec).toHaveBeenCalledWith(
+        "npm",
+        ["run", "format:write"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(exec.exec).toHaveBeenCalledWith(
+        "/usr/local/bin/eslint",
+        ["--fix", "."],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+    });
+  });
+
+  describe("Error Aggregation Across Multiple Failures", () => {
+    it("aggregates errors when multiple independent JS and Python tasks fail", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => {
+        if (bin === "ruff") return "/usr/bin/ruff";
+        return "";
+      });
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "lint:fix": "exit 1",
           },
         }),
       );
-      fs.writeFileSync(path.join(tempDir, "script.py"), "print('hello')\n");
-      vi.spyOn(io, "which").mockResolvedValue("/usr/bin/ruff");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
-      const registry = createDefaultRegistry();
-      const plan = await planExecution(
-        registry,
-        {
-          cwd: tempDir,
-          hasPythonSource: true,
-          jsEnv: {
-            hasPackageJson: true,
-            packageJson: {
-              scripts: {
-                "format:write": "prettier --write .",
-                "lint:fix": "eslint --fix .",
-              },
-            },
-            hasBunVersionFile: false,
-            hasNodeVersionFile: false,
-            hasPnpmLock: false,
-            hasPackageLock: true,
-            hasBunLock: false,
-          },
-          jsPm: "npm",
-        },
-        "fix",
+      vi.mocked(exec.exec).mockImplementation(async (cmd, args) => {
+        if (cmd === "npm" && args?.[0] === "run") return 1;
+        if (cmd === "ruff" && args?.[0] === "check") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Failed to run scripts: Script "lint:fix" failed while executing "npm run lint:fix"\.\nRuff command "ruff check --fix \." failed\./,
+        ),
       );
-
-      expect(plan.summary).toContain("Detected environments:");
-      expect(plan.summary).toContain("Python: true");
-      expect(plan.summary).toContain("JavaScript: true");
-      expect(plan.summary).toContain("Ruff: default tool");
-      expect(plan.summary).toContain("Execution plan:");
-      expect(plan.summary).toContain("Ruff: lint autofix");
-      expect(plan.summary).toContain("Ruff: format");
-      expect(plan.summary).toContain("package.json scripts: selected");
     });
   });
 

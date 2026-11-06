@@ -10,7 +10,103 @@ import type {
 
 interface CandidateTool {
   adapter: ToolAdapter;
+  capabilities: Capability[];
   reason?: string;
+}
+
+function checkCapabilityConflict(
+  capabilities: Capability[],
+  providerCapabilities: Set<Capability>,
+): string | null {
+  const hasAutofixCovered = providerCapabilities.has("autofix");
+  const hasFormatCovered = providerCapabilities.has("format");
+  const hasLintCovered = providerCapabilities.has("lint");
+
+  if (capabilities.includes("autofix")) {
+    if (hasAutofixCovered || (hasFormatCovered && hasLintCovered)) {
+      return "overlapping capabilities already covered by higher priority tool";
+    }
+  }
+
+  if (
+    capabilities.length === 1 &&
+    capabilities[0] === "format" &&
+    (hasAutofixCovered || hasFormatCovered)
+  ) {
+    return "formatting capability already covered by higher priority tool";
+  }
+
+  if (
+    capabilities.length === 1 &&
+    capabilities[0] === "lint" &&
+    (hasAutofixCovered || hasLintCovered)
+  ) {
+    return "linting capability already covered by higher priority tool";
+  }
+
+  return null;
+}
+
+async function processCandidateTools(
+  candidateTools: CandidateTool[],
+  providerCapabilities: Set<Capability>,
+  context: ProjectContext,
+  mode: ExecutionMode,
+  selectedTools: Array<{ id: string; name: string; reason?: string }>,
+  skippedTools: Array<{ id: string; name: string; reason: string }>,
+  tasks: ExecutionTask[],
+): Promise<void> {
+  for (const candidate of candidateTools) {
+    const adapter = candidate.adapter;
+    const capabilities = candidate.capabilities;
+
+    const conflictReason = checkCapabilityConflict(capabilities, providerCapabilities);
+    if (conflictReason) {
+      skippedTools.push({
+        id: adapter.id,
+        name: adapter.name,
+        reason: conflictReason,
+      });
+      continue;
+    }
+
+    selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
+    for (const cap of capabilities) {
+      providerCapabilities.add(cap);
+    }
+
+    const toolTasks = await adapter.plan(context, mode);
+    tasks.push(...toolTasks);
+  }
+}
+
+async function processStandaloneAdapters(
+  registry: AutofixRegistry,
+  context: ProjectContext,
+  mode: ExecutionMode,
+  selectedTools: Array<{ id: string; name: string; reason?: string }>,
+  tasks: ExecutionTask[],
+): Promise<void> {
+  for (const adapter of registry.getStandaloneAdapters()) {
+    const result = await adapter.detect(context);
+    if (result.detected) {
+      selectedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
+      const toolTasks = await adapter.plan(context, mode);
+      tasks.push(...toolTasks);
+    }
+  }
+}
+
+function deduplicateTasks(tasks: ExecutionTask[]): ExecutionTask[] {
+  const deduplicatedTasks: ExecutionTask[] = [];
+  const seenTaskIds = new Set<string>();
+  for (const task of tasks) {
+    if (!seenTaskIds.has(task.id)) {
+      seenTaskIds.add(task.id);
+      deduplicatedTasks.push(task);
+    }
+  }
+  return deduplicatedTasks;
 }
 
 /**
@@ -54,90 +150,30 @@ export async function planExecution(
     for (const adapter of adapters) {
       const result = await adapter.detect(context);
       if (result.detected) {
-        candidateTools.push({ adapter, reason: result.reason });
+        const caps = adapter.getCapabilities
+          ? adapter.getCapabilities(context, mode)
+          : Array.from(adapter.capabilities);
+        candidateTools.push({ adapter, capabilities: caps, reason: result.reason });
       } else if (result.reason && !result.reason.startsWith("no ")) {
         // Reason worth logging as skipped (e.g. dependency present without configuration)
         skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
       }
     }
 
-    // Resolve conflicts among candidates for this provider
-    for (const candidate of candidateTools) {
-      const adapter = candidate.adapter;
-      const capabilities = adapter.capabilities;
-
-      // Check if any capability is already covered by a higher priority tool
-      const hasAutofixCovered = providerCapabilities.has("autofix");
-      const hasFormatCovered = providerCapabilities.has("format");
-      const hasLintCovered = providerCapabilities.has("lint");
-
-      if (capabilities.includes("autofix")) {
-        if (hasAutofixCovered || (hasFormatCovered && hasLintCovered)) {
-          skippedTools.push({
-            id: adapter.id,
-            name: adapter.name,
-            reason: "overlapping capabilities already covered by higher priority tool",
-          });
-          continue;
-        }
-      }
-
-      if (
-        capabilities.length === 1 &&
-        capabilities[0] === "format" &&
-        (hasAutofixCovered || hasFormatCovered)
-      ) {
-        skippedTools.push({
-          id: adapter.id,
-          name: adapter.name,
-          reason: "formatting capability already covered by higher priority tool",
-        });
-        continue;
-      }
-
-      if (
-        capabilities.length === 1 &&
-        capabilities[0] === "lint" &&
-        (hasAutofixCovered || hasLintCovered)
-      ) {
-        skippedTools.push({
-          id: adapter.id,
-          name: adapter.name,
-          reason: "linting capability already covered by higher priority tool",
-        });
-        continue;
-      }
-
-      // Candidate is selected!
-      selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
-      for (const cap of capabilities) {
-        providerCapabilities.add(cap);
-      }
-
-      const toolTasks = await adapter.plan(context, mode);
-      tasks.push(...toolTasks);
-    }
+    await processCandidateTools(
+      candidateTools,
+      providerCapabilities,
+      context,
+      mode,
+      selectedTools,
+      skippedTools,
+      tasks,
+    );
   }
 
-  // Standalone adapters if any
-  for (const adapter of registry.getStandaloneAdapters()) {
-    const result = await adapter.detect(context);
-    if (result.detected) {
-      selectedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
-      const toolTasks = await adapter.plan(context, mode);
-      tasks.push(...toolTasks);
-    }
-  }
+  await processStandaloneAdapters(registry, context, mode, selectedTools, tasks);
 
-  // Deduplicate tasks by task id
-  const deduplicatedTasks: ExecutionTask[] = [];
-  const seenTaskIds = new Set<string>();
-  for (const task of tasks) {
-    if (!seenTaskIds.has(task.id)) {
-      seenTaskIds.add(task.id);
-      deduplicatedTasks.push(task);
-    }
-  }
+  const deduplicatedTasks = deduplicateTasks(tasks);
 
   // Generate explainable summary
   const summary = formatExecutionPlanSummary(

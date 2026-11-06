@@ -29,7 +29,7 @@ The `autofix` composite action automatically formats and fixes code across multi
     - Lint check: `lint`, `lint:check`
   - **Excluded Scripts:** Generic validation scripts such as `check`, `test`, and `typecheck` are strictly excluded from execution as autofix commands in fix mode.
   - **Tool Adapters:** When explicit scripts are absent or specialized, detects configured tools:
-    - **Vite+:** Project-native toolchain (`vp check --fix`).
+    - **Vite+:** Project-native toolchain (`vp fmt` and `vp lint --fix` in fix mode, avoiding unnecessary type-checking or validation).
     - **Biome:** Fast unified formatter and linter (`biome check --write .`).
     - **Prettier:** Code formatter (`prettier --write .`).
     - **ESLint:** Pluggable JavaScript/TypeScript linter (`eslint --fix .`).

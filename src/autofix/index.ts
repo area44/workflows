@@ -76,9 +76,10 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
 
   const engine = new ExecutionEngine();
   const results = await engine.executeTasks(jsTasks);
-  const failure = results.find((r) => r.error);
-  if (failure?.error) {
-    throw failure.error;
+  const failures = results.filter((r) => r.error);
+  if (failures.length > 0) {
+    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
+    throw new Error(errorMessages.join("\n"));
   }
 }
 
@@ -150,9 +151,10 @@ export async function executeRuffAutofix(
   const tasks = await ruffAdapter.plan(context, "fix");
   const engine = new ExecutionEngine();
   const results = await engine.executeTasks(tasks);
-  const failure = results.find((r) => r.error);
-  if (failure?.error) {
-    throw failure.error;
+  const failures = results.filter((r) => r.error);
+  if (failures.length > 0) {
+    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
+    throw new Error(errorMessages.join("\n"));
   }
 }
 
@@ -256,6 +258,26 @@ async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<
 }
 
 export async function run(cwd: string = process.cwd()): Promise<void> {
+  const hasSource = hasPythonSource(cwd);
+
+  // Emit explainable execution plan summary before execution
+  try {
+    const jsEnv = inspectJsProjectEnvironment(cwd);
+    const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+    const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
+
+    const fullContext: ProjectContext = {
+      cwd,
+      jsEnv,
+      jsPm: pm,
+      hasPythonSource: hasSource,
+    };
+    const overallPlan = await planExecution(defaultRegistry, fullContext, "fix");
+    core.info(overallPlan.summary);
+  } catch {
+    // Planning summary logging is best-effort and should not halt execution
+  }
+
   const errors: Error[] = [];
 
   const jsErr = await runJsWorkflowStep(cwd);
@@ -263,7 +285,6 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
     errors.push(jsErr);
   }
 
-  const hasSource = hasPythonSource(cwd);
   const pythonErrs = await runPythonWorkflowStep(cwd, hasSource);
   errors.push(...pythonErrs);
 
