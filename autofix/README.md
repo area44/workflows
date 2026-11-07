@@ -31,7 +31,7 @@ The `autofix` composite action automatically formats and fixes code across multi
   - **Generic "fix" Interaction:** A generic `fix` script does not blindly suppress independently declared format or lint fix scripts unless it demonstrably delegates to them.
   - **Tool Adapters:** When explicit scripts are absent or specialized, detects configured tools:
     - **Vite+:** Project-native toolchain (`vp fmt` and `vp lint --fix` in fix mode, avoiding unnecessary type-checking or validation).
-    - **Biome:** Fast unified formatter and linter (`biome check --write .`).
+    - **Biome:** Fast unified toolchain supporting discrete formatting (`biome format --write .` / `biome format .`), safe lint fixes (`biome lint --write .` / `biome lint .`), and safe Assist actions (`biome check --write --formatter-enabled=false --linter-enabled=false .` / `biome check --formatter-enabled=false --linter-enabled=false .`). This decomposition allows capability conflict resolution to preserve independent operations (e.g. running Prettier for format while retaining Biome linting and Assist actions).
     - **Prettier:** Code formatter (`prettier --write .`).
     - **ESLint:** Pluggable JavaScript/TypeScript linter (`eslint --fix .`).
     - **Oxlint:** High-performance JavaScript linter (`oxlint --fix .`).

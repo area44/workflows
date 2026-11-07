@@ -561,7 +561,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(planCommented.tasks.map((t) => t.id)).toEqual(["script-fix", "script-format:write"]);
     });
 
-    it("handles Biome partial capability resolution scenarios A through F", async () => {
+    it("handles Biome partial capability resolution and preserves assist actions", async () => {
       const binDir = path.join(tempDir, "node_modules", ".bin");
       fs.mkdirSync(binDir, { recursive: true });
       fs.writeFileSync(path.join(binDir, "prettier"), "");
@@ -571,7 +571,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       fs.writeFileSync(path.join(binDir, "eslint"), "");
       fs.chmodSync(path.join(binDir, "eslint"), "755");
 
-      // Scenario A: Formatting covered by explicit script -> Biome format skipped, Biome lint retained
+      // Formatting covered by explicit script: format is skipped while Biome lint and assist actions run
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -584,10 +584,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
 
       const registry = createDefaultRegistry();
-      const planA = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planA.tasks.map((t) => t.id)).toEqual(["script-format:write", "biome-lint-fix"]);
+      const planFormatCovered = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFormatCovered.tasks.map((t) => t.id)).toEqual([
+        "script-format:write",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
 
-      // Scenario B: Linting covered by explicit script -> Biome lint skipped, Biome format retained
+      // Linting covered by explicit script: lint is skipped while Biome format and assist actions run
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -598,10 +602,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         }),
       );
 
-      const planB = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planB.tasks.map((t) => t.id)).toEqual(["script-lint:fix", "biome-format-fix"]);
+      const planLintCovered = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planLintCovered.tasks.map((t) => t.id)).toEqual([
+        "script-lint:fix",
+        "biome-format-fix",
+        "biome-assist-fix",
+      ]);
 
-      // Scenario C: Both formatting and linting covered by explicit scripts -> No Biome task scheduled
+      // Both formatting and linting covered by explicit scripts: all capabilities are covered, so no Biome tasks run
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -613,10 +621,27 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         }),
       );
 
-      const planC = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planC.tasks.map((t) => t.id)).toEqual(["script-format:write", "script-lint:fix"]);
+      const planBothCovered = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planBothCovered.tasks.map((t) => t.id)).toEqual([
+        "script-format:write",
+        "script-lint:fix",
+      ]);
 
-      // Scenario D: Neither covered -> Biome schedules both format and lint
+      // Generic fix script covers autofix, formatting, and linting: all Biome tasks skipped
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "custom-fix-all",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+
+      const planGenericFix = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planGenericFix.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+
+      // Neither covered: Biome schedules format, lint, and assist actions
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -624,18 +649,26 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         }),
       );
 
-      const planD = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planD.tasks.map((t) => t.id)).toEqual(["biome-format-fix", "biome-lint-fix"]);
+      const planNeitherCovered = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planNeitherCovered.tasks.map((t) => t.id)).toEqual([
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
 
-      // Scenario E: Check mode -> Biome schedules only check commands
-      const planE = await planExecution(registry, { cwd: tempDir }, "check");
-      expect(planE.tasks.map((t) => t.id)).toEqual(["biome-format-check", "biome-lint-check"]);
-      expect(planE.tasks.every((t) => t.mode === "check")).toBe(true);
+      // Check mode: schedules check commands without --write
+      const planCheckMode = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planCheckMode.tasks.map((t) => t.id)).toEqual([
+        "biome-format-check",
+        "biome-lint-check",
+        "biome-assist-check",
+      ]);
+      expect(planCheckMode.tasks.every((t) => t.mode === "check")).toBe(true);
 
-      // Scenario F: Deterministic ordering across repeated runs
-      const planF1 = await planExecution(registry, { cwd: tempDir }, "fix");
-      const planF2 = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planF1.tasks.map((t) => t.id)).toEqual(planF2.tasks.map((t) => t.id));
+      // Deterministic ordering across repeated runs
+      const planRepeat1 = await planExecution(registry, { cwd: tempDir }, "fix");
+      const planRepeat2 = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planRepeat1.tasks.map((t) => t.id)).toEqual(planRepeat2.tasks.map((t) => t.id));
     });
 
     it("verifies check-mode and fix-mode detection consistency in JavaScriptScriptAdapter", async () => {
