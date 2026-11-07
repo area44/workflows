@@ -690,7 +690,21 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         ".",
       ]);
 
-      // Generic fix script covers autofix, formatting, and linting: all Biome tasks skipped
+      // Generic fix script that runs full check (e.g. biome check --write) legitimately covers autofix: all Biome tasks skipped
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "biome check --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+
+      const planGenericFix = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planGenericFix.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+
+      // Unknown custom fix script does NOT overclaim autofix and does NOT suppress Biome tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -701,8 +715,13 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         }),
       );
 
-      const planGenericFix = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planGenericFix.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+      const planUnknownCustomFix = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planUnknownCustomFix.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
 
       // Neither covered: Biome schedules format, lint, and assist actions
       fs.writeFileSync(
@@ -831,6 +850,56 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(resolveScriptTasks({ "lint:write": "eslint --fix ." }, "fix")).toEqual([
         { capability: "lint", scriptName: "lint:write" },
       ]);
+
+      // Check mode safety: lint scripts containing write flags (--fix, --write) are rejected in check mode
+      expect(resolveScriptTasks({ lint: "eslint . --fix" }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ lint: "biome check --write ." }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ lint: "eslint . --fix" }, "fix")).toEqual([]); // Not a recognized fix alias
+      expect(resolveScriptTasks({ "lint:fix": "eslint . --fix" }, "fix")).toEqual([
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+    });
+
+    it("verifies direct tool fix script capability assignment without overclaiming", async () => {
+      // fix: "prettier --write ." does not suppress Biome lint or Assist tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "prettier --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      const registry = createDefaultRegistry();
+      const planPrettier = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planPrettier.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planPrettier.tasks[0].capability).toBe("format");
+
+      // fix: "eslint --fix ." does not suppress Biome format or Assist tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "eslint --fix .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+
+      const planEslint = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planEslint.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planEslint.tasks[0].capability).toBe("lint");
     });
   });
 

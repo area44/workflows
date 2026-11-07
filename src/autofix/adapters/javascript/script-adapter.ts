@@ -36,6 +36,10 @@ function resolveFormatScript(
   return scripts["format:check"] ? "format:check" : scripts["fmt:check"] ? "fmt:check" : undefined;
 }
 
+function isWriteCapableScript(command: string): boolean {
+  return /(?:^|\s)(?:--fix|--write)(?:$|\s)/.test(command);
+}
+
 function resolveLintScript(
   scripts: Record<string, string>,
   mode: ExecutionMode,
@@ -47,7 +51,14 @@ function resolveLintScript(
     if (scripts["lint:write"]) return "lint:write";
     return undefined;
   }
-  return scripts["lint:check"] ? "lint:check" : scripts.lint ? "lint" : undefined;
+  if (scripts["lint:check"]) {
+    return "lint:check";
+  }
+  // In check mode, only select generic "lint" if it does not contain common write flags (--fix, --write)
+  if (scripts.lint && !isWriteCapableScript(scripts.lint)) {
+    return "lint";
+  }
+  return undefined;
 }
 
 interface TokenizerState {
@@ -286,27 +297,46 @@ function shouldIncludeLintWithFix(
   return !doesFixScriptDelegateTo(fixBody, lintScript);
 }
 
+function hasFormattingCommand(body: string): boolean {
+  return /\b(prettier|oxfmt|biome format)\b/.test(body);
+}
+
+function hasLintingCommand(body: string): boolean {
+  return /\b(eslint|oxlint|biome lint)\b/.test(body);
+}
+
+function hasFullCheckCommand(body: string): boolean {
+  return /\b(biome check|vp fmt|vp lint)\b/.test(body);
+}
+
 function determineFixScriptCapability(
   scripts: Record<string, string>,
   fixScript: string,
   formatScript?: string,
   lintScript?: string,
-): Capability {
+): Capability | undefined {
   const fixBody = scripts[fixScript] || "";
   const delegatesToFormat = formatScript ? doesFixScriptDelegateTo(fixBody, formatScript) : false;
   const delegatesToLint = lintScript ? doesFixScriptDelegateTo(fixBody, lintScript) : false;
 
-  // If fix exclusively delegates to formatting and NOT linting, its capability is format
-  if (delegatesToFormat && !delegatesToLint) {
+  const isFormatting = delegatesToFormat || hasFormattingCommand(fixBody);
+  const isLinting = delegatesToLint || hasLintingCommand(fixBody);
+  const isFullCheck = hasFullCheckCommand(fixBody);
+
+  if (isFormatting && !isLinting && !isFullCheck) {
     return "format";
   }
 
-  // If fix exclusively delegates to linting and NOT formatting, its capability is lint
-  if (delegatesToLint && !delegatesToFormat) {
+  if (isLinting && !isFormatting && !isFullCheck) {
     return "lint";
   }
 
-  return "autofix";
+  if (isFullCheck) {
+    return "autofix";
+  }
+
+  // For unknown custom scripts, do not overclaim autofix; claim no single broad capability so it runs as a script without suppressing independent tools
+  return undefined;
 }
 
 function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[] {
@@ -322,17 +352,23 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
   }
 
   const fixBody = scripts[fixScript] || "";
-  const delegatesToFormat = formatScript ? doesFixScriptDelegateTo(fixBody, formatScript) : false;
-  const delegatesToLint = lintScript ? doesFixScriptDelegateTo(fixBody, lintScript) : false;
+  const isFormat = formatScript
+    ? doesFixScriptDelegateTo(fixBody, formatScript) || hasFormattingCommand(fixBody)
+    : hasFormattingCommand(fixBody);
+  const isLint = lintScript
+    ? doesFixScriptDelegateTo(fixBody, lintScript) || hasLintingCommand(fixBody)
+    : hasLintingCommand(fixBody);
 
-  // When fix delegates to both format and lint scripts, represent both capabilities explicitly
+  // When fix covers both formatting and linting, represent both capabilities explicitly
   // so that format and lint are covered without falsely claiming "autofix" (which would suppress Assist)
-  if (delegatesToFormat && delegatesToLint) {
+  if (isFormat && isLint) {
     return [{ capability: "format", capabilities: ["format", "lint"], scriptName: fixScript }];
   }
 
   const fixCapability = determineFixScriptCapability(scripts, fixScript, formatScript, lintScript);
-  const mappings: ScriptMapping[] = [{ capability: fixCapability, scriptName: fixScript }];
+  const mappings: ScriptMapping[] = fixCapability
+    ? [{ capability: fixCapability, scriptName: fixScript }]
+    : [{ capability: "typecheck", capabilities: [], scriptName: fixScript }]; // Use a benign capability like typecheck with empty capabilities so it does not suppress format, lint, or assist
 
   if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
     mappings.push({ capability: "format", scriptName: formatScript });
