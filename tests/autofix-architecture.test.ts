@@ -609,7 +609,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "biome-assist-fix",
       ]);
 
-      // Both formatting and linting covered by explicit scripts: all capabilities are covered, so no Biome tasks run
+      // Both formatting and linting covered by explicit scripts: format and lint from Biome are skipped, but Assist remains
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -625,6 +625,16 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(planBothCovered.tasks.map((t) => t.id)).toEqual([
         "script-format:write",
         "script-lint:fix",
+        "biome-assist-fix",
+      ]);
+      const assistTask = planBothCovered.tasks.find((t) => t.id === "biome-assist-fix");
+      expect(assistTask?.capability).toBe("assist");
+      expect(assistTask?.args).toEqual([
+        "check",
+        "--write",
+        "--formatter-enabled=false",
+        "--linter-enabled=false",
+        ".",
       ]);
 
       // Generic fix script covers autofix, formatting, and linting: all Biome tasks skipped

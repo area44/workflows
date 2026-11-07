@@ -20,12 +20,19 @@ function isTaskCapabilityCovered(
   taskCapability: Capability,
   coveredCapabilities: Set<Capability>,
 ): boolean {
+  // A generic full-autofix task covers all operations (format, lint, assist, etc.)
   if (coveredCapabilities.has("autofix")) {
     return true;
   }
+  // A task claiming combined autofix is covered if format, lint, and assist are covered
   if (taskCapability === "autofix") {
-    return coveredCapabilities.has("format") && coveredCapabilities.has("lint");
+    return (
+      coveredCapabilities.has("format") &&
+      coveredCapabilities.has("lint") &&
+      coveredCapabilities.has("assist")
+    );
   }
+  // Assist is independent from format and lint
   return coveredCapabilities.has(taskCapability);
 }
 

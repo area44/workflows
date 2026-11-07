@@ -1,7 +1,7 @@
 import type { JsProjectEnvironment, SupportedPackageManager } from "../javascript-env.js";
 import type { PythonPackageManagerInfo, PythonProjectContext } from "../python-env.js";
 
-export type Capability = "lint" | "format" | "typecheck" | "autofix";
+export type Capability = "lint" | "format" | "typecheck" | "assist" | "autofix";
 
 export type ExecutionMode = "fix" | "check";
 

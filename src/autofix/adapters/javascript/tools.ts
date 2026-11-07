@@ -119,7 +119,7 @@ export class VitePlusAdapter implements ToolAdapter {
 export class BiomeAdapter implements ToolAdapter {
   public readonly id = "biome";
   public readonly name = "Biome";
-  public readonly capabilities: readonly Capability[] = ["format", "lint", "autofix"];
+  public readonly capabilities: readonly Capability[] = ["format", "lint", "assist"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -170,7 +170,7 @@ export class BiomeAdapter implements ToolAdapter {
           toolId: this.id,
           toolName: this.name,
           requiredPackage: "@biomejs/biome",
-          capability: "autofix",
+          capability: "assist",
           executable: "biome",
           args: ["check", "--write", "--formatter-enabled=false", "--linter-enabled=false", "."],
           cwd: context.cwd,
@@ -210,7 +210,7 @@ export class BiomeAdapter implements ToolAdapter {
         toolId: this.id,
         toolName: this.name,
         requiredPackage: "@biomejs/biome",
-        capability: "autofix",
+        capability: "assist",
         executable: "biome",
         args: ["check", "--formatter-enabled=false", "--linter-enabled=false", "."],
         cwd: context.cwd,
