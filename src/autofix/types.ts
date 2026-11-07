@@ -9,6 +9,7 @@ export interface ExecutionTask {
   id: string;
   toolId: string;
   capability: Capability;
+  capabilities?: readonly Capability[];
   executable: string;
   args: string[];
   cwd: string;

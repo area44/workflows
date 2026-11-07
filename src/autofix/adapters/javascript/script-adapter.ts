@@ -11,6 +11,7 @@ import { sanitizePackageManager } from "../../../javascript-env.js";
 
 export interface ScriptMapping {
   capability: Capability;
+  capabilities?: readonly Capability[];
   scriptName: string;
 }
 
@@ -30,15 +31,9 @@ function resolveFormatScript(
             ? "fmt"
             : undefined;
   }
-  return scripts["format:check"]
-    ? "format:check"
-    : scripts["fmt:check"]
-      ? "fmt:check"
-      : scripts.format
-        ? "format"
-        : scripts.fmt
-          ? "fmt"
-          : undefined;
+  // In check mode, ONLY select explicitly non-writing scripts.
+  // Never fall back to "format" or "fmt" as they typically perform file writes.
+  return scripts["format:check"] ? "format:check" : scripts["fmt:check"] ? "fmt:check" : undefined;
 }
 
 function resolveLintScript(
@@ -291,6 +286,29 @@ function shouldIncludeLintWithFix(
   return !doesFixScriptDelegateTo(fixBody, lintScript);
 }
 
+function determineFixScriptCapability(
+  scripts: Record<string, string>,
+  fixScript: string,
+  formatScript?: string,
+  lintScript?: string,
+): Capability {
+  const fixBody = scripts[fixScript] || "";
+  const delegatesToFormat = formatScript ? doesFixScriptDelegateTo(fixBody, formatScript) : false;
+  const delegatesToLint = lintScript ? doesFixScriptDelegateTo(fixBody, lintScript) : false;
+
+  // If fix exclusively delegates to formatting and NOT linting, its capability is format
+  if (delegatesToFormat && !delegatesToLint) {
+    return "format";
+  }
+
+  // If fix exclusively delegates to linting and NOT formatting, its capability is lint
+  if (delegatesToLint && !delegatesToFormat) {
+    return "lint";
+  }
+
+  return "autofix";
+}
+
 function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[] {
   const fixScript = scripts.fix ? "fix" : scripts["check:fix"] ? "check:fix" : undefined;
   const formatScript = resolveFormatScript(scripts, "fix");
@@ -303,7 +321,19 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
     return fallbackMappings;
   }
 
-  const mappings: ScriptMapping[] = [{ capability: "autofix", scriptName: fixScript }];
+  const fixBody = scripts[fixScript] || "";
+  const delegatesToFormat = formatScript ? doesFixScriptDelegateTo(fixBody, formatScript) : false;
+  const delegatesToLint = lintScript ? doesFixScriptDelegateTo(fixBody, lintScript) : false;
+
+  // When fix delegates to both format and lint scripts, represent both capabilities explicitly
+  // so that format and lint are covered without falsely claiming "autofix" (which would suppress Assist)
+  if (delegatesToFormat && delegatesToLint) {
+    return [{ capability: "format", capabilities: ["format", "lint"], scriptName: fixScript }];
+  }
+
+  const fixCapability = determineFixScriptCapability(scripts, fixScript, formatScript, lintScript);
+  const mappings: ScriptMapping[] = [{ capability: fixCapability, scriptName: fixScript }];
+
   if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
     mappings.push({ capability: "format", scriptName: formatScript });
   }
@@ -371,6 +401,7 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
       id: `script-${mapping.scriptName}`,
       toolId: this.id,
       capability: mapping.capability,
+      capabilities: mapping.capabilities,
       executable: pm,
       args: ["run", mapping.scriptName],
       cwd: context.cwd,

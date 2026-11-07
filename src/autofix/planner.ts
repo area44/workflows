@@ -85,6 +85,11 @@ async function processCandidateTools(
     selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
     for (const task of kept) {
       providerCapabilities.add(task.capability);
+      if (task.capabilities) {
+        for (const cap of task.capabilities) {
+          providerCapabilities.add(cap);
+        }
+      }
     }
     tasks.push(...kept);
 

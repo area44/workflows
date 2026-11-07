@@ -27,8 +27,8 @@ The `autofix` composite action automatically formats and fixes code across multi
     - Format check: `format:check`, `fmt:check`
     - Lint fix: `lint:fix`, `lint:write`
     - Lint check: `lint`, `lint:check`
-  - **Excluded Scripts:** Validation-only scripts such as plain `lint`, `lint:check`, `check`, `test`, and `typecheck` are strictly excluded from execution as autofix commands in fix mode.
-  - **Generic "fix" Interaction:** A generic `fix` script does not blindly suppress independently declared format or lint fix scripts unless it demonstrably delegates to them.
+  - **Excluded Scripts:** Validation-only scripts such as plain `lint`, `lint:check`, `check`, `test`, and `typecheck` are strictly excluded from execution as autofix commands in fix mode. In check mode, only explicitly non-writing verification scripts (such as `format:check` or `fmt:check`) are executed; write-capable scripts like `format` and `fmt` are never scheduled.
+  - **Generic "fix" Interaction:** A generic `fix` script only covers the capabilities it actually delegates to; delegating only to formatting will not suppress linting or Assist actions.
   - **Tool Adapters:** When explicit scripts are absent or specialized, detects configured tools:
     - **Vite+:** Project-native toolchain (`vp fmt` and `vp lint --fix` in fix mode, avoiding unnecessary type-checking or validation).
     - **Biome:** Fast unified toolchain supporting discrete formatting (`biome format --write .` / `biome format .`), safe lint fixes (`biome lint --write .` / `biome lint .`), and safe Assist actions (`biome check --write --formatter-enabled=false --linter-enabled=false .` / `biome check --formatter-enabled=false --linter-enabled=false .`). The `assist` capability is independent of `format` and `lint`; having separate format and lint scripts does not suppress Assist actions unless a generic `fix` script covers the full `autofix` lifecycle.

@@ -591,6 +591,59 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "biome-assist-fix",
       ]);
 
+      // Fix script delegating only to format: only covers format, so Biome lint and assist remain
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "npm run format:write",
+            "format:write": "prettier --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+      const planFixFormatOnly = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFixFormatOnly.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planFixFormatOnly.tasks[0].capability).toBe("format");
+
+      // Fix script delegating only to lint: only covers lint, so Biome format and assist remain
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "npm run lint:fix",
+            "lint:fix": "eslint --fix .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+      const planFixLintOnly = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFixLintOnly.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planFixLintOnly.tasks[0].capability).toBe("lint");
+
+      // Fix script delegating to both format and lint: Biome format and lint skipped, but Assist remains
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "npm run format:write && npm run lint:fix",
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+      const planFixBoth = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFixBoth.tasks.map((t) => t.id)).toEqual(["script-fix", "biome-assist-fix"]);
+
       // Linting covered by explicit script: lint is skipped while Biome format and assist actions run
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -722,6 +775,34 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       const planCheckOnly = await planExecution(registry, { cwd: tempDir }, "check");
       expect(planCheckOnly.tasks).toEqual([]);
+
+      // Check mode safety: format alone or fmt alone is never scheduled in check mode
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "prettier --write .",
+            fmt: "prettier --write .",
+          },
+        }),
+      );
+
+      const planFormatWriteOnly = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planFormatWriteOnly.tasks).toEqual([]);
+
+      // Check mode safely selects format:check or fmt:check
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:check": "prettier --check .",
+            format: "prettier --write .",
+          },
+        }),
+      );
+
+      const planExplicitCheck = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planExplicitCheck.tasks.map((t) => t.id)).toEqual(["script-format:check"]);
     });
 
     it("evaluates Python detection accurately when planExecution receives { cwd } without precomputed hasPythonSource", async () => {
