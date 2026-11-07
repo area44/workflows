@@ -2,13 +2,15 @@ import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 
+import type { ExecutionTask, PlannedExecution, ProjectContext } from "./types.js";
+
 import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
   sanitizePackageManager,
-  selectAutofixScripts,
   type JsInstallationPlan,
+  type SupportedPackageManager,
 } from "../javascript-env.js";
 import {
   detectPythonPackageManager,
@@ -19,23 +21,11 @@ import {
   type PythonProjectContext,
 } from "../python-env.js";
 import { isMainModule } from "../utils/is-main-module.js";
+import { ExecutionEngine } from "./engine.js";
+import { planExecution } from "./planner.js";
+import { defaultRegistry } from "./registry.js";
 
 export { sanitizePackageManager };
-
-async function runScriptCommand(
-  pm: string,
-  name: string,
-  cwd: string = process.cwd(),
-): Promise<void> {
-  const safePm = sanitizePackageManager(pm);
-  const displayCmd = `${safePm} run ${name}`;
-  core.info(`Executing: ${displayCmd}`);
-
-  const exitCode = await exec.exec(safePm, ["run", name], { cwd, ignoreReturnCode: true });
-  if (exitCode !== 0) {
-    throw new Error(`Script "${name}" failed while executing "${displayCmd}".`);
-  }
-}
 
 async function runJsInstallationPlan(
   plan: JsInstallationPlan,
@@ -52,16 +42,6 @@ async function runJsInstallationPlan(
   }
 }
 
-async function executeJsScripts(
-  selectedScripts: string[],
-  pm: string,
-  cwd: string = process.cwd(),
-): Promise<void> {
-  for (const scriptName of selectedScripts) {
-    await runScriptCommand(pm, scriptName, cwd);
-  }
-}
-
 export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<void> {
   const jsEnv = inspectJsProjectEnvironment(cwd);
   if (!jsEnv.hasPackageJson) {
@@ -73,21 +53,34 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
     throw new Error(jsEnv.packageJsonError);
   }
 
-  const scripts = jsEnv.packageJson?.scripts || {};
-  const selectedScripts = selectAutofixScripts(scripts);
+  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+  const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
 
-  if (selectedScripts.length === 0) {
+  const context: ProjectContext = {
+    cwd,
+    jsEnv,
+    jsPm: pm,
+    hasPythonSource: false,
+  };
+
+  const plan = await planExecution(defaultRegistry, context, "fix");
+  const jsTasks = plan.tasks.filter((t) => t.toolId !== "ruff");
+
+  if (jsTasks.length === 0) {
     core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
     return;
   }
 
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-  const pm = sanitizePackageManager(rawPm);
+  const installPlan = getJsInstallationPlan(pm);
+  await runJsInstallationPlan(installPlan, cwd);
 
-  const plan = getJsInstallationPlan(pm);
-  await runJsInstallationPlan(plan, cwd);
-
-  await executeJsScripts(selectedScripts, pm, cwd);
+  const engine = new ExecutionEngine();
+  const results = await engine.executeTasks(jsTasks);
+  const failures = results.filter((r) => r.error);
+  if (failures.length > 0) {
+    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
+    throw new Error(errorMessages.join("\n"));
+  }
 }
 
 async function runPythonCommand(
@@ -132,34 +125,44 @@ export async function executePythonWorkflow(
 export async function executeRuffAutofix(
   cwd: string = process.cwd(),
   hasSource?: boolean,
+  preplannedTasks?: ExecutionTask[],
 ): Promise<void> {
   const hasSourceCode = hasSource ?? hasPythonSource(cwd);
   if (!hasSourceCode) {
     return;
   }
 
-  const hasRuff = Boolean(await io.which("ruff", false));
-  if (!hasRuff) {
-    const message = "Required Python binary 'ruff' is not available in PATH.";
-    throw new Error(message);
+  let tasks: ExecutionTask[];
+  if (preplannedTasks) {
+    tasks = preplannedTasks;
+  } else {
+    const hasRuff = Boolean(await io.which("ruff", false));
+    if (!hasRuff) {
+      const message = "Required Python binary 'ruff' is not available in PATH.";
+      throw new Error(message);
+    }
+
+    const context: ProjectContext = {
+      cwd,
+      hasPythonSource: true,
+    };
+    const ruffPlan = await planExecution(defaultRegistry, context, "fix");
+    tasks = ruffPlan.tasks.filter((t) => t.toolId === "ruff");
   }
 
-  const ruffCommandSpecs = [
-    { executable: "ruff", args: ["check", "--fix", "."] },
-    { executable: "ruff", args: ["format", "."] },
-  ];
-
-  for (const { executable, args } of ruffCommandSpecs) {
-    const displayCmd = `${executable} ${args.join(" ")}`;
-    core.info(`Executing: ${displayCmd}`);
-    const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
-    if (exitCode !== 0) {
-      throw new Error(`Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`);
-    }
+  const engine = new ExecutionEngine();
+  const results = await engine.executeTasks(tasks);
+  const failures = results.filter((r) => r.error);
+  if (failures.length > 0) {
+    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
+    throw new Error(errorMessages.join("\n"));
   }
 }
 
-async function runJsWorkflowStep(cwd: string): Promise<Error | null> {
+async function runJsWorkflowStep(
+  cwd: string,
+  preplannedJsTasks?: ExecutionTask[],
+): Promise<Error | null> {
   const jsSetupFailed =
     process.env.JS_SETUP_OUTCOME === "failure" ||
     process.env.NODE_SETUP_OUTCOME === "failure" ||
@@ -171,6 +174,34 @@ async function runJsWorkflowStep(cwd: string): Promise<Error | null> {
   }
 
   try {
+    if (preplannedJsTasks) {
+      const jsEnv = inspectJsProjectEnvironment(cwd);
+      if (!jsEnv.hasPackageJson) {
+        core.info("No package.json found. Skipping scripts.");
+        return null;
+      }
+      if (jsEnv.packageJsonError) {
+        throw new Error(jsEnv.packageJsonError);
+      }
+      if (preplannedJsTasks.length === 0) {
+        core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
+        return null;
+      }
+      const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+      const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
+      const installPlan = getJsInstallationPlan(pm);
+      await runJsInstallationPlan(installPlan, cwd);
+
+      const engine = new ExecutionEngine();
+      const results = await engine.executeTasks(preplannedJsTasks);
+      const failures = results.filter((r) => r.error);
+      if (failures.length > 0) {
+        const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
+        throw new Error(errorMessages.join("\n"));
+      }
+      return null;
+    }
+
     await executeJsWorkflow(cwd);
     return null;
   } catch (error) {
@@ -215,7 +246,11 @@ async function runPythonDepsStep(
   }
 }
 
-async function runRuffStep(cwd: string, hasSource?: boolean): Promise<Error | null> {
+async function runRuffStep(
+  cwd: string,
+  hasSource?: boolean,
+  preplannedTasks?: ExecutionTask[],
+): Promise<Error | null> {
   const ruffSetupFailed = process.env.RUFF_SETUP_OUTCOME === "failure";
 
   if (ruffSetupFailed) {
@@ -223,14 +258,18 @@ async function runRuffStep(cwd: string, hasSource?: boolean): Promise<Error | nu
   }
 
   try {
-    await executeRuffAutofix(cwd, hasSource);
+    await executeRuffAutofix(cwd, hasSource, preplannedTasks);
     return null;
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
   }
 }
 
-async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<Error[]> {
+async function runPythonWorkflowStep(
+  cwd: string,
+  hasSource?: boolean,
+  preplannedPythonTasks?: ExecutionTask[],
+): Promise<Error[]> {
   const hasSourceCode = hasSource ?? hasPythonSource(cwd);
   if (!hasSourceCode) {
     return [];
@@ -250,7 +289,7 @@ async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<
     errors.push(depsErr);
   }
 
-  const ruffErr = await runRuffStep(cwd, hasSourceCode);
+  const ruffErr = await runRuffStep(cwd, hasSourceCode, preplannedPythonTasks);
   if (ruffErr) {
     errors.push(ruffErr);
   }
@@ -259,15 +298,40 @@ async function runPythonWorkflowStep(cwd: string, hasSource?: boolean): Promise<
 }
 
 export async function run(cwd: string = process.cwd()): Promise<void> {
+  const hasSource = hasPythonSource(cwd);
+  let overallPlan: PlannedExecution | undefined;
+
+  // Emit explainable execution plan summary before execution using shared planner
+  try {
+    const jsEnv = inspectJsProjectEnvironment(cwd);
+    const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
+    const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
+
+    const fullContext: ProjectContext = {
+      cwd,
+      jsEnv,
+      jsPm: pm,
+      hasPythonSource: hasSource,
+    };
+    overallPlan = await planExecution(defaultRegistry, fullContext, "fix");
+    core.info(overallPlan.summary);
+  } catch {
+    // Planning summary logging is best-effort and should not halt execution
+  }
+
   const errors: Error[] = [];
 
-  const jsErr = await runJsWorkflowStep(cwd);
+  const jsTasks = overallPlan ? overallPlan.tasks.filter((t) => t.toolId !== "ruff") : undefined;
+  const pythonTasks = overallPlan
+    ? overallPlan.tasks.filter((t) => t.toolId === "ruff")
+    : undefined;
+
+  const jsErr = await runJsWorkflowStep(cwd, jsTasks);
   if (jsErr) {
     errors.push(jsErr);
   }
 
-  const hasSource = hasPythonSource(cwd);
-  const pythonErrs = await runPythonWorkflowStep(cwd, hasSource);
+  const pythonErrs = await runPythonWorkflowStep(cwd, hasSource, pythonTasks);
   errors.push(...pythonErrs);
 
   if (errors.length > 0) {
