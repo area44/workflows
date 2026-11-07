@@ -270,6 +270,132 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(tasksEscaped.map((t) => t.scriptName)).toEqual(["fix"]);
     });
 
+    it("recognizes package manager delegations with single and double-quoted script arguments and executables", () => {
+      // npm run "format:write"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'npm run "format:write"',
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // npm run 'format:write'
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "npm run 'format:write'",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // pnpm run "lint:fix"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'pnpm run "lint:fix"',
+            "lint:fix": "eslint --fix .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // bun run 'format:write'
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "bun run 'format:write'",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // yarn run "lint:fix"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'yarn run "lint:fix"',
+            "lint:fix": "eslint --fix .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Quoted executable name: "npm" run "format:write"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: '"npm" run "format:write"',
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Environment assignments with quoted script argument
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'NODE_ENV=production npm run "format:write"',
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Multiple commands with quotes: npm run "format:write" && npm run "lint:fix"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'npm run "format:write" && npm run "lint:fix"',
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+    });
+
+    it("does not false-positive on quotes inside echo, printf, or malformed input", () => {
+      // echo "npm run format:write"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'echo "npm run format:write"',
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+
+      // echo 'npm run format:write'
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "echo 'npm run format:write'",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+
+      // printf '%s' "npm run format:write"
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "printf '%s' \"npm run format:write\"",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+    });
+
     it("recognizes package manager delegations preceded by valid environment variable assignments", () => {
       // Single environment assignment before npm run
       expect(
@@ -433,6 +559,126 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       const planCommented = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCommented.tasks.map((t) => t.id)).toEqual(["script-fix", "script-format:write"]);
+    });
+
+    it("handles Biome partial capability resolution scenarios A through F", async () => {
+      const binDir = path.join(tempDir, "node_modules", ".bin");
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.writeFileSync(path.join(binDir, "prettier"), "");
+      fs.chmodSync(path.join(binDir, "prettier"), "755");
+      fs.writeFileSync(path.join(binDir, "biome"), "");
+      fs.chmodSync(path.join(binDir, "biome"), "755");
+      fs.writeFileSync(path.join(binDir, "eslint"), "");
+      fs.chmodSync(path.join(binDir, "eslint"), "755");
+
+      // Scenario A: Formatting covered by explicit script -> Biome format skipped, Biome lint retained
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      const registry = createDefaultRegistry();
+      const planA = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planA.tasks.map((t) => t.id)).toEqual(["script-format:write", "biome-lint-fix"]);
+
+      // Scenario B: Linting covered by explicit script -> Biome lint skipped, Biome format retained
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "lint:fix": "eslint --fix .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+
+      const planB = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planB.tasks.map((t) => t.id)).toEqual(["script-lint:fix", "biome-format-fix"]);
+
+      // Scenario C: Both formatting and linting covered by explicit scripts -> No Biome task scheduled
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+
+      const planC = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planC.tasks.map((t) => t.id)).toEqual(["script-format:write", "script-lint:fix"]);
+
+      // Scenario D: Neither covered -> Biome schedules both format and lint
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          devDependencies: { "@biomejs/biome": "^1.9.0" },
+        }),
+      );
+
+      const planD = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planD.tasks.map((t) => t.id)).toEqual(["biome-format-fix", "biome-lint-fix"]);
+
+      // Scenario E: Check mode -> Biome schedules only check commands
+      const planE = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planE.tasks.map((t) => t.id)).toEqual(["biome-format-check", "biome-lint-check"]);
+      expect(planE.tasks.every((t) => t.mode === "check")).toBe(true);
+
+      // Scenario F: Deterministic ordering across repeated runs
+      const planF1 = await planExecution(registry, { cwd: tempDir }, "fix");
+      const planF2 = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planF1.tasks.map((t) => t.id)).toEqual(planF2.tasks.map((t) => t.id));
+    });
+
+    it("verifies check-mode and fix-mode detection consistency in JavaScriptScriptAdapter", async () => {
+      // Check-only project
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:check": "prettier --check .",
+            "lint:check": "eslint .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const planCheck = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planCheck.tasks.map((t) => t.id)).toEqual([
+        "script-format:check",
+        "script-lint:check",
+      ]);
+
+      const planFix = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFix.tasks).toEqual([]);
+
+      // Fix-only project
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const planFixOnly = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planFixOnly.tasks.map((t) => t.id)).toEqual([
+        "script-format:write",
+        "script-lint:fix",
+      ]);
+
+      const planCheckOnly = await planExecution(registry, { cwd: tempDir }, "check");
+      expect(planCheckOnly.tasks).toEqual([]);
     });
 
     it("evaluates Python detection accurately when planExecution receives { cwd } without precomputed hasPythonSource", async () => {

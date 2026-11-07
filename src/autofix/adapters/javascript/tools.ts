@@ -119,7 +119,7 @@ export class VitePlusAdapter implements ToolAdapter {
 export class BiomeAdapter implements ToolAdapter {
   public readonly id = "biome";
   public readonly name = "Biome";
-  public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
+  public readonly capabilities: readonly Capability[] = ["format", "lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     const pkg = context.jsEnv?.packageJson;
@@ -142,32 +142,56 @@ export class BiomeAdapter implements ToolAdapter {
     if (mode === "fix") {
       return [
         {
-          id: "biome-check-fix",
+          id: "biome-format-fix",
           toolId: this.id,
           toolName: this.name,
           requiredPackage: "@biomejs/biome",
-          capability: "autofix",
+          capability: "format",
           executable: "biome",
-          args: ["check", "--write", "."],
+          args: ["format", "--write", "."],
           cwd: context.cwd,
           mode: "fix",
-          description: "Biome: check --write .",
+          description: "Biome: format --write .",
+        },
+        {
+          id: "biome-lint-fix",
+          toolId: this.id,
+          toolName: this.name,
+          requiredPackage: "@biomejs/biome",
+          capability: "lint",
+          executable: "biome",
+          args: ["lint", "--write", "."],
+          cwd: context.cwd,
+          mode: "fix",
+          description: "Biome: lint --write .",
         },
       ];
     }
 
     return [
       {
-        id: "biome-check",
+        id: "biome-format-check",
         toolId: this.id,
         toolName: this.name,
         requiredPackage: "@biomejs/biome",
-        capability: "autofix",
+        capability: "format",
         executable: "biome",
-        args: ["check", "."],
+        args: ["format", "."],
         cwd: context.cwd,
         mode: "check",
-        description: "Biome: check .",
+        description: "Biome: format .",
+      },
+      {
+        id: "biome-lint-check",
+        toolId: this.id,
+        toolName: this.name,
+        requiredPackage: "@biomejs/biome",
+        capability: "lint",
+        executable: "biome",
+        args: ["lint", "."],
+        cwd: context.cwd,
+        mode: "check",
+        description: "Biome: lint .",
       },
     ];
   }

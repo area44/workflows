@@ -61,27 +61,8 @@ interface TokenizerState {
   isEscaped: boolean;
 }
 
-function processQuoteOrEscape(ch: string, state: TokenizerState): boolean {
-  if (state.isEscaped) {
-    state.isEscaped = false;
-    return true;
-  }
-  if (ch === "\\" && !state.inSingleQuote) {
-    state.isEscaped = true;
-    return true;
-  }
-  if (ch === "'" && !state.inDoubleQuote) {
-    state.inSingleQuote = !state.inSingleQuote;
-    return true;
-  }
-  if (ch === '"' && !state.inSingleQuote) {
-    state.inDoubleQuote = !state.inDoubleQuote;
-    return true;
-  }
-  return state.inSingleQuote || state.inDoubleQuote;
-}
-
-function getSeparatorLength(text: string, index: number): number {
+function getSeparatorLength(text: string, index: number, state: TokenizerState): number {
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return 0;
   const ch = text[index];
   if (ch === ";" || ch === "\n") return 1;
   if (ch === "&" && text[index + 1] === "&") return 2;
@@ -95,22 +76,21 @@ function skipComment(text: string, index: number): number {
   while (i < text.length && text[i] !== "\n") {
     i++;
   }
-  // Return index immediately before newline so the main loop processes the newline separator
+  // Return index immediately before newline so outer loop processes the newline separator
   return i > index ? i - 1 : index;
 }
 
-function isShellCommentStart(currentCmd: string): boolean {
+function isShellCommentStart(currentCmd: string, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return false;
   if (currentCmd.length === 0) return true;
-  const lastChar = currentCmd[currentCmd.length - 1];
-  return /\s/.test(lastChar);
+  return /\s/.test(currentCmd[currentCmd.length - 1]);
 }
 
 /**
- * Splits a shell command string into pipeline/chained commands (;, &&, ||, |)
- * while respecting single quotes ('...'), double quotes ("..."), and backslash escapes (\).
- * Replaces any quoted content with blank tokens so text inside strings is never mistaken for commands.
+ * Splits shell command text into chained commands (;, &&, ||, |, newline)
+ * while respecting quotes ('...', "..."), escapes (\), and comments.
  */
-function tokenizeShellCommands(shellText: string): string[] {
+function splitChainedCommands(shellText: string): string[] {
   const commands: string[] = [];
   let currentCmd = "";
   const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
@@ -118,17 +98,36 @@ function tokenizeShellCommands(shellText: string): string[] {
   for (let i = 0; i < shellText.length; i++) {
     const ch = shellText[i];
 
-    if (processQuoteOrEscape(ch, state)) {
-      currentCmd += " ";
+    if (state.isEscaped) {
+      currentCmd += ch;
+      state.isEscaped = false;
       continue;
     }
 
-    if (ch === "#" && isShellCommentStart(currentCmd)) {
+    if (ch === "\\" && !state.inSingleQuote) {
+      state.isEscaped = true;
+      currentCmd += ch;
+      continue;
+    }
+
+    if (ch === "'" && !state.inDoubleQuote) {
+      state.inSingleQuote = !state.inSingleQuote;
+      currentCmd += ch;
+      continue;
+    }
+
+    if (ch === '"' && !state.inSingleQuote) {
+      state.inDoubleQuote = !state.inDoubleQuote;
+      currentCmd += ch;
+      continue;
+    }
+
+    if (ch === "#" && isShellCommentStart(currentCmd, state)) {
       i = skipComment(shellText, i);
       continue;
     }
 
-    const sepLen = getSeparatorLength(shellText, i);
+    const sepLen = getSeparatorLength(shellText, i, state);
     if (sepLen > 0) {
       if (currentCmd.trim()) commands.push(currentCmd.trim());
       currentCmd = "";
@@ -144,6 +143,72 @@ function tokenizeShellCommands(shellText: string): string[] {
   }
 
   return commands;
+}
+
+function handleEscapeInWord(ch: string, state: TokenizerState, currentWord: string): string {
+  state.isEscaped = false;
+  return currentWord + ch;
+}
+
+function handleQuoteToggle(ch: string, state: TokenizerState): boolean {
+  if (ch === "'" && !state.inDoubleQuote) {
+    state.inSingleQuote = !state.inSingleQuote;
+    return true;
+  }
+  if (ch === '"' && !state.inSingleQuote) {
+    state.inDoubleQuote = !state.inDoubleQuote;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Splits a single command line into word tokens, respecting quotes and escapes.
+ * Strips outer quotes so `"format:write"` or `'format:write'` becomes `format:write`.
+ */
+function tokenizeCommandLine(cmd: string): string[] {
+  const tokens: string[] = [];
+  let currentWord = "";
+  let hasCharsInWord = false;
+  const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
+
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+
+    if (state.isEscaped) {
+      currentWord = handleEscapeInWord(ch, state, currentWord);
+      hasCharsInWord = true;
+      continue;
+    }
+
+    if (ch === "\\" && !state.inSingleQuote) {
+      state.isEscaped = true;
+      continue;
+    }
+
+    if (handleQuoteToggle(ch, state)) {
+      hasCharsInWord = true;
+      continue;
+    }
+
+    if (!state.inSingleQuote && !state.inDoubleQuote && /\s/.test(ch)) {
+      if (hasCharsInWord) {
+        tokens.push(currentWord);
+        currentWord = "";
+        hasCharsInWord = false;
+      }
+      continue;
+    }
+
+    currentWord += ch;
+    hasCharsInWord = true;
+  }
+
+  if (hasCharsInWord) {
+    tokens.push(currentWord);
+  }
+
+  return tokens;
 }
 
 const ENV_ASSIGNMENT_REGEX = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -186,16 +251,16 @@ function matchesPmDelegation(tokens: string[], targetScriptName: string): boolea
 /**
  * Recognizes actual supported package-manager script invocation commands:
  * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`,
- * including invocations preceded by shell environment variable assignments (e.g. `NODE_ENV=production npm run format:write`).
+ * including quoted script arguments (e.g. `npm run "format:write"`) and environment variable assignments.
  * Does not match `echo format`, comments, quoted explanatory text, or substrings.
  */
 export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
   if (!fixScriptBody) return false;
 
-  const commands = tokenizeShellCommands(fixScriptBody);
+  const commands = splitChainedCommands(fixScriptBody);
 
   for (const cmd of commands) {
-    const tokens = cmd.split(/\s+/).filter(Boolean);
+    const tokens = tokenizeCommandLine(cmd);
     if (tokens.length === 0) continue;
 
     if (matchesPmDelegation(tokens, targetScriptName)) {
@@ -282,13 +347,19 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
       return { detected: false, reason: "no scripts declared in package.json" };
     }
 
-    const tasks = resolveScriptTasks(scripts, "fix");
-    if (tasks.length > 0) {
-      const scriptNames = tasks.map((t) => `"${t.scriptName}"`).join(", ");
-      return { detected: true, reason: `found autofix scripts: ${scriptNames}` };
+    const fixTasks = resolveScriptTasks(scripts, "fix");
+    const checkTasks = resolveScriptTasks(scripts, "check");
+    const allTasks = [...fixTasks, ...checkTasks];
+
+    if (allTasks.length > 0) {
+      const uniqueNames = Array.from(new Set(allTasks.map((t) => `"${t.scriptName}"`))).join(", ");
+      return { detected: true, reason: `found supported scripts: ${uniqueNames}` };
     }
 
-    return { detected: false, reason: "no supported autofix scripts found in package.json" };
+    return {
+      detected: false,
+      reason: "no supported autofix or check scripts found in package.json",
+    };
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
