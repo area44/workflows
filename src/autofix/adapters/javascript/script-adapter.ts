@@ -146,9 +146,47 @@ function tokenizeShellCommands(shellText: string): string[] {
   return commands;
 }
 
+const ENV_ASSIGNMENT_REGEX = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+function isEnvAssignment(token: string): boolean {
+  return ENV_ASSIGNMENT_REGEX.test(token);
+}
+
+function matchesPmDelegation(tokens: string[], targetScriptName: string): boolean {
+  let startIndex = 0;
+  while (startIndex < tokens.length && isEnvAssignment(tokens[startIndex])) {
+    startIndex++;
+  }
+
+  if (startIndex >= tokens.length) {
+    return false;
+  }
+
+  const first = tokens[startIndex];
+  const second = tokens[startIndex + 1];
+  const third = tokens[startIndex + 2];
+
+  // Check `npm run <target>`, `pnpm run <target>`, `yarn run <target>`, `bun run <target>`
+  if (
+    (first === "npm" || first === "pnpm" || first === "yarn" || first === "bun") &&
+    second === "run" &&
+    third === targetScriptName
+  ) {
+    return true;
+  }
+
+  // Check `pnpm <target>`, `bun <target>`, `yarn <target>`
+  if ((first === "pnpm" || first === "bun" || first === "yarn") && second === targetScriptName) {
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Recognizes actual supported package-manager script invocation commands:
- * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`
+ * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`,
+ * including invocations preceded by shell environment variable assignments (e.g. `NODE_ENV=production npm run format:write`).
  * Does not match `echo format`, comments, quoted explanatory text, or substrings.
  */
 export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
@@ -157,23 +195,10 @@ export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName:
   const commands = tokenizeShellCommands(fixScriptBody);
 
   for (const cmd of commands) {
-    // Split into whitespace-separated words
     const tokens = cmd.split(/\s+/).filter(Boolean);
     if (tokens.length === 0) continue;
 
-    const [first, second, third] = tokens;
-
-    // Check `npm run <target>`, `pnpm run <target>`, `yarn run <target>`, `bun run <target>`
-    if (
-      (first === "npm" || first === "pnpm" || first === "yarn" || first === "bun") &&
-      second === "run" &&
-      third === targetScriptName
-    ) {
-      return true;
-    }
-
-    // Check `pnpm <target>`, `bun <target>`, `yarn <target>`
-    if ((first === "pnpm" || first === "bun" || first === "yarn") && second === targetScriptName) {
+    if (matchesPmDelegation(tokens, targetScriptName)) {
       return true;
     }
   }

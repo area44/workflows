@@ -270,6 +270,140 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(tasksEscaped.map((t) => t.scriptName)).toEqual(["fix"]);
     });
 
+    it("recognizes package manager delegations preceded by valid environment variable assignments", () => {
+      // Single environment assignment before npm run
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "NODE_ENV=production npm run format:write",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Multiple environment assignments before pnpm run
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "NODE_ENV=production CI=true pnpm run format:write",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Environment assignments before bun run
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "DEBUG=1 bun run format:write",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Environment assignment before lint autofix script
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "CI=true npm run lint:fix",
+            "lint:fix": "eslint --fix .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Direct package-manager aliases with env assignments: pnpm format, bun format, yarn format
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "FOO=bar pnpm format:write",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+
+      // Chained commands where one has an environment assignment
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "NODE_ENV=production npm run format:write && npm run lint:fix",
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]);
+    });
+
+    it("does not false-positive on assignments after executable, echo arguments, or quoted commands", () => {
+      // Assignment appearing after executable (an argument, not an assignment prefix)
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "npm run format:write NODE_ENV=production",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix"]); // Still delegates to format:write because npm run format:write is the prefix!
+
+      // Assignment-looking text passed to echo
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "echo NODE_ENV=production",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+
+      // Environment assignment preceding non-package-manager command with quoted command string
+      expect(
+        resolveScriptTasks(
+          {
+            fix: 'NODE_ENV=production echo "npm run format:write"',
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+
+      // Environment assignment followed by an unrelated command
+      expect(
+        resolveScriptTasks(
+          {
+            fix: "NODE_ENV=production run-custom-task",
+            "format:write": "prettier --write .",
+          },
+          "fix",
+        ).map((t) => t.scriptName),
+      ).toEqual(["fix", "format:write"]);
+    });
+
+    it("verifies planner integration with environment-assignment delegation", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "NODE_ENV=production npm run format:write && npm run lint:fix",
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      // Because 'fix' delegates to both format:write and lint:fix, only 'fix' should be scheduled
+      expect(plan.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+    });
+
     it("verifies planner integration with URL fragment vs commented-out delegation", async () => {
       // 1. URL fragment before real delegation: planner schedules ONLY fix, not format:write
       fs.writeFileSync(
