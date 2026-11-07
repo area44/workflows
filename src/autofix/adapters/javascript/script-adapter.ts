@@ -309,34 +309,40 @@ function hasFullCheckCommand(body: string): boolean {
   return /\b(biome check|vp fmt|vp lint)\b/.test(body);
 }
 
-function determineFixScriptCapability(
-  scripts: Record<string, string>,
+function checkCoverage(
+  body: string,
+  targetScript: string | undefined,
+  hasCommand: (b: string) => boolean,
+): boolean {
+  if (targetScript && doesFixScriptDelegateTo(body, targetScript)) {
+    return true;
+  }
+  return hasCommand(body);
+}
+
+function createFixScriptMappings(
+  body: string,
   fixScript: string,
-  formatScript?: string,
-  lintScript?: string,
-): Capability | undefined {
-  const fixBody = scripts[fixScript] || "";
-  const delegatesToFormat = formatScript ? doesFixScriptDelegateTo(fixBody, formatScript) : false;
-  const delegatesToLint = lintScript ? doesFixScriptDelegateTo(fixBody, lintScript) : false;
+  formatScript: string | undefined,
+  lintScript: string | undefined,
+): ScriptMapping[] {
+  const isFormat = checkCoverage(body, formatScript, hasFormattingCommand);
+  const isLint = checkCoverage(body, lintScript, hasLintingCommand);
+  const isFull = hasFullCheckCommand(body);
 
-  const isFormatting = delegatesToFormat || hasFormattingCommand(fixBody);
-  const isLinting = delegatesToLint || hasLintingCommand(fixBody);
-  const isFullCheck = hasFullCheckCommand(fixBody);
-
-  if (isFormatting && !isLinting && !isFullCheck) {
-    return "format";
+  if (isFormat && isLint) {
+    return [{ capability: "format", capabilities: ["format", "lint"], scriptName: fixScript }];
   }
-
-  if (isLinting && !isFormatting && !isFullCheck) {
-    return "lint";
+  if (isFormat && !isFull) {
+    return [{ capability: "format", scriptName: fixScript }];
   }
-
-  if (isFullCheck) {
-    return "autofix";
+  if (isLint && !isFull) {
+    return [{ capability: "lint", scriptName: fixScript }];
   }
-
-  // For unknown custom scripts, do not overclaim autofix; claim no single broad capability so it runs as a script without suppressing independent tools
-  return undefined;
+  if (isFull) {
+    return [{ capability: "autofix", scriptName: fixScript }];
+  }
+  return [{ capability: "typecheck", capabilities: [], scriptName: fixScript }];
 }
 
 function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[] {
@@ -345,30 +351,14 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
   const lintScript = resolveLintScript(scripts, "fix");
 
   if (!fixScript) {
-    const fallbackMappings: ScriptMapping[] = [];
-    if (formatScript) fallbackMappings.push({ capability: "format", scriptName: formatScript });
-    if (lintScript) fallbackMappings.push({ capability: "lint", scriptName: lintScript });
-    return fallbackMappings;
+    const fallback: ScriptMapping[] = [];
+    if (formatScript) fallback.push({ capability: "format", scriptName: formatScript });
+    if (lintScript) fallback.push({ capability: "lint", scriptName: lintScript });
+    return fallback;
   }
 
   const fixBody = scripts[fixScript] || "";
-  const isFormat = formatScript
-    ? doesFixScriptDelegateTo(fixBody, formatScript) || hasFormattingCommand(fixBody)
-    : hasFormattingCommand(fixBody);
-  const isLint = lintScript
-    ? doesFixScriptDelegateTo(fixBody, lintScript) || hasLintingCommand(fixBody)
-    : hasLintingCommand(fixBody);
-
-  // When fix covers both formatting and linting, represent both capabilities explicitly
-  // so that format and lint are covered without falsely claiming "autofix" (which would suppress Assist)
-  if (isFormat && isLint) {
-    return [{ capability: "format", capabilities: ["format", "lint"], scriptName: fixScript }];
-  }
-
-  const fixCapability = determineFixScriptCapability(scripts, fixScript, formatScript, lintScript);
-  const mappings: ScriptMapping[] = fixCapability
-    ? [{ capability: fixCapability, scriptName: fixScript }]
-    : [{ capability: "typecheck", capabilities: [], scriptName: fixScript }]; // Use a benign capability like typecheck with empty capabilities so it does not suppress format, lint, or assist
+  const mappings = createFixScriptMappings(fixBody, fixScript, formatScript, lintScript);
 
   if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
     mappings.push({ capability: "format", scriptName: formatScript });
