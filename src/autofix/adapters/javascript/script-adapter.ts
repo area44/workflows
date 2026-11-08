@@ -711,52 +711,68 @@ function createFixScriptMappings(
   return [{ capability: "typecheck", capabilities: [], scriptName: fixScript }];
 }
 
+function createFallbackFormatMapping(
+  formatScript: string,
+  scripts: Record<string, string>,
+): ScriptMapping {
+  const isVerified = hasVerifiedFormattingCommand(scripts[formatScript], scripts);
+  return isVerified
+    ? { capability: "format", scriptName: formatScript }
+    : { capability: "typecheck", capabilities: [], scriptName: formatScript };
+}
+
+function createFallbackLintMapping(
+  lintScript: string,
+  scripts: Record<string, string>,
+): ScriptMapping {
+  const isVerified = hasVerifiedLintingCommand(scripts[lintScript], scripts);
+  return isVerified
+    ? { capability: "lint", scriptName: lintScript }
+    : { capability: "typecheck", capabilities: [], scriptName: lintScript };
+}
+
+function resolveFixlessTasks(
+  formatScript: string | undefined,
+  lintScript: string | undefined,
+  scripts: Record<string, string>,
+): ScriptMapping[] {
+  const fallback: ScriptMapping[] = [];
+  if (formatScript) {
+    fallback.push(createFallbackFormatMapping(formatScript, scripts));
+  }
+  if (lintScript) {
+    fallback.push(createFallbackLintMapping(lintScript, scripts));
+  }
+  return fallback;
+}
+
+function appendIndependentFixTasks(
+  mappings: ScriptMapping[],
+  scripts: Record<string, string>,
+  fixScript: string,
+  formatScript: string | undefined,
+  lintScript: string | undefined,
+): void {
+  if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
+    mappings.push(createFallbackFormatMapping(formatScript, scripts));
+  }
+  if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
+    mappings.push(createFallbackLintMapping(lintScript, scripts));
+  }
+}
+
 function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[] {
   const fixScript = scripts.fix ? "fix" : scripts["check:fix"] ? "check:fix" : undefined;
   const formatScript = resolveFormatScript(scripts, "fix");
   const lintScript = resolveLintScript(scripts, "fix");
 
   if (!fixScript) {
-    const fallback: ScriptMapping[] = [];
-    if (formatScript) {
-      const isVerified = hasVerifiedFormattingCommand(scripts[formatScript], scripts);
-      if (isVerified) {
-        fallback.push({ capability: "format", scriptName: formatScript });
-      } else {
-        fallback.push({ capability: "typecheck", capabilities: [], scriptName: formatScript });
-      }
-    }
-    if (lintScript) {
-      const isVerified = hasVerifiedLintingCommand(scripts[lintScript], scripts);
-      if (isVerified) {
-        fallback.push({ capability: "lint", scriptName: lintScript });
-      } else {
-        fallback.push({ capability: "typecheck", capabilities: [], scriptName: lintScript });
-      }
-    }
-    return fallback;
+    return resolveFixlessTasks(formatScript, lintScript, scripts);
   }
 
   const fixBody = scripts[fixScript] || "";
   const mappings = createFixScriptMappings(scripts, fixBody, fixScript, formatScript, lintScript);
-
-  if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
-    const isVerified = hasVerifiedFormattingCommand(scripts[formatScript], scripts);
-    mappings.push({
-      capability: isVerified ? "format" : "typecheck",
-      capabilities: isVerified ? ["format"] : [],
-      scriptName: formatScript,
-    });
-  }
-  if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
-    const isVerified = hasVerifiedLintingCommand(scripts[lintScript], scripts);
-    mappings.push({
-      capability: isVerified ? "lint" : "typecheck",
-      capabilities: isVerified ? ["lint"] : [],
-      scriptName: lintScript,
-    });
-  }
-
+  appendIndependentFixTasks(mappings, scripts, fixScript, formatScript, lintScript);
   return mappings;
 }
 
