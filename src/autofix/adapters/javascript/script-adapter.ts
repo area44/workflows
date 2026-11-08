@@ -15,6 +15,10 @@ export interface ScriptMapping {
   scriptName: string;
 }
 
+function isWriteCapableScript(command: string): boolean {
+  return /(?:^|\s)(?:--fix|--write)(?:$|\s)/.test(command);
+}
+
 function resolveFormatScript(
   scripts: Record<string, string>,
   mode: ExecutionMode,
@@ -32,12 +36,16 @@ function resolveFormatScript(
             : undefined;
   }
   // In check mode, ONLY select explicitly non-writing scripts.
-  // Never fall back to "format" or "fmt" as they typically perform file writes.
-  return scripts["format:check"] ? "format:check" : scripts["fmt:check"] ? "fmt:check" : undefined;
-}
-
-function isWriteCapableScript(command: string): boolean {
-  return /(?:^|\s)(?:--fix|--write)(?:$|\s)/.test(command);
+  // Reject scripts containing recognized write flags (--write, --fix).
+  const candidate = scripts["format:check"]
+    ? "format:check"
+    : scripts["fmt:check"]
+      ? "fmt:check"
+      : undefined;
+  if (candidate && !isWriteCapableScript(scripts[candidate])) {
+    return candidate;
+  }
+  return undefined;
 }
 
 function resolveLintScript(
@@ -51,10 +59,10 @@ function resolveLintScript(
     if (scripts["lint:write"]) return "lint:write";
     return undefined;
   }
-  if (scripts["lint:check"]) {
+  // In check mode, validate that the selected script does not contain write flags (--fix, --write)
+  if (scripts["lint:check"] && !isWriteCapableScript(scripts["lint:check"])) {
     return "lint:check";
   }
-  // In check mode, only select generic "lint" if it does not contain common write flags (--fix, --write)
   if (scripts.lint && !isWriteCapableScript(scripts.lint)) {
     return "lint";
   }
@@ -298,15 +306,31 @@ function shouldIncludeLintWithFix(
 }
 
 function hasFormattingCommand(body: string): boolean {
-  return /\b(prettier|oxfmt|biome format)\b/.test(body);
+  // Must verify tool AND write flags (or vp fmt which formats by default)
+  // e.g. prettier --write, oxfmt --write, biome format --write, vp fmt
+  if (/\bvp\s+fmt\b/.test(body)) {
+    return true;
+  }
+  return (
+    /\b(prettier|oxfmt|biome\s+format)\b/.test(body) && /(?:^|\s)(?:--write|-w)(?:$|\s)/.test(body)
+  );
 }
 
 function hasLintingCommand(body: string): boolean {
-  return /\b(eslint|oxlint|biome lint)\b/.test(body);
+  // Must verify tool AND write flags
+  // e.g. eslint --fix, oxlint --fix, biome lint --write, vp lint --fix
+  if (/\bvp\s+lint\b/.test(body) && /(?:^|\s)--fix(?:$|\s)/.test(body)) {
+    return true;
+  }
+  return (
+    (/\b(eslint|oxlint)\b/.test(body) && /(?:^|\s)--fix(?:$|\s)/.test(body)) ||
+    (/\bbiome\s+lint\b/.test(body) && /(?:^|\s)(?:--write|--fix)(?:$|\s)/.test(body))
+  );
 }
 
 function hasFullCheckCommand(body: string): boolean {
-  return /\b(biome check|vp fmt|vp lint)\b/.test(body);
+  // Only biome check with --write (or full composite runner) demonstrably covers format, lint, and assist
+  return /\bbiome\s+check\b/.test(body) && /(?:^|\s)(?:--write|--fix)(?:$|\s)/.test(body);
 }
 
 function checkCoverage(

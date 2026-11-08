@@ -854,6 +854,9 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       // Check mode safety: lint scripts containing write flags (--fix, --write) are rejected in check mode
       expect(resolveScriptTasks({ lint: "eslint . --fix" }, "check")).toEqual([]);
       expect(resolveScriptTasks({ lint: "biome check --write ." }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "lint:check": "eslint . --fix" }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "format:check": "prettier --write ." }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "fmt:check": "prettier --write ." }, "check")).toEqual([]);
       expect(resolveScriptTasks({ lint: "eslint . --fix" }, "fix")).toEqual([]); // Not a recognized fix alias
       expect(resolveScriptTasks({ "lint:fix": "eslint . --fix" }, "fix")).toEqual([
         { capability: "lint", scriptName: "lint:fix" },
@@ -861,7 +864,46 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("verifies direct tool fix script capability assignment without overclaiming", async () => {
-      // fix: "prettier --write ." does not suppress Biome lint or Assist tasks
+      // Read-only "prettier ." does not claim formatting write capability
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "prettier .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      const registry = createDefaultRegistry();
+      const planReadOnlyPrettier = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planReadOnlyPrettier.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+
+      // Read-only "eslint ." does not claim lint write capability
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "eslint .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      const planReadOnlyEslint = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planReadOnlyEslint.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+
+      // fix: "prettier --write ." claims format and does not suppress Biome lint or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -871,9 +913,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
           devDependencies: { "@biomejs/biome": "^2.0.0" },
         }),
       );
-      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
 
-      const registry = createDefaultRegistry();
       const planPrettier = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planPrettier.tasks.map((t) => t.id)).toEqual([
         "script-fix",
@@ -882,7 +922,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       ]);
       expect(planPrettier.tasks[0].capability).toBe("format");
 
-      // fix: "eslint --fix ." does not suppress Biome format or Assist tasks
+      // fix: "eslint --fix ." claims lint and does not suppress Biome format or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -900,6 +940,63 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "biome-assist-fix",
       ]);
       expect(planEslint.tasks[0].capability).toBe("lint");
+
+      // fix: "vp fmt" only claims format and does not suppress Biome lint or Assist tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "vp fmt",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+
+      const planVpFmt = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planVpFmt.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planVpFmt.tasks[0].capability).toBe("format");
+
+      // fix: "vp lint" without --fix is read-only and does not claim lint write
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "vp lint",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+
+      const planVpLintReadOnly = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planVpLintReadOnly.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+
+      // fix: "vp lint --fix" only claims lint and does not suppress Biome format or Assist tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "vp lint --fix",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+
+      const planVpLintFix = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planVpLintFix.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planVpLintFix.tasks[0].capability).toBe("lint");
     });
   });
 
