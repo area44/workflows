@@ -14,7 +14,10 @@ import type {
   ToolAdapter,
 } from "../src/autofix/types.js";
 
-import { resolveScriptTasks } from "../src/autofix/adapters/javascript/script-adapter.js";
+import {
+  classifyScript,
+  resolveScriptTasks,
+} from "../src/autofix/adapters/javascript/script-adapter.js";
 import { ExecutionEngine } from "../src/autofix/engine.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
@@ -1269,6 +1272,194 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
           /Failed to run scripts: Script "lint:fix" failed while executing "npm run lint:fix"\.\nRuff command "ruff check --fix \." failed\./,
         ),
       );
+    });
+  });
+
+  describe("Check-Mode Safety & Formatter Detection Regressions", () => {
+    it("rejects unknown commands and unsupported shell wrappers in check mode", () => {
+      expect(classifyScript("node scripts/format.js")).toBe("unknown");
+      expect(classifyScript("make lint")).toBe("unknown");
+      expect(classifyScript("python -m lint")).toBe("unknown");
+      expect(classifyScript("zsh -c 'prettier --check .'")).toBe("unknown");
+
+      // In check mode, resolveScriptTasks rejects unknown commands for all check conventions
+      const checkTasks = resolveScriptTasks(
+        {
+          "format:check": "node scripts/format.js",
+          "fmt:check": "make fmt",
+          "lint:check": "python -m lint",
+          lint: "make lint",
+        },
+        "check",
+      );
+      expect(checkTasks).toEqual([]);
+    });
+
+    it("handles unresolved package-manager delegations, nested delegations, and delegation cycles", () => {
+      // Unresolved delegation
+      expect(
+        classifyScript("npm run missing-script", {
+          "other-script": "prettier --check .",
+        }),
+      ).toBe("unknown");
+
+      // Nested delegation to verified read-only command
+      expect(
+        classifyScript("npm run check:fmt", {
+          "check:fmt": "pnpm run verify:prettier",
+          "verify:prettier": "prettier --check .",
+        }),
+      ).toBe("read-only");
+
+      // Nested delegation to write-capable command
+      expect(
+        classifyScript("npm run check:fmt", {
+          "check:fmt": "pnpm run run:write",
+          "run:write": "prettier --write .",
+        }),
+      ).toBe("write-capable");
+
+      // Delegation cycle fails closed as unknown
+      expect(
+        classifyScript("npm run loopA", {
+          loopA: "npm run loopB",
+          loopB: "npm run loopA",
+        }),
+      ).toBe("unknown");
+    });
+
+    it("supports positively identified read-only commands and rejects known write-capable commands in check mode", () => {
+      const readOnlyScripts = {
+        "format:check": "prettier --check .",
+        "fmt:check": "vp fmt --check",
+        "lint:check": "oxlint",
+        lint: "eslint .",
+      };
+      const checkTasks = resolveScriptTasks(readOnlyScripts, "check");
+      expect(checkTasks).toEqual([
+        { capability: "format", scriptName: "format:check" },
+        { capability: "lint", scriptName: "lint:check" },
+      ]);
+
+      const writeCapableScripts = {
+        "format:check": "prettier --write .",
+        "fmt:check": "oxfmt --write .",
+        "lint:check": "eslint --fix .",
+        lint: "oxlint --fix",
+      };
+      const writeTasks = resolveScriptTasks(writeCapableScripts, "check");
+      expect(writeTasks).toEqual([]);
+    });
+
+    it("verifies formatter detection rejects echo, read-only commands, and unknown behavior in fix mode", () => {
+      // "format: 'echo formatting is disabled'" does not qualify as a formatter
+      expect(
+        resolveScriptTasks(
+          {
+            format: "echo formatting is disabled",
+          },
+          "fix",
+        ),
+      ).toEqual([]);
+
+      // Generic format delegating to a read-only script does not qualify
+      expect(
+        resolveScriptTasks(
+          {
+            format: "npm run check-format",
+            "check-format": "prettier --check .",
+          },
+          "fix",
+        ),
+      ).toEqual([]);
+
+      // Generic format with unknown behavior does not qualify
+      expect(
+        resolveScriptTasks(
+          {
+            format: "node scripts/run-format.js",
+          },
+          "fix",
+        ),
+      ).toEqual([]);
+
+      // Generic scripts with verified write-capable commands are selected
+      expect(
+        resolveScriptTasks(
+          {
+            format: "prettier --write .",
+          },
+          "fix",
+        ),
+      ).toEqual([{ capability: "format", scriptName: "format" }]);
+
+      expect(
+        resolveScriptTasks(
+          {
+            fmt: "vp fmt",
+          },
+          "fix",
+        ),
+      ).toEqual([{ capability: "format", scriptName: "fmt" }]);
+    });
+
+    it("ensures invalid generic format scripts do not suppress dedicated formatter adapters", async () => {
+      // A project with prettier configured and format: "echo formatting is disabled"
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "echo formatting is disabled",
+          },
+          devDependencies: { prettier: "^3.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, ".prettierrc"), "{}");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      // Prettier formatter adapter must NOT be suppressed by the invalid echo format script!
+      expect(plan.selectedTools.map((t) => t.id)).toContain("prettier");
+      expect(plan.tasks.map((t) => t.id)).toEqual(["prettier-format"]);
+    });
+
+    it("ensures invalid format:write and format:fix bodies do not claim formatting capability", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "echo not a formatter",
+            "format:fix": "prettier --check .",
+          },
+          devDependencies: { prettier: "^3.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, ".prettierrc"), "{}");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      // Neither invalid script is planned as a format task; Prettier runs cleanly
+      expect(plan.selectedTools.map((t) => t.id)).toContain("prettier");
+      expect(plan.tasks.map((t) => t.id)).toEqual(["prettier-format"]);
+    });
+
+    it("preserves Vite+ behavior including vp fmt --check and vp fmt", () => {
+      // vp fmt --check is read-only
+      expect(classifyScript("vp fmt --check")).toBe("read-only");
+      expect(classifyScript("vp fmt -c")).toBe("read-only");
+
+      // vp fmt is write-capable
+      expect(classifyScript("vp fmt")).toBe("write-capable");
+
+      // vp fmt --check in check mode is selected
+      const checkTasks = resolveScriptTasks({ "fmt:check": "vp fmt --check" }, "check");
+      expect(checkTasks).toEqual([{ capability: "format", scriptName: "fmt:check" }]);
+
+      // vp fmt in fix mode is selected
+      const fixTasks = resolveScriptTasks({ fmt: "vp fmt" }, "fix");
+      expect(fixTasks).toEqual([{ capability: "format", scriptName: "fmt" }]);
     });
   });
 

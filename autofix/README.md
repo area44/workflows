@@ -1,16 +1,20 @@
 # area44/autofix
 
-Automatically format and fix code across JavaScript, TypeScript, and Python projects.
+Automatically format and fix code.
 
-## Overview
+## Action Purpose
 
-The `autofix` action automatically formats and applies safe code fixes to your project:
+The `autofix` composite action automatically formats and fixes code.
 
-- **Python:** Uses Ruff as the default toolchain to lint and format code whenever Python source files (`.py`/`.pyi`) are present.
-- **JavaScript & TypeScript:** Automatically prioritizes explicit package scripts (e.g., `format:write`, `lint:fix`, `fix`) while detecting configured tools (Prettier, ESLint, Biome, Oxlint, Oxfmt, Vite+).
-- **Check-Mode Safety:** In check mode, only non-writing verification commands are scheduled; write-capable scripts (such as `format`, `fmt`, or scripts with `--fix`/`--write`) are never executed.
-- **Conflict Prevention:** Detects overlapping tools and deduplicates execution so files are not formatted or linted multiple times redundantly.
-- **autofix.ci Support:** Automatically integrates with `autofix-ci/action` when running in autofix.ci contexts.
+## Features and Supported Behavior
+
+- **Automatic Environment Detection:** Automatically detects Node.js, Bun, and Python environments and package managers (`npm`, `pnpm`, `bun`, `uv`, `pip`).
+- **Separation of Setup and Installation:** Official setup actions (`actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/setup-uv`, `astral-sh/ruff-action`) provision runtimes, CLI tools, and tool caches. Dependency installations (`npm install`, `pnpm install --no-frozen-lockfile`, `bun install`, `uv sync`, `pip install`) and autofix executions are performed reliably in TypeScript.
+- **Dependency Synchronization & Early Skip:** Inspects project scripts before installing dependencies. If no matching autofix script exists in `package.json`, JavaScript dependency installation is cleanly skipped without modifying lockfiles or running package manager commands.
+- **JavaScript/TypeScript Project Scripts:** Selects and executes repository-configured scripts (`fix`, `format`, `fmt`, `lint`, `check`) from `package.json`.
+- **Python Formatting and Linting:** Provisions Ruff and executes `ruff check --fix .` and `ruff format .` sequentially whenever Python source code (`.py`/`.pyi`) is detected.
+- **Independent Execution:** JavaScript and Python workflows run independently within the same action step, aggregating diagnostics and failures.
+- **autofix.ci Integration:** Automatically invokes `autofix-ci/action` when running inside the `autofix.ci` workflow context.
 
 ## Usage Example
 
@@ -36,7 +40,7 @@ jobs:
         uses: area44/workflows/autofix@main
 ```
 
-## Public Action Contract
+## Public API Contract
 
 ### Inputs
 
@@ -51,3 +55,12 @@ This action accepts no inputs.
 | `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
 | `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected     |
 | `python-package-manager`     | The Python package manager detected (`uv` or `pip`)        |
+
+## Related Documentation
+
+- **[Repository README](../README.md)**: Project overview and action API summary.
+- **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**: Design principles, decision flow, conflict handling, and setup planning details.
+- **[Error Handling Architecture](../docs/errors.md)**: Native JavaScript error boundaries, top-level error handling, and error logging.
+- **[Security Boundaries](../docs/security.md)**: Input sanitization, argument tokenization, and command execution boundaries.
+- **[Maintenance & Repository Health](../docs/maintenance.md)**: Maintenance workflows, build scripts, and quality gates.
+- **[Integration Testing Guide](../docs/integration-testing.md)**: Module integration testing, fixture generators, and CI test harnesses.

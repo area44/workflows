@@ -86,6 +86,11 @@ describe("autofix", () => {
       async ({ action, runtime, pm, type, executable, installArgs, expectedScriptNames }) => {
         const scenarioPath = path.join(tempDir, `${action}-${runtime}-${pm}-${type}`);
         createConsumerProject(scenarioPath, { action, runtime, pm, type });
+        const pkgJsonPath = path.join(scenarioPath, "package.json");
+        const pkgData = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        pkgData.scripts = { format: "prettier --write ." };
+        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgData, null, 2));
+
         process.chdir(scenarioPath);
         process.env.PACKAGE_MANAGER = pm;
 
@@ -944,7 +949,7 @@ describe("autofix", () => {
       },
       {
         name: "format:write and lint:fix scripts when fix is absent",
-        scripts: { "format:write": "echo format", "lint:fix": "echo lint" },
+        scripts: { "format:write": "prettier --write .", "lint:fix": "eslint --fix ." },
         expectedCalls: [
           ["npm", ["run", "format:write"]],
           ["npm", ["run", "lint:fix"]],
@@ -952,7 +957,7 @@ describe("autofix", () => {
       },
       {
         name: "fmt and lint:fix scripts when format is absent",
-        scripts: { fmt: "echo fmt", "lint:fix": "echo lint" },
+        scripts: { fmt: "prettier --write .", "lint:fix": "eslint --fix ." },
         expectedCalls: [
           ["npm", ["run", "fmt"]],
           ["npm", ["run", "lint:fix"]],
@@ -960,17 +965,17 @@ describe("autofix", () => {
       },
       {
         name: "format script only",
-        scripts: { format: "echo format" },
+        scripts: { format: "prettier --write ." },
         expectedCalls: [["npm", ["run", "format"]]],
       },
       {
         name: "fmt script only",
-        scripts: { fmt: "echo fmt" },
+        scripts: { fmt: "prettier --write ." },
         expectedCalls: [["npm", ["run", "fmt"]]],
       },
       {
         name: "lint:fix script only",
-        scripts: { "lint:fix": "echo lint" },
+        scripts: { "lint:fix": "eslint --fix ." },
         expectedCalls: [["npm", ["run", "lint:fix"]]],
       },
       {

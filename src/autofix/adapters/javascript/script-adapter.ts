@@ -15,25 +15,15 @@ export interface ScriptMapping {
   scriptName: string;
 }
 
-function isExplicitReadonlyFormattingCommand(command: string): boolean {
-  const invocations = parseCommandInvocations(command);
-  return invocations.some((tokens) => {
-    const [exe, sub] = tokens;
-    const hasCheckFlag = tokens.some((t) => t === "--check" || t === "-c");
-    if (!hasCheckFlag) return false;
-    if (exe === "prettier" || exe === "oxfmt") return true;
-    if (exe === "biome" && sub === "format") return true;
-    if (exe === "vp" && sub === "fmt") return true;
-    return false;
-  });
-}
+export type ScriptClassification = "read-only" | "write-capable" | "unknown";
 
 function resolveFormatFixCandidate(scripts: Record<string, string>): string | undefined {
-  if (scripts["format:write"]) return "format:write";
-  if (scripts["format:fix"]) return "format:fix";
-  // For generic format / fmt, select unless explicitly read-only (e.g. prettier --check)
-  if (scripts.format && !isExplicitReadonlyFormattingCommand(scripts.format)) return "format";
-  if (scripts.fmt && !isExplicitReadonlyFormattingCommand(scripts.fmt)) return "fmt";
+  const candidates = ["format:write", "format:fix", "format", "fmt"];
+  for (const name of candidates) {
+    if (scripts[name] && hasVerifiedFormattingCommand(scripts[name], scripts)) {
+      return name;
+    }
+  }
   return undefined;
 }
 
@@ -44,14 +34,15 @@ function resolveFormatScript(
   if (mode === "fix") {
     return resolveFormatFixCandidate(scripts);
   }
-  // In check mode, ONLY select explicitly non-writing scripts.
-  // Reject scripts containing recognized write flags (--write, -w, --fix) directly or via delegation.
+  // In check mode, positively require scripts to be "read-only".
+  // Reject unknown commands, unsupported shell wrappers, unresolved package-manager delegations,
+  // parser failures, and any script with write flags.
   const candidate = scripts["format:check"]
     ? "format:check"
     : scripts["fmt:check"]
       ? "fmt:check"
       : undefined;
-  if (candidate && !isWriteCapableScript(scripts[candidate], scripts)) {
+  if (candidate && classifyScript(scripts[candidate], scripts) === "read-only") {
     return candidate;
   }
   return undefined;
@@ -68,11 +59,12 @@ function resolveLintScript(
     if (scripts["lint:write"]) return "lint:write";
     return undefined;
   }
-  // In check mode, validate that the selected script does not contain write flags (--fix, --write) directly or via delegation
-  if (scripts["lint:check"] && !isWriteCapableScript(scripts["lint:check"], scripts)) {
+  // In check mode, positively require scripts to be "read-only".
+  // Reject unknown commands, unsupported shell wrappers, unresolved delegations, or write flags.
+  if (scripts["lint:check"] && classifyScript(scripts["lint:check"], scripts) === "read-only") {
     return "lint:check";
   }
-  if (scripts.lint && !isWriteCapableScript(scripts.lint, scripts)) {
+  if (scripts.lint && classifyScript(scripts.lint, scripts) === "read-only") {
     return "lint";
   }
   return undefined;
@@ -399,6 +391,87 @@ function isVpLintFix(tokens: string[]): boolean {
   return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
 }
 
+function isPrettierCheck(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "prettier") return false;
+  const hasCheck = tokens.some(
+    (t) => t === "--check" || t === "-c" || t === "--list-different" || t === "-l",
+  );
+  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+  return hasCheck && !hasWrite;
+}
+
+function isOxfmtCheck(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "oxfmt") return false;
+  const hasCheck = tokens.some((t) => t === "--check" || t === "-c");
+  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+  return hasCheck && !hasWrite;
+}
+
+function isBiomeFormatCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "format") return false;
+  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+  return !hasWrite;
+}
+
+function isEslintCheck(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "eslint") return false;
+  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function isOxlintCheck(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "oxlint") return false;
+  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function isBiomeLintCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "lint") return false;
+  return !tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix="),
+  );
+}
+
+function isBiomeCheckCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "check") return false;
+  return !tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix="),
+  );
+}
+
+function isVpFmtCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "vp" || sub !== "fmt") return false;
+  return tokens.some((t) => t === "--check" || t === "-c");
+}
+
+function isVpLintCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "vp" || sub !== "lint") return false;
+  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function isVpCheckCheck(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "vp" || sub !== "check") return false;
+  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
 function extractDelegatedTarget(tokens: string[]): string | undefined {
   if (tokens.length === 0) return undefined;
   const [first, second, third] = tokens;
@@ -426,31 +499,36 @@ function extractShellWrapperScript(tokens: string[]): string | undefined {
   return undefined;
 }
 
-function isCommandInvocationWriteCapable(
+function classifyInvocation(
   tokens: string[],
   scripts: Record<string, string>,
   visited: Set<string>,
-): boolean {
-  const [exe] = tokens;
-  if (exe === "echo" || exe === "printf") return false;
+): ScriptClassification {
+  if (tokens.length === 0) return "unknown";
 
-  // Check shell wrappers: sh -c "...", bash -c "..."
+  // Unconditionally reject write flags if present anywhere on unrecognized tools
+  if (hasWriteFlag(tokens)) {
+    return "write-capable";
+  }
+
+  // Shell wrappers: sh -c "...", bash -c "..."
   const wrappedScript = extractShellWrapperScript(tokens);
   if (wrappedScript !== undefined) {
-    return isScriptWriteCapable(wrappedScript, scripts, visited);
+    return classifyScriptInternal(wrappedScript, scripts, visited);
   }
 
-  // Check package-manager script delegation
+  // Package-manager script delegation
   const target = extractDelegatedTarget(tokens);
   if (target) {
-    if (visited.has(target)) return false;
+    if (visited.has(target)) return "unknown"; // cycle detected
     visited.add(target);
     const targetScript = scripts[target];
-    return targetScript ? isScriptWriteCapable(targetScript, scripts, visited) : false;
+    if (!targetScript) return "unknown"; // unresolvable target
+    return classifyScriptInternal(targetScript, scripts, visited);
   }
 
-  // Direct tool write commands
-  return (
+  // Check known write-capable commands
+  if (
     isPrettierWrite(tokens) ||
     isOxfmtWrite(tokens) ||
     isBiomeFormatWrite(tokens) ||
@@ -459,47 +537,132 @@ function isCommandInvocationWriteCapable(
     isBiomeLintWrite(tokens) ||
     isBiomeCheckWrite(tokens) ||
     isVpFmtWrite(tokens) ||
-    isVpLintFix(tokens) ||
-    hasWriteFlag(tokens)
-  );
+    isVpLintFix(tokens)
+  ) {
+    return "write-capable";
+  }
+
+  // Check known read-only commands
+  if (
+    isPrettierCheck(tokens) ||
+    isOxfmtCheck(tokens) ||
+    isBiomeFormatCheck(tokens) ||
+    isEslintCheck(tokens) ||
+    isOxlintCheck(tokens) ||
+    isBiomeLintCheck(tokens) ||
+    isBiomeCheckCheck(tokens) ||
+    isVpFmtCheck(tokens) ||
+    isVpLintCheck(tokens) ||
+    isVpCheckCheck(tokens)
+  ) {
+    return "read-only";
+  }
+
+  return "unknown";
 }
 
-function isScriptWriteCapable(
+function classifyScriptInternal(
+  command: string,
+  scripts: Record<string, string>,
+  visited: Set<string>,
+): ScriptClassification {
+  const invocations = parseCommandInvocations(command);
+  if (invocations.length === 0) return "unknown";
+
+  let hasReadOnly = false;
+
+  for (const tokens of invocations) {
+    const classification = classifyInvocation(tokens, scripts, visited);
+    if (classification === "write-capable") {
+      return "write-capable";
+    }
+    if (classification === "unknown") {
+      return "unknown";
+    }
+    if (classification === "read-only") {
+      hasReadOnly = true;
+    }
+  }
+
+  return hasReadOnly ? "read-only" : "unknown";
+}
+
+export function classifyScript(
+  command: string,
+  scripts: Record<string, string> = {},
+): ScriptClassification {
+  return classifyScriptInternal(command, scripts, new Set());
+}
+
+function hasVerifiedFormattingCommand(
   command: string,
   scripts: Record<string, string> = {},
   visited: Set<string> = new Set(),
 ): boolean {
   const invocations = parseCommandInvocations(command);
-  if (invocations.length === 0) return false;
-  return invocations.some((tokens) => isCommandInvocationWriteCapable(tokens, scripts, visited));
-}
-
-function isWriteCapableScript(command: string, scripts: Record<string, string> = {}): boolean {
-  return isScriptWriteCapable(command, scripts);
-}
-
-function hasFormattingCommand(body: string): boolean {
-  const invocations = parseCommandInvocations(body);
-  return invocations.some(
-    (tokens) =>
+  return invocations.some((tokens) => {
+    const target = extractDelegatedTarget(tokens);
+    if (target) {
+      if (visited.has(target)) return false;
+      visited.add(target);
+      const targetScript = scripts[target];
+      return targetScript ? hasVerifiedFormattingCommand(targetScript, scripts, visited) : false;
+    }
+    const wrappedScript = extractShellWrapperScript(tokens);
+    if (wrappedScript !== undefined) {
+      return hasVerifiedFormattingCommand(wrappedScript, scripts, visited);
+    }
+    return (
       isPrettierWrite(tokens) ||
       isOxfmtWrite(tokens) ||
       isBiomeFormatWrite(tokens) ||
-      isVpFmtWrite(tokens),
-  );
+      isVpFmtWrite(tokens)
+    );
+  });
 }
 
-function hasLintingCommand(body: string): boolean {
-  const invocations = parseCommandInvocations(body);
-  return invocations.some(
-    (tokens) =>
-      isEslintFix(tokens) || isOxlintFix(tokens) || isBiomeLintWrite(tokens) || isVpLintFix(tokens),
-  );
-}
-
-function hasFullCheckCommand(body: string): boolean {
-  const invocations = parseCommandInvocations(body);
+function hasVerifiedLintingCommand(
+  command: string,
+  scripts: Record<string, string> = {},
+  visited: Set<string> = new Set(),
+): boolean {
+  const invocations = parseCommandInvocations(command);
   return invocations.some((tokens) => {
+    const target = extractDelegatedTarget(tokens);
+    if (target) {
+      if (visited.has(target)) return false;
+      visited.add(target);
+      const targetScript = scripts[target];
+      return targetScript ? hasVerifiedLintingCommand(targetScript, scripts, visited) : false;
+    }
+    const wrappedScript = extractShellWrapperScript(tokens);
+    if (wrappedScript !== undefined) {
+      return hasVerifiedLintingCommand(wrappedScript, scripts, visited);
+    }
+    return (
+      isEslintFix(tokens) || isOxlintFix(tokens) || isBiomeLintWrite(tokens) || isVpLintFix(tokens)
+    );
+  });
+}
+
+function hasVerifiedFullCheckCommand(
+  command: string,
+  scripts: Record<string, string> = {},
+  visited: Set<string> = new Set(),
+): boolean {
+  const invocations = parseCommandInvocations(command);
+  return invocations.some((tokens) => {
+    const target = extractDelegatedTarget(tokens);
+    if (target) {
+      if (visited.has(target)) return false;
+      visited.add(target);
+      const targetScript = scripts[target];
+      return targetScript ? hasVerifiedFullCheckCommand(targetScript, scripts, visited) : false;
+    }
+    const wrappedScript = extractShellWrapperScript(tokens);
+    if (wrappedScript !== undefined) {
+      return hasVerifiedFullCheckCommand(wrappedScript, scripts, visited);
+    }
     if (isBiomeCheckWrite(tokens)) return true;
     const [exe, sub] = tokens;
     if (exe === "vp" && sub === "check") {
@@ -521,14 +684,17 @@ function checkCoverage(
 }
 
 function createFixScriptMappings(
+  scripts: Record<string, string>,
   body: string,
   fixScript: string,
   formatScript: string | undefined,
   lintScript: string | undefined,
 ): ScriptMapping[] {
-  const isFormat = checkCoverage(body, formatScript, hasFormattingCommand);
-  const isLint = checkCoverage(body, lintScript, hasLintingCommand);
-  const isFull = hasFullCheckCommand(body);
+  const isFormat = checkCoverage(body, formatScript, (b) =>
+    hasVerifiedFormattingCommand(b, scripts),
+  );
+  const isLint = checkCoverage(body, lintScript, (b) => hasVerifiedLintingCommand(b, scripts));
+  const isFull = hasVerifiedFullCheckCommand(body, scripts);
 
   if (isFormat && isLint) {
     return [{ capability: "format", capabilities: ["format", "lint"], scriptName: fixScript }];
@@ -552,19 +718,43 @@ function resolveFixScriptTasks(scripts: Record<string, string>): ScriptMapping[]
 
   if (!fixScript) {
     const fallback: ScriptMapping[] = [];
-    if (formatScript) fallback.push({ capability: "format", scriptName: formatScript });
-    if (lintScript) fallback.push({ capability: "lint", scriptName: lintScript });
+    if (formatScript) {
+      const isVerified = hasVerifiedFormattingCommand(scripts[formatScript], scripts);
+      if (isVerified) {
+        fallback.push({ capability: "format", scriptName: formatScript });
+      } else {
+        fallback.push({ capability: "typecheck", capabilities: [], scriptName: formatScript });
+      }
+    }
+    if (lintScript) {
+      const isVerified = hasVerifiedLintingCommand(scripts[lintScript], scripts);
+      if (isVerified) {
+        fallback.push({ capability: "lint", scriptName: lintScript });
+      } else {
+        fallback.push({ capability: "typecheck", capabilities: [], scriptName: lintScript });
+      }
+    }
     return fallback;
   }
 
   const fixBody = scripts[fixScript] || "";
-  const mappings = createFixScriptMappings(fixBody, fixScript, formatScript, lintScript);
+  const mappings = createFixScriptMappings(scripts, fixBody, fixScript, formatScript, lintScript);
 
   if (formatScript && shouldIncludeFormatWithFix(scripts, fixScript, formatScript)) {
-    mappings.push({ capability: "format", scriptName: formatScript });
+    const isVerified = hasVerifiedFormattingCommand(scripts[formatScript], scripts);
+    mappings.push({
+      capability: isVerified ? "format" : "typecheck",
+      capabilities: isVerified ? ["format"] : [],
+      scriptName: formatScript,
+    });
   }
   if (lintScript && shouldIncludeLintWithFix(scripts, fixScript, lintScript)) {
-    mappings.push({ capability: "lint", scriptName: lintScript });
+    const isVerified = hasVerifiedLintingCommand(scripts[lintScript], scripts);
+    mappings.push({
+      capability: isVerified ? "lint" : "typecheck",
+      capabilities: isVerified ? ["lint"] : [],
+      scriptName: lintScript,
+    });
   }
 
   return mappings;
