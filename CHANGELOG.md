@@ -1,5 +1,15 @@
 # @area44/workflows
 
+## 10.0.1
+
+### Patch Changes
+
+- 413042e: Update all non-major dependencies
+- 3348cd6: Refactor autofix execution and environment resolution
+- 2a7188c: Update dependency node to v26
+- f409155: Prioritize fix script in autofix workflow
+- 5a0004c: Rename test directory from __tests/ to tests/
+
 ## 10.0.0
 
 ### Major Changes
