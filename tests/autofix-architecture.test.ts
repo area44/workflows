@@ -1461,6 +1461,155 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const fixTasks = resolveScriptTasks({ fmt: "vp fmt" }, "fix");
       expect(fixTasks).toEqual([{ capability: "format", scriptName: "fmt" }]);
     });
+
+    it("prevents unsafe shell constructs, redirections, backgrounding, and substitutions from being classified as read-only", () => {
+      // Background execution: &
+      expect(classifyScript("eslint . & touch marker.txt")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint . & touch marker.txt",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      // Output redirection: >, >>, 2>, 2>>, &>
+      expect(classifyScript("prettier --check . > package.json")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "format:check": "prettier --check . > package.json",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      expect(classifyScript("eslint . >> output.log")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint . >> output.log",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      expect(classifyScript("eslint . 2> errors.log")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint . 2> errors.log",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      expect(classifyScript("eslint . 2>> errors.log")).toBe("unknown");
+      expect(classifyScript("eslint . &> errors.log")).toBe("unknown");
+
+      // Command substitutions: $(...) and `...`
+      expect(classifyScript('eslint "$(touch marker.txt)"')).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": 'eslint "$(touch marker.txt)"',
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      expect(classifyScript("eslint `touch marker.txt`")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint `touch marker.txt`",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      // Process substitutions: <(...) and >(...)
+      expect(classifyScript("eslint <(touch marker.txt)")).toBe("unknown");
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint <(touch marker.txt)",
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      expect(classifyScript("eslint >(touch marker.txt)")).toBe("unknown");
+
+      // Malformed quotes or unclosed command substitutions
+      expect(classifyScript('eslint "unterminated')).toBe("unknown");
+      expect(classifyScript("eslint 'unterminated")).toBe("unknown");
+      expect(classifyScript("eslint $(touch marker.txt")).toBe("unknown");
+      expect(classifyScript("eslint `touch marker.txt")).toBe("unknown");
+
+      // Valid chained read-only commands continue to work
+      expect(classifyScript("eslint . && prettier --check .")).toBe("read-only");
+
+      // Valid quoted arguments containing characters that should not be treated as shell operators
+      expect(classifyScript('eslint --rule "semi: [error, always]"')).toBe("read-only");
+      expect(classifyScript("prettier --check 'src/**/*.{js,ts}'")).toBe("read-only");
+      expect(classifyScript('echo "> not redirected"')).toBe("unknown"); // echo is unknown command, not read-only
+
+      // Escaped shell characters are literal
+      expect(classifyScript("eslint \\>")).toBe("read-only");
+    });
+
+    it("falls back to fmt:check when format:check cannot be safely classified as read-only", () => {
+      // 1. Unknown format:check with valid fmt:check -> selects fmt:check
+      const unknownFormatWithValidFmt = {
+        "format:check": "node scripts/custom-format.js",
+        "fmt:check": "prettier --check .",
+      };
+      expect(resolveScriptTasks(unknownFormatWithValidFmt, "check")).toEqual([
+        { capability: "format", scriptName: "fmt:check" },
+      ]);
+
+      // 2. Write-capable format:check with valid fmt:check -> selects fmt:check
+      const writeFormatWithValidFmt = {
+        "format:check": "prettier --write .",
+        "fmt:check": "prettier --check .",
+      };
+      expect(resolveScriptTasks(writeFormatWithValidFmt, "check")).toEqual([
+        { capability: "format", scriptName: "fmt:check" },
+      ]);
+
+      // 3. Read-only format:check takes precedence over fmt:check
+      const bothReadOnly = {
+        "format:check": "prettier --check .",
+        "fmt:check": "vp fmt --check",
+      };
+      expect(resolveScriptTasks(bothReadOnly, "check")).toEqual([
+        { capability: "format", scriptName: "format:check" },
+      ]);
+
+      // 4. Both candidates unknown -> none selected
+      const bothUnknown = {
+        "format:check": "node scripts/format.js",
+        "fmt:check": "python -m format",
+      };
+      expect(resolveScriptTasks(bothUnknown, "check")).toEqual([]);
+
+      // 5. Both candidates write-capable -> none selected
+      const bothWriteCapable = {
+        "format:check": "prettier --write .",
+        "fmt:check": "vp fmt",
+      };
+      expect(resolveScriptTasks(bothWriteCapable, "check")).toEqual([]);
+
+      // 6. Only one valid candidate exists
+      expect(resolveScriptTasks({ "fmt:check": "prettier --check ." }, "check")).toEqual([
+        { capability: "format", scriptName: "fmt:check" },
+      ]);
+      expect(resolveScriptTasks({ "format:check": "prettier --check ." }, "check")).toEqual([
+        { capability: "format", scriptName: "format:check" },
+      ]);
+    });
   });
 
   describe("Registry Extensibility", () => {
