@@ -15,33 +15,17 @@ export interface ScriptMapping {
   scriptName: string;
 }
 
-function isWriteCapableScript(command: string): boolean {
-  const invocations = parseCommandInvocations(command);
-  if (invocations.length === 0) return false;
-  return invocations.some((tokens) => {
-    const [exe] = tokens;
-    if (exe === "echo" || exe === "printf") return false;
-    return (
-      isPrettierWrite(tokens) ||
-      isOxfmtWrite(tokens) ||
-      isBiomeFormatWrite(tokens) ||
-      isEslintFix(tokens) ||
-      isOxlintFix(tokens) ||
-      isBiomeLintWrite(tokens) ||
-      isBiomeCheckWrite(tokens) ||
-      isVpFmt(tokens) ||
-      isVpLintFix(tokens) ||
-      hasWriteFlag(tokens)
-    );
-  });
-}
-
 function isExplicitReadonlyFormattingCommand(command: string): boolean {
-  // Reject scripts that explicitly perform read-only check operations
-  return (
-    /\b(prettier|oxfmt|biome\s+format)\b/.test(command) &&
-    /(?:^|\s)(?:--check|-c)(?:$|\s)/.test(command)
-  );
+  const invocations = parseCommandInvocations(command);
+  return invocations.some((tokens) => {
+    const [exe, sub] = tokens;
+    const hasCheckFlag = tokens.some((t) => t === "--check" || t === "-c");
+    if (!hasCheckFlag) return false;
+    if (exe === "prettier" || exe === "oxfmt") return true;
+    if (exe === "biome" && sub === "format") return true;
+    if (exe === "vp" && sub === "fmt") return true;
+    return false;
+  });
 }
 
 function resolveFormatFixCandidate(scripts: Record<string, string>): string | undefined {
@@ -61,13 +45,13 @@ function resolveFormatScript(
     return resolveFormatFixCandidate(scripts);
   }
   // In check mode, ONLY select explicitly non-writing scripts.
-  // Reject scripts containing recognized write flags (--write, -w, --fix).
+  // Reject scripts containing recognized write flags (--write, -w, --fix) directly or via delegation.
   const candidate = scripts["format:check"]
     ? "format:check"
     : scripts["fmt:check"]
       ? "fmt:check"
       : undefined;
-  if (candidate && !isWriteCapableScript(scripts[candidate])) {
+  if (candidate && !isWriteCapableScript(scripts[candidate], scripts)) {
     return candidate;
   }
   return undefined;
@@ -84,11 +68,11 @@ function resolveLintScript(
     if (scripts["lint:write"]) return "lint:write";
     return undefined;
   }
-  // In check mode, validate that the selected script does not contain write flags (--fix, --write)
-  if (scripts["lint:check"] && !isWriteCapableScript(scripts["lint:check"])) {
+  // In check mode, validate that the selected script does not contain write flags (--fix, --write) directly or via delegation
+  if (scripts["lint:check"] && !isWriteCapableScript(scripts["lint:check"], scripts)) {
     return "lint:check";
   }
-  if (scripts.lint && !isWriteCapableScript(scripts.lint)) {
+  if (scripts.lint && !isWriteCapableScript(scripts.lint, scripts)) {
     return "lint";
   }
   return undefined;
@@ -402,15 +386,96 @@ function isBiomeCheckWrite(tokens: string[]): boolean {
   );
 }
 
-function isVpFmt(tokens: string[]): boolean {
+function isVpFmtWrite(tokens: string[]): boolean {
   const [exe, sub] = tokens;
-  return exe === "vp" && sub === "fmt";
+  if (exe !== "vp" || sub !== "fmt") return false;
+  // vp fmt is write-capable unless --check or -c is passed
+  return !tokens.some((t) => t === "--check" || t === "-c");
 }
 
 function isVpLintFix(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "vp" || sub !== "lint") return false;
   return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function extractDelegatedTarget(tokens: string[]): string | undefined {
+  if (tokens.length === 0) return undefined;
+  const [first, second, third] = tokens;
+  if (
+    (first === "npm" || first === "pnpm" || first === "yarn" || first === "bun") &&
+    second === "run" &&
+    third
+  ) {
+    return third;
+  }
+  if (
+    (first === "pnpm" || first === "bun" || first === "yarn") &&
+    second &&
+    !second.startsWith("-")
+  ) {
+    return second;
+  }
+  return undefined;
+}
+
+function extractShellWrapperScript(tokens: string[]): string | undefined {
+  if (tokens.length >= 3 && (tokens[0] === "sh" || tokens[0] === "bash") && tokens[1] === "-c") {
+    return tokens[2];
+  }
+  return undefined;
+}
+
+function isCommandInvocationWriteCapable(
+  tokens: string[],
+  scripts: Record<string, string>,
+  visited: Set<string>,
+): boolean {
+  const [exe] = tokens;
+  if (exe === "echo" || exe === "printf") return false;
+
+  // Check shell wrappers: sh -c "...", bash -c "..."
+  const wrappedScript = extractShellWrapperScript(tokens);
+  if (wrappedScript !== undefined) {
+    return isScriptWriteCapable(wrappedScript, scripts, visited);
+  }
+
+  // Check package-manager script delegation
+  const target = extractDelegatedTarget(tokens);
+  if (target) {
+    if (visited.has(target)) return false;
+    visited.add(target);
+    const targetScript = scripts[target];
+    return targetScript ? isScriptWriteCapable(targetScript, scripts, visited) : false;
+  }
+
+  // Direct tool write commands
+  return (
+    isPrettierWrite(tokens) ||
+    isOxfmtWrite(tokens) ||
+    isBiomeFormatWrite(tokens) ||
+    isEslintFix(tokens) ||
+    isOxlintFix(tokens) ||
+    isBiomeLintWrite(tokens) ||
+    isBiomeCheckWrite(tokens) ||
+    isVpFmtWrite(tokens) ||
+    isVpLintFix(tokens) ||
+    hasWriteFlag(tokens)
+  );
+}
+
+function isScriptWriteCapable(
+  command: string,
+  scripts: Record<string, string> = {},
+  visited: Set<string> = new Set(),
+): boolean {
+  const invocations = parseCommandInvocations(command);
+  if (invocations.length === 0) return false;
+  return invocations.some((tokens) => isCommandInvocationWriteCapable(tokens, scripts, visited));
+}
+
+function isWriteCapableScript(command: string, scripts: Record<string, string> = {}): boolean {
+  return isScriptWriteCapable(command, scripts);
 }
 
 function hasFormattingCommand(body: string): boolean {
@@ -420,7 +485,7 @@ function hasFormattingCommand(body: string): boolean {
       isPrettierWrite(tokens) ||
       isOxfmtWrite(tokens) ||
       isBiomeFormatWrite(tokens) ||
-      isVpFmt(tokens),
+      isVpFmtWrite(tokens),
   );
 }
 
@@ -434,7 +499,14 @@ function hasLintingCommand(body: string): boolean {
 
 function hasFullCheckCommand(body: string): boolean {
   const invocations = parseCommandInvocations(body);
-  return invocations.some((tokens) => isBiomeCheckWrite(tokens));
+  return invocations.some((tokens) => {
+    if (isBiomeCheckWrite(tokens)) return true;
+    const [exe, sub] = tokens;
+    if (exe === "vp" && sub === "check") {
+      return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+    }
+    return false;
+  });
 }
 
 function checkCoverage(
