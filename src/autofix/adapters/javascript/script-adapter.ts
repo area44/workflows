@@ -27,6 +27,18 @@ function resolveFormatFixCandidate(scripts: Record<string, string>): string | un
   return undefined;
 }
 
+function resolveFormatCheckCandidate(scripts: Record<string, string>): string | undefined {
+  // In check mode, positively require scripts to be "read-only".
+  // Fall back to "fmt:check" when "format:check" is missing or cannot be safely verified as read-only.
+  if (scripts["format:check"] && classifyScript(scripts["format:check"], scripts) === "read-only") {
+    return "format:check";
+  }
+  if (scripts["fmt:check"] && classifyScript(scripts["fmt:check"], scripts) === "read-only") {
+    return "fmt:check";
+  }
+  return undefined;
+}
+
 function resolveFormatScript(
   scripts: Record<string, string>,
   mode: ExecutionMode,
@@ -34,18 +46,7 @@ function resolveFormatScript(
   if (mode === "fix") {
     return resolveFormatFixCandidate(scripts);
   }
-  // In check mode, positively require scripts to be "read-only".
-  // Reject unknown commands, unsupported shell wrappers, unresolved package-manager delegations,
-  // parser failures, and any script with write flags.
-  const candidate = scripts["format:check"]
-    ? "format:check"
-    : scripts["fmt:check"]
-      ? "fmt:check"
-      : undefined;
-  if (candidate && classifyScript(scripts[candidate], scripts) === "read-only") {
-    return candidate;
-  }
-  return undefined;
+  return resolveFormatCheckCandidate(scripts);
 }
 
 function resolveLintScript(
@@ -76,6 +77,10 @@ interface TokenizerState {
   isEscaped: boolean;
 }
 
+interface SplitState extends TokenizerState {
+  hasSyntaxError: boolean;
+}
+
 function getSeparatorLength(text: string, index: number, state: TokenizerState): number {
   if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return 0;
   const ch = text[index];
@@ -91,7 +96,6 @@ function skipComment(text: string, index: number): number {
   while (i < text.length && text[i] !== "\n") {
     i++;
   }
-  // Return index immediately before newline so outer loop processes the newline separator
   return i > index ? i - 1 : index;
 }
 
@@ -101,63 +105,93 @@ function isShellCommentStart(currentCmd: string, state: TokenizerState): boolean
   return /\s/.test(currentCmd[currentCmd.length - 1]);
 }
 
+interface SplitResult {
+  commands: string[];
+  hasSyntaxError: boolean;
+}
+
+function handleEscapeInSplit(ch: string, state: SplitState): { ch: string; advance: boolean } {
+  state.isEscaped = false;
+  return { ch, advance: true };
+}
+
+function processSplitChar(
+  shellText: string,
+  i: number,
+  state: SplitState,
+  currentCmd: string,
+): { newCmd: string; nextIndex: number; sepLen: number } {
+  const ch = shellText[i];
+
+  if (state.isEscaped) {
+    const res = handleEscapeInSplit(ch, state);
+    return { newCmd: currentCmd + res.ch, nextIndex: i, sepLen: 0 };
+  }
+
+  if (ch === "\\" && !state.inSingleQuote) {
+    state.isEscaped = true;
+    return { newCmd: currentCmd + ch, nextIndex: i, sepLen: 0 };
+  }
+
+  if (ch === "'" && !state.inDoubleQuote) {
+    state.inSingleQuote = !state.inSingleQuote;
+    return { newCmd: currentCmd + ch, nextIndex: i, sepLen: 0 };
+  }
+
+  if (ch === '"' && !state.inSingleQuote) {
+    state.inDoubleQuote = !state.inDoubleQuote;
+    return { newCmd: currentCmd + ch, nextIndex: i, sepLen: 0 };
+  }
+
+  if (ch === "#" && isShellCommentStart(currentCmd, state)) {
+    const nextIdx = skipComment(shellText, i);
+    return { newCmd: currentCmd, nextIndex: nextIdx, sepLen: 0 };
+  }
+
+  const sepLen = getSeparatorLength(shellText, i, state);
+  return { newCmd: currentCmd + (sepLen === 0 ? ch : ""), nextIndex: i, sepLen };
+}
+
 /**
  * Splits shell command text into chained commands (;, &&, ||, |, newline)
  * while respecting quotes ('...', "..."), escapes (\), and comments.
+ * Tracks syntax errors such as unterminated quotes or trailing escape.
  */
-function splitChainedCommands(shellText: string): string[] {
+function splitChainedCommandsDetailed(shellText: string): SplitResult {
   const commands: string[] = [];
   let currentCmd = "";
-  const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
+  const state: SplitState = {
+    inSingleQuote: false,
+    inDoubleQuote: false,
+    isEscaped: false,
+    hasSyntaxError: false,
+  };
 
   for (let i = 0; i < shellText.length; i++) {
-    const ch = shellText[i];
-
-    if (state.isEscaped) {
-      currentCmd += ch;
-      state.isEscaped = false;
-      continue;
-    }
-
-    if (ch === "\\" && !state.inSingleQuote) {
-      state.isEscaped = true;
-      currentCmd += ch;
-      continue;
-    }
-
-    if (ch === "'" && !state.inDoubleQuote) {
-      state.inSingleQuote = !state.inSingleQuote;
-      currentCmd += ch;
-      continue;
-    }
-
-    if (ch === '"' && !state.inSingleQuote) {
-      state.inDoubleQuote = !state.inDoubleQuote;
-      currentCmd += ch;
-      continue;
-    }
-
-    if (ch === "#" && isShellCommentStart(currentCmd, state)) {
-      i = skipComment(shellText, i);
-      continue;
-    }
-
-    const sepLen = getSeparatorLength(shellText, i, state);
-    if (sepLen > 0) {
+    const processed = processSplitChar(shellText, i, state, currentCmd);
+    if (processed.sepLen > 0) {
       if (currentCmd.trim()) commands.push(currentCmd.trim());
       currentCmd = "";
-      i += sepLen - 1;
+      i += processed.sepLen - 1;
       continue;
     }
+    currentCmd = processed.newCmd;
+    i = processed.nextIndex;
+  }
 
-    currentCmd += ch;
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) {
+    state.hasSyntaxError = true;
   }
 
   if (currentCmd.trim()) {
     commands.push(currentCmd.trim());
   }
 
-  return commands;
+  return { commands, hasSyntaxError: state.hasSyntaxError };
+}
+
+function splitChainedCommands(shellText: string): string[] {
+  return splitChainedCommandsDetailed(shellText).commands;
 }
 
 function handleEscapeInWord(ch: string, state: TokenizerState, currentWord: string): string {
@@ -177,53 +211,145 @@ function handleQuoteToggle(ch: string, state: TokenizerState): boolean {
   return false;
 }
 
+interface CommandInspection {
+  tokens: string[];
+  hasUnsupportedSyntax: boolean;
+  hasRedirection: boolean;
+}
+
+function isBackgroundOp(cmd: string, index: number, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return false;
+  if (cmd[index] !== "&") return false;
+  const prev = index > 0 ? cmd[index - 1] : "";
+  const next = index + 1 < cmd.length ? cmd[index + 1] : "";
+  return prev !== "&" && next !== "&" && next !== ">";
+}
+
+function isCommandSubstitutionStart(cmd: string, index: number, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.isEscaped) return false;
+  const ch = cmd[index];
+  if (ch === "`") return true;
+  if (ch === "$" && index + 1 < cmd.length && cmd[index + 1] === "(") return true;
+  return false;
+}
+
+function isProcessSubstitutionStart(cmd: string, index: number, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return false;
+  const ch = cmd[index];
+  if ((ch === "<" || ch === ">") && index + 1 < cmd.length && cmd[index + 1] === "(") {
+    return true;
+  }
+  return false;
+}
+
+function isRedirectionChar(cmd: string, index: number, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) return false;
+  const ch = cmd[index];
+  if (ch === ">") return true;
+  if (ch === "<") return true;
+  if (ch === "&" && index + 1 < cmd.length && cmd[index + 1] === ">") return true;
+  return false;
+}
+
+interface TokenizeScanContext {
+  inspection: CommandInspection;
+  state: TokenizerState;
+}
+
+function inspectSpecialConstructs(cmd: string, i: number, ctx: TokenizeScanContext): boolean {
+  if (isBackgroundOp(cmd, i, ctx.state)) {
+    ctx.inspection.hasUnsupportedSyntax = true;
+    return true;
+  }
+  if (isCommandSubstitutionStart(cmd, i, ctx.state)) {
+    ctx.inspection.hasUnsupportedSyntax = true;
+    return true;
+  }
+  if (isProcessSubstitutionStart(cmd, i, ctx.state)) {
+    ctx.inspection.hasUnsupportedSyntax = true;
+    return true;
+  }
+  if (isRedirectionChar(cmd, i, ctx.state)) {
+    ctx.inspection.hasRedirection = true;
+    ctx.inspection.hasUnsupportedSyntax = true;
+    return true;
+  }
+  return false;
+}
+
+function stepTokenizeChar(
+  cmd: string,
+  i: number,
+  ctx: TokenizeScanContext,
+  currentWord: string,
+): { word: string; hasChars: boolean; skipped: boolean } {
+  const ch = cmd[i];
+
+  if (ctx.state.isEscaped) {
+    const word = handleEscapeInWord(ch, ctx.state, currentWord);
+    return { word, hasChars: true, skipped: false };
+  }
+
+  if (ch === "\\" && !ctx.state.inSingleQuote) {
+    ctx.state.isEscaped = true;
+    return { word: currentWord, hasChars: false, skipped: true };
+  }
+
+  inspectSpecialConstructs(cmd, i, ctx);
+
+  if (handleQuoteToggle(ch, ctx.state)) {
+    return { word: currentWord, hasChars: true, skipped: true };
+  }
+
+  return { word: currentWord + ch, hasChars: true, skipped: false };
+}
+
 /**
  * Splits a single command line into word tokens, respecting quotes and escapes.
- * Strips outer quotes so `"format:write"` or `'format:write'` becomes `format:write`.
+ * Detects unsupported shell constructs (backgrounding, command substitutions,
+ * process substitutions, output/input redirections, unclosed quotes/escapes).
  */
-function tokenizeCommandLine(cmd: string): string[] {
-  const tokens: string[] = [];
+function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
+  const inspection: CommandInspection = {
+    tokens: [],
+    hasUnsupportedSyntax: false,
+    hasRedirection: false,
+  };
+  const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
+  const ctx: TokenizeScanContext = { inspection, state };
+
   let currentWord = "";
   let hasCharsInWord = false;
-  const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
 
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
-
-    if (state.isEscaped) {
-      currentWord = handleEscapeInWord(ch, state, currentWord);
-      hasCharsInWord = true;
-      continue;
-    }
-
-    if (ch === "\\" && !state.inSingleQuote) {
-      state.isEscaped = true;
-      continue;
-    }
-
-    if (handleQuoteToggle(ch, state)) {
-      hasCharsInWord = true;
-      continue;
-    }
-
-    if (!state.inSingleQuote && !state.inDoubleQuote && /\s/.test(ch)) {
+    if (!state.inSingleQuote && !state.inDoubleQuote && !state.isEscaped && /\s/.test(ch)) {
       if (hasCharsInWord) {
-        tokens.push(currentWord);
+        inspection.tokens.push(currentWord);
         currentWord = "";
         hasCharsInWord = false;
       }
       continue;
     }
 
-    currentWord += ch;
-    hasCharsInWord = true;
+    const step = stepTokenizeChar(cmd, i, ctx, currentWord);
+    currentWord = step.word;
+    if (step.hasChars) hasCharsInWord = true;
+  }
+
+  if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) {
+    inspection.hasUnsupportedSyntax = true;
   }
 
   if (hasCharsInWord) {
-    tokens.push(currentWord);
+    inspection.tokens.push(currentWord);
   }
 
-  return tokens;
+  return inspection;
+}
+
+function tokenizeCommandLine(cmd: string): string[] {
+  return inspectAndTokenizeCommandLine(cmd).tokens;
 }
 
 const ENV_ASSIGNMENT_REGEX = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -499,6 +625,35 @@ function extractShellWrapperScript(tokens: string[]): string | undefined {
   return undefined;
 }
 
+function isKnownWriteCommand(tokens: string[]): boolean {
+  return (
+    isPrettierWrite(tokens) ||
+    isOxfmtWrite(tokens) ||
+    isBiomeFormatWrite(tokens) ||
+    isEslintFix(tokens) ||
+    isOxlintFix(tokens) ||
+    isBiomeLintWrite(tokens) ||
+    isBiomeCheckWrite(tokens) ||
+    isVpFmtWrite(tokens) ||
+    isVpLintFix(tokens)
+  );
+}
+
+function isKnownReadOnlyCommand(tokens: string[]): boolean {
+  return (
+    isPrettierCheck(tokens) ||
+    isOxfmtCheck(tokens) ||
+    isBiomeFormatCheck(tokens) ||
+    isEslintCheck(tokens) ||
+    isOxlintCheck(tokens) ||
+    isBiomeLintCheck(tokens) ||
+    isBiomeCheckCheck(tokens) ||
+    isVpFmtCheck(tokens) ||
+    isVpLintCheck(tokens) ||
+    isVpCheckCheck(tokens)
+  );
+}
+
 function classifyInvocation(
   tokens: string[],
   scripts: Record<string, string>,
@@ -528,33 +683,12 @@ function classifyInvocation(
   }
 
   // Check known write-capable commands
-  if (
-    isPrettierWrite(tokens) ||
-    isOxfmtWrite(tokens) ||
-    isBiomeFormatWrite(tokens) ||
-    isEslintFix(tokens) ||
-    isOxlintFix(tokens) ||
-    isBiomeLintWrite(tokens) ||
-    isBiomeCheckWrite(tokens) ||
-    isVpFmtWrite(tokens) ||
-    isVpLintFix(tokens)
-  ) {
+  if (isKnownWriteCommand(tokens)) {
     return "write-capable";
   }
 
   // Check known read-only commands
-  if (
-    isPrettierCheck(tokens) ||
-    isOxfmtCheck(tokens) ||
-    isBiomeFormatCheck(tokens) ||
-    isEslintCheck(tokens) ||
-    isOxlintCheck(tokens) ||
-    isBiomeLintCheck(tokens) ||
-    isBiomeCheckCheck(tokens) ||
-    isVpFmtCheck(tokens) ||
-    isVpLintCheck(tokens) ||
-    isVpCheckCheck(tokens)
-  ) {
+  if (isKnownReadOnlyCommand(tokens)) {
     return "read-only";
   }
 
@@ -566,16 +700,31 @@ function classifyScriptInternal(
   scripts: Record<string, string>,
   visited: Set<string>,
 ): ScriptClassification {
-  const invocations = parseCommandInvocations(command);
-  if (invocations.length === 0) return "unknown";
+  const splitResult = splitChainedCommandsDetailed(command);
+  if (splitResult.hasSyntaxError) {
+    return "unknown";
+  }
+
+  const { commands } = splitResult;
+  if (commands.length === 0) return "unknown";
 
   let hasReadOnly = false;
 
-  for (const tokens of invocations) {
+  for (const cmd of commands) {
+    const inspection = inspectAndTokenizeCommandLine(cmd);
+    const tokens = getCommandInvocationTokens(inspection.tokens);
     const classification = classifyInvocation(tokens, scripts, visited);
+
     if (classification === "write-capable") {
       return "write-capable";
     }
+
+    // Fail closed: If command contains unsupported shell syntax, redirections, or substitutions,
+    // it must NEVER be classified as read-only.
+    if (inspection.hasUnsupportedSyntax) {
+      return "unknown";
+    }
+
     if (classification === "unknown") {
       return "unknown";
     }
