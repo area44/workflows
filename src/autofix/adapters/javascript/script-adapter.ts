@@ -211,6 +211,31 @@ function handleQuoteToggle(ch: string, state: TokenizerState): boolean {
   return false;
 }
 
+const SPECIAL_PARAMETERS = new Set(["@", "*", "#", "?", "-", "$", "!", "0"]);
+
+function isParameterExpansionStart(cmd: string, index: number, state: TokenizerState): boolean {
+  if (state.inSingleQuote || state.isEscaped) return false;
+  if (cmd[index] !== "$") return false;
+  if (index + 1 >= cmd.length) return false;
+
+  const next = cmd[index + 1];
+
+  // Braced parameter expansion: ${...}
+  if (next === "{") return true;
+
+  // Positional parameters: $1, $2, etc. or special parameters: $@, $*, $#, $?, $-, $$, $!, $0
+  if (SPECIAL_PARAMETERS.has(next) || (next >= "1" && next <= "9")) {
+    return true;
+  }
+
+  // Shell variable identifier: starts with letter or underscore
+  if (next === "_" || (next >= "a" && next <= "z") || (next >= "A" && next <= "Z")) {
+    return true;
+  }
+
+  return false;
+}
+
 interface CommandInspection {
   tokens: string[];
   hasUnsupportedSyntax: boolean;
@@ -258,6 +283,10 @@ interface TokenizeScanContext {
 
 function inspectSpecialConstructs(cmd: string, i: number, ctx: TokenizeScanContext): boolean {
   if (isBackgroundOp(cmd, i, ctx.state)) {
+    ctx.inspection.hasUnsupportedSyntax = true;
+    return true;
+  }
+  if (isParameterExpansionStart(cmd, i, ctx.state)) {
     ctx.inspection.hasUnsupportedSyntax = true;
     return true;
   }
