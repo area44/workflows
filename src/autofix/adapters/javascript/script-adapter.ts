@@ -16,7 +16,41 @@ export interface ScriptMapping {
 }
 
 function isWriteCapableScript(command: string): boolean {
-  return /(?:^|\s)(?:--fix|--write)(?:$|\s)/.test(command);
+  const invocations = parseCommandInvocations(command);
+  if (invocations.length === 0) return false;
+  return invocations.some((tokens) => {
+    const [exe] = tokens;
+    if (exe === "echo" || exe === "printf") return false;
+    return (
+      isPrettierWrite(tokens) ||
+      isOxfmtWrite(tokens) ||
+      isBiomeFormatWrite(tokens) ||
+      isEslintFix(tokens) ||
+      isOxlintFix(tokens) ||
+      isBiomeLintWrite(tokens) ||
+      isBiomeCheckWrite(tokens) ||
+      isVpFmt(tokens) ||
+      isVpLintFix(tokens) ||
+      hasWriteFlag(tokens)
+    );
+  });
+}
+
+function isExplicitReadonlyFormattingCommand(command: string): boolean {
+  // Reject scripts that explicitly perform read-only check operations
+  return (
+    /\b(prettier|oxfmt|biome\s+format)\b/.test(command) &&
+    /(?:^|\s)(?:--check|-c)(?:$|\s)/.test(command)
+  );
+}
+
+function resolveFormatFixCandidate(scripts: Record<string, string>): string | undefined {
+  if (scripts["format:write"]) return "format:write";
+  if (scripts["format:fix"]) return "format:fix";
+  // For generic format / fmt, select unless explicitly read-only (e.g. prettier --check)
+  if (scripts.format && !isExplicitReadonlyFormattingCommand(scripts.format)) return "format";
+  if (scripts.fmt && !isExplicitReadonlyFormattingCommand(scripts.fmt)) return "fmt";
+  return undefined;
 }
 
 function resolveFormatScript(
@@ -24,19 +58,10 @@ function resolveFormatScript(
   mode: ExecutionMode,
 ): string | undefined {
   if (mode === "fix") {
-    // Formatter scripts that modify files
-    return scripts["format:write"]
-      ? "format:write"
-      : scripts["format:fix"]
-        ? "format:fix"
-        : scripts.format
-          ? "format"
-          : scripts.fmt
-            ? "fmt"
-            : undefined;
+    return resolveFormatFixCandidate(scripts);
   }
   // In check mode, ONLY select explicitly non-writing scripts.
-  // Reject scripts containing recognized write flags (--write, --fix).
+  // Reject scripts containing recognized write flags (--write, -w, --fix).
   const candidate = scripts["format:check"]
     ? "format:check"
     : scripts["fmt:check"]
@@ -231,19 +256,17 @@ function isEnvAssignment(token: string): boolean {
   return ENV_ASSIGNMENT_REGEX.test(token);
 }
 
-function matchesPmDelegation(tokens: string[], targetScriptName: string): boolean {
+function getCommandInvocationTokens(tokens: string[]): string[] {
   let startIndex = 0;
   while (startIndex < tokens.length && isEnvAssignment(tokens[startIndex])) {
     startIndex++;
   }
+  return tokens.slice(startIndex);
+}
 
-  if (startIndex >= tokens.length) {
-    return false;
-  }
-
-  const first = tokens[startIndex];
-  const second = tokens[startIndex + 1];
-  const third = tokens[startIndex + 2];
+function matchesPmDelegation(cmdTokens: string[], targetScriptName: string): boolean {
+  if (cmdTokens.length === 0) return false;
+  const [first, second, third] = cmdTokens;
 
   // Check `npm run <target>`, `pnpm run <target>`, `yarn run <target>`, `bun run <target>`
   if (
@@ -262,6 +285,20 @@ function matchesPmDelegation(tokens: string[], targetScriptName: string): boolea
   return false;
 }
 
+export function parseCommandInvocations(scriptBody: string): string[][] {
+  if (!scriptBody) return [];
+  const commands = splitChainedCommands(scriptBody);
+  const invocations: string[][] = [];
+  for (const cmd of commands) {
+    const rawTokens = tokenizeCommandLine(cmd);
+    const cmdTokens = getCommandInvocationTokens(rawTokens);
+    if (cmdTokens.length > 0) {
+      invocations.push(cmdTokens);
+    }
+  }
+  return invocations;
+}
+
 /**
  * Recognizes actual supported package-manager script invocation commands:
  * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`,
@@ -269,19 +306,12 @@ function matchesPmDelegation(tokens: string[], targetScriptName: string): boolea
  * Does not match `echo format`, comments, quoted explanatory text, or substrings.
  */
 export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
-  if (!fixScriptBody) return false;
-
-  const commands = splitChainedCommands(fixScriptBody);
-
-  for (const cmd of commands) {
-    const tokens = tokenizeCommandLine(cmd);
-    if (tokens.length === 0) continue;
-
+  const invocations = parseCommandInvocations(fixScriptBody);
+  for (const tokens of invocations) {
     if (matchesPmDelegation(tokens, targetScriptName)) {
       return true;
     }
   }
-
   return false;
 }
 
@@ -305,32 +335,106 @@ function shouldIncludeLintWithFix(
   return !doesFixScriptDelegateTo(fixBody, lintScript);
 }
 
+function hasWriteFlag(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix="),
+  );
+}
+
+function isPrettierWrite(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "prettier") return false;
+  return tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+}
+
+function isOxfmtWrite(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "oxfmt") return false;
+  return tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+}
+
+function isBiomeFormatWrite(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "format") return false;
+  return tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
+}
+
+function isEslintFix(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "eslint") return false;
+  return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function isOxlintFix(tokens: string[]): boolean {
+  const [exe] = tokens;
+  if (exe !== "oxlint") return false;
+  return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
+function isBiomeLintWrite(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "lint") return false;
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix="),
+  );
+}
+
+function isBiomeCheckWrite(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "biome" || sub !== "check") return false;
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix="),
+  );
+}
+
+function isVpFmt(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  return exe === "vp" && sub === "fmt";
+}
+
+function isVpLintFix(tokens: string[]): boolean {
+  const [exe, sub] = tokens;
+  if (exe !== "vp" || sub !== "lint") return false;
+  return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+}
+
 function hasFormattingCommand(body: string): boolean {
-  // Must verify tool AND write flags (or vp fmt which formats by default)
-  // e.g. prettier --write, oxfmt --write, biome format --write, vp fmt
-  if (/\bvp\s+fmt\b/.test(body)) {
-    return true;
-  }
-  return (
-    /\b(prettier|oxfmt|biome\s+format)\b/.test(body) && /(?:^|\s)(?:--write|-w)(?:$|\s)/.test(body)
+  const invocations = parseCommandInvocations(body);
+  return invocations.some(
+    (tokens) =>
+      isPrettierWrite(tokens) ||
+      isOxfmtWrite(tokens) ||
+      isBiomeFormatWrite(tokens) ||
+      isVpFmt(tokens),
   );
 }
 
 function hasLintingCommand(body: string): boolean {
-  // Must verify tool AND write flags
-  // e.g. eslint --fix, oxlint --fix, biome lint --write, vp lint --fix
-  if (/\bvp\s+lint\b/.test(body) && /(?:^|\s)--fix(?:$|\s)/.test(body)) {
-    return true;
-  }
-  return (
-    (/\b(eslint|oxlint)\b/.test(body) && /(?:^|\s)--fix(?:$|\s)/.test(body)) ||
-    (/\bbiome\s+lint\b/.test(body) && /(?:^|\s)(?:--write|--fix)(?:$|\s)/.test(body))
+  const invocations = parseCommandInvocations(body);
+  return invocations.some(
+    (tokens) =>
+      isEslintFix(tokens) || isOxlintFix(tokens) || isBiomeLintWrite(tokens) || isVpLintFix(tokens),
   );
 }
 
 function hasFullCheckCommand(body: string): boolean {
-  // Only biome check with --write (or full composite runner) demonstrably covers format, lint, and assist
-  return /\bbiome\s+check\b/.test(body) && /(?:^|\s)(?:--write|--fix)(?:$|\s)/.test(body);
+  const invocations = parseCommandInvocations(body);
+  return invocations.some((tokens) => isBiomeCheckWrite(tokens));
 }
 
 function checkCoverage(

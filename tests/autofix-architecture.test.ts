@@ -855,12 +855,115 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(resolveScriptTasks({ lint: "eslint . --fix" }, "check")).toEqual([]);
       expect(resolveScriptTasks({ lint: "biome check --write ." }, "check")).toEqual([]);
       expect(resolveScriptTasks({ "lint:check": "eslint . --fix" }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "lint:check": "eslint . --fix=somewhere" }, "check")).toEqual([]);
       expect(resolveScriptTasks({ "format:check": "prettier --write ." }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "format:check": "prettier -w ." }, "check")).toEqual([]);
+      expect(
+        resolveScriptTasks({ "format:check": "prettier --write=somewhere ." }, "check"),
+      ).toEqual([]);
       expect(resolveScriptTasks({ "fmt:check": "prettier --write ." }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "fmt:check": "prettier -w ." }, "check")).toEqual([]);
       expect(resolveScriptTasks({ lint: "eslint . --fix" }, "fix")).toEqual([]); // Not a recognized fix alias
       expect(resolveScriptTasks({ "lint:fix": "eslint . --fix" }, "fix")).toEqual([
         { capability: "lint", scriptName: "lint:fix" },
       ]);
+    });
+
+    it("verifies formatter selection in fix mode rejects read-only format scripts", () => {
+      // "format: "prettier --check ."" is read-only and must NOT be selected as format write
+      expect(resolveScriptTasks({ format: "prettier --check ." }, "fix")).toEqual([]);
+      expect(resolveScriptTasks({ fmt: "prettier --check ." }, "fix")).toEqual([]);
+
+      // "format: "prettier --write ."" is write-capable and is selected as format write
+      expect(resolveScriptTasks({ format: "prettier --write ." }, "fix")).toEqual([
+        { capability: "format", scriptName: "format" },
+      ]);
+      expect(resolveScriptTasks({ fmt: "prettier -w ." }, "fix")).toEqual([
+        { capability: "format", scriptName: "fmt" },
+      ]);
+      expect(resolveScriptTasks({ "format:write": "prettier --write ." }, "fix")).toEqual([
+        { capability: "format", scriptName: "format:write" },
+      ]);
+      expect(resolveScriptTasks({ "format:fix": "prettier --write ." }, "fix")).toEqual([
+        { capability: "format", scriptName: "format:fix" },
+      ]);
+    });
+
+    it("verifies command-aware capability detection rejects tool names in echo or comments", async () => {
+      // echo prettier --write .
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "echo prettier --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+      const registry = createDefaultRegistry();
+      const planEchoPrettier = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planEchoPrettier.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+
+      // echo "eslint . --fix"
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: 'echo "eslint . --fix"',
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      const planEchoEslint = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planEchoEslint.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+
+      // Real tool invocation after &&
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "echo starting && prettier --write .",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      const planChained = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planChained.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-lint-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planChained.tasks[0].capability).toBe("format");
+
+      // Real tool invocation after ;
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "echo hello; eslint . --fix",
+          },
+          devDependencies: { "@biomejs/biome": "^2.0.0" },
+        }),
+      );
+      const planSemicolon = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planSemicolon.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "biome-format-fix",
+        "biome-assist-fix",
+      ]);
+      expect(planSemicolon.tasks[0].capability).toBe("lint");
     });
 
     it("verifies direct tool fix script capability assignment without overclaiming", async () => {
