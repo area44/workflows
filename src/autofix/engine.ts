@@ -26,6 +26,11 @@ export async function resolveProjectBinary(
   const binDir = path.join(cwd, "node_modules", ".bin");
 
   if (platform === "win32") {
+    // Explicitly reject unsupported .ps1 executable scripts on Windows
+    if (path.extname(toolBinary).toLowerCase() === ".ps1") {
+      return undefined;
+    }
+
     // If the binary already has an extension, check it directly
     if (path.extname(toolBinary)) {
       const explicitPath = path.join(binDir, toolBinary);
@@ -53,6 +58,9 @@ export async function resolveProjectBinary(
 
   const pathBin = await io.which(toolBinary, false);
   if (pathBin) {
+    if (platform === "win32" && path.extname(pathBin).toLowerCase() === ".ps1") {
+      return undefined;
+    }
     return pathBin;
   }
 

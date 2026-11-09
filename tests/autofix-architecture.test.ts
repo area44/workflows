@@ -1697,9 +1697,28 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const resolvedLinuxCmd = await resolveProjectBinary(tempDir, "eslint", "linux");
       expect(resolvedLinuxCmd).toBeUndefined();
 
-      // Explicit extension provided on Windows
-      const resolvedExplicit = await resolveProjectBinary(tempDir, "eslint.cmd", "win32");
-      expect(resolvedExplicit).toBe(eslintCmd);
+      // Explicit extensions provided on Windows: .cmd, .bat, .exe
+      const batShim = path.join(binDir, "tool.bat");
+      const exeShim = path.join(binDir, "tool.exe");
+      fs.writeFileSync(batShim, "@echo off\n");
+      fs.writeFileSync(exeShim, "");
+
+      const resolvedExplicitCmd = await resolveProjectBinary(tempDir, "eslint.cmd", "win32");
+      expect(resolvedExplicitCmd).toBe(eslintCmd);
+
+      const resolvedExplicitBat = await resolveProjectBinary(tempDir, "tool.bat", "win32");
+      expect(resolvedExplicitBat).toBe(batShim);
+
+      const resolvedExplicitExe = await resolveProjectBinary(tempDir, "tool.exe", "win32");
+      expect(resolvedExplicitExe).toBe(exeShim);
+
+      // Explicit .ps1 path must NOT be returned on Windows even if the file exists
+      const resolvedExplicitPs1 = await resolveProjectBinary(tempDir, "eslint.ps1", "win32");
+      expect(resolvedExplicitPs1).toBeUndefined();
+
+      // Missing explicit shim returns undefined
+      const resolvedMissingExplicit = await resolveProjectBinary(tempDir, "missing.cmd", "win32");
+      expect(resolvedMissingExplicit).toBeUndefined();
 
       // 3. Missing local binary with successful io.which fallback
       vi.spyOn(io, "which").mockImplementation(async (tool) => {
@@ -1711,6 +1730,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       const resolvedWhichWin = await resolveProjectBinary(tempDir, "biome", "win32");
       expect(resolvedWhichWin).toBe("/usr/local/bin/biome");
+
+      // io.which returning .ps1 on Windows is rejected
+      vi.spyOn(io, "which").mockImplementation(async (tool) => {
+        if (tool === "ps-tool") return "C:\\tools\\ps-tool.ps1";
+        return "";
+      });
+      const resolvedWhichPs1 = await resolveProjectBinary(tempDir, "ps-tool", "win32");
+      expect(resolvedWhichPs1).toBeUndefined();
 
       // 4. Missing binary with no fallback result
       const resolvedMissing = await resolveProjectBinary(tempDir, "nonexistent-tool", "linux");
@@ -1743,6 +1770,20 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         eslintCmd,
         ["--fix", "."],
         expect.objectContaining({ cwd: tempDir }),
+      );
+
+      // Verify that ExecutionEngine throws an understandable, actionable error when a .ps1 task is planned
+      const psTask: ExecutionTask = {
+        id: "ps-task",
+        toolId: "custom-ps",
+        capability: "lint",
+        executable: "tool.ps1",
+        args: ["check"],
+        cwd: tempDir,
+        mode: "check",
+      };
+      await expect(winEngine.resolveTaskExecutable(psTask)).rejects.toThrow(
+        /Configured tool "custom-ps" could not run: executable "tool.ps1" is not available in node_modules\/\.bin or PATH/,
       );
     });
 
