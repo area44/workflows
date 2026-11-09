@@ -1712,9 +1712,18 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const resolvedExplicitExe = await resolveProjectBinary(tempDir, "tool.exe", "win32");
       expect(resolvedExplicitExe).toBe(exeShim);
 
-      // Explicit .ps1 path must NOT be returned on Windows even if the file exists
-      const resolvedExplicitPs1 = await resolveProjectBinary(tempDir, "eslint.ps1", "win32");
-      expect(resolvedExplicitPs1).toBeUndefined();
+      // Explicit unsupported extensions (.ps1, .js, .sh, .vbs) must NOT be returned on Windows even if the files exist
+      const jsShim = path.join(binDir, "tool.js");
+      const shShim = path.join(binDir, "tool.sh");
+      const vbsShim = path.join(binDir, "tool.vbs");
+      fs.writeFileSync(jsShim, "console.log('js');");
+      fs.writeFileSync(shShim, "#!/bin/sh\nexit 0");
+      fs.writeFileSync(vbsShim, "WScript.Quit 0");
+
+      expect(await resolveProjectBinary(tempDir, "eslint.ps1", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.js", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.sh", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.vbs", "win32")).toBeUndefined();
 
       // Missing explicit shim returns undefined
       const resolvedMissingExplicit = await resolveProjectBinary(tempDir, "missing.cmd", "win32");
@@ -1731,13 +1740,18 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const resolvedWhichWin = await resolveProjectBinary(tempDir, "biome", "win32");
       expect(resolvedWhichWin).toBe("/usr/local/bin/biome");
 
-      // io.which returning .ps1 on Windows is rejected
+      // io.which returning unsupported extensions (.ps1, .js, .sh, .vbs) on Windows is rejected
       vi.spyOn(io, "which").mockImplementation(async (tool) => {
         if (tool === "ps-tool") return "C:\\tools\\ps-tool.ps1";
+        if (tool === "js-tool") return "C:\\tools\\js-tool.js";
+        if (tool === "sh-tool") return "C:\\tools\\sh-tool.sh";
+        if (tool === "vbs-tool") return "C:\\tools\\vbs-tool.vbs";
         return "";
       });
-      const resolvedWhichPs1 = await resolveProjectBinary(tempDir, "ps-tool", "win32");
-      expect(resolvedWhichPs1).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "ps-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "js-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "sh-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "vbs-tool", "win32")).toBeUndefined();
 
       // 4. Missing binary with no fallback result
       const resolvedMissing = await resolveProjectBinary(tempDir, "nonexistent-tool", "linux");
