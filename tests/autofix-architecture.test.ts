@@ -18,7 +18,7 @@ import {
   classifyScript,
   resolveScriptTasks,
 } from "../src/autofix/adapters/javascript/script-adapter.js";
-import { ExecutionEngine } from "../src/autofix/engine.js";
+import { ExecutionEngine, resolveProjectBinary } from "../src/autofix/engine.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
 import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
@@ -1560,6 +1560,62 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(classifyScript("eslint \\>")).toBe("read-only");
     });
 
+    it("rejects shell parameter expansions outside single quotes in check mode", () => {
+      // Unquoted variable expansions
+      expect(classifyScript("eslint . $VAR")).toBe("unknown");
+      expect(classifyScript("eslint . ${VAR}")).toBe("unknown");
+
+      // Quoted variable expansions
+      expect(classifyScript('eslint . "$VAR"')).toBe("unknown");
+      expect(classifyScript('eslint . "${VAR}"')).toBe("unknown");
+
+      // Positional and special parameters
+      expect(classifyScript("eslint . $@")).toBe("unknown");
+      expect(classifyScript('eslint . "$@"')).toBe("unknown");
+      expect(classifyScript("eslint . $*")).toBe("unknown");
+      expect(classifyScript('eslint . "$*"')).toBe("unknown");
+      expect(classifyScript("eslint . $1")).toBe("unknown");
+      expect(classifyScript("eslint . $2")).toBe("unknown");
+      expect(classifyScript('eslint . "$1"')).toBe("unknown");
+      expect(classifyScript("eslint . $?")).toBe("unknown");
+      expect(classifyScript("eslint . $$")).toBe("unknown");
+      expect(classifyScript("eslint . $!")).toBe("unknown");
+      expect(classifyScript("eslint . $#")).toBe("unknown");
+
+      // Check mode resolves no tasks for scripts containing unsupported parameter expansion
+      expect(
+        resolveScriptTasks(
+          {
+            "lint:check": "eslint . $VAR",
+            "format:check": 'prettier --check . "${PRETTIER_ARGS}"',
+          },
+          "check",
+        ),
+      ).toEqual([]);
+
+      // Regression test: Environment variable injecting arguments into ESLint check script
+      // e.g. LINT_ARGS="--fix" would turn a check command into a modifying command
+      const envInjectionScripts = {
+        "lint:check": 'eslint . "$LINT_ARGS"',
+      };
+      expect(classifyScript(envInjectionScripts["lint:check"])).toBe("unknown");
+      expect(resolveScriptTasks(envInjectionScripts, "check")).toEqual([]);
+
+      // Escaped dollar characters are literal and not shell expansions
+      expect(classifyScript("eslint . \\$VAR")).toBe("read-only");
+      expect(classifyScript('eslint . "\\$VAR"')).toBe("read-only");
+
+      // Dollar characters inside single-quoted strings are literal (no shell parameter expansion)
+      expect(classifyScript("eslint . '$VAR'")).toBe("read-only");
+      expect(classifyScript("eslint . '${VAR}'")).toBe("read-only");
+      expect(classifyScript("eslint . '$@'")).toBe("read-only");
+      expect(classifyScript("eslint . '$1'")).toBe("read-only");
+
+      // Literal dollar characters that are not shell expansions
+      expect(classifyScript("eslint . $")).toBe("read-only");
+      expect(classifyScript("eslint . $.")).toBe("read-only");
+    });
+
     it("falls back to fmt:check when format:check cannot be safely classified as read-only", () => {
       // 1. Unknown format:check with valid fmt:check -> selects fmt:check
       const unknownFormatWithValidFmt = {
@@ -1613,6 +1669,138 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
   });
 
   describe("Registry Extensibility", () => {
+    it("resolves project binaries and Windows executable shims cleanly", async () => {
+      const binDir = path.join(tempDir, "node_modules", ".bin");
+      fs.mkdirSync(binDir, { recursive: true });
+
+      // 1. Unix extensionless local binary
+      const prettierUnix = path.join(binDir, "prettier");
+      fs.writeFileSync(prettierUnix, "");
+      const resolvedUnix = await resolveProjectBinary(tempDir, "prettier", "linux");
+      expect(resolvedUnix).toBe(prettierUnix);
+
+      // On Windows without extension or shim, returns extensionless if exists
+      const resolvedWinFallback = await resolveProjectBinary(tempDir, "prettier", "win32");
+      expect(resolvedWinFallback).toBe(prettierUnix);
+
+      // 2. Windows .cmd local shim
+      const eslintCmd = path.join(binDir, "eslint.cmd");
+      const eslintPs1 = path.join(binDir, "eslint.ps1");
+      fs.writeFileSync(eslintCmd, "@echo off\n");
+      fs.writeFileSync(eslintPs1, "Write-Host 'shim'\n");
+
+      // On win32, should resolve .cmd and NOT select .ps1
+      const resolvedWinCmd = await resolveProjectBinary(tempDir, "eslint", "win32");
+      expect(resolvedWinCmd).toBe(eslintCmd);
+
+      // On linux, does not automatically append .cmd
+      const resolvedLinuxCmd = await resolveProjectBinary(tempDir, "eslint", "linux");
+      expect(resolvedLinuxCmd).toBeUndefined();
+
+      // Explicit extensions provided on Windows: .cmd, .bat, .exe
+      const batShim = path.join(binDir, "tool.bat");
+      const exeShim = path.join(binDir, "tool.exe");
+      fs.writeFileSync(batShim, "@echo off\n");
+      fs.writeFileSync(exeShim, "");
+
+      const resolvedExplicitCmd = await resolveProjectBinary(tempDir, "eslint.cmd", "win32");
+      expect(resolvedExplicitCmd).toBe(eslintCmd);
+
+      const resolvedExplicitBat = await resolveProjectBinary(tempDir, "tool.bat", "win32");
+      expect(resolvedExplicitBat).toBe(batShim);
+
+      const resolvedExplicitExe = await resolveProjectBinary(tempDir, "tool.exe", "win32");
+      expect(resolvedExplicitExe).toBe(exeShim);
+
+      // Explicit unsupported extensions (.ps1, .js, .sh, .vbs) must NOT be returned on Windows even if the files exist
+      const jsShim = path.join(binDir, "tool.js");
+      const shShim = path.join(binDir, "tool.sh");
+      const vbsShim = path.join(binDir, "tool.vbs");
+      fs.writeFileSync(jsShim, "console.log('js');");
+      fs.writeFileSync(shShim, "#!/bin/sh\nexit 0");
+      fs.writeFileSync(vbsShim, "WScript.Quit 0");
+
+      expect(await resolveProjectBinary(tempDir, "eslint.ps1", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.js", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.sh", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "tool.vbs", "win32")).toBeUndefined();
+
+      // Missing explicit shim returns undefined
+      const resolvedMissingExplicit = await resolveProjectBinary(tempDir, "missing.cmd", "win32");
+      expect(resolvedMissingExplicit).toBeUndefined();
+
+      // 3. Missing local binary with successful io.which fallback
+      vi.spyOn(io, "which").mockImplementation(async (tool) => {
+        if (tool === "biome") return "/usr/local/bin/biome";
+        return "";
+      });
+      const resolvedWhich = await resolveProjectBinary(tempDir, "biome", "linux");
+      expect(resolvedWhich).toBe("/usr/local/bin/biome");
+
+      const resolvedWhichWin = await resolveProjectBinary(tempDir, "biome", "win32");
+      expect(resolvedWhichWin).toBe("/usr/local/bin/biome");
+
+      // io.which returning unsupported extensions (.ps1, .js, .sh, .vbs) on Windows is rejected
+      vi.spyOn(io, "which").mockImplementation(async (tool) => {
+        if (tool === "ps-tool") return "C:\\tools\\ps-tool.ps1";
+        if (tool === "js-tool") return "C:\\tools\\js-tool.js";
+        if (tool === "sh-tool") return "C:\\tools\\sh-tool.sh";
+        if (tool === "vbs-tool") return "C:\\tools\\vbs-tool.vbs";
+        return "";
+      });
+      expect(await resolveProjectBinary(tempDir, "ps-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "js-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "sh-tool", "win32")).toBeUndefined();
+      expect(await resolveProjectBinary(tempDir, "vbs-tool", "win32")).toBeUndefined();
+
+      // 4. Missing binary with no fallback result
+      const resolvedMissing = await resolveProjectBinary(tempDir, "nonexistent-tool", "linux");
+      expect(resolvedMissing).toBeUndefined();
+
+      const resolvedMissingWin = await resolveProjectBinary(tempDir, "nonexistent-tool", "win32");
+      expect(resolvedMissingWin).toBeUndefined();
+
+      // 5. Correct executable invocation via ExecutionEngine on Windows
+      const winEngine = new ExecutionEngine("win32");
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      const winTask: ExecutionTask = {
+        id: "eslint-fix",
+        toolId: "eslint",
+        capability: "lint",
+        executable: "eslint",
+        args: ["--fix", "."],
+        cwd: tempDir,
+        mode: "fix",
+      };
+
+      const resolvedExe = await winEngine.resolveTaskExecutable(winTask);
+      expect(resolvedExe).toBe(eslintCmd);
+
+      const results = await winEngine.executeTasks([winTask]);
+      expect(results).toHaveLength(1);
+      expect(results[0].exitCode).toBe(0);
+      expect(exec.exec).toHaveBeenCalledWith(
+        eslintCmd,
+        ["--fix", "."],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+
+      // Verify that ExecutionEngine throws an understandable, actionable error when a .ps1 task is planned
+      const psTask: ExecutionTask = {
+        id: "ps-task",
+        toolId: "custom-ps",
+        capability: "lint",
+        executable: "tool.ps1",
+        args: ["check"],
+        cwd: tempDir,
+        mode: "check",
+      };
+      await expect(winEngine.resolveTaskExecutable(psTask)).rejects.toThrow(
+        /Configured tool "custom-ps" could not run: executable "tool.ps1" is not available in node_modules\/\.bin or PATH/,
+      );
+    });
+
     it("allows adding a new language provider and tool adapter without modifying the core orchestrator", async () => {
       const registry = new AutofixRegistry();
 
