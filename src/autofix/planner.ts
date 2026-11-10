@@ -106,19 +106,32 @@ async function processCandidateTools(
 
 async function processStandaloneAdapters(
   registry: AutofixRegistry,
+  coveredCapabilities: Set<Capability>,
   context: ProjectContext,
   mode: ExecutionMode,
   selectedTools: Array<{ id: string; name: string; reason?: string }>,
+  skippedTools: Array<{ id: string; name: string; reason: string }>,
   tasks: ExecutionTask[],
 ): Promise<void> {
+  const candidateTools: CandidateTool[] = [];
   for (const adapter of registry.getStandaloneAdapters()) {
     const result = await adapter.detect(context);
     if (result.detected) {
-      selectedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
-      const toolTasks = await adapter.plan(context, mode);
-      tasks.push(...toolTasks);
+      candidateTools.push({ adapter, reason: result.reason });
+    } else if (result.reason && !result.reason.startsWith("no ")) {
+      skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
     }
   }
+
+  await processCandidateTools(
+    candidateTools,
+    coveredCapabilities,
+    context,
+    mode,
+    selectedTools,
+    skippedTools,
+    tasks,
+  );
 }
 
 function deduplicateTasks(tasks: ExecutionTask[]): ExecutionTask[] {
@@ -161,16 +174,13 @@ export async function planExecution(
   const tasks: ExecutionTask[] = [];
 
   const providers = registry.getProviders();
-  const coveredCapabilities = new Map<string, Set<Capability>>();
+  const coveredCapabilities = new Set<Capability>();
 
   for (const provider of providers) {
     const isDetected = await provider.detect(effectiveContext);
     if (!isDetected) {
       continue;
     }
-
-    const providerCapabilities = new Set<Capability>();
-    coveredCapabilities.set(provider.id, providerCapabilities);
 
     const adapters = provider.getAdapters(effectiveContext);
     const candidateTools: CandidateTool[] = [];
@@ -187,7 +197,7 @@ export async function planExecution(
 
     await processCandidateTools(
       candidateTools,
-      providerCapabilities,
+      coveredCapabilities,
       effectiveContext,
       mode,
       selectedTools,
@@ -196,7 +206,15 @@ export async function planExecution(
     );
   }
 
-  await processStandaloneAdapters(registry, effectiveContext, mode, selectedTools, tasks);
+  await processStandaloneAdapters(
+    registry,
+    coveredCapabilities,
+    effectiveContext,
+    mode,
+    selectedTools,
+    skippedTools,
+    tasks,
+  );
 
   const deduplicatedTasks = deduplicateTasks(tasks);
 
