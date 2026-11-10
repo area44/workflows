@@ -1981,9 +1981,26 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(classifyScript("eslint . --output-file=report.json")).toBe("unknown");
       expect(classifyScript("eslint . -o=report.json")).toBe("unknown");
 
-      // Check mode resolution rejects these
+      // Dry-run does not write modified source files.
+      expect(classifyScript("eslint . --fix-dry-run")).toBe("read-only");
+
+      // Dry-run combined with an output file is not read-only.
+      expect(classifyScript("eslint . --fix-dry-run -o report.json")).toBe("unknown");
+      expect(classifyScript("eslint . --fix-dry-run --output-file report.json")).toBe("unknown");
+
+      // Cache still prevents read-only classification even with --fix-dry-run.
+      expect(classifyScript("eslint . --fix-dry-run --cache")).toBe("unknown");
+      expect(classifyScript("eslint . --fix-dry-run --cache-location .cache")).toBe("unknown");
+
+      // Check mode resolution rejects writing combinations but accepts read-only dry-run
       expect(resolveScriptTasks({ "lint:check": "eslint . --cache" }, "check")).toEqual([]);
       expect(resolveScriptTasks({ "lint:check": "eslint . -o report.json" }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "lint:check": "eslint . --fix-dry-run" }, "check")).toEqual([
+        { capability: "lint", scriptName: "lint:check" },
+      ]);
+      expect(
+        resolveScriptTasks({ "lint:check": "eslint . --fix-dry-run --cache" }, "check"),
+      ).toEqual([]);
     });
 
     it("classifies Prettier write, check, and cache modes correctly", () => {

@@ -511,13 +511,13 @@ function shouldIncludeLintWithFix(
 }
 
 function hasWriteFlag(tokens: string[]): boolean {
+  const [exe] = tokens;
   return tokens.some(
     (t) =>
       t === "-w" ||
       t === "--write" ||
       t.startsWith("--write=") ||
-      t === "--fix" ||
-      t.startsWith("--fix="),
+      ((t === "--fix" || t.startsWith("--fix=")) && !(exe === "eslint" && t === "--fix-dry-run")),
   );
 }
 
@@ -542,7 +542,7 @@ function isBiomeFormatWrite(tokens: string[]): boolean {
 function isEslintFix(tokens: string[]): boolean {
   const [exe] = tokens;
   if (exe !== "eslint") return false;
-  return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+  return tokens.some((t) => (t === "--fix" || t.startsWith("--fix=")) && t !== "--fix-dry-run");
 }
 
 function isOxlintFix(tokens: string[]): boolean {
@@ -594,8 +594,7 @@ function hasEslintWriteOption(tokens: string[]): boolean {
   return tokens.some(
     (t) =>
       t === "--fix" ||
-      t.startsWith("--fix=") ||
-      t === "--fix-dry-run" ||
+      (t.startsWith("--fix=") && t !== "--fix-dry-run") ||
       t === "-o" ||
       t.startsWith("-o=") ||
       t === "--output-file" ||
