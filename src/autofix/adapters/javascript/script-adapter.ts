@@ -431,19 +431,63 @@ export function parseCommandInvocations(scriptBody: string): string[][] {
 }
 
 /**
- * Recognizes actual supported package-manager script invocation commands:
- * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`,
- * including quoted script arguments (e.g. `npm run "format:write"`) and environment variable assignments.
- * Does not match `echo format`, comments, quoted explanatory text, or substrings.
+ * Recursively checks whether a script body or script reference delegates to a target script,
+ * safely handling arbitrary depth, shell wrappers (`sh -c`, `bash -c`), and circular dependencies.
  */
-export function doesFixScriptDelegateTo(fixScriptBody: string, targetScriptName: string): boolean {
-  const invocations = parseCommandInvocations(fixScriptBody);
+export function delegatesToScript(
+  scriptBodyOrName: string,
+  targetScriptName: string,
+  scripts: Record<string, string> = {},
+  activePath: Set<string> = new Set(),
+): boolean {
+  if (!scriptBodyOrName || !targetScriptName) return false;
+
+  const scriptBody =
+    scripts[scriptBodyOrName] !== undefined ? scripts[scriptBodyOrName] : scriptBodyOrName;
+
+  const invocations = parseCommandInvocations(scriptBody);
   for (const tokens of invocations) {
     if (matchesPmDelegation(tokens, targetScriptName)) {
       return true;
     }
+
+    const delegated = extractDelegatedTarget(tokens);
+    if (delegated) {
+      if (delegated === targetScriptName) return true;
+      if (!activePath.has(delegated) && scripts[delegated] !== undefined) {
+        activePath.add(delegated);
+        try {
+          if (delegatesToScript(scripts[delegated], targetScriptName, scripts, activePath)) {
+            return true;
+          }
+        } finally {
+          activePath.delete(delegated);
+        }
+      }
+    }
+
+    const wrappedScript = extractShellWrapperScript(tokens);
+    if (wrappedScript !== undefined) {
+      if (delegatesToScript(wrappedScript, targetScriptName, scripts, activePath)) {
+        return true;
+      }
+    }
   }
   return false;
+}
+
+/**
+ * Recognizes actual supported package-manager script invocation commands:
+ * e.g. `npm run format:write`, `pnpm run format`, `bun run lint:fix`, `yarn run lint:fix`, `pnpm format`, `bun format`,
+ * including quoted script arguments (e.g. `npm run "format:write"`) and environment variable assignments.
+ * Supports recursive inspection when scripts are provided.
+ */
+export function doesFixScriptDelegateTo(
+  fixScriptBody: string,
+  targetScriptName: string,
+  scripts: Record<string, string> = {},
+): boolean {
+  return delegatesToScript(fixScriptBody, targetScriptName, scripts);
 }
 
 function shouldIncludeFormatWithFix(
@@ -453,7 +497,7 @@ function shouldIncludeFormatWithFix(
 ): boolean {
   if (!formatScript || formatScript === fixScript) return false;
   const fixBody = scripts[fixScript] || "";
-  return !doesFixScriptDelegateTo(fixBody, formatScript);
+  return !delegatesToScript(fixBody, formatScript, scripts);
 }
 
 function shouldIncludeLintWithFix(
@@ -463,7 +507,7 @@ function shouldIncludeLintWithFix(
 ): boolean {
   if (!lintScript || lintScript === fixScript) return false;
   const fixBody = scripts[fixScript] || "";
-  return !doesFixScriptDelegateTo(fixBody, lintScript);
+  return !delegatesToScript(fixBody, lintScript, scripts);
 }
 
 function hasWriteFlag(tokens: string[]): boolean {
@@ -546,79 +590,131 @@ function isVpLintFix(tokens: string[]): boolean {
   return tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
 }
 
+function hasEslintWriteOption(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "--fix" ||
+      t.startsWith("--fix=") ||
+      t === "--fix-dry-run" ||
+      t === "-o" ||
+      t.startsWith("-o=") ||
+      t === "--output-file" ||
+      t.startsWith("--output-file=") ||
+      t === "--cache" ||
+      t === "--cache-file" ||
+      t.startsWith("--cache-file=") ||
+      t === "--cache-location" ||
+      t.startsWith("--cache-location="),
+  );
+}
+
+function hasPrettierWriteOption(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--cache" ||
+      t === "--cache-location" ||
+      t.startsWith("--cache-location=") ||
+      t === "--insert-pragma",
+  );
+}
+
+function hasBiomeWriteOption(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--fix" ||
+      t.startsWith("--fix=") ||
+      t === "--reporter-file" ||
+      t.startsWith("--reporter-file=") ||
+      t === "--log-file" ||
+      t.startsWith("--log-file="),
+  );
+}
+
+function hasOxlintWriteOption(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "--fix" ||
+      t.startsWith("--fix=") ||
+      t === "--fix-suggestions" ||
+      t === "--fix-dangerously" ||
+      t === "--init",
+  );
+}
+
+function hasOxfmtWriteOption(tokens: string[]): boolean {
+  return tokens.some(
+    (t) =>
+      t === "-w" ||
+      t === "--write" ||
+      t.startsWith("--write=") ||
+      t === "--init" ||
+      t === "--migrate" ||
+      t.startsWith("--migrate="),
+  );
+}
+
 function isPrettierCheck(tokens: string[]): boolean {
   const [exe] = tokens;
   if (exe !== "prettier") return false;
   const hasCheck = tokens.some(
     (t) => t === "--check" || t === "-c" || t === "--list-different" || t === "-l",
   );
-  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
-  return hasCheck && !hasWrite;
+  return hasCheck && !hasPrettierWriteOption(tokens);
 }
 
 function isOxfmtCheck(tokens: string[]): boolean {
   const [exe] = tokens;
   if (exe !== "oxfmt") return false;
   const hasCheck = tokens.some((t) => t === "--check" || t === "-c");
-  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
-  return hasCheck && !hasWrite;
+  return hasCheck && !hasOxfmtWriteOption(tokens);
 }
 
 function isBiomeFormatCheck(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "biome" || sub !== "format") return false;
-  const hasWrite = tokens.some((t) => t === "-w" || t === "--write" || t.startsWith("--write="));
-  return !hasWrite;
+  return !hasBiomeWriteOption(tokens);
 }
 
 function isEslintCheck(tokens: string[]): boolean {
   const [exe] = tokens;
   if (exe !== "eslint") return false;
-  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+  return !hasEslintWriteOption(tokens);
 }
 
 function isOxlintCheck(tokens: string[]): boolean {
   const [exe] = tokens;
   if (exe !== "oxlint") return false;
-  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+  return !hasOxlintWriteOption(tokens);
 }
 
 function isBiomeLintCheck(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "biome" || sub !== "lint") return false;
-  return !tokens.some(
-    (t) =>
-      t === "-w" ||
-      t === "--write" ||
-      t.startsWith("--write=") ||
-      t === "--fix" ||
-      t.startsWith("--fix="),
-  );
+  return !hasBiomeWriteOption(tokens);
 }
 
 function isBiomeCheckCheck(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "biome" || sub !== "check") return false;
-  return !tokens.some(
-    (t) =>
-      t === "-w" ||
-      t === "--write" ||
-      t.startsWith("--write=") ||
-      t === "--fix" ||
-      t.startsWith("--fix="),
-  );
+  return !hasBiomeWriteOption(tokens);
 }
 
 function isVpFmtCheck(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "vp" || sub !== "fmt") return false;
-  return tokens.some((t) => t === "--check" || t === "-c");
+  return tokens.some((t) => t === "--check" || t === "-c") && !hasOxfmtWriteOption(tokens);
 }
 
 function isVpLintCheck(tokens: string[]): boolean {
   const [exe, sub] = tokens;
   if (exe !== "vp" || sub !== "lint") return false;
-  return !tokens.some((t) => t === "--fix" || t.startsWith("--fix="));
+  return !hasOxlintWriteOption(tokens);
 }
 
 function isVpCheckCheck(tokens: string[]): boolean {
@@ -686,7 +782,7 @@ function isKnownReadOnlyCommand(tokens: string[]): boolean {
 function classifyInvocation(
   tokens: string[],
   scripts: Record<string, string>,
-  visited: Set<string>,
+  activePath: Set<string>,
 ): ScriptClassification {
   if (tokens.length === 0) return "unknown";
 
@@ -698,17 +794,21 @@ function classifyInvocation(
   // Shell wrappers: sh -c "...", bash -c "..."
   const wrappedScript = extractShellWrapperScript(tokens);
   if (wrappedScript !== undefined) {
-    return classifyScriptInternal(wrappedScript, scripts, visited);
+    return classifyScriptInternal(wrappedScript, scripts, activePath);
   }
 
   // Package-manager script delegation
   const target = extractDelegatedTarget(tokens);
   if (target) {
-    if (visited.has(target)) return "unknown"; // cycle detected
-    visited.add(target);
+    if (activePath.has(target)) return "unknown"; // true cycle detected
     const targetScript = scripts[target];
     if (!targetScript) return "unknown"; // unresolvable target
-    return classifyScriptInternal(targetScript, scripts, visited);
+    activePath.add(target);
+    try {
+      return classifyScriptInternal(targetScript, scripts, activePath);
+    } finally {
+      activePath.delete(target);
+    }
   }
 
   // Check known write-capable commands
@@ -727,7 +827,7 @@ function classifyInvocation(
 function classifyScriptInternal(
   command: string,
   scripts: Record<string, string>,
-  visited: Set<string>,
+  activePath: Set<string>,
 ): ScriptClassification {
   const splitResult = splitChainedCommandsDetailed(command);
   if (splitResult.hasSyntaxError) {
@@ -742,7 +842,7 @@ function classifyScriptInternal(
   for (const cmd of commands) {
     const inspection = inspectAndTokenizeCommandLine(cmd);
     const tokens = getCommandInvocationTokens(inspection.tokens);
-    const classification = classifyInvocation(tokens, scripts, visited);
+    const classification = classifyInvocation(tokens, scripts, activePath);
 
     if (classification === "write-capable") {
       return "write-capable";
@@ -775,20 +875,25 @@ export function classifyScript(
 function hasVerifiedFormattingCommand(
   command: string,
   scripts: Record<string, string> = {},
-  visited: Set<string> = new Set(),
+  activePath: Set<string> = new Set(),
 ): boolean {
   const invocations = parseCommandInvocations(command);
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
-      if (visited.has(target)) return false;
-      visited.add(target);
+      if (activePath.has(target)) return false;
       const targetScript = scripts[target];
-      return targetScript ? hasVerifiedFormattingCommand(targetScript, scripts, visited) : false;
+      if (!targetScript) return false;
+      activePath.add(target);
+      try {
+        return hasVerifiedFormattingCommand(targetScript, scripts, activePath);
+      } finally {
+        activePath.delete(target);
+      }
     }
     const wrappedScript = extractShellWrapperScript(tokens);
     if (wrappedScript !== undefined) {
-      return hasVerifiedFormattingCommand(wrappedScript, scripts, visited);
+      return hasVerifiedFormattingCommand(wrappedScript, scripts, activePath);
     }
     return (
       isPrettierWrite(tokens) ||
@@ -802,20 +907,25 @@ function hasVerifiedFormattingCommand(
 function hasVerifiedLintingCommand(
   command: string,
   scripts: Record<string, string> = {},
-  visited: Set<string> = new Set(),
+  activePath: Set<string> = new Set(),
 ): boolean {
   const invocations = parseCommandInvocations(command);
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
-      if (visited.has(target)) return false;
-      visited.add(target);
+      if (activePath.has(target)) return false;
       const targetScript = scripts[target];
-      return targetScript ? hasVerifiedLintingCommand(targetScript, scripts, visited) : false;
+      if (!targetScript) return false;
+      activePath.add(target);
+      try {
+        return hasVerifiedLintingCommand(targetScript, scripts, activePath);
+      } finally {
+        activePath.delete(target);
+      }
     }
     const wrappedScript = extractShellWrapperScript(tokens);
     if (wrappedScript !== undefined) {
-      return hasVerifiedLintingCommand(wrappedScript, scripts, visited);
+      return hasVerifiedLintingCommand(wrappedScript, scripts, activePath);
     }
     return (
       isEslintFix(tokens) || isOxlintFix(tokens) || isBiomeLintWrite(tokens) || isVpLintFix(tokens)
@@ -826,20 +936,25 @@ function hasVerifiedLintingCommand(
 function hasVerifiedFullCheckCommand(
   command: string,
   scripts: Record<string, string> = {},
-  visited: Set<string> = new Set(),
+  activePath: Set<string> = new Set(),
 ): boolean {
   const invocations = parseCommandInvocations(command);
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
-      if (visited.has(target)) return false;
-      visited.add(target);
+      if (activePath.has(target)) return false;
       const targetScript = scripts[target];
-      return targetScript ? hasVerifiedFullCheckCommand(targetScript, scripts, visited) : false;
+      if (!targetScript) return false;
+      activePath.add(target);
+      try {
+        return hasVerifiedFullCheckCommand(targetScript, scripts, activePath);
+      } finally {
+        activePath.delete(target);
+      }
     }
     const wrappedScript = extractShellWrapperScript(tokens);
     if (wrappedScript !== undefined) {
-      return hasVerifiedFullCheckCommand(wrappedScript, scripts, visited);
+      return hasVerifiedFullCheckCommand(wrappedScript, scripts, activePath);
     }
     if (isBiomeCheckWrite(tokens)) return true;
     const [exe, sub] = tokens;
@@ -853,9 +968,10 @@ function hasVerifiedFullCheckCommand(
 function checkCoverage(
   body: string,
   targetScript: string | undefined,
+  scripts: Record<string, string>,
   hasCommand: (b: string) => boolean,
 ): boolean {
-  if (targetScript && doesFixScriptDelegateTo(body, targetScript)) {
+  if (targetScript && delegatesToScript(body, targetScript, scripts)) {
     return true;
   }
   return hasCommand(body);
@@ -868,10 +984,12 @@ function createFixScriptMappings(
   formatScript: string | undefined,
   lintScript: string | undefined,
 ): ScriptMapping[] {
-  const isFormat = checkCoverage(body, formatScript, (b) =>
+  const isFormat = checkCoverage(body, formatScript, scripts, (b) =>
     hasVerifiedFormattingCommand(b, scripts),
   );
-  const isLint = checkCoverage(body, lintScript, (b) => hasVerifiedLintingCommand(b, scripts));
+  const isLint = checkCoverage(body, lintScript, scripts, (b) =>
+    hasVerifiedLintingCommand(b, scripts),
+  );
   const isFull = hasVerifiedFullCheckCommand(body, scripts);
 
   if (isFormat && isLint) {

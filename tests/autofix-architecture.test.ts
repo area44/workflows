@@ -1858,4 +1858,270 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
     });
   });
+
+  describe("Regression: F-01 Nested Delegation and Duplicate Task Prevention", () => {
+    it("handles direct delegation: fix -> format:write", () => {
+      const scripts = {
+        fix: "npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("handles one-level nested delegation: fix -> all-fix -> format:write", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("handles multiple nested levels: fix -> all-fix -> frontend-fix -> format:write", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run frontend-fix",
+        "frontend-fix": "npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("handles nested lint delegation: fix -> all-fix -> lint:fix", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run lint:fix",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "lint", scriptName: "fix" }]);
+    });
+
+    it("handles a fix script that delegates to both formatting and linting across nested levels", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run format:write && npm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+    });
+
+    it("handles a fix script that delegates only to formatting, while linting remains independent", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run format:write",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "format", scriptName: "fix" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+    });
+
+    it("handles a fix script that delegates only to linting, while formatting remains independent", () => {
+      const scripts = {
+        fix: "npm run all-fix",
+        "all-fix": "npm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "lint", scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+      ]);
+    });
+
+    it("safely handles circular script references without infinite recursion in delegation", () => {
+      const scripts = {
+        fix: "npm run cycle-a",
+        "cycle-a": "npm run cycle-b",
+        "cycle-b": "npm run cycle-a",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+      ]);
+    });
+
+    it("leaves unrelated scripts independent", () => {
+      const scripts = {
+        fix: "echo custom-fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+    });
+  });
+
+  describe("Regression: F-02 Read-Only Classifier Audit for File-Writing Options", () => {
+    it("classifies ESLint with --fix, --cache, and --output-file as non-read-only", () => {
+      expect(classifyScript("eslint --fix .")).toBe("write-capable");
+      expect(classifyScript("eslint . --cache")).toBe("unknown");
+      expect(classifyScript("eslint . --cache-file .eslintcache")).toBe("unknown");
+      expect(classifyScript("eslint . --cache-location ./cache/")).toBe("unknown");
+      expect(classifyScript("eslint . --output-file report.json")).toBe("unknown");
+      expect(classifyScript("eslint . -o report.json")).toBe("unknown");
+      expect(classifyScript("eslint . --output-file=report.json")).toBe("unknown");
+      expect(classifyScript("eslint . -o=report.json")).toBe("unknown");
+
+      // Check mode resolution rejects these
+      expect(resolveScriptTasks({ "lint:check": "eslint . --cache" }, "check")).toEqual([]);
+      expect(resolveScriptTasks({ "lint:check": "eslint . -o report.json" }, "check")).toEqual([]);
+    });
+
+    it("classifies Prettier write, check, and cache modes correctly", () => {
+      expect(classifyScript("prettier --write .")).toBe("write-capable");
+      expect(classifyScript("prettier -w .")).toBe("write-capable");
+      expect(classifyScript("prettier --check .")).toBe("read-only");
+      expect(classifyScript("prettier -c .")).toBe("read-only");
+      expect(classifyScript("prettier --list-different .")).toBe("read-only");
+      expect(classifyScript("prettier -l .")).toBe("read-only");
+
+      // Cache or insert-pragma options write files
+      expect(classifyScript("prettier --check . --cache")).toBe("unknown");
+      expect(classifyScript("prettier --check . --cache-location .cache")).toBe("unknown");
+      expect(classifyScript("prettier --check . --insert-pragma")).toBe("unknown");
+    });
+
+    it("classifies Biome write, check, and reporter/log output options correctly", () => {
+      expect(classifyScript("biome format --write .")).toBe("write-capable");
+      expect(classifyScript("biome format .")).toBe("read-only");
+      expect(classifyScript("biome format . --reporter-file=out.json")).toBe("unknown");
+      expect(classifyScript("biome format . --log-file=biome.log")).toBe("unknown");
+
+      expect(classifyScript("biome lint --write .")).toBe("write-capable");
+      expect(classifyScript("biome lint .")).toBe("read-only");
+      expect(classifyScript("biome lint . --reporter-file=out.json")).toBe("unknown");
+      expect(classifyScript("biome lint . --log-file=biome.log")).toBe("unknown");
+
+      expect(classifyScript("biome check --write .")).toBe("write-capable");
+      expect(classifyScript("biome check .")).toBe("read-only");
+      expect(classifyScript("biome check . --reporter-file=out.json")).toBe("unknown");
+      expect(classifyScript("biome check . --log-file=biome.log")).toBe("unknown");
+    });
+
+    it("classifies Oxlint fix, suggestions, dangerously, and check modes correctly", () => {
+      expect(classifyScript("oxlint --fix")).toBe("write-capable");
+      expect(classifyScript("oxlint --fix-suggestions")).toBe("unknown");
+      expect(classifyScript("oxlint --fix-dangerously")).toBe("unknown");
+      expect(classifyScript("oxlint --init")).toBe("unknown");
+      expect(classifyScript("oxlint .")).toBe("read-only");
+    });
+
+    it("classifies Vite+ format and lint write/check modes correctly", () => {
+      expect(classifyScript("vp fmt")).toBe("write-capable");
+      expect(classifyScript("vp fmt --write")).toBe("write-capable");
+      expect(classifyScript("vp fmt --check")).toBe("read-only");
+      expect(classifyScript("vp fmt -c")).toBe("read-only");
+      expect(classifyScript("vp fmt --check --init")).toBe("unknown");
+
+      expect(classifyScript("vp lint --fix")).toBe("write-capable");
+      expect(classifyScript("vp lint")).toBe("read-only");
+      expect(classifyScript("vp lint --fix-suggestions")).toBe("unknown");
+
+      expect(classifyScript("vp check --fix")).toBe("write-capable");
+      expect(classifyScript("vp check")).toBe("read-only");
+    });
+
+    it("classifies unknown options and commands with quoted arguments correctly", () => {
+      expect(classifyScript("eslint --unknown-option .")).toBe("read-only");
+      expect(classifyScript('eslint . --rule "quotes: [error, double]"')).toBe("read-only");
+      expect(classifyScript('prettier --check "src/**/*.ts"')).toBe("read-only");
+      expect(classifyScript('eslint . --output-file "dir with spaces/report.json"')).toBe(
+        "unknown",
+      );
+      expect(classifyScript("unknown-tool .")).toBe("unknown");
+    });
+
+    it("preserves genuinely read-only commands in check mode", () => {
+      const scripts = {
+        "format:check": "prettier --check .",
+        "fmt:check": "oxfmt --check .",
+        "lint:check": "eslint .",
+        lint: "oxlint .",
+      };
+      const checkTasks = resolveScriptTasks(scripts, "check");
+      expect(checkTasks).toEqual([
+        { capability: "format", scriptName: "format:check" },
+        { capability: "lint", scriptName: "lint:check" },
+      ]);
+    });
+  });
+
+  describe("Regression: F-03 Sequential Script Delegation vs Cycle Detection", () => {
+    it("handles a script referencing the same child script twice sequentially", () => {
+      const scripts = {
+        lint: "npm run lint:base && npm run lint:base",
+        "lint:base": "eslint .",
+      };
+      expect(classifyScript("npm run lint", scripts)).toBe("read-only");
+      const tasks = resolveScriptTasks(scripts, "check");
+      expect(tasks).toEqual([{ capability: "lint", scriptName: "lint" }]);
+    });
+
+    it("handles multiple independent branches referencing the same child script", () => {
+      const scripts = {
+        check: "npm run branch-a && npm run branch-b",
+        "branch-a": "npm run common",
+        "branch-b": "npm run common",
+        common: "prettier --check .",
+      };
+      expect(classifyScript("npm run check", scripts)).toBe("read-only");
+    });
+
+    it("handles nested repeated delegation cleanly", () => {
+      const scripts = {
+        main: "npm run sub1 && npm run sub2",
+        sub1: "npm run helper",
+        sub2: "npm run helper",
+        helper: "oxlint .",
+      };
+      expect(classifyScript("npm run main", scripts)).toBe("read-only");
+    });
+
+    it("detects genuine direct cycle: a -> a", () => {
+      const scripts = {
+        loop: "npm run loop",
+      };
+      expect(classifyScript("npm run loop", scripts)).toBe("unknown");
+    });
+
+    it("detects genuine indirect cycle: a -> b -> c -> a", () => {
+      const scripts = {
+        a: "npm run b",
+        b: "npm run c",
+        c: "npm run a",
+      };
+      expect(classifyScript("npm run a", scripts)).toBe("unknown");
+    });
+
+    it("handles a cycle inside one branch while another branch remains valid", () => {
+      const scripts = {
+        composite: "npm run broken || npm run valid",
+        broken: "npm run loopA",
+        loopA: "npm run loopB",
+        loopB: "npm run loopA",
+        valid: "eslint .",
+      };
+      // Because 'broken' is a cycle and evaluates to 'unknown', composite evaluates to 'unknown'
+      expect(classifyScript("npm run composite", scripts)).toBe("unknown");
+    });
+  });
 });
