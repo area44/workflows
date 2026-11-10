@@ -1733,34 +1733,68 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvShell = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvShell.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 3. cross-env with options that consume arguments (-f, --file, -c, --config)
+      // 3. cross-env with multiple environment variable assignments
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
           scripts: {
-            formatArgShort: "cross-env -f .env vp fmt",
-            formatArgLong: "cross-env --file .env vp fmt",
-            formatInline: "cross-env --file=.env vp fmt",
-            formatConfig: "cross-env -c config.json vp fmt",
-            formatMultipleEnv: "cross-env NODE_ENV=production CI=true vp lint",
-            formatDelimiter: "cross-env -- NODE_ENV=production vp fmt",
+            formatMultipleEnv: "cross-env CI=true NODE_ENV=production vp lint",
           },
         }),
       );
-      const planCrossEnvOptions = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planCrossEnvOptions.selectedTools.map((t) => t.id)).toContain("vite-plus");
+      const planCrossEnvMultiple = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvMultiple.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 4. unrecognized cross-env option fails closed and does not trigger false positive
+      // 4. cross-env delegating to a script that invokes vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
           scripts: {
-            formatBad: "cross-env -unknown-flag vp fmt",
+            formatDelegated: "cross-env NODE_ENV=production npm run format:vp",
+            "format:vp": "vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvDelegated = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvDelegated.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 5. unsupported options or flags must not be treated as valid and must not cause false-positive Vite+ detection
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatShort: "cross-env -f .env vp fmt",
+            formatLong: "cross-env --file .env vp fmt",
+            formatUnknown: "cross-env -unknown-flag vp fmt",
           },
         }),
       );
       const planCrossEnvUnknown = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvUnknown.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 6. cross-env with missing command after environment assignments
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            noCommand: "cross-env NODE_ENV=production",
+          },
+        }),
+      );
+      const planCrossEnvNoCommand = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvNoCommand.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 7. cross-env running an unrelated command with vp in arguments must not trigger Vite+ detection
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            grepTest: "cross-env NODE_ENV=production grep vp file.txt",
+          },
+        }),
+      );
+      const planCrossEnvGrep = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvGrep.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
       // 5. sh -c
       fs.writeFileSync(

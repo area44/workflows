@@ -749,13 +749,11 @@ export function extractShellWrapperScript(tokens: string[]): string | undefined 
   return undefined;
 }
 
-const CROSS_ENV_OPTIONS_WITH_ARGS = new Set(["-f", "--file", "-c", "--config", "--env-file"]);
-const CROSS_ENV_BOOLEAN_OPTIONS = new Set(["-h", "--help", "-v", "--version", "--shell"]);
-
 /**
  * Unwraps environment wrapper commands like `cross-env` or `cross-env-shell`,
- * correctly parsing options (both flags and options with arguments) and subsequent
- * environment variable assignments to retrieve the target command tokens.
+ * stripping initial environment variable assignments to retrieve the target command tokens.
+ * In accordance with cross-env CLI syntax, cross-env accepts environment variable
+ * setters (`KEY=val`) followed by the command and its arguments.
  */
 export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
   if (tokens.length === 0) return tokens;
@@ -765,54 +763,8 @@ export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
   }
 
   let i = 1;
-  while (i < tokens.length) {
-    const token = tokens[i];
-
-    // Explicit end-of-options delimiter
-    if (token === "--") {
-      i++;
-      break;
-    }
-
-    // Option with inline value (e.g. --file=.env, --config=conf.json)
-    if (
-      token.startsWith("--file=") ||
-      token.startsWith("--config=") ||
-      token.startsWith("--env-file=")
-    ) {
-      i++;
-      continue;
-    }
-
-    // Option with separate argument
-    if (CROSS_ENV_OPTIONS_WITH_ARGS.has(token)) {
-      if (i + 1 >= tokens.length) {
-        // Missing argument for option, fail closed / conservative
-        return [];
-      }
-      i += 2;
-      continue;
-    }
-
-    // Boolean flag option
-    if (CROSS_ENV_BOOLEAN_OPTIONS.has(token)) {
-      i++;
-      continue;
-    }
-
-    // Unrecognized option starting with '-'
-    if (token.startsWith("-")) {
-      // Conservative fail-closed: do not guess if it takes an argument
-      return [];
-    }
-
-    // Environment variable assignment (e.g. NODE_ENV=production)
-    if (isEnvAssignment(token)) {
-      i++;
-      continue;
-    }
-
-    break;
+  while (i < tokens.length && isEnvAssignment(tokens[i])) {
+    i++;
   }
 
   return tokens.slice(i);
