@@ -190,7 +190,7 @@ function splitChainedCommandsDetailed(shellText: string): SplitResult {
   return { commands, hasSyntaxError: state.hasSyntaxError };
 }
 
-function splitChainedCommands(shellText: string): string[] {
+export function splitChainedCommands(shellText: string): string[] {
   return splitChainedCommandsDetailed(shellText).commands;
 }
 
@@ -240,6 +240,7 @@ interface CommandInspection {
   tokens: string[];
   hasUnsupportedSyntax: boolean;
   hasRedirection: boolean;
+  hasSyntaxError: boolean;
 }
 
 function isBackgroundOp(cmd: string, index: number, state: TokenizerState): boolean {
@@ -343,6 +344,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
     tokens: [],
     hasUnsupportedSyntax: false,
     hasRedirection: false,
+    hasSyntaxError: false,
   };
   const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
   const ctx: TokenizeScanContext = { inspection, state };
@@ -368,6 +370,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
 
   if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) {
     inspection.hasUnsupportedSyntax = true;
+    inspection.hasSyntaxError = true;
   }
 
   if (hasCharsInWord) {
@@ -377,7 +380,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
   return inspection;
 }
 
-function tokenizeCommandLine(cmd: string): string[] {
+export function tokenizeCommandLine(cmd: string): string[] {
   return inspectAndTokenizeCommandLine(cmd).tokens;
 }
 
@@ -416,18 +419,33 @@ function matchesPmDelegation(cmdTokens: string[], targetScriptName: string): boo
   return false;
 }
 
-export function parseCommandInvocations(scriptBody: string): string[][] {
-  if (!scriptBody) return [];
-  const commands = splitChainedCommands(scriptBody);
+export interface ParsedCommandInvocations {
+  invocations: string[][];
+  hasSyntaxError: boolean;
+}
+
+export function parseCommandInvocationsDetailed(scriptBody: string): ParsedCommandInvocations {
+  if (!scriptBody) return { invocations: [], hasSyntaxError: false };
+  const splitResult = splitChainedCommandsDetailed(scriptBody);
+  let hasSyntaxError = splitResult.hasSyntaxError;
   const invocations: string[][] = [];
-  for (const cmd of commands) {
-    const rawTokens = tokenizeCommandLine(cmd);
-    const cmdTokens = getCommandInvocationTokens(rawTokens);
+
+  for (const cmd of splitResult.commands) {
+    const inspection = inspectAndTokenizeCommandLine(cmd);
+    if (inspection.hasSyntaxError) {
+      hasSyntaxError = true;
+    }
+    const cmdTokens = getCommandInvocationTokens(inspection.tokens);
     if (cmdTokens.length > 0) {
       invocations.push(cmdTokens);
     }
   }
-  return invocations;
+
+  return { invocations, hasSyntaxError };
+}
+
+export function parseCommandInvocations(scriptBody: string): string[][] {
+  return parseCommandInvocationsDetailed(scriptBody).invocations;
 }
 
 /**
@@ -742,11 +760,93 @@ function extractDelegatedTarget(tokens: string[]): string | undefined {
   return undefined;
 }
 
-function extractShellWrapperScript(tokens: string[]): string | undefined {
+export function extractShellWrapperScript(tokens: string[]): string | undefined {
   if (tokens.length >= 3 && (tokens[0] === "sh" || tokens[0] === "bash") && tokens[1] === "-c") {
     return tokens[2];
   }
   return undefined;
+}
+
+/**
+ * Unwraps environment wrapper commands like `cross-env` or `cross-env-shell`,
+ * stripping initial environment variable assignments to retrieve the target command tokens.
+ * In accordance with cross-env CLI syntax, cross-env accepts environment variable
+ * setters (`KEY=val`) followed by the command and its arguments.
+ */
+export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
+  if (tokens.length === 0) return tokens;
+  const [exe] = tokens;
+  if (exe !== "cross-env" && exe !== "cross-env-shell") {
+    return tokens;
+  }
+
+  let i = 1;
+  while (i < tokens.length && isEnvAssignment(tokens[i])) {
+    i++;
+  }
+
+  return tokens.slice(i);
+}
+
+/**
+ * Checks whether an invocation (or nested wrapped invocations) executes the `vp` command.
+ * Supports direct invocations, environment wrappers (cross-env), shell wrappers (sh -c, bash -c),
+ * package-manager execution wrappers (npx, bunx, pnpm exec, etc.), and script delegations.
+ */
+export function hasVitePlusCommand(
+  scriptBody: string,
+  scripts: Record<string, string> = {},
+  activePath: Set<string> = new Set(),
+): boolean {
+  if (!scriptBody) return false;
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(scriptBody);
+  if (hasSyntaxError) {
+    return false;
+  }
+
+  for (const rawTokens of invocations) {
+    const tokens = unwrapEnvironmentWrapper(rawTokens);
+    if (tokens.length === 0) continue;
+
+    if (tokens[0] === "vp") {
+      return true;
+    }
+
+    // Package-manager runner wrappers: npx vp, bunx vp, pnpm dlx vp, yarn dlx vp, npm exec vp, pnpm exec vp
+    if ((tokens[0] === "npx" || tokens[0] === "bunx") && tokens[1] === "vp") {
+      return true;
+    }
+    if (
+      (tokens[0] === "npm" || tokens[0] === "pnpm" || tokens[0] === "yarn") &&
+      (tokens[1] === "exec" || tokens[1] === "dlx") &&
+      tokens[2] === "vp"
+    ) {
+      return true;
+    }
+
+    // Shell wrappers: sh -c "...", bash -c "..."
+    const wrapped = extractShellWrapperScript(tokens);
+    if (wrapped !== undefined) {
+      if (hasVitePlusCommand(wrapped, scripts, activePath)) {
+        return true;
+      }
+    }
+
+    // Package-manager script delegation
+    const target = extractDelegatedTarget(tokens);
+    if (target && !activePath.has(target) && scripts[target]) {
+      activePath.add(target);
+      try {
+        if (hasVitePlusCommand(scripts[target], scripts, activePath)) {
+          return true;
+        }
+      } finally {
+        activePath.delete(target);
+      }
+    }
+  }
+
+  return false;
 }
 
 function isKnownWriteCommand(tokens: string[]): boolean {

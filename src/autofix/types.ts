@@ -38,6 +38,14 @@ export interface ToolAdapter {
   id: string;
   name: string;
   capabilities: readonly Capability[];
+  /**
+   * Conflict domain scope for capability deduplication and conflict resolution.
+   * - For provider adapters, defaults to `provider.id` (e.g. "javascript", "python").
+   * - For standalone adapters, can explicitly match a provider id (e.g. "javascript")
+   *   or another shared scope name to resolve genuine conflicts within that domain.
+   *   When omitted, defaults to an isolated per-adapter scope (`standalone:${id}`).
+   */
+  scope?: string;
 
   detect(context: ProjectContext): Promise<AdapterDetectionResult> | AdapterDetectionResult;
 

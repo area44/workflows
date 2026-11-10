@@ -11,6 +11,14 @@ import type {
 } from "../../types.js";
 
 import { hasVitePlusDependency, type JsPackageManifest } from "../../../javascript-env.js";
+import { hasVitePlusCommand } from "./script-adapter.js";
+
+function hasVitePlusScript(scripts?: Record<string, string>): boolean {
+  if (!scripts) return false;
+  return Object.values(scripts).some((scriptBody) => {
+    return hasVitePlusCommand(scriptBody, scripts);
+  });
+}
 
 function hasDependency(pkg: JsPackageManifest | undefined, depName: string): boolean {
   if (!pkg) return false;
@@ -47,10 +55,7 @@ export class VitePlusAdapter implements ToolAdapter {
       "vite.config.cjs",
     ]);
 
-    if (
-      hasDep ||
-      (hasConfig && pkg?.scripts && Object.values(pkg.scripts).some((s) => s.includes("vp ")))
-    ) {
+    if (hasDep || (hasConfig && hasVitePlusScript(pkg?.scripts))) {
       return { detected: true, reason: "Vite+ dependency and/or configuration detected" };
     }
     return { detected: false, reason: "no Vite+ dependency or configuration" };

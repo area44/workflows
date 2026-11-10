@@ -1668,6 +1668,707 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
+  describe("Vite+ Detection & False-Positive Prevention", () => {
+    it("detects Vite+ when package script invokes vp command directly", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt: "vp fmt",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      // Script fmt runs, and VitePlusAdapter is detected (and fmt script covers format)
+      expect(plan.selectedTools.map((t) => t.id)).toContain("vite-plus");
+    });
+
+    it("detects Vite+ when package script invokes vp in chained command or with env prefix", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            build: "echo ready && vp build",
+            check: "NODE_ENV=production vp check",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.selectedTools.map((t) => t.id)).toContain("vite-plus");
+      expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-fmt");
+      expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-lint-fix");
+    });
+
+    it("detects Vite+ through command wrappers: cross-env, sh -c, bash -c, and runner wrappers", async () => {
+      // 1. cross-env
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "cross-env NODE_ENV=production vp fmt",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const planCrossEnv = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnv.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 2. cross-env-shell
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "cross-env-shell NODE_ENV=production vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvShell = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvShell.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 3. cross-env with multiple environment variable assignments
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatMultipleEnv: "cross-env CI=true NODE_ENV=production vp lint",
+          },
+        }),
+      );
+      const planCrossEnvMultiple = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvMultiple.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 4. cross-env delegating to a script that invokes vp
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatDelegated: "cross-env NODE_ENV=production npm run format:vp",
+            "format:vp": "vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvDelegated = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvDelegated.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 5. unsupported options or flags must not be treated as valid and must not cause false-positive Vite+ detection
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatShort: "cross-env -f .env vp fmt",
+            formatLong: "cross-env --file .env vp fmt",
+            formatUnknown: "cross-env -unknown-flag vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvUnknown = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvUnknown.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 6. cross-env with missing command after environment assignments
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            noCommand: "cross-env NODE_ENV=production",
+          },
+        }),
+      );
+      const planCrossEnvNoCommand = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvNoCommand.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 7. cross-env running an unrelated command with vp in arguments must not trigger Vite+ detection
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            grepTest: "cross-env NODE_ENV=production grep vp file.txt",
+          },
+        }),
+      );
+      const planCrossEnvGrep = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvGrep.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 5. sh -c
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            check: "sh -c 'vp check'",
+          },
+        }),
+      );
+      const planSh = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planSh.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 6. bash -c
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt: "bash -c 'vp fmt'",
+          },
+        }),
+      );
+      const planBash = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planBash.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 7. npx vp / bunx vp / pnpm exec vp
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt1: "npx vp fmt",
+            fmt2: "bunx vp fmt",
+            fmt3: "pnpm exec vp fmt",
+          },
+        }),
+      );
+      const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planRunners.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 8. script delegation invoking vp
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            all: "npm run vp-task",
+            "vp-task": "vp fmt",
+          },
+        }),
+      );
+      const planDelegation = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planDelegation.selectedTools.map((t) => t.id)).toContain("vite-plus");
+    });
+
+    it("prevents false positive when 'vp ' only appears inside echo or descriptive string", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            help: 'echo "vp is not installed"',
+            info: 'echo "run vp fmt later"',
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+      expect(plan.tasks.map((t) => t.id)).not.toContain("vite-plus-fmt");
+      expect(plan.tasks.map((t) => t.id)).not.toContain("vite-plus-lint-fix");
+    });
+
+    it("prevents false positive when 'vp ' only appears in a comment", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            test: "node test.js # vp fmt",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+    });
+
+    it("prevents false positive when 'vp' appears as an argument to an unrelated command", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            search: "grep vp file.txt",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+    });
+
+    it("prevents false positive when project has vite.config.ts but scripts do not invoke vp", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            build: "vite build",
+            test: "vitest run",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+    });
+
+    it("rejects malformed commands with confirmed shell syntax errors during Vite+ detection", async () => {
+      // 1. Unterminated single quote
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken1: "vp fmt 'unterminated",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const planSingle = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planSingle.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 2. Unterminated double quote
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken2: 'vp fmt "unterminated',
+          },
+        }),
+      );
+      const planDouble = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planDouble.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 3. Command ending with an incomplete trailing escape \
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken3: "vp fmt \\",
+          },
+        }),
+      );
+      const planEscape = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planEscape.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 4. Malformed nested shell-wrapper invocation (unterminated quote in sh -c argument)
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken4: "sh -c 'vp check",
+          },
+        }),
+      );
+      const planMalformedSh = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planMalformedSh.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 5. Malformed nested shell-wrapper invocation (unterminated quote inside wrapped script)
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken5: 'bash -c "vp fmt \'unterminated"',
+          },
+        }),
+      );
+      const planMalformedBash = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planMalformedBash.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 6. Malformed command containing vp in argument position
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken6: "grep 'unterminated vp",
+          },
+        }),
+      );
+      const planGrepMalformed = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planGrepMalformed.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+    });
+  });
+
+  describe("Multi-Language Monorepo Capability Isolation", () => {
+    it("preserves independent tasks for Python (Ruff) and JavaScript (Prettier/ESLint) without mutual suppression", async () => {
+      // Python source file
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+
+      // JS configuration with prettier and eslint
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir, hasPythonSource: true }, "fix");
+
+      // Verify Python tasks are scheduled (Ruff lint and format)
+      expect(plan.tasks.some((t) => t.id === "ruff-lint-fix")).toBe(true);
+      expect(plan.tasks.some((t) => t.id === "ruff-format")).toBe(true);
+
+      // Verify JavaScript tasks are NOT suppressed by Python's lint/format capabilities
+      expect(plan.tasks.some((t) => t.id === "script-format:write")).toBe(true);
+      expect(plan.tasks.some((t) => t.id === "script-lint:fix")).toBe(true);
+
+      // Verify plan contains all 4 tasks
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "ruff-lint-fix",
+        "ruff-format",
+        "script-format:write",
+        "script-lint:fix",
+      ]);
+
+      // Summary contains both Python and JavaScript toolchains
+      expect(plan.summary).toContain("Python toolchain:");
+      expect(plan.summary).toContain("Ruff: default tool");
+      expect(plan.summary).toContain("JavaScript toolchain:");
+    });
+  });
+
+  describe("Standalone Adapter Conflict Resolution", () => {
+    it("skips a standalone adapter task when its capability is already covered by a regular adapter in the same scope", async () => {
+      const registry = createDefaultRegistry();
+
+      class StandaloneFormatAdapter implements ToolAdapter {
+        id = "standalone-fmt";
+        name = "Standalone Formatter";
+        capabilities: ["format"] = ["format"];
+        scope = "javascript";
+        detect() {
+          return { detected: true, reason: "standalone formatter config detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-fmt-task",
+              toolId: this.id,
+              capability: "format",
+              executable: "standalone-fmt",
+              args: ["."],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      registry.registerAdapter(new StandaloneFormatAdapter());
+
+      // Configure explicit script covering format
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+          },
+        }),
+      );
+
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.tasks.map((t) => t.id)).toEqual(["script-format:write"]);
+      expect(plan.skippedTools).toContainEqual(
+        expect.objectContaining({
+          id: "standalone-fmt",
+          reason: "all capabilities already covered by higher priority tool",
+        }),
+      );
+    });
+
+    it("skips a lower-priority adapter when a higher-priority standalone adapter ran first and covered the capability in the same scope", async () => {
+      const customRegistry = new AutofixRegistry();
+
+      class StandaloneFormatAdapter implements ToolAdapter {
+        id = "standalone-fmt";
+        name = "Standalone Formatter";
+        capabilities: ["format"] = ["format"];
+        scope = "custom-format-scope";
+        detect() {
+          return { detected: true, reason: "standalone formatter config detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-fmt-task",
+              toolId: this.id,
+              capability: "format",
+              executable: "standalone-fmt",
+              args: ["."],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      // Test two standalone adapters sharing the same scope where first standalone adapter conflicts with second standalone adapter:
+      class SecondStandaloneFormatAdapter implements ToolAdapter {
+        id = "second-fmt";
+        name = "Second Formatter";
+        capabilities: ["format"] = ["format"];
+        scope = "custom-format-scope";
+        detect() {
+          return { detected: true, reason: "second formatter config detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "second-fmt-task",
+              toolId: this.id,
+              capability: "format",
+              executable: "second-fmt",
+              args: ["."],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      customRegistry.registerAdapter(new StandaloneFormatAdapter());
+      customRegistry.registerAdapter(new SecondStandaloneFormatAdapter());
+
+      const plan = await planExecution(customRegistry, { cwd: tempDir }, "fix");
+      expect(plan.tasks.map((t) => t.id)).toEqual(["standalone-fmt-task"]);
+      expect(plan.skippedTools).toContainEqual(
+        expect.objectContaining({
+          id: "second-fmt",
+          reason: "all capabilities already covered by higher priority tool",
+        }),
+      );
+    });
+
+    it("retains tasks when standalone and regular adapters produce independent capabilities", async () => {
+      const registry = createDefaultRegistry();
+
+      class StandaloneTypecheckAdapter implements ToolAdapter {
+        id = "standalone-typecheck";
+        name = "Standalone Typechecker";
+        capabilities: ["typecheck"] = ["typecheck"];
+        detect() {
+          return { detected: true, reason: "typecheck config detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-typecheck-task",
+              toolId: this.id,
+              capability: "typecheck",
+              executable: "tsc",
+              args: ["--noEmit"],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      registry.registerAdapter(new StandaloneTypecheckAdapter());
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+          },
+        }),
+      );
+
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "script-format:write",
+        "standalone-typecheck-task",
+      ]);
+      expect(plan.selectedTools.map((t) => t.id)).toContain("standalone-typecheck");
+    });
+
+    it("partially skips overlapping capabilities between standalone and regular adapters in the same scope", async () => {
+      const registry = createDefaultRegistry();
+
+      class StandaloneMultiToolAdapter implements ToolAdapter {
+        id = "standalone-multi";
+        name = "Standalone Multi Tool";
+        capabilities: ["format", "assist"] = ["format", "assist"];
+        scope = "javascript";
+        detect() {
+          return { detected: true, reason: "multi tool config detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-multi-fmt",
+              toolId: this.id,
+              capability: "format",
+              executable: "standalone-multi",
+              args: ["fmt"],
+              cwd: ctx.cwd,
+              mode,
+            },
+            {
+              id: "standalone-multi-assist",
+              toolId: this.id,
+              capability: "assist",
+              executable: "standalone-multi",
+              args: ["assist"],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      registry.registerAdapter(new StandaloneMultiToolAdapter());
+
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+          },
+        }),
+      );
+
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "script-format:write",
+        "standalone-multi-assist",
+      ]);
+      expect(plan.skippedTools).toContainEqual(
+        expect.objectContaining({
+          id: "standalone-multi",
+          reason: "partially skipped (format covered by higher priority tool)",
+        }),
+      );
+    });
+
+    it("preserves task ID deduplication behavior", async () => {
+      const customRegistry = new AutofixRegistry();
+
+      class StandaloneAdapter1 implements ToolAdapter {
+        id = "adapter-1";
+        name = "Adapter 1";
+        capabilities: ["typecheck"] = ["typecheck"];
+        detect() {
+          return { detected: true, reason: "adapter 1 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "shared-task-id",
+              toolId: this.id,
+              capability: "typecheck",
+              executable: "check-1",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      class StandaloneAdapter2 implements ToolAdapter {
+        id = "adapter-2";
+        name = "Adapter 2";
+        capabilities: ["assist"] = ["assist"];
+        detect() {
+          return { detected: true, reason: "adapter 2 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "shared-task-id",
+              toolId: this.id,
+              capability: "assist",
+              executable: "check-2",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      customRegistry.registerAdapter(new StandaloneAdapter1());
+      customRegistry.registerAdapter(new StandaloneAdapter2());
+
+      const plan = await planExecution(customRegistry, { cwd: tempDir }, "fix");
+      // Even though capabilities are independent (typecheck vs assist), task IDs are identical, so second is deduplicated
+      expect(plan.tasks).toHaveLength(1);
+      expect(plan.tasks[0].executable).toBe("check-1");
+    });
+
+    it("ensures standalone adapters without explicit scope do not conflict with each other or provider adapters", async () => {
+      const customRegistry = new AutofixRegistry();
+
+      // Standalone format adapter with default scope
+      class StandaloneDefault1 implements ToolAdapter {
+        id = "default-standalone-1";
+        name = "Default Standalone 1";
+        capabilities: ["format"] = ["format"];
+        detect() {
+          return { detected: true, reason: "default standalone 1 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "default-standalone-1-fmt",
+              toolId: this.id,
+              capability: "format",
+              executable: "fmt-1",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      // Standalone format adapter with default scope
+      class StandaloneDefault2 implements ToolAdapter {
+        id = "default-standalone-2";
+        name = "Default Standalone 2";
+        capabilities: ["format"] = ["format"];
+        detect() {
+          return { detected: true, reason: "default standalone 2 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "default-standalone-2-fmt",
+              toolId: this.id,
+              capability: "format",
+              executable: "fmt-2",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      customRegistry.registerAdapter(new StandaloneDefault1());
+      customRegistry.registerAdapter(new StandaloneDefault2());
+
+      const plan = await planExecution(customRegistry, { cwd: tempDir }, "fix");
+      // Both default standalone adapters have independent default scopes (standalone:default-standalone-1 and standalone:default-standalone-2),
+      // so neither suppresses the other!
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "default-standalone-1-fmt",
+        "default-standalone-2-fmt",
+      ]);
+    });
+  });
+
   describe("Registry Extensibility", () => {
     it("resolves project binaries and Windows executable shims cleanly", async () => {
       const binDir = path.join(tempDir, "node_modules", ".bin");
