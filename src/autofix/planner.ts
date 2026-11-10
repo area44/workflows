@@ -14,6 +14,7 @@ import { hasPythonSource } from "../python-env.js";
 interface CandidateTool {
   adapter: ToolAdapter;
   reason?: string;
+  scope: string;
 }
 
 function isTaskCapabilityCovered(
@@ -54,9 +55,21 @@ function filterCandidateTasks(
   return { kept, skipped };
 }
 
+function getOrCreateScopeCapabilities(
+  coveredCapabilitiesByScope: Map<string, Set<Capability>>,
+  scope: string,
+): Set<Capability> {
+  let caps = coveredCapabilitiesByScope.get(scope);
+  if (!caps) {
+    caps = new Set<Capability>();
+    coveredCapabilitiesByScope.set(scope, caps);
+  }
+  return caps;
+}
+
 async function processCandidateTools(
   candidateTools: CandidateTool[],
-  providerCapabilities: Set<Capability>,
+  coveredCapabilitiesByScope: Map<string, Set<Capability>>,
   context: ProjectContext,
   mode: ExecutionMode,
   selectedTools: Array<{ id: string; name: string; reason?: string }>,
@@ -65,13 +78,17 @@ async function processCandidateTools(
 ): Promise<void> {
   for (const candidate of candidateTools) {
     const adapter = candidate.adapter;
+    const scopeCapabilities = getOrCreateScopeCapabilities(
+      coveredCapabilitiesByScope,
+      candidate.scope,
+    );
     const plannedTasks = await adapter.plan(context, mode);
 
     if (plannedTasks.length === 0) {
       continue;
     }
 
-    const { kept, skipped } = filterCandidateTasks(plannedTasks, providerCapabilities);
+    const { kept, skipped } = filterCandidateTasks(plannedTasks, scopeCapabilities);
 
     if (kept.length === 0) {
       skippedTools.push({
@@ -84,10 +101,10 @@ async function processCandidateTools(
 
     selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
     for (const task of kept) {
-      providerCapabilities.add(task.capability);
+      scopeCapabilities.add(task.capability);
       if (task.capabilities) {
         for (const cap of task.capabilities) {
-          providerCapabilities.add(cap);
+          scopeCapabilities.add(cap);
         }
       }
     }
@@ -106,7 +123,7 @@ async function processCandidateTools(
 
 async function processStandaloneAdapters(
   registry: AutofixRegistry,
-  coveredCapabilities: Set<Capability>,
+  coveredCapabilitiesByScope: Map<string, Set<Capability>>,
   context: ProjectContext,
   mode: ExecutionMode,
   selectedTools: Array<{ id: string; name: string; reason?: string }>,
@@ -116,8 +133,9 @@ async function processStandaloneAdapters(
   const candidateTools: CandidateTool[] = [];
   for (const adapter of registry.getStandaloneAdapters()) {
     const result = await adapter.detect(context);
+    const scope = adapter.scope ?? "standalone";
     if (result.detected) {
-      candidateTools.push({ adapter, reason: result.reason });
+      candidateTools.push({ adapter, reason: result.reason, scope });
     } else if (result.reason && !result.reason.startsWith("no ")) {
       skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
     }
@@ -125,7 +143,7 @@ async function processStandaloneAdapters(
 
   await processCandidateTools(
     candidateTools,
-    coveredCapabilities,
+    coveredCapabilitiesByScope,
     context,
     mode,
     selectedTools,
@@ -174,7 +192,7 @@ export async function planExecution(
   const tasks: ExecutionTask[] = [];
 
   const providers = registry.getProviders();
-  const coveredCapabilities = new Set<Capability>();
+  const coveredCapabilitiesByScope = new Map<string, Set<Capability>>();
 
   for (const provider of providers) {
     const isDetected = await provider.detect(effectiveContext);
@@ -188,8 +206,9 @@ export async function planExecution(
     // Detect tools
     for (const adapter of adapters) {
       const result = await adapter.detect(effectiveContext);
+      const scope = adapter.scope ?? provider.id;
       if (result.detected) {
-        candidateTools.push({ adapter, reason: result.reason });
+        candidateTools.push({ adapter, reason: result.reason, scope });
       } else if (result.reason && !result.reason.startsWith("no ")) {
         skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
       }
@@ -197,7 +216,7 @@ export async function planExecution(
 
     await processCandidateTools(
       candidateTools,
-      coveredCapabilities,
+      coveredCapabilitiesByScope,
       effectiveContext,
       mode,
       selectedTools,
@@ -208,7 +227,7 @@ export async function planExecution(
 
   await processStandaloneAdapters(
     registry,
-    coveredCapabilities,
+    coveredCapabilitiesByScope,
     effectiveContext,
     mode,
     selectedTools,

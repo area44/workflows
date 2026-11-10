@@ -11,13 +11,12 @@ import type {
 } from "../../types.js";
 
 import { hasVitePlusDependency, type JsPackageManifest } from "../../../javascript-env.js";
-import { parseCommandInvocations } from "./script-adapter.js";
+import { hasVitePlusCommand } from "./script-adapter.js";
 
 function hasVitePlusScript(scripts?: Record<string, string>): boolean {
   if (!scripts) return false;
   return Object.values(scripts).some((scriptBody) => {
-    const invocations = parseCommandInvocations(scriptBody);
-    return invocations.some((tokens) => tokens[0] === "vp");
+    return hasVitePlusCommand(scriptBody, scripts);
   });
 }
 

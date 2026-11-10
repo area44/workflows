@@ -1705,12 +1705,93 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-lint-fix");
     });
 
+    it("detects Vite+ through command wrappers: cross-env, sh -c, bash -c, and runner wrappers", async () => {
+      // 1. cross-env
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "cross-env NODE_ENV=production vp fmt",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const planCrossEnv = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnv.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 2. cross-env-shell
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            format: "cross-env-shell NODE_ENV=production vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvShell = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvShell.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 3. sh -c
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            check: "sh -c 'vp check'",
+          },
+        }),
+      );
+      const planSh = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planSh.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 4. bash -c
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt: "bash -c 'vp fmt'",
+          },
+        }),
+      );
+      const planBash = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planBash.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 5. npx vp / bunx vp / pnpm exec vp
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt1: "npx vp fmt",
+            fmt2: "bunx vp fmt",
+            fmt3: "pnpm exec vp fmt",
+          },
+        }),
+      );
+      const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planRunners.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 6. script delegation invoking vp
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            all: "npm run vp-task",
+            "vp-task": "vp fmt",
+          },
+        }),
+      );
+      const planDelegation = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planDelegation.selectedTools.map((t) => t.id)).toContain("vite-plus");
+    });
+
     it("prevents false positive when 'vp ' only appears inside echo or descriptive string", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
           scripts: {
             help: 'echo "vp is not installed"',
+            info: 'echo "run vp fmt later"',
           },
         }),
       );
@@ -1773,14 +1854,57 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
+  describe("Multi-Language Monorepo Capability Isolation", () => {
+    it("preserves independent tasks for Python (Ruff) and JavaScript (Prettier/ESLint) without mutual suppression", async () => {
+      // Python source file
+      fs.writeFileSync(path.join(tempDir, "app.py"), "print('hello')\n");
+
+      // JS configuration with prettier and eslint
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir, hasPythonSource: true }, "fix");
+
+      // Verify Python tasks are scheduled (Ruff lint and format)
+      expect(plan.tasks.some((t) => t.id === "ruff-lint-fix")).toBe(true);
+      expect(plan.tasks.some((t) => t.id === "ruff-format")).toBe(true);
+
+      // Verify JavaScript tasks are NOT suppressed by Python's lint/format capabilities
+      expect(plan.tasks.some((t) => t.id === "script-format:write")).toBe(true);
+      expect(plan.tasks.some((t) => t.id === "script-lint:fix")).toBe(true);
+
+      // Verify plan contains all 4 tasks
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "ruff-lint-fix",
+        "ruff-format",
+        "script-format:write",
+        "script-lint:fix",
+      ]);
+
+      // Summary contains both Python and JavaScript toolchains
+      expect(plan.summary).toContain("Python toolchain:");
+      expect(plan.summary).toContain("Ruff: default tool");
+      expect(plan.summary).toContain("JavaScript toolchain:");
+    });
+  });
+
   describe("Standalone Adapter Conflict Resolution", () => {
-    it("skips a standalone adapter task when its capability is already covered by a regular adapter", async () => {
+    it("skips a standalone adapter task when its capability is already covered by a regular adapter in the same scope", async () => {
       const registry = createDefaultRegistry();
 
       class StandaloneFormatAdapter implements ToolAdapter {
         id = "standalone-fmt";
         name = "Standalone Formatter";
         capabilities: ["format"] = ["format"];
+        scope = "javascript";
         detect() {
           return { detected: true, reason: "standalone formatter config detected" };
         }
@@ -1926,13 +2050,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(plan.selectedTools.map((t) => t.id)).toContain("standalone-typecheck");
     });
 
-    it("partially skips overlapping capabilities between standalone and regular adapters", async () => {
+    it("partially skips overlapping capabilities between standalone and regular adapters in the same scope", async () => {
       const registry = createDefaultRegistry();
 
       class StandaloneMultiToolAdapter implements ToolAdapter {
         id = "standalone-multi";
         name = "Standalone Multi Tool";
         capabilities: ["format", "assist"] = ["format", "assist"];
+        scope = "javascript";
         detect() {
           return { detected: true, reason: "multi tool config detected" };
         }

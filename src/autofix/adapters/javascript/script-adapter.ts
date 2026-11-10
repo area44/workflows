@@ -742,11 +742,97 @@ function extractDelegatedTarget(tokens: string[]): string | undefined {
   return undefined;
 }
 
-function extractShellWrapperScript(tokens: string[]): string | undefined {
+export function extractShellWrapperScript(tokens: string[]): string | undefined {
   if (tokens.length >= 3 && (tokens[0] === "sh" || tokens[0] === "bash") && tokens[1] === "-c") {
     return tokens[2];
   }
   return undefined;
+}
+
+/**
+ * Unwraps environment wrapper commands like `cross-env` or `cross-env-shell`,
+ * stripping initial flags and subsequent environment variable assignments
+ * to retrieve the target command tokens.
+ */
+export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
+  if (tokens.length === 0) return tokens;
+  const [exe] = tokens;
+  if (exe !== "cross-env" && exe !== "cross-env-shell") {
+    return tokens;
+  }
+
+  let i = 1;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (token.startsWith("-")) {
+      i++;
+      continue;
+    }
+    if (isEnvAssignment(token)) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return tokens.slice(i);
+}
+
+/**
+ * Checks whether an invocation (or nested wrapped invocations) executes the `vp` command.
+ * Supports direct invocations, environment wrappers (cross-env), shell wrappers (sh -c, bash -c),
+ * package-manager execution wrappers (npx, bunx, pnpm exec, etc.), and script delegations.
+ */
+export function hasVitePlusCommand(
+  scriptBody: string,
+  scripts: Record<string, string> = {},
+  activePath: Set<string> = new Set(),
+): boolean {
+  if (!scriptBody) return false;
+  const invocations = parseCommandInvocations(scriptBody);
+
+  for (const rawTokens of invocations) {
+    const tokens = unwrapEnvironmentWrapper(rawTokens);
+    if (tokens.length === 0) continue;
+
+    if (tokens[0] === "vp") {
+      return true;
+    }
+
+    // Package-manager runner wrappers: npx vp, bunx vp, pnpm dlx vp, yarn dlx vp, npm exec vp, pnpm exec vp
+    if ((tokens[0] === "npx" || tokens[0] === "bunx") && tokens[1] === "vp") {
+      return true;
+    }
+    if (
+      (tokens[0] === "npm" || tokens[0] === "pnpm" || tokens[0] === "yarn") &&
+      (tokens[1] === "exec" || tokens[1] === "dlx") &&
+      tokens[2] === "vp"
+    ) {
+      return true;
+    }
+
+    // Shell wrappers: sh -c "...", bash -c "..."
+    const wrapped = extractShellWrapperScript(tokens);
+    if (wrapped !== undefined) {
+      if (hasVitePlusCommand(wrapped, scripts, activePath)) {
+        return true;
+      }
+    }
+
+    // Package-manager script delegation
+    const target = extractDelegatedTarget(tokens);
+    if (target && !activePath.has(target) && scripts[target]) {
+      activePath.add(target);
+      try {
+        if (hasVitePlusCommand(scripts[target], scripts, activePath)) {
+          return true;
+        }
+      } finally {
+        activePath.delete(target);
+      }
+    }
+  }
+
+  return false;
 }
 
 function isKnownWriteCommand(tokens: string[]): boolean {

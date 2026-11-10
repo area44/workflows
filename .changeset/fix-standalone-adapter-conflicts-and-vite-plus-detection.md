@@ -2,4 +2,4 @@
 "@area44/workflows": patch
 ---
 
-Fix standalone adapter capability conflict resolution and prevent false-positive Vite+ detection.
+Fix provider capability isolation in multi-language monorepos and support wrapped Vite+ command detection.

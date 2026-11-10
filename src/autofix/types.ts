@@ -38,6 +38,7 @@ export interface ToolAdapter {
   id: string;
   name: string;
   capabilities: readonly Capability[];
+  scope?: string;
 
   detect(context: ProjectContext): Promise<AdapterDetectionResult> | AdapterDetectionResult;
 
