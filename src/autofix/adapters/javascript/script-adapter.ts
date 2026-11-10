@@ -190,7 +190,7 @@ function splitChainedCommandsDetailed(shellText: string): SplitResult {
   return { commands, hasSyntaxError: state.hasSyntaxError };
 }
 
-function splitChainedCommands(shellText: string): string[] {
+export function splitChainedCommands(shellText: string): string[] {
   return splitChainedCommandsDetailed(shellText).commands;
 }
 
@@ -240,6 +240,7 @@ interface CommandInspection {
   tokens: string[];
   hasUnsupportedSyntax: boolean;
   hasRedirection: boolean;
+  hasSyntaxError: boolean;
 }
 
 function isBackgroundOp(cmd: string, index: number, state: TokenizerState): boolean {
@@ -343,6 +344,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
     tokens: [],
     hasUnsupportedSyntax: false,
     hasRedirection: false,
+    hasSyntaxError: false,
   };
   const state: TokenizerState = { inSingleQuote: false, inDoubleQuote: false, isEscaped: false };
   const ctx: TokenizeScanContext = { inspection, state };
@@ -368,6 +370,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
 
   if (state.inSingleQuote || state.inDoubleQuote || state.isEscaped) {
     inspection.hasUnsupportedSyntax = true;
+    inspection.hasSyntaxError = true;
   }
 
   if (hasCharsInWord) {
@@ -377,7 +380,7 @@ function inspectAndTokenizeCommandLine(cmd: string): CommandInspection {
   return inspection;
 }
 
-function tokenizeCommandLine(cmd: string): string[] {
+export function tokenizeCommandLine(cmd: string): string[] {
   return inspectAndTokenizeCommandLine(cmd).tokens;
 }
 
@@ -416,18 +419,33 @@ function matchesPmDelegation(cmdTokens: string[], targetScriptName: string): boo
   return false;
 }
 
-export function parseCommandInvocations(scriptBody: string): string[][] {
-  if (!scriptBody) return [];
-  const commands = splitChainedCommands(scriptBody);
+export interface ParsedCommandInvocations {
+  invocations: string[][];
+  hasSyntaxError: boolean;
+}
+
+export function parseCommandInvocationsDetailed(scriptBody: string): ParsedCommandInvocations {
+  if (!scriptBody) return { invocations: [], hasSyntaxError: false };
+  const splitResult = splitChainedCommandsDetailed(scriptBody);
+  let hasSyntaxError = splitResult.hasSyntaxError;
   const invocations: string[][] = [];
-  for (const cmd of commands) {
-    const rawTokens = tokenizeCommandLine(cmd);
-    const cmdTokens = getCommandInvocationTokens(rawTokens);
+
+  for (const cmd of splitResult.commands) {
+    const inspection = inspectAndTokenizeCommandLine(cmd);
+    if (inspection.hasSyntaxError) {
+      hasSyntaxError = true;
+    }
+    const cmdTokens = getCommandInvocationTokens(inspection.tokens);
     if (cmdTokens.length > 0) {
       invocations.push(cmdTokens);
     }
   }
-  return invocations;
+
+  return { invocations, hasSyntaxError };
+}
+
+export function parseCommandInvocations(scriptBody: string): string[][] {
+  return parseCommandInvocationsDetailed(scriptBody).invocations;
 }
 
 /**
@@ -781,7 +799,10 @@ export function hasVitePlusCommand(
   activePath: Set<string> = new Set(),
 ): boolean {
   if (!scriptBody) return false;
-  const invocations = parseCommandInvocations(scriptBody);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(scriptBody);
+  if (hasSyntaxError) {
+    return false;
+  }
 
   for (const rawTokens of invocations) {
     const tokens = unwrapEnvironmentWrapper(rawTokens);

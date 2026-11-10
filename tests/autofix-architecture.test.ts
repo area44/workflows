@@ -1915,6 +1915,83 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const plan = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(plan.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
     });
+
+    it("rejects malformed commands with confirmed shell syntax errors during Vite+ detection", async () => {
+      // 1. Unterminated single quote
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken1: "vp fmt 'unterminated",
+          },
+        }),
+      );
+      fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+      const registry = createDefaultRegistry();
+      const planSingle = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planSingle.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 2. Unterminated double quote
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken2: 'vp fmt "unterminated',
+          },
+        }),
+      );
+      const planDouble = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planDouble.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 3. Command ending with an incomplete trailing escape \
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken3: "vp fmt \\",
+          },
+        }),
+      );
+      const planEscape = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planEscape.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 4. Malformed nested shell-wrapper invocation (unterminated quote in sh -c argument)
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken4: "sh -c 'vp check",
+          },
+        }),
+      );
+      const planMalformedSh = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planMalformedSh.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 5. Malformed nested shell-wrapper invocation (unterminated quote inside wrapped script)
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken5: 'bash -c "vp fmt \'unterminated"',
+          },
+        }),
+      );
+      const planMalformedBash = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planMalformedBash.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 6. Malformed command containing vp in argument position
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            broken6: "grep 'unterminated vp",
+          },
+        }),
+      );
+      const planGrepMalformed = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planGrepMalformed.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+    });
   });
 
   describe("Multi-Language Monorepo Capability Isolation", () => {
