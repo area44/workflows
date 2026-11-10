@@ -1733,7 +1733,36 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvShell = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvShell.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 3. sh -c
+      // 3. cross-env with options that consume arguments (-f, --file, -c, --config)
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatArgShort: "cross-env -f .env vp fmt",
+            formatArgLong: "cross-env --file .env vp fmt",
+            formatInline: "cross-env --file=.env vp fmt",
+            formatConfig: "cross-env -c config.json vp fmt",
+            formatMultipleEnv: "cross-env NODE_ENV=production CI=true vp lint",
+            formatDelimiter: "cross-env -- NODE_ENV=production vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvOptions = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvOptions.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 4. unrecognized cross-env option fails closed and does not trigger false positive
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            formatBad: "cross-env -unknown-flag vp fmt",
+          },
+        }),
+      );
+      const planCrossEnvUnknown = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planCrossEnvUnknown.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // 5. sh -c
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1745,7 +1774,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planSh = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planSh.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 4. bash -c
+      // 6. bash -c
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1757,7 +1786,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planBash = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planBash.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 5. npx vp / bunx vp / pnpm exec vp
+      // 7. npx vp / bunx vp / pnpm exec vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1771,7 +1800,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planRunners.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 6. script delegation invoking vp
+      // 8. script delegation invoking vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1945,13 +1974,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
     });
 
-    it("skips a lower-priority adapter when a higher-priority standalone adapter ran first and covered the capability", async () => {
+    it("skips a lower-priority adapter when a higher-priority standalone adapter ran first and covered the capability in the same scope", async () => {
       const customRegistry = new AutofixRegistry();
 
       class StandaloneFormatAdapter implements ToolAdapter {
         id = "standalone-fmt";
         name = "Standalone Formatter";
         capabilities: ["format"] = ["format"];
+        scope = "custom-format-scope";
         detect() {
           return { detected: true, reason: "standalone formatter config detected" };
         }
@@ -1970,11 +2000,12 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         }
       }
 
-      // Test two standalone adapters where first standalone adapter conflicts with second standalone adapter:
+      // Test two standalone adapters sharing the same scope where first standalone adapter conflicts with second standalone adapter:
       class SecondStandaloneFormatAdapter implements ToolAdapter {
         id = "second-fmt";
         name = "Second Formatter";
         capabilities: ["format"] = ["format"];
+        scope = "custom-format-scope";
         detect() {
           return { detected: true, reason: "second formatter config detected" };
         }
@@ -2163,6 +2194,67 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       // Even though capabilities are independent (typecheck vs assist), task IDs are identical, so second is deduplicated
       expect(plan.tasks).toHaveLength(1);
       expect(plan.tasks[0].executable).toBe("check-1");
+    });
+
+    it("ensures standalone adapters without explicit scope do not conflict with each other or provider adapters", async () => {
+      const customRegistry = new AutofixRegistry();
+
+      // Standalone format adapter with default scope
+      class StandaloneDefault1 implements ToolAdapter {
+        id = "default-standalone-1";
+        name = "Default Standalone 1";
+        capabilities: ["format"] = ["format"];
+        detect() {
+          return { detected: true, reason: "default standalone 1 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "default-standalone-1-fmt",
+              toolId: this.id,
+              capability: "format",
+              executable: "fmt-1",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      // Standalone format adapter with default scope
+      class StandaloneDefault2 implements ToolAdapter {
+        id = "default-standalone-2";
+        name = "Default Standalone 2";
+        capabilities: ["format"] = ["format"];
+        detect() {
+          return { detected: true, reason: "default standalone 2 detected" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "default-standalone-2-fmt",
+              toolId: this.id,
+              capability: "format",
+              executable: "fmt-2",
+              args: [],
+              cwd: ctx.cwd,
+              mode,
+            },
+          ];
+        }
+      }
+
+      customRegistry.registerAdapter(new StandaloneDefault1());
+      customRegistry.registerAdapter(new StandaloneDefault2());
+
+      const plan = await planExecution(customRegistry, { cwd: tempDir }, "fix");
+      // Both default standalone adapters have independent default scopes (standalone:default-standalone-1 and standalone:default-standalone-2),
+      // so neither suppresses the other!
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "default-standalone-1-fmt",
+        "default-standalone-2-fmt",
+      ]);
     });
   });
 

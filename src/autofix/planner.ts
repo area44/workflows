@@ -133,7 +133,7 @@ async function processStandaloneAdapters(
   const candidateTools: CandidateTool[] = [];
   for (const adapter of registry.getStandaloneAdapters()) {
     const result = await adapter.detect(context);
-    const scope = adapter.scope ?? "standalone";
+    const scope = adapter.scope ?? `standalone:${adapter.id}`;
     if (result.detected) {
       candidateTools.push({ adapter, reason: result.reason, scope });
     } else if (result.reason && !result.reason.startsWith("no ")) {
