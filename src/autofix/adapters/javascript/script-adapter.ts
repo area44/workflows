@@ -808,6 +808,20 @@ export function extractShellWrapperScript(tokens: string[]): string | undefined 
   if (tokens.length >= 3 && (tokens[0] === "sh" || tokens[0] === "bash") && tokens[1] === "-c") {
     return tokens[2];
   }
+  // When a command string is passed as a single quoted argument (e.g. from cross-env-shell),
+  // recognize it as a shell script to be recursively parsed.
+  if (
+    tokens.length === 1 &&
+    tokens[0].trim() !== "" &&
+    (tokens[0].includes(" ") ||
+      tokens[0].includes("\t") ||
+      tokens[0].includes("\n") ||
+      tokens[0].includes(";") ||
+      tokens[0].includes("&") ||
+      tokens[0].includes("|"))
+  ) {
+    return tokens[0];
+  }
   return undefined;
 }
 
