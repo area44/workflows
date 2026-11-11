@@ -11,7 +11,6 @@ import {
   detectPythonPackageManager,
   findPythonProjectContext,
   hasPythonSource,
-  isRuffDeclaredInProject,
   parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
@@ -643,24 +642,6 @@ dev = ["pytest"]
         expect(hasPythonSource(proj.dir)).toBe(false);
       } finally {
         proj.cleanup();
-      }
-    });
-  });
-
-  describe("isRuffDeclaredInProject()", () => {
-    it("should detect ruff declared in pyproject.toml or requirements.txt", () => {
-      const projUv = createConsumerProjectInTmp({ type: "python-uv" });
-      const projPip = createConsumerProjectInTmp({ type: "python-pip", ruffVersion: "0.17.2" });
-      const projNone = createConsumerProjectInTmp({ type: "python-none" });
-
-      try {
-        expect(isRuffDeclaredInProject(projUv.dir)).toBe(true);
-        expect(isRuffDeclaredInProject(projPip.dir)).toBe(true);
-        expect(isRuffDeclaredInProject(projNone.dir)).toBe(false);
-      } finally {
-        projUv.cleanup();
-        projPip.cleanup();
-        projNone.cleanup();
       }
     });
   });

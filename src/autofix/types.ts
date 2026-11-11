@@ -1,0 +1,69 @@
+import type { JsProjectEnvironment, SupportedPackageManager } from "../javascript-env.js";
+import type { PythonPackageManagerInfo, PythonProjectContext } from "../python-env.js";
+
+export type Capability = "lint" | "format" | "typecheck" | "assist" | "autofix";
+
+export type ExecutionMode = "fix" | "check";
+
+export interface ExecutionTask {
+  id: string;
+  toolId: string;
+  capability: Capability;
+  capabilities?: readonly Capability[];
+  executable: string;
+  args: string[];
+  cwd: string;
+  mode: ExecutionMode;
+  env?: Record<string, string>;
+  description?: string;
+  toolName?: string;
+  requiredPackage?: string;
+}
+
+export interface ProjectContext {
+  cwd: string;
+  jsEnv?: JsProjectEnvironment;
+  jsPm?: SupportedPackageManager;
+  pyCtx?: PythonProjectContext;
+  pyPmInfo?: PythonPackageManagerInfo | null;
+  hasPythonSource?: boolean;
+}
+
+export interface AdapterDetectionResult {
+  detected: boolean;
+  reason?: string;
+}
+
+export interface ToolAdapter {
+  id: string;
+  name: string;
+  capabilities: readonly Capability[];
+  /**
+   * Conflict domain scope for capability deduplication and conflict resolution.
+   * - For provider adapters, defaults to `provider.id` (e.g. "javascript", "python").
+   * - For standalone adapters, can explicitly match a provider id (e.g. "javascript")
+   *   or another shared scope name to resolve genuine conflicts within that domain.
+   *   When omitted, defaults to an isolated per-adapter scope (`standalone:${id}`).
+   */
+  scope?: string;
+
+  detect(context: ProjectContext): Promise<AdapterDetectionResult> | AdapterDetectionResult;
+
+  plan(context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> | ExecutionTask[];
+}
+
+export interface LanguageProvider {
+  id: string;
+  name: string;
+
+  detect(context: ProjectContext): Promise<boolean> | boolean;
+
+  getAdapters(context: ProjectContext): ToolAdapter[];
+}
+
+export interface PlannedExecution {
+  tasks: ExecutionTask[];
+  selectedTools: Array<{ id: string; name: string; reason?: string }>;
+  skippedTools: Array<{ id: string; name: string; reason: string }>;
+  summary: string;
+}

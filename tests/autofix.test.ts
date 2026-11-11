@@ -59,7 +59,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "npm",
         installArgs: ["install"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
       {
         action: "autofix",
@@ -68,7 +68,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "pnpm",
         installArgs: ["install", "--no-frozen-lockfile"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
       {
         action: "autofix",
@@ -77,7 +77,7 @@ describe("autofix", () => {
         type: "basic",
         executable: "bun",
         installArgs: ["install"],
-        expectedScriptNames: ["format", "lint"],
+        expectedScriptNames: ["format"],
       },
     ];
 
@@ -86,6 +86,11 @@ describe("autofix", () => {
       async ({ action, runtime, pm, type, executable, installArgs, expectedScriptNames }) => {
         const scenarioPath = path.join(tempDir, `${action}-${runtime}-${pm}-${type}`);
         createConsumerProject(scenarioPath, { action, runtime, pm, type });
+        const pkgJsonPath = path.join(scenarioPath, "package.json");
+        const pkgData = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        pkgData.scripts = { format: "prettier --write ." };
+        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgData, null, 2));
+
         process.chdir(scenarioPath);
         process.env.PACKAGE_MANAGER = pm;
 
@@ -221,7 +226,7 @@ describe("autofix", () => {
     it("should preserve updated package-lock.json when npm install synchronizes dependencies", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(
         path.join(tempDir, "package-lock.json"),
@@ -247,7 +252,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
       const updatedLock = JSON.parse(
@@ -261,7 +266,7 @@ describe("autofix", () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "lockfileVersion: '6.0'");
 
@@ -291,7 +296,7 @@ describe("autofix", () => {
       process.env.PACKAGE_MANAGER = "bun";
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "old bun lock content");
 
@@ -366,7 +371,7 @@ describe("autofix", () => {
     it("should execute commands with explicit custom working directory and support paths with spaces", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
@@ -380,7 +385,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
     });
@@ -389,7 +394,7 @@ describe("autofix", () => {
       process.env.PACKAGE_MANAGER = "pnpm";
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
 
@@ -405,7 +410,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "pnpm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
     });
@@ -414,7 +419,7 @@ describe("autofix", () => {
       process.env.PACKAGE_MANAGER = "bun";
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
 
@@ -428,7 +433,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "bun",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
     });
@@ -452,7 +457,7 @@ describe("autofix", () => {
     it("should set workflow failed when JS dependency installation fails", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
 
@@ -593,7 +598,7 @@ describe("autofix", () => {
       const mixedTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-mixed-"));
       fs.writeFileSync(
         path.join(mixedTempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "npm run check" } }),
+        JSON.stringify({ scripts: { fix: "npm run fix" } }),
       );
       fs.writeFileSync(path.join(mixedTempDir, "main.py"), "print('mixed')\n");
       fs.writeFileSync(path.join(mixedTempDir, "requirements.txt"), "requests==2.31.0\n");
@@ -601,10 +606,10 @@ describe("autofix", () => {
       try {
         await run(mixedTempDir);
 
-        expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+        expect(core.info).toHaveBeenCalledWith("Executing: npm run fix");
         expect(exec.exec).toHaveBeenCalledWith(
           "npm",
-          ["run", "check"],
+          ["run", "fix"],
           expect.objectContaining({ cwd: mixedTempDir }),
         );
         expect(exec.exec).toHaveBeenCalledWith(
@@ -934,45 +939,49 @@ describe("autofix", () => {
   describe("script execution routing", () => {
     const scriptCases = [
       {
-        name: "fix script priority over all",
-        scripts: { fix: "echo fix", format: "echo format", lint: "echo lint", check: "echo check" },
+        name: "fix script delegates to format:write and lint:fix",
+        scripts: {
+          fix: "npm run format:write && npm run lint:fix",
+          "format:write": "echo format",
+          "lint:fix": "echo lint",
+        },
         expectedCalls: [["npm", ["run", "fix"]]],
       },
       {
-        name: "format and lint scripts when fix is absent",
-        scripts: { format: "echo format", lint: "echo lint", check: "echo check" },
+        name: "format:write and lint:fix scripts when fix is absent",
+        scripts: { "format:write": "prettier --write .", "lint:fix": "eslint --fix ." },
         expectedCalls: [
-          ["npm", ["run", "format"]],
-          ["npm", ["run", "lint"]],
+          ["npm", ["run", "format:write"]],
+          ["npm", ["run", "lint:fix"]],
         ],
       },
       {
-        name: "fmt and lint scripts when format is absent",
-        scripts: { fmt: "echo fmt", lint: "echo lint" },
+        name: "fmt and lint:fix scripts when format is absent",
+        scripts: { fmt: "prettier --write .", "lint:fix": "eslint --fix ." },
         expectedCalls: [
           ["npm", ["run", "fmt"]],
-          ["npm", ["run", "lint"]],
+          ["npm", ["run", "lint:fix"]],
         ],
       },
       {
         name: "format script only",
-        scripts: { format: "echo format" },
+        scripts: { format: "prettier --write ." },
         expectedCalls: [["npm", ["run", "format"]]],
       },
       {
         name: "fmt script only",
-        scripts: { fmt: "echo fmt" },
+        scripts: { fmt: "prettier --write ." },
         expectedCalls: [["npm", ["run", "fmt"]]],
       },
       {
-        name: "lint script only",
-        scripts: { lint: "echo lint" },
-        expectedCalls: [["npm", ["run", "lint"]]],
+        name: "lint:fix script only",
+        scripts: { "lint:fix": "eslint --fix ." },
+        expectedCalls: [["npm", ["run", "lint:fix"]]],
       },
       {
-        name: "check script as lowest priority fallback",
-        scripts: { check: "echo check" },
-        expectedCalls: [["npm", ["run", "check"]]],
+        name: "combined fix script fallback",
+        scripts: { fix: "echo fix" },
+        expectedCalls: [["npm", ["run", "fix"]]],
       },
     ];
 
@@ -1015,14 +1024,14 @@ describe("autofix", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
-            check: "echo check",
+            fix: "echo fix",
           },
         }) as any,
       );
 
       await run();
 
-      expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+      expect(core.info).toHaveBeenCalledWith("Executing: npm run fix");
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
         ["install"],
@@ -1030,7 +1039,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: process.cwd() }),
       );
       expect(exec.exec).toHaveBeenCalledTimes(2);
@@ -1080,17 +1089,17 @@ describe("autofix", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
-            check: "echo pnpm check",
+            fix: "echo pnpm fix",
           },
         }) as any,
       );
 
       await run();
 
-      expect(core.info).toHaveBeenCalledWith("Executing: pnpm run check");
+      expect(core.info).toHaveBeenCalledWith("Executing: pnpm run fix");
       expect(exec.exec).toHaveBeenCalledWith(
         "pnpm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: process.cwd() }),
       );
     });
@@ -1103,17 +1112,17 @@ describe("autofix", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
-            check: "echo bun check",
+            fix: "echo bun fix",
           },
         }) as any,
       );
 
       await run();
 
-      expect(core.info).toHaveBeenCalledWith("Executing: bun run check");
+      expect(core.info).toHaveBeenCalledWith("Executing: bun run fix");
       expect(exec.exec).toHaveBeenCalledWith(
         "bun",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: process.cwd() }),
       );
     });
@@ -1126,17 +1135,17 @@ describe("autofix", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
-            check: "echo check",
+            fix: "echo fix",
           },
         }) as any,
       );
 
       await run();
 
-      expect(core.info).toHaveBeenCalledWith("Executing: npm run check");
+      expect(core.info).toHaveBeenCalledWith("Executing: npm run fix");
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: process.cwd() }),
       );
     });
@@ -1181,7 +1190,7 @@ describe("autofix", () => {
       vi.spyOn(fs, "readFileSync").mockReturnValue(
         JSON.stringify({
           scripts: {
-            check: "exit 1",
+            fix: "exit 1",
           },
         }) as any,
       );
@@ -1190,7 +1199,7 @@ describe("autofix", () => {
       await run();
 
       expect(core.setFailed).toHaveBeenCalledWith(
-        'Failed to run scripts: Script "check" failed while executing "npm run check".',
+        'Failed to run scripts: Script "fix" failed while executing "npm run fix".',
       );
     });
   });
@@ -1292,7 +1301,7 @@ describe("autofix", () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
@@ -1305,7 +1314,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(exec.exec).toHaveBeenCalledWith(
@@ -1325,7 +1334,7 @@ describe("autofix", () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "exit 1" } }),
+        JSON.stringify({ scripts: { fix: "exit 1" } }),
       );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
@@ -1338,7 +1347,7 @@ describe("autofix", () => {
 
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(exec.exec).toHaveBeenCalledWith(
@@ -1352,7 +1361,7 @@ describe("autofix", () => {
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining('Script "check" failed while executing "npm run check".'),
+        expect.stringContaining('Script "fix" failed while executing "npm run fix".'),
       );
     });
 
@@ -1360,7 +1369,7 @@ describe("autofix", () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
@@ -1378,7 +1387,7 @@ describe("autofix", () => {
       );
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(exec.exec).toHaveBeenCalledWith(
@@ -1395,7 +1404,7 @@ describe("autofix", () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "exit 1" } }),
+        JSON.stringify({ scripts: { fix: "exit 1" } }),
       );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
@@ -1409,7 +1418,7 @@ describe("autofix", () => {
 
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
-        ["run", "check"],
+        ["run", "fix"],
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(exec.exec).toHaveBeenCalledWith(
@@ -1419,7 +1428,7 @@ describe("autofix", () => {
       );
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.stringMatching(
-          /Failed to run scripts: Script "check" failed while executing "npm run check"\.\nRuff command "ruff check --fix \." failed\./,
+          /Failed to run scripts: Script "fix" failed while executing "npm run fix"\.\nRuff command "ruff check --fix \." failed\./,
         ),
       );
     });
@@ -1448,7 +1457,7 @@ describe("autofix", () => {
       process.env.JS_SETUP_OUTCOME = "failure";
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "echo check" } }),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
       );
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
 
@@ -1550,7 +1559,7 @@ describe("autofix", () => {
       fs.writeFileSync(userFile, "important user content");
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ scripts: { check: "exit 1" } }),
+        JSON.stringify({ scripts: { fix: "exit 1" } }),
       );
 
       vi.mocked(exec.exec).mockResolvedValueOnce(1);
