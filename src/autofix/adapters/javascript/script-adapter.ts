@@ -507,7 +507,11 @@ export function delegatesToScript(
   const scriptBody =
     scripts[scriptBodyOrName] !== undefined ? scripts[scriptBodyOrName] : scriptBodyOrName;
 
-  const invocations = parseCommandInvocations(scriptBody);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(scriptBody);
+  if (hasSyntaxError) {
+    return false;
+  }
+
   for (const tokens of invocations) {
     if (matchesPmDelegation(tokens, targetScriptName)) {
       return true;
@@ -1012,7 +1016,10 @@ function hasVerifiedFormattingCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
@@ -1044,7 +1051,10 @@ function hasVerifiedLintingCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
@@ -1073,7 +1083,10 @@ function hasVerifiedFullCheckCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {

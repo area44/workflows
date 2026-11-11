@@ -2878,6 +2878,64 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(plan.tasks[0].capability).toBe("format");
       expect(plan.tasks[0].capabilities).toEqual(["format", "lint"]);
     });
+
+    it("verifies malformed quoted commands fail closed and do not claim capability coverage or suppress child tasks", async () => {
+      // A. Malformed quoted command in cross-env-shell
+      const scriptsCrossEnvShell = {
+        fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix \'unterminated"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksCrossEnvShell = resolveScriptTasks(scriptsCrossEnvShell, "fix");
+      expect(tasksCrossEnvShell).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // B. Malformed nested command in sh -c
+      const scriptsSh = {
+        fix: 'sh -c "npm run format:write && npm run lint:fix \\"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksSh = resolveScriptTasks(scriptsSh, "fix");
+      expect(tasksSh).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // C. Malformed nested command in bash -c
+      const scriptsBash = {
+        fix: 'bash -c "npm run format:write && npm run lint:fix \\"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksBash = resolveScriptTasks(scriptsBash, "fix");
+      expect(tasksBash).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // D. Full planExecution with malformed cross-env-shell preserves child tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: scriptsCrossEnvShell,
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "script-format:write",
+        "script-lint:fix",
+      ]);
+    });
   });
 
   describe("Regression: F-02 Read-Only Classifier Audit for File-Writing Options", () => {
