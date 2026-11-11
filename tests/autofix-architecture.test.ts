@@ -2669,6 +2669,273 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "lint", scriptName: "lint:fix" },
       ]);
     });
+
+    it("handles delegation through cross-env environment wrappers", () => {
+      const scripts = {
+        fix: "cross-env CI=1 npm run format:write && npm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+    });
+
+    it("handles delegation through cross-env-shell environment wrappers", () => {
+      const scripts = {
+        fix: "cross-env-shell NODE_ENV=production npm run lint:fix",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "lint", scriptName: "fix" }]);
+    });
+
+    it("handles multiple environment assignments with cross-env and cross-env-shell", () => {
+      const scripts = {
+        fix: "cross-env CI=1 NODE_ENV=production DEBUG=false npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("handles cross-env delegation with no environment assignments", () => {
+      const scripts = {
+        fix: "cross-env npm run format:write",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("handles nested delegation with environment wrappers", () => {
+      const scripts = {
+        fix: "cross-env CI=1 npm run all-fix",
+        "all-fix": "cross-env-shell NODE_ENV=production npm run format:write && npm run lint:fix",
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+    });
+
+    it("handles cyclic delegation safely when wrapped in cross-env", () => {
+      const scripts = {
+        fix: "cross-env CI=1 npm run cycle-a",
+        "cycle-a": "cross-env NODE_ENV=development npm run cycle-b",
+        "cycle-b": "cross-env npm run cycle-a",
+        "format:write": "prettier --write .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+      ]);
+    });
+
+    it("verifies execution planning with cross-env delegation prevents duplicate task scheduling", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: "cross-env CI=1 npm run format:write && npm run lint:fix",
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      expect(plan.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+      expect(plan.tasks[0].capability).toBe("format");
+      expect(plan.tasks[0].capabilities).toEqual(["format", "lint"]);
+    });
+
+    it("verifies direct tool verification with cross-env", () => {
+      const scripts = {
+        fix: "cross-env CI=1 prettier --write . && cross-env-shell NODE_ENV=production eslint --fix .",
+      };
+      const tasks = resolveScriptTasks(scripts, "fix");
+      expect(tasks).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+    });
+
+    it("verifies check mode classification with cross-env", () => {
+      const checkScripts = {
+        "format:check": "cross-env CI=1 prettier --check .",
+        "lint:check": "cross-env-shell NODE_ENV=production eslint .",
+      };
+      const tasks = resolveScriptTasks(checkScripts, "check");
+      expect(tasks).toEqual([
+        { capability: "format", scriptName: "format:check" },
+        { capability: "lint", scriptName: "lint:check" },
+      ]);
+    });
+
+    it("handles quoted shell commands passed to cross-env-shell", () => {
+      // A. Quoted shell commands
+      const scriptsChained = {
+        fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksChained = resolveScriptTasks(scriptsChained, "fix");
+      expect(tasksChained).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+
+      const scriptsPrettier = {
+        "format:write": 'cross-env-shell NODE_ENV=production "prettier --write ."',
+      };
+      const tasksPrettier = resolveScriptTasks(scriptsPrettier, "fix");
+      expect(tasksPrettier).toEqual([{ capability: "format", scriptName: "format:write" }]);
+
+      const scriptsEslint = {
+        "lint:fix": 'cross-env-shell CI=1 "eslint --fix ."',
+      };
+      const tasksEslint = resolveScriptTasks(scriptsEslint, "fix");
+      expect(tasksEslint).toEqual([{ capability: "lint", scriptName: "lint:fix" }]);
+
+      // B. Multiple environment assignments
+      const scriptsMultiEnv = {
+        fix: 'cross-env-shell CI=1 NODE_ENV=production DEBUG=false "npm run format:write"',
+        "format:write": "prettier --write .",
+      };
+      const tasksMultiEnv = resolveScriptTasks(scriptsMultiEnv, "fix");
+      expect(tasksMultiEnv).toEqual([{ capability: "format", scriptName: "fix" }]);
+
+      // C. Nested delegation
+      const scriptsNested = {
+        fix: 'cross-env-shell CI=1 "npm run all-fix"',
+        "all-fix": 'cross-env-shell NODE_ENV=production "npm run format:write && npm run lint:fix"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksNested = resolveScriptTasks(scriptsNested, "fix");
+      expect(tasksNested).toEqual([
+        { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
+      ]);
+
+      // D. Direct command compatibility
+      const scriptsDirectCompat = {
+        fix: "cross-env CI=1 npm run format:write",
+        "format:write": "cross-env-shell CI=1 prettier --write .",
+      };
+      const tasksDirectCompat = resolveScriptTasks(scriptsDirectCompat, "fix");
+      expect(tasksDirectCompat).toEqual([{ capability: "format", scriptName: "fix" }]);
+    });
+
+    it("verifies syntax validation and fail-closed handling in cross-env-shell", () => {
+      // Unterminated quote inside shell script
+      expect(classifyScript('cross-env-shell CI=1 "prettier --write . \'unterminated"')).toBe(
+        "unknown",
+      );
+
+      // Trailing escape inside shell script
+      expect(classifyScript('cross-env-shell CI=1 "prettier --write . \\"')).toBe("unknown");
+
+      // Empty quoted command
+      expect(classifyScript('cross-env-shell CI=1 ""')).toBe("unknown");
+
+      // Unsupported shell syntax inside quoted command (redirection or backgrounding)
+      expect(classifyScript('cross-env-shell CI=1 "prettier --check . > output.txt"')).toBe(
+        "unknown",
+      );
+      expect(classifyScript('cross-env-shell CI=1 "eslint . &"')).toBe("unknown");
+
+      // Quoted arguments containing spaces within quoted shell commands
+      expect(classifyScript('cross-env-shell CI=1 "prettier --write \\"dir with spaces\\""')).toBe(
+        "write-capable",
+      );
+
+      expect(classifyScript('cross-env-shell CI=1 "prettier --check \\"dir with spaces\\""')).toBe(
+        "read-only",
+      );
+    });
+
+    it("verifies execution planning with quoted cross-env-shell prevents duplicate task scheduling", async () => {
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix"',
+            "format:write": "prettier --write .",
+            "lint:fix": "eslint --fix .",
+          },
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      expect(plan.tasks.map((t) => t.id)).toEqual(["script-fix"]);
+      expect(plan.tasks[0].capability).toBe("format");
+      expect(plan.tasks[0].capabilities).toEqual(["format", "lint"]);
+    });
+
+    it("verifies malformed quoted commands fail closed and do not claim capability coverage or suppress child tasks", async () => {
+      // A. Malformed quoted command in cross-env-shell
+      const scriptsCrossEnvShell = {
+        fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix \'unterminated"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksCrossEnvShell = resolveScriptTasks(scriptsCrossEnvShell, "fix");
+      expect(tasksCrossEnvShell).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // B. Malformed nested command in sh -c
+      const scriptsSh = {
+        fix: 'sh -c "npm run format:write && npm run lint:fix \\"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksSh = resolveScriptTasks(scriptsSh, "fix");
+      expect(tasksSh).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // C. Malformed nested command in bash -c
+      const scriptsBash = {
+        fix: 'bash -c "npm run format:write && npm run lint:fix \\"',
+        "format:write": "prettier --write .",
+        "lint:fix": "eslint --fix .",
+      };
+      const tasksBash = resolveScriptTasks(scriptsBash, "fix");
+      expect(tasksBash).toEqual([
+        { capability: "typecheck", capabilities: [], scriptName: "fix" },
+        { capability: "format", scriptName: "format:write" },
+        { capability: "lint", scriptName: "lint:fix" },
+      ]);
+
+      // D. Full planExecution with malformed cross-env-shell preserves child tasks
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: scriptsCrossEnvShell,
+        }),
+      );
+
+      const registry = createDefaultRegistry();
+      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+      expect(plan.tasks.map((t) => t.id)).toEqual([
+        "script-fix",
+        "script-format:write",
+        "script-lint:fix",
+      ]);
+    });
   });
 
   describe("Regression: F-02 Read-Only Classifier Audit for File-Writing Options", () => {

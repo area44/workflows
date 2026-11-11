@@ -390,12 +390,56 @@ function isEnvAssignment(token: string): boolean {
   return ENV_ASSIGNMENT_REGEX.test(token);
 }
 
-function getCommandInvocationTokens(tokens: string[]): string[] {
-  let startIndex = 0;
-  while (startIndex < tokens.length && isEnvAssignment(tokens[startIndex])) {
-    startIndex++;
+/**
+ * Unwraps environment wrapper commands like `cross-env` or `cross-env-shell`,
+ * stripping initial environment variable assignments to retrieve the target command tokens.
+ * In accordance with cross-env CLI syntax, cross-env accepts environment variable
+ * setters (`KEY=val`) followed by the command and its arguments.
+ */
+export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
+  if (tokens.length === 0) return tokens;
+  const [exe] = tokens;
+  if (exe !== "cross-env" && exe !== "cross-env-shell") {
+    return tokens;
   }
-  return tokens.slice(startIndex);
+
+  let i = 1;
+  while (i < tokens.length && isEnvAssignment(tokens[i])) {
+    i++;
+  }
+
+  return tokens.slice(i);
+}
+
+/**
+ * Normalizes command invocation tokens by stripping leading inline environment
+ * variable assignments (e.g. `FOO=bar`) and unwrapping environment wrappers
+ * (`cross-env`, `cross-env-shell`) along with any subsequent environment variable assignments.
+ */
+export function normalizeCommandTokens(tokens: string[]): string[] {
+  let current = tokens;
+  while (current.length > 0) {
+    let startIndex = 0;
+    while (startIndex < current.length && isEnvAssignment(current[startIndex])) {
+      startIndex++;
+    }
+    current = current.slice(startIndex);
+
+    if (current.length > 0 && (current[0] === "cross-env" || current[0] === "cross-env-shell")) {
+      const unwrapped = unwrapEnvironmentWrapper(current);
+      if (unwrapped === current) {
+        break;
+      }
+      current = unwrapped;
+    } else {
+      break;
+    }
+  }
+  return current;
+}
+
+function getCommandInvocationTokens(tokens: string[]): string[] {
+  return normalizeCommandTokens(tokens);
 }
 
 function matchesPmDelegation(cmdTokens: string[], targetScriptName: string): boolean {
@@ -463,7 +507,11 @@ export function delegatesToScript(
   const scriptBody =
     scripts[scriptBodyOrName] !== undefined ? scripts[scriptBodyOrName] : scriptBodyOrName;
 
-  const invocations = parseCommandInvocations(scriptBody);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(scriptBody);
+  if (hasSyntaxError) {
+    return false;
+  }
+
   for (const tokens of invocations) {
     if (matchesPmDelegation(tokens, targetScriptName)) {
       return true;
@@ -764,28 +812,21 @@ export function extractShellWrapperScript(tokens: string[]): string | undefined 
   if (tokens.length >= 3 && (tokens[0] === "sh" || tokens[0] === "bash") && tokens[1] === "-c") {
     return tokens[2];
   }
+  // When a command string is passed as a single quoted argument (e.g. from cross-env-shell),
+  // recognize it as a shell script to be recursively parsed.
+  if (
+    tokens.length === 1 &&
+    tokens[0].trim() !== "" &&
+    (tokens[0].includes(" ") ||
+      tokens[0].includes("\t") ||
+      tokens[0].includes("\n") ||
+      tokens[0].includes(";") ||
+      tokens[0].includes("&") ||
+      tokens[0].includes("|"))
+  ) {
+    return tokens[0];
+  }
   return undefined;
-}
-
-/**
- * Unwraps environment wrapper commands like `cross-env` or `cross-env-shell`,
- * stripping initial environment variable assignments to retrieve the target command tokens.
- * In accordance with cross-env CLI syntax, cross-env accepts environment variable
- * setters (`KEY=val`) followed by the command and its arguments.
- */
-export function unwrapEnvironmentWrapper(tokens: string[]): string[] {
-  if (tokens.length === 0) return tokens;
-  const [exe] = tokens;
-  if (exe !== "cross-env" && exe !== "cross-env-shell") {
-    return tokens;
-  }
-
-  let i = 1;
-  while (i < tokens.length && isEnvAssignment(tokens[i])) {
-    i++;
-  }
-
-  return tokens.slice(i);
 }
 
 /**
@@ -804,8 +845,7 @@ export function hasVitePlusCommand(
     return false;
   }
 
-  for (const rawTokens of invocations) {
-    const tokens = unwrapEnvironmentWrapper(rawTokens);
+  for (const tokens of invocations) {
     if (tokens.length === 0) continue;
 
     if (tokens[0] === "vp") {
@@ -976,7 +1016,10 @@ function hasVerifiedFormattingCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
@@ -1008,7 +1051,10 @@ function hasVerifiedLintingCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
@@ -1037,7 +1083,10 @@ function hasVerifiedFullCheckCommand(
   scripts: Record<string, string> = {},
   activePath: Set<string> = new Set(),
 ): boolean {
-  const invocations = parseCommandInvocations(command);
+  const { invocations, hasSyntaxError } = parseCommandInvocationsDetailed(command);
+  if (hasSyntaxError) {
+    return false;
+  }
   return invocations.some((tokens) => {
     const target = extractDelegatedTarget(tokens);
     if (target) {
