@@ -107,8 +107,8 @@ function resolveJsOptions(options: ConsumerProjectOptions): ResolvedJsOptions {
     (type === "vite-plus"
       ? "vite-plus"
       : action === "pages" &&
-        type !== "consumer-integration" &&
-        options.fixture !== "consumer-project"
+          type !== "consumer-integration" &&
+          options.fixture !== "consumer-project"
         ? "astro"
         : "none");
 
