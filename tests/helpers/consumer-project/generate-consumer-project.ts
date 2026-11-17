@@ -107,8 +107,8 @@ function resolveJsOptions(options: ConsumerProjectOptions): ResolvedJsOptions {
     (type === "vite-plus"
       ? "vite-plus"
       : action === "pages" &&
-          type !== "consumer-integration" &&
-          options.fixture !== "consumer-project"
+        type !== "consumer-integration" &&
+        options.fixture !== "consumer-project"
         ? "astro"
         : "none");
 
@@ -184,7 +184,7 @@ function buildJsScriptsAndHtml(
   jsOpt: ResolvedJsOptions,
 ): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
   const { action, toolchain, type, pmType } = jsOpt;
-  const markerContent = options.markerContent || "AREA44 Workflows Consumer Project";
+  const markerContent = options.markerContent || "Workflows Consumer Project";
 
   let scripts: Record<string, string> = {};
   let devDependencies: Record<string, string> = {};
@@ -397,7 +397,7 @@ function buildPythonFiles(
   const { pythonPm, ruffVersion, pythonVersion } = pyOpt;
   const type = options.type || "basic";
 
-  const mainPy = `def main() -> None:\n    print("AREA44 consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
+  const mainPy = `def main() -> None:\n    print("Consumer project Python entrypoint")\n\n\nif __name__ == "__main__":\n    main()\n`;
   files["main.py"] = mainPy;
 
   const trimmedVer = pythonVersion ? pythonVersion.trim() : "";
