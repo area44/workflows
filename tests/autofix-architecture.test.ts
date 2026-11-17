@@ -50,7 +50,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     }
   });
 
-  describe("Python: Ruff as Default Toolchain", () => {
+  describe("Ruff as Default Toolchain", () => {
     it("activates Ruff when Python source is detected, even without pyproject.toml, lockfiles, or scripts", async () => {
       vi.spyOn(io, "which").mockResolvedValue("/usr/bin/ruff");
       fs.writeFileSync(path.join(tempDir, "script.py"), "print('hello')\n");
@@ -102,7 +102,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
-  describe("JavaScript/TypeScript: Hybrid Detection & Script Precedence", () => {
+  describe("Hybrid Detection & Script Precedence", () => {
     it("respects explicit script conventions: 'check:fix' as combined autofix", async () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -201,7 +201,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("recognizes delegation when URL fragments or ordinary words contain '#' characters", () => {
-      // Case A: URL fragment
+      // URL fragment
       const scriptsUrl = {
         fix: "echo https://example.com/#fragment && npm run format:write",
         "format:write": "prettier --write .",
@@ -209,7 +209,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const tasksUrl = resolveScriptTasks(scriptsUrl, "fix");
       expect(tasksUrl.map((t) => t.scriptName)).toEqual(["fix"]);
 
-      // Case B: Hash inside ordinary word
+      // Hash inside ordinary word
       const scriptsWord = {
         fix: "echo value#fragment && npm run format:write",
         "format:write": "prettier --write .",
@@ -226,7 +226,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("properly handles actual shell comments and commented-out delegations", () => {
-      // Case C: Actual shell comments
+      // Actual shell comments
       // echo hello # npm run format:write\nnpm run lint:fix
       const scriptsComment = {
         fix: "echo hello # npm run format:write\nnpm run lint:fix",
@@ -248,7 +248,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("handles hashes inside quoted strings and escaped hashes", () => {
-      // Case D: Hash inside quotes
+      // Hash inside quotes
       const scriptsQuotedHash = {
         fix: 'echo "# npm run format:write" && npm run lint:fix',
         "format:write": "prettier --write .",
@@ -264,7 +264,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const tasksSingleQuote = resolveScriptTasks(scriptsSingleQuoteHash, "fix");
       expect(tasksSingleQuote.map((t) => t.scriptName)).toEqual(["fix"]);
 
-      // Case E: Escaped hash
+      // Escaped hash
       const scriptsEscapedHash = {
         fix: "echo \\#fragment && npm run format:write",
         "format:write": "prettier --write .",
@@ -534,7 +534,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("verifies planner integration with URL fragment vs commented-out delegation", async () => {
-      // 1. URL fragment before real delegation: planner schedules ONLY fix, not format:write
+      // URL fragment before real delegation: planner schedules ONLY fix, not format:write
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -549,7 +549,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planDelegated = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planDelegated.tasks.map((t) => t.id)).toEqual(["script-fix"]);
 
-      // 2. Commented out delegation: planner schedules BOTH fix and format:write
+      // Commented out delegation: planner schedules BOTH fix and format:write
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1009,7 +1009,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "biome-assist-fix",
       ]);
 
-      // fix: "prettier --write ." claims format and does not suppress Biome lint or Assist tasks
+      // "prettier --write ." claims format and does not suppress Biome lint or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1028,7 +1028,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       ]);
       expect(planPrettier.tasks[0].capability).toBe("format");
 
-      // fix: "eslint --fix ." claims lint and does not suppress Biome format or Assist tasks
+      // "eslint --fix ." claims lint and does not suppress Biome format or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1047,7 +1047,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       ]);
       expect(planEslint.tasks[0].capability).toBe("lint");
 
-      // fix: "vp fmt" only claims format and does not suppress Biome lint or Assist tasks
+      // "vp fmt" only claims format and does not suppress Biome lint or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1066,7 +1066,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       ]);
       expect(planVpFmt.tasks[0].capability).toBe("format");
 
-      // fix: "vp lint" without --fix is read-only and does not claim lint write
+      // "vp lint" without --fix is read-only and does not claim lint write
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1085,7 +1085,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         "biome-assist-fix",
       ]);
 
-      // fix: "vp lint --fix" only claims lint and does not suppress Biome format or Assist tasks
+      // "vp lint --fix" only claims lint and does not suppress Biome format or Assist tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1593,7 +1593,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         ),
       ).toEqual([]);
 
-      // Regression test: Environment variable injecting arguments into ESLint check script
+      // Environment variable injecting arguments into ESLint check script
       // e.g. LINT_ARGS="--fix" would turn a check command into a modifying command
       const envInjectionScripts = {
         "lint:check": 'eslint . "$LINT_ARGS"',
@@ -1617,7 +1617,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("falls back to fmt:check when format:check cannot be safely classified as read-only", () => {
-      // 1. Unknown format:check with valid fmt:check -> selects fmt:check
+      // Unknown format:check with valid fmt:check -> selects fmt:check
       const unknownFormatWithValidFmt = {
         "format:check": "node scripts/custom-format.js",
         "fmt:check": "prettier --check .",
@@ -1626,7 +1626,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "format", scriptName: "fmt:check" },
       ]);
 
-      // 2. Write-capable format:check with valid fmt:check -> selects fmt:check
+      // Write-capable format:check with valid fmt:check -> selects fmt:check
       const writeFormatWithValidFmt = {
         "format:check": "prettier --write .",
         "fmt:check": "prettier --check .",
@@ -1635,7 +1635,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "format", scriptName: "fmt:check" },
       ]);
 
-      // 3. Read-only format:check takes precedence over fmt:check
+      // Read-only format:check takes precedence over fmt:check
       const bothReadOnly = {
         "format:check": "prettier --check .",
         "fmt:check": "vp fmt --check",
@@ -1644,21 +1644,21 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "format", scriptName: "format:check" },
       ]);
 
-      // 4. Both candidates unknown -> none selected
+      // Both candidates unknown -> none selected
       const bothUnknown = {
         "format:check": "node scripts/format.js",
         "fmt:check": "python -m format",
       };
       expect(resolveScriptTasks(bothUnknown, "check")).toEqual([]);
 
-      // 5. Both candidates write-capable -> none selected
+      // Both candidates write-capable -> none selected
       const bothWriteCapable = {
         "format:check": "prettier --write .",
         "fmt:check": "vp fmt",
       };
       expect(resolveScriptTasks(bothWriteCapable, "check")).toEqual([]);
 
-      // 6. Only one valid candidate exists
+      // Only one valid candidate exists
       expect(resolveScriptTasks({ "fmt:check": "prettier --check ." }, "check")).toEqual([
         { capability: "format", scriptName: "fmt:check" },
       ]);
@@ -1706,7 +1706,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("detects Vite+ through command wrappers: cross-env, sh -c, bash -c, and runner wrappers", async () => {
-      // 1. cross-env
+      // cross-env
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1721,7 +1721,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnv = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnv.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 2. cross-env-shell
+      // cross-env-shell
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1733,7 +1733,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvShell = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvShell.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 3. cross-env with multiple environment variable assignments
+      // cross-env with multiple environment variable assignments
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1745,7 +1745,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvMultiple = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvMultiple.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 4. cross-env delegating to a script that invokes vp
+      // cross-env delegating to a script that invokes vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1758,7 +1758,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvDelegated = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvDelegated.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 5. unsupported options or flags must not be treated as valid and must not cause false-positive Vite+ detection
+      // unsupported options or flags must not be treated as valid and must not cause false-positive Vite+ detection
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1772,7 +1772,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvUnknown = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvUnknown.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 6. cross-env with missing command after environment assignments
+      // cross-env with missing command after environment assignments
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1784,7 +1784,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvNoCommand = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvNoCommand.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 7. cross-env running an unrelated command with vp in arguments must not trigger Vite+ detection
+      // cross-env running an unrelated command with vp in arguments must not trigger Vite+ detection
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1796,7 +1796,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planCrossEnvGrep = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planCrossEnvGrep.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 5. sh -c
+      // sh -c
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1808,7 +1808,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planSh = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planSh.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 6. bash -c
+      // bash -c
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1820,7 +1820,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planBash = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planBash.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 7. npx vp / bunx vp / pnpm exec vp
+      // npx vp / bunx vp / pnpm exec vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1834,7 +1834,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planRunners.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // 8. script delegation invoking vp
+      // script delegation invoking vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1917,7 +1917,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("rejects malformed commands with confirmed shell syntax errors during Vite+ detection", async () => {
-      // 1. Unterminated single quote
+      // Unterminated single quote
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1932,7 +1932,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planSingle = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planSingle.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 2. Unterminated double quote
+      // Unterminated double quote
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1944,7 +1944,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planDouble = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planDouble.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 3. Command ending with an incomplete trailing escape \
+      // Command ending with an incomplete trailing escape \
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1956,7 +1956,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planEscape = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planEscape.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 4. Malformed nested shell-wrapper invocation (unterminated quote in sh -c argument)
+      // Malformed nested shell-wrapper invocation (unterminated quote in sh -c argument)
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1968,7 +1968,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planMalformedSh = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planMalformedSh.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 5. Malformed nested shell-wrapper invocation (unterminated quote inside wrapped script)
+      // Malformed nested shell-wrapper invocation (unterminated quote inside wrapped script)
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1980,7 +1980,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planMalformedBash = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planMalformedBash.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
 
-      // 6. Malformed command containing vp in argument position
+      // Malformed command containing vp in argument position
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -2374,7 +2374,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const binDir = path.join(tempDir, "node_modules", ".bin");
       fs.mkdirSync(binDir, { recursive: true });
 
-      // 1. Unix extensionless local binary
+      // Unix extensionless local binary
       const prettierUnix = path.join(binDir, "prettier");
       fs.writeFileSync(prettierUnix, "");
       const resolvedUnix = await resolveProjectBinary(tempDir, "prettier", "linux");
@@ -2384,7 +2384,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const resolvedWinFallback = await resolveProjectBinary(tempDir, "prettier", "win32");
       expect(resolvedWinFallback).toBe(prettierUnix);
 
-      // 2. Windows .cmd local shim
+      // Windows .cmd local shim
       const eslintCmd = path.join(binDir, "eslint.cmd");
       const eslintPs1 = path.join(binDir, "eslint.ps1");
       fs.writeFileSync(eslintCmd, "@echo off\n");
@@ -2430,7 +2430,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const resolvedMissingExplicit = await resolveProjectBinary(tempDir, "missing.cmd", "win32");
       expect(resolvedMissingExplicit).toBeUndefined();
 
-      // 3. Missing local binary with successful io.which fallback
+      // Missing local binary with successful io.which fallback
       vi.spyOn(io, "which").mockImplementation(async (tool) => {
         if (tool === "biome") return "/usr/local/bin/biome";
         return "";
@@ -2454,14 +2454,14 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(await resolveProjectBinary(tempDir, "sh-tool", "win32")).toBeUndefined();
       expect(await resolveProjectBinary(tempDir, "vbs-tool", "win32")).toBeUndefined();
 
-      // 4. Missing binary with no fallback result
+      // Missing binary with no fallback result
       const resolvedMissing = await resolveProjectBinary(tempDir, "nonexistent-tool", "linux");
       expect(resolvedMissing).toBeUndefined();
 
       const resolvedMissingWin = await resolveProjectBinary(tempDir, "nonexistent-tool", "win32");
       expect(resolvedMissingWin).toBeUndefined();
 
-      // 5. Correct executable invocation via ExecutionEngine on Windows
+      // Correct executable invocation via ExecutionEngine on Windows
       const winEngine = new ExecutionEngine("win32");
       vi.mocked(exec.exec).mockResolvedValue(0);
 
@@ -2560,7 +2560,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
-  describe("Regression: F-01 Nested Delegation and Duplicate Task Prevention", () => {
+  describe("Nested Delegation and Duplicate Task Prevention", () => {
     it("handles direct delegation: fix -> format:write", () => {
       const scripts = {
         fix: "npm run format:write",
@@ -2779,7 +2779,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("handles quoted shell commands passed to cross-env-shell", () => {
-      // A. Quoted shell commands
+      // Quoted shell commands
       const scriptsChained = {
         fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix"',
         "format:write": "prettier --write .",
@@ -2802,7 +2802,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const tasksEslint = resolveScriptTasks(scriptsEslint, "fix");
       expect(tasksEslint).toEqual([{ capability: "lint", scriptName: "lint:fix" }]);
 
-      // B. Multiple environment assignments
+      // Multiple environment assignments
       const scriptsMultiEnv = {
         fix: 'cross-env-shell CI=1 NODE_ENV=production DEBUG=false "npm run format:write"',
         "format:write": "prettier --write .",
@@ -2810,7 +2810,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const tasksMultiEnv = resolveScriptTasks(scriptsMultiEnv, "fix");
       expect(tasksMultiEnv).toEqual([{ capability: "format", scriptName: "fix" }]);
 
-      // C. Nested delegation
+      // Nested delegation
       const scriptsNested = {
         fix: 'cross-env-shell CI=1 "npm run all-fix"',
         "all-fix": 'cross-env-shell NODE_ENV=production "npm run format:write && npm run lint:fix"',
@@ -2822,7 +2822,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "format", capabilities: ["format", "lint"], scriptName: "fix" },
       ]);
 
-      // D. Direct command compatibility
+      // Direct command compatibility
       const scriptsDirectCompat = {
         fix: "cross-env CI=1 npm run format:write",
         "format:write": "cross-env-shell CI=1 prettier --write .",
@@ -2880,7 +2880,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("verifies malformed quoted commands fail closed and do not claim capability coverage or suppress child tasks", async () => {
-      // A. Malformed quoted command in cross-env-shell
+      // Malformed quoted command in cross-env-shell
       const scriptsCrossEnvShell = {
         fix: 'cross-env-shell CI=1 "npm run format:write && npm run lint:fix \'unterminated"',
         "format:write": "prettier --write .",
@@ -2893,7 +2893,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "lint", scriptName: "lint:fix" },
       ]);
 
-      // B. Malformed nested command in sh -c
+      // Malformed nested command in sh -c
       const scriptsSh = {
         fix: 'sh -c "npm run format:write && npm run lint:fix \\"',
         "format:write": "prettier --write .",
@@ -2906,7 +2906,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "lint", scriptName: "lint:fix" },
       ]);
 
-      // C. Malformed nested command in bash -c
+      // Malformed nested command in bash -c
       const scriptsBash = {
         fix: 'bash -c "npm run format:write && npm run lint:fix \\"',
         "format:write": "prettier --write .",
@@ -2919,7 +2919,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         { capability: "lint", scriptName: "lint:fix" },
       ]);
 
-      // D. Full planExecution with malformed cross-env-shell preserves child tasks
+      // Full planExecution with malformed cross-env-shell preserves child tasks
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -2938,7 +2938,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
-  describe("Regression: F-02 Read-Only Classifier Audit for File-Writing Options", () => {
+  describe("Read-Only Classifier Audit for File-Writing Options", () => {
     it("classifies ESLint with --fix, --cache, and --output-file as non-read-only", () => {
       expect(classifyScript("eslint --fix .")).toBe("write-capable");
       expect(classifyScript("eslint . --cache")).toBe("unknown");
@@ -3050,7 +3050,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
   });
 
-  describe("Regression: F-03 Sequential Script Delegation vs Cycle Detection", () => {
+  describe("Sequential Script Delegation vs Cycle Detection", () => {
     it("handles a script referencing the same child script twice sequentially", () => {
       const scripts = {
         lint: "npm run lint:base && npm run lint:base",

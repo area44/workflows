@@ -49,12 +49,12 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
       expect(pkg.packageManager).toBe("npm@10.8.2");
 
       // HTML Marker content
-      expect(files["index.html"]).toContain("AREA44 Workflows Consumer Project");
+      expect(files["index.html"]).toContain("Workflows Consumer Project");
 
       // Python Configuration & Ruff version alignment
       expect(files["pyproject.toml"]).toContain("ruff==0.17.2");
       expect(files["requirements.txt"]).toBe("ruff==0.17.2\n");
-      expect(files["main.py"]).toContain('print("AREA44 consumer project Python entrypoint")');
+      expect(files["main.py"]).toContain('print("Consumer project Python entrypoint")');
     });
 
     it("applies custom project name consistently across package.json, package-lock.json, and pyproject.toml", () => {
@@ -103,24 +103,24 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
     });
 
     it("handles pythonVersion as exact version versus constraints without operator duplication or stray files", () => {
-      // 1. Exact version input
+      // Exact version input
       const exactFiles = generateConsumerProjectFiles({ pythonVersion: "3.11" });
       expect(exactFiles).toHaveProperty(".python-version");
       expect(exactFiles[".python-version"]).toBe("3.11\n");
       expect(exactFiles["pyproject.toml"]).toContain('requires-python = ">=3.11"\n');
 
-      // 2. Lower bound constraint
+      // Lower bound constraint
       const lowerFiles = generateConsumerProjectFiles({ pythonVersion: ">=3.11" });
       expect(lowerFiles).not.toHaveProperty(".python-version");
       expect(lowerFiles["pyproject.toml"]).toContain('requires-python = ">=3.11"\n');
       expect(lowerFiles["pyproject.toml"]).not.toContain(">>=");
 
-      // 3. Range constraint
+      // Range constraint
       const rangeFiles = generateConsumerProjectFiles({ pythonVersion: ">=3.10,<3.14" });
       expect(rangeFiles).not.toHaveProperty(".python-version");
       expect(rangeFiles["pyproject.toml"]).toContain('requires-python = ">=3.10,<3.14"\n');
 
-      // 4. Missing pythonVersion
+      // Missing pythonVersion
       const noVerFiles = generateConsumerProjectFiles({});
       expect(noVerFiles).not.toHaveProperty(".python-version");
       expect(noVerFiles["pyproject.toml"]).not.toContain("requires-python");
@@ -227,7 +227,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
         runCommandWithDiagnostics(`${bunBin} run build`, target);
         expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
         expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-          "AREA44 Workflows Consumer Project",
+          "Workflows Consumer Project",
         );
       },
     );
@@ -254,7 +254,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
         runCommandWithDiagnostics("npm run build", target);
         expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
         expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-          "AREA44 Workflows Consumer Project",
+          "Workflows Consumer Project",
         );
       },
     );
@@ -282,7 +282,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
         runCommandWithDiagnostics("pnpm run build", target);
         expect(fs.existsSync(path.join(target, "dist/index.html"))).toBe(true);
         expect(fs.readFileSync(path.join(target, "dist/index.html"), "utf8")).toContain(
-          "AREA44 Workflows Consumer Project",
+          "Workflows Consumer Project",
         );
       },
     );
