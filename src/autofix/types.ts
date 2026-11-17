@@ -32,6 +32,10 @@ export interface ProjectContext {
 export interface AdapterDetectionResult {
   detected: boolean;
   reason?: string;
+  hasConfig?: boolean;
+  hasDependency?: boolean;
+  isExecutableAvailable?: boolean;
+  isEligible?: boolean;
 }
 
 export interface ToolAdapter {

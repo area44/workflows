@@ -18,10 +18,20 @@ import {
   classifyScript,
   resolveScriptTasks,
 } from "../src/autofix/adapters/javascript/script-adapter.js";
+import {
+  BiomeAdapter,
+  EslintAdapter,
+  OxfmtAdapter,
+  OxlintAdapter,
+  PrettierAdapter,
+  VitePlusAdapter,
+  detectToolAvailability,
+} from "../src/autofix/adapters/javascript/tools.js";
 import { ExecutionEngine, resolveProjectBinary } from "../src/autofix/engine.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
 import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
+import { inspectJsProjectEnvironment } from "../src/javascript-env.js";
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");
@@ -3107,6 +3117,566 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       };
       // Because 'broken' is a cycle and evaluates to 'unknown', composite evaluates to 'unknown'
       expect(classifyScript("npm run composite", scripts)).toBe("unknown");
+    });
+  });
+
+  describe("Configuration-Only Tool Detection and Executable Resolution Contract", () => {
+    describe("Scenario: Configuration exists, dependency absent, executable unavailable -> Tool is not scheduled", () => {
+      it("does not schedule Prettier when only .prettierrc.json exists without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "config-only-prettier" }),
+        );
+        fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "prettier")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "prettier")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason:
+              "Prettier configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new PrettierAdapter();
+        const detection = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(detection.detected).toBe(false);
+        expect(detection.hasConfig).toBe(true);
+        expect(detection.hasDependency).toBe(false);
+        expect(detection.isExecutableAvailable).toBe(false);
+        expect(detection.isEligible).toBe(false);
+
+        // Workflow execution safely skips without scheduling Prettier or throwing missing executable error
+        await executeJsWorkflow(tempDir);
+        expect(exec.exec).not.toHaveBeenCalledWith(
+          expect.stringContaining("prettier"),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it("does not schedule Biome when only biome.json exists without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "config-only-biome" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "biome")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "biome")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "biome",
+            reason:
+              "Biome configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new BiomeAdapter();
+        const detection = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(detection.detected).toBe(false);
+        expect(detection.hasConfig).toBe(true);
+        expect(detection.hasDependency).toBe(false);
+        expect(detection.isExecutableAvailable).toBe(false);
+        expect(detection.isEligible).toBe(false);
+      });
+
+      it("does not schedule ESLint when only eslint.config.js exists without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "config-only-eslint" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "eslint.config.js"), "export default [];");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "eslint")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "eslint")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "eslint",
+            reason:
+              "ESLint configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new EslintAdapter();
+        const detection = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(detection.detected).toBe(false);
+        expect(detection.hasConfig).toBe(true);
+        expect(detection.hasDependency).toBe(false);
+        expect(detection.isExecutableAvailable).toBe(false);
+        expect(detection.isEligible).toBe(false);
+      });
+
+      it("does not schedule Oxlint when only oxlint.json exists without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "config-only-oxlint" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "oxlint.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "oxlint")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "oxlint")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "oxlint",
+            reason:
+              "Oxlint configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new OxlintAdapter();
+        const detection = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(detection.detected).toBe(false);
+        expect(detection.hasConfig).toBe(true);
+        expect(detection.hasDependency).toBe(false);
+        expect(detection.isExecutableAvailable).toBe(false);
+        expect(detection.isEligible).toBe(false);
+      });
+
+      it("does not schedule Oxfmt when only oxfmt.json exists without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "config-only-oxfmt" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "oxfmt.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "oxfmt")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "oxfmt")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "oxfmt",
+            reason:
+              "Oxfmt configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new OxfmtAdapter();
+        const detection = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(detection.detected).toBe(false);
+        expect(detection.hasConfig).toBe(true);
+        expect(detection.hasDependency).toBe(false);
+        expect(detection.isExecutableAvailable).toBe(false);
+        expect(detection.isEligible).toBe(false);
+      });
+
+      it("does not schedule Prettier when configured via package.json key without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            name: "pkg-config-prettier",
+            prettier: { singleQuote: true },
+          }),
+        );
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "prettier")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "prettier")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason:
+              "Prettier configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+      });
+
+      it("does not schedule ESLint when configured via package.json key without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            name: "pkg-config-eslint",
+            eslintConfig: { env: { node: true } },
+          }),
+        );
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "eslint")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "eslint")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "eslint",
+            reason:
+              "ESLint configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+      });
+    });
+
+    describe("Scenario: Global executable exists and global resolution is supported -> Tool is scheduled only after availability is confirmed", () => {
+      it("schedules Prettier when configuration exists and global binary is confirmed in PATH", async () => {
+        vi.spyOn(io, "which").mockImplementation(async (bin) => {
+          if (bin === "prettier") return "/usr/local/bin/prettier";
+          return "";
+        });
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "global-prettier" }),
+        );
+        fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason: "Prettier configuration detected and executable available",
+          }),
+        );
+        expect(plan.tasks.map((t) => t.id)).toEqual(["prettier-format"]);
+
+        const engine = new ExecutionEngine();
+        const resolved = await engine.resolveTaskExecutable(plan.tasks[0]);
+        expect(resolved).toBe("/usr/local/bin/prettier");
+      });
+
+      it("schedules Biome when configuration exists and global binary is confirmed in PATH", async () => {
+        vi.spyOn(io, "which").mockImplementation(async (bin) => {
+          if (bin === "biome") return "/usr/local/bin/biome";
+          return "";
+        });
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "global-biome" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools).toContainEqual(
+          expect.objectContaining({
+            id: "biome",
+            reason: "Biome configuration detected and executable available",
+          }),
+        );
+        expect(plan.tasks.map((t) => t.id)).toEqual([
+          "biome-format-fix",
+          "biome-lint-fix",
+          "biome-assist-fix",
+        ]);
+
+        const engine = new ExecutionEngine();
+        const resolved = await engine.resolveTaskExecutable(plan.tasks[0]);
+        expect(resolved).toBe("/usr/local/bin/biome");
+      });
+
+      it("refuses to schedule tool when global executable resolution returns empty or invalid binary", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "missing-global-prettier" }),
+        );
+        fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "prettier")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "prettier")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason:
+              "Prettier configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+      });
+    });
+
+    describe("Scenario: Dependency declared, configuration exists, executable available -> Tool is detected and scheduled", () => {
+      it("schedules Prettier when dependency is declared and configuration exists", async () => {
+        const binDir = path.join(tempDir, "node_modules", ".bin");
+        fs.mkdirSync(binDir, { recursive: true });
+        fs.writeFileSync(path.join(binDir, "prettier"), "");
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { prettier: "^3.0.0" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason: "Prettier dependency and configuration detected",
+          }),
+        );
+        expect(plan.tasks.map((t) => t.id)).toEqual(["prettier-format"]);
+      });
+
+      it("schedules Biome when dependency is declared and configuration exists", async () => {
+        const binDir = path.join(tempDir, "node_modules", ".bin");
+        fs.mkdirSync(binDir, { recursive: true });
+        fs.writeFileSync(path.join(binDir, "biome"), "");
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "@biomejs/biome": "^1.9.0" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "biome.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools).toContainEqual(
+          expect.objectContaining({
+            id: "biome",
+            reason: "Biome dependency and configuration detected",
+          }),
+        );
+        expect(plan.tasks.map((t) => t.id)).toEqual([
+          "biome-format-fix",
+          "biome-lint-fix",
+          "biome-assist-fix",
+        ]);
+      });
+    });
+
+    describe("Scenario: No configuration, no dependency, no executable -> Tool is not scheduled", () => {
+      it("returns clean non-detection without cluttering skipped tools when neither config nor dep exists", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "plain-package" }),
+        );
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks).toHaveLength(0);
+        expect(plan.selectedTools).toHaveLength(0);
+        expect(plan.skippedTools.some((t) => t.id === "prettier")).toBe(false);
+        expect(plan.skippedTools.some((t) => t.id === "biome")).toBe(false);
+        expect(plan.skippedTools.some((t) => t.id === "eslint")).toBe(false);
+
+        const prettierAdapter = new PrettierAdapter();
+        const prettierResult = await prettierAdapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(prettierResult.detected).toBe(false);
+        expect(prettierResult.reason).toBe("no Prettier dependency or configuration");
+        expect(prettierResult.hasConfig).toBe(false);
+        expect(prettierResult.hasDependency).toBe(false);
+        expect(prettierResult.isEligible).toBe(false);
+      });
+    });
+
+    describe("Scenario: Configuration exists but package installation has not provisioned the executable -> Tool is not incorrectly scheduled", () => {
+      it("does not incorrectly schedule a tool when unrelated packages are installed but tool is absent", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        const binDir = path.join(tempDir, "node_modules", ".bin");
+        fs.mkdirSync(binDir, { recursive: true });
+        fs.writeFileSync(path.join(binDir, "other-tool"), "");
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "other-tool": "^1.0.0" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, ".prettierrc.json"), "{}");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.tasks.some((t) => t.toolId === "prettier")).toBe(false);
+        expect(plan.selectedTools.some((t) => t.id === "prettier")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "prettier",
+            reason:
+              "Prettier configuration detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        await executeJsWorkflow(tempDir);
+        expect(exec.exec).not.toHaveBeenCalledWith(
+          expect.stringContaining("prettier"),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    describe("Scenario: Dependency declared but executable unexpectedly missing -> Actionable execution error", () => {
+      it("throws actionable error during execution when declared tool executable is missing from node_modules/.bin and PATH", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { oxlint: "^0.9.0" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "oxlint.json"), "{}");
+
+        await expect(executeJsWorkflow(tempDir)).rejects.toThrow(
+          /Configured tool "Oxlint" could not run: executable "oxlint" is not available in node_modules\/\.bin or PATH\. Please install "oxlint" in project dependencies\./,
+        );
+      });
+    });
+
+    describe("Scenario: Vite+ detection contract preservation", () => {
+      it("preserves dependency-only detection for Vite+ without requiring config file", async () => {
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "vite-plus": "^1.4.0" },
+          }),
+        );
+
+        const adapter = new VitePlusAdapter();
+        const result = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(result.detected).toBe(true);
+        expect(result.hasDependency).toBe(true);
+        expect(result.isEligible).toBe(true);
+      });
+
+      it("does NOT detect Vite+ when only vite.config.ts exists without dependency or vp script", async () => {
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ name: "plain-vite-project" }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const adapter = new VitePlusAdapter();
+        const result = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(result.detected).toBe(false);
+        expect(result.isEligible).toBe(false);
+        expect(result.reason).toBe("no Vite+ dependency or configuration");
+      });
+    });
+
+    describe("Scenario: Shared detectToolAvailability helper", () => {
+      it("correctly identifies all 4 contract states: config, dependency, executable, and eligibility", async () => {
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "custom-tool": "^1.0.0" },
+          }),
+        );
+        const dummyContext: ProjectContext = {
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        };
+
+        // State 1: Config true, Dep true -> eligible
+        const state1 = await detectToolAvailability(dummyContext, {
+          toolId: "custom",
+          toolName: "CustomTool",
+          executable: "custom-tool",
+          requiredPackage: "custom-tool",
+          hasConfig: true,
+        });
+        expect(state1.detected).toBe(true);
+        expect(state1.hasConfig).toBe(true);
+        expect(state1.hasDependency).toBe(true);
+        expect(state1.isEligible).toBe(true);
+
+        // State 2: Config true, Dep false, Exec false -> not eligible
+        fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "no-dep" }));
+        const noDepContext: ProjectContext = {
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        };
+        const state2 = await detectToolAvailability(noDepContext, {
+          toolId: "custom",
+          toolName: "CustomTool",
+          executable: "custom-tool",
+          requiredPackage: "custom-tool",
+          hasConfig: true,
+        });
+        expect(state2.detected).toBe(false);
+        expect(state2.hasConfig).toBe(true);
+        expect(state2.hasDependency).toBe(false);
+        expect(state2.isExecutableAvailable).toBe(false);
+        expect(state2.isEligible).toBe(false);
+
+        // State 3: Config false, Dep true -> not eligible
+        const state3 = await detectToolAvailability(dummyContext, {
+          toolId: "custom",
+          toolName: "CustomTool",
+          executable: "custom-tool",
+          requiredPackage: "custom-tool",
+          hasConfig: false,
+        });
+        expect(state3.detected).toBe(false);
+        expect(state3.hasConfig).toBe(false);
+        expect(state3.hasDependency).toBe(true);
+        expect(state3.isEligible).toBe(false);
+
+        // State 4: Config false, Dep false -> not eligible
+        const state4 = await detectToolAvailability(noDepContext, {
+          toolId: "custom",
+          toolName: "CustomTool",
+          executable: "custom-tool",
+          requiredPackage: "custom-tool",
+          hasConfig: false,
+        });
+        expect(state4.detected).toBe(false);
+        expect(state4.hasConfig).toBe(false);
+        expect(state4.hasDependency).toBe(false);
+        expect(state4.isEligible).toBe(false);
+      });
     });
   });
 });

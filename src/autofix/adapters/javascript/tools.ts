@@ -11,6 +11,7 @@ import type {
 } from "../../types.js";
 
 import { hasVitePlusDependency, type JsPackageManifest } from "../../../javascript-env.js";
+import { resolveProjectBinary } from "../../engine.js";
 import { hasVitePlusCommand } from "./script-adapter.js";
 
 function hasVitePlusScript(scripts?: Record<string, string>): boolean {
@@ -39,13 +40,102 @@ function hasAnyConfigFile(cwd: string, filenames: string[]): boolean {
   return false;
 }
 
+export interface DetectToolOptions {
+  toolId: string;
+  toolName: string;
+  executable: string;
+  requiredPackage: string;
+  hasConfig: boolean;
+  extraPackages?: string[];
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Shared detection and executable availability resolution abstraction.
+ * Distinguishes between:
+ * - Configuration discovered (hasConfig)
+ * - Dependency declared (hasDependency)
+ * - Executable available (isExecutableAvailable)
+ * - Tool eligible for execution (isEligible / detected)
+ */
+export async function detectToolAvailability(
+  context: ProjectContext,
+  options: DetectToolOptions,
+): Promise<AdapterDetectionResult> {
+  const { toolName, executable, requiredPackage, hasConfig, extraPackages, platform } = options;
+  const pkg = context.jsEnv?.packageJson;
+  const packagesToCheck = [requiredPackage, ...(extraPackages ?? [])];
+  const hasDep = packagesToCheck.some((dep) => hasDependency(pkg, dep));
+
+  if (!hasConfig) {
+    if (hasDep) {
+      const suffix = toolName === "Biome" ? " file" : "";
+      return {
+        detected: false,
+        reason: `${toolName} dependency present without configuration${suffix}`,
+        hasConfig: false,
+        hasDependency: true,
+        isExecutableAvailable: false,
+        isEligible: false,
+      };
+    }
+    return {
+      detected: false,
+      reason: `no ${toolName} dependency or configuration`,
+      hasConfig: false,
+      hasDependency: false,
+      isExecutableAvailable: false,
+      isEligible: false,
+    };
+  }
+
+  // Configuration was discovered.
+  // Check if executable is already available on the system or locally in node_modules/.bin
+  const resolvedBin = await resolveProjectBinary(context.cwd, executable, platform);
+  const hasExec = Boolean(resolvedBin);
+
+  // If dependency is declared in project manifest:
+  if (hasDep) {
+    return {
+      detected: true,
+      reason: `${toolName} dependency and configuration detected`,
+      hasConfig: true,
+      hasDependency: true,
+      isExecutableAvailable: hasExec,
+      isEligible: true,
+    };
+  }
+
+  // Dependency is absent, but executable is available (e.g. global binary in PATH or pre-installed local binary)
+  if (hasExec) {
+    return {
+      detected: true,
+      reason: `${toolName} configuration detected and executable available`,
+      hasConfig: true,
+      hasDependency: false,
+      isExecutableAvailable: true,
+      isEligible: true,
+    };
+  }
+
+  // Configuration discovered, but dependency is absent and executable is unavailable
+  return {
+    detected: false,
+    reason: `${toolName} configuration detected but executable is unavailable and dependency is not declared`,
+    hasConfig: true,
+    hasDependency: false,
+    isExecutableAvailable: false,
+    isEligible: false,
+  };
+}
+
 // 1. Vite+ Adapter
 export class VitePlusAdapter implements ToolAdapter {
   public readonly id = "vite-plus";
   public readonly name = "Vite+";
   public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const pkg = context.jsEnv?.packageJson;
     const hasDep = hasVitePlusDependency(pkg);
     const hasConfig = hasAnyConfigFile(context.cwd, [
@@ -55,10 +145,28 @@ export class VitePlusAdapter implements ToolAdapter {
       "vite.config.cjs",
     ]);
 
-    if (hasDep || (hasConfig && hasVitePlusScript(pkg?.scripts))) {
-      return { detected: true, reason: "Vite+ dependency and/or configuration detected" };
+    const hasVpScript = hasVitePlusScript(pkg?.scripts);
+    const isEligible = hasDep || (hasConfig && hasVpScript);
+
+    if (isEligible) {
+      const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
+      return {
+        detected: true,
+        reason: "Vite+ dependency and/or configuration detected",
+        hasConfig,
+        hasDependency: hasDep,
+        isExecutableAvailable: Boolean(resolvedBin),
+        isEligible: true,
+      };
     }
-    return { detected: false, reason: "no Vite+ dependency or configuration" };
+    return {
+      detected: false,
+      reason: "no Vite+ dependency or configuration",
+      hasConfig,
+      hasDependency: hasDep,
+      isExecutableAvailable: false,
+      isEligible: false,
+    };
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
@@ -126,21 +234,16 @@ export class BiomeAdapter implements ToolAdapter {
   public readonly name = "Biome";
   public readonly capabilities: readonly Capability[] = ["format", "lint", "assist"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
-    const pkg = context.jsEnv?.packageJson;
-    const hasDep = hasDependency(pkg, "@biomejs/biome");
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const hasConfig = hasAnyConfigFile(context.cwd, ["biome.json", "biome.jsonc"]);
-
-    if (hasDep && hasConfig) {
-      return { detected: true, reason: "Biome dependency and configuration detected" };
-    }
-    if (hasConfig) {
-      return { detected: true, reason: "Biome configuration detected" };
-    }
-    if (hasDep) {
-      return { detected: false, reason: "Biome dependency present without configuration file" };
-    }
-    return { detected: false, reason: "no Biome dependency or configuration" };
+    return detectToolAvailability(context, {
+      toolId: this.id,
+      toolName: this.name,
+      executable: "biome",
+      requiredPackage: "@biomejs/biome",
+      extraPackages: ["biome"],
+      hasConfig,
+    });
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
@@ -232,9 +335,8 @@ export class PrettierAdapter implements ToolAdapter {
   public readonly name = "Prettier";
   public readonly capabilities: readonly Capability[] = ["format"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const pkg = context.jsEnv?.packageJson;
-    const hasDep = hasDependency(pkg, "prettier");
     const hasPkgConfig = Boolean((pkg as any)?.prettier);
     const hasConfigFile = hasAnyConfigFile(context.cwd, [
       ".prettierrc",
@@ -249,17 +351,14 @@ export class PrettierAdapter implements ToolAdapter {
       "prettier.config.cjs",
       "prettier.config.mjs",
     ]);
-
-    if (hasDep && (hasPkgConfig || hasConfigFile)) {
-      return { detected: true, reason: "Prettier dependency and configuration detected" };
-    }
-    if (hasPkgConfig || hasConfigFile) {
-      return { detected: true, reason: "Prettier configuration detected" };
-    }
-    if (hasDep) {
-      return { detected: false, reason: "Prettier dependency present without configuration" };
-    }
-    return { detected: false, reason: "no Prettier dependency or configuration" };
+    const hasConfig = hasPkgConfig || hasConfigFile;
+    return detectToolAvailability(context, {
+      toolId: this.id,
+      toolName: this.name,
+      executable: "prettier",
+      requiredPackage: "prettier",
+      hasConfig,
+    });
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
@@ -303,9 +402,8 @@ export class EslintAdapter implements ToolAdapter {
   public readonly name = "ESLint";
   public readonly capabilities: readonly Capability[] = ["lint"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const pkg = context.jsEnv?.packageJson;
-    const hasDep = hasDependency(pkg, "eslint");
     const hasPkgConfig = Boolean((pkg as any)?.eslintConfig);
     const hasConfigFile = hasAnyConfigFile(context.cwd, [
       "eslint.config.js",
@@ -319,17 +417,14 @@ export class EslintAdapter implements ToolAdapter {
       ".eslintrc.yaml",
       ".eslintrc.yml",
     ]);
-
-    if (hasDep && (hasPkgConfig || hasConfigFile)) {
-      return { detected: true, reason: "ESLint dependency and configuration detected" };
-    }
-    if (hasPkgConfig || hasConfigFile) {
-      return { detected: true, reason: "ESLint configuration detected" };
-    }
-    if (hasDep) {
-      return { detected: false, reason: "ESLint dependency present without configuration" };
-    }
-    return { detected: false, reason: "no ESLint dependency or configuration" };
+    const hasConfig = hasPkgConfig || hasConfigFile;
+    return detectToolAvailability(context, {
+      toolId: this.id,
+      toolName: this.name,
+      executable: "eslint",
+      requiredPackage: "eslint",
+      hasConfig,
+    });
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
@@ -373,26 +468,20 @@ export class OxlintAdapter implements ToolAdapter {
   public readonly name = "Oxlint";
   public readonly capabilities: readonly Capability[] = ["lint"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
-    const pkg = context.jsEnv?.packageJson;
-    const hasDep = hasDependency(pkg, "oxlint");
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const hasConfig = hasAnyConfigFile(context.cwd, [
       ".oxlintrc.json",
       "oxlint.json",
       "oxlint.config.ts",
       "oxlint.config.js",
     ]);
-
-    if (hasDep && hasConfig) {
-      return { detected: true, reason: "Oxlint dependency and configuration detected" };
-    }
-    if (hasConfig) {
-      return { detected: true, reason: "Oxlint configuration detected" };
-    }
-    if (hasDep) {
-      return { detected: false, reason: "Oxlint dependency present without configuration" };
-    }
-    return { detected: false, reason: "no Oxlint dependency or configuration" };
+    return detectToolAvailability(context, {
+      toolId: this.id,
+      toolName: this.name,
+      executable: "oxlint",
+      requiredPackage: "oxlint",
+      hasConfig,
+    });
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
@@ -436,26 +525,20 @@ export class OxfmtAdapter implements ToolAdapter {
   public readonly name = "Oxfmt";
   public readonly capabilities: readonly Capability[] = ["format"];
 
-  public detect(context: ProjectContext): AdapterDetectionResult {
-    const pkg = context.jsEnv?.packageJson;
-    const hasDep = hasDependency(pkg, "oxfmt");
+  public async detect(context: ProjectContext): Promise<AdapterDetectionResult> {
     const hasConfig = hasAnyConfigFile(context.cwd, [
       ".oxfmtrc.json",
       "oxfmt.json",
       "oxfmt.config.ts",
       "oxfmt.config.js",
     ]);
-
-    if (hasDep && hasConfig) {
-      return { detected: true, reason: "Oxfmt dependency and configuration detected" };
-    }
-    if (hasConfig) {
-      return { detected: true, reason: "Oxfmt configuration detected" };
-    }
-    if (hasDep) {
-      return { detected: false, reason: "Oxfmt dependency present without configuration" };
-    }
-    return { detected: false, reason: "no Oxfmt dependency or configuration" };
+    return detectToolAvailability(context, {
+      toolId: this.id,
+      toolName: this.name,
+      executable: "oxfmt",
+      requiredPackage: "oxfmt",
+      hasConfig,
+    });
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {

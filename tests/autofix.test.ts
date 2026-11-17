@@ -46,6 +46,7 @@ describe("autofix", () => {
     });
 
     afterEach(() => {
+      process.chdir(originalCwd);
       if (tempDir && fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -481,6 +482,7 @@ describe("autofix", () => {
     });
 
     afterEach(() => {
+      process.chdir(originalCwd);
       if (tempDir && fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
