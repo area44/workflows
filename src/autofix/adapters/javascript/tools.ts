@@ -129,7 +129,7 @@ export async function detectToolAvailability(
   };
 }
 
-// 1. Vite+ Adapter
+// Vite+ Adapter
 export class VitePlusAdapter implements ToolAdapter {
   public readonly id = "vite-plus";
   public readonly name = "Vite+";
@@ -228,7 +228,7 @@ export class VitePlusAdapter implements ToolAdapter {
   }
 }
 
-// 2. Biome Adapter
+// Biome Adapter
 export class BiomeAdapter implements ToolAdapter {
   public readonly id = "biome";
   public readonly name = "Biome";
@@ -329,7 +329,7 @@ export class BiomeAdapter implements ToolAdapter {
   }
 }
 
-// 3. Prettier Adapter
+// Prettier Adapter
 export class PrettierAdapter implements ToolAdapter {
   public readonly id = "prettier";
   public readonly name = "Prettier";
@@ -396,7 +396,7 @@ export class PrettierAdapter implements ToolAdapter {
   }
 }
 
-// 4. ESLint Adapter
+// ESLint Adapter
 export class EslintAdapter implements ToolAdapter {
   public readonly id = "eslint";
   public readonly name = "ESLint";
@@ -462,7 +462,7 @@ export class EslintAdapter implements ToolAdapter {
   }
 }
 
-// 5. Oxlint Adapter
+// Oxlint Adapter
 export class OxlintAdapter implements ToolAdapter {
   public readonly id = "oxlint";
   public readonly name = "Oxlint";
@@ -519,7 +519,7 @@ export class OxlintAdapter implements ToolAdapter {
   }
 }
 
-// 6. Oxfmt Adapter
+// Oxfmt Adapter
 export class OxfmtAdapter implements ToolAdapter {
   public readonly id = "oxfmt";
   public readonly name = "Oxfmt";

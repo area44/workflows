@@ -669,7 +669,7 @@ dev = ["pytest"]
       const readFileSyncSpy = vi.spyOn(fs, "readFileSync");
 
       try {
-        // 1. Initial resolution: pyproject.toml is read from disk exactly once during context discovery and reused for PM detection
+        // Initial resolution: pyproject.toml is read from disk exactly once during context discovery and reused for PM detection
         readFileSyncSpy.mockClear();
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
@@ -679,7 +679,7 @@ dev = ["pytest"]
         );
         expect(pyprojectReads.length).toBe(1);
 
-        // 2. Direct call without precomputed context reads pyproject.toml independently
+        // Direct call without precomputed context reads pyproject.toml independently
         readFileSyncSpy.mockClear();
         const directPm = detectPythonPackageManager(proj.dir);
         expect(directPm?.name).toBe("uv");
@@ -688,7 +688,7 @@ dev = ["pytest"]
         );
         expect(directReads.length).toBe(1);
 
-        // 3. Passing precomputed context directly into detectPythonPackageManager avoids redundant file reads
+        // Passing precomputed context directly into detectPythonPackageManager avoids redundant file reads
         const precomputedCtx = findPythonProjectContext(proj.dir);
         readFileSyncSpy.mockClear();
         const reusedPm = detectPythonPackageManager(proj.dir, undefined, {
