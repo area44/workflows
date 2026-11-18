@@ -146,24 +146,51 @@ export class VitePlusAdapter implements ToolAdapter {
     ]);
 
     const hasVpScript = hasVitePlusScript(pkg?.scripts);
-    const isEligible = hasDep || (hasConfig && hasVpScript);
+    const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
+    const hasExec = Boolean(resolvedBin);
 
-    if (isEligible) {
-      const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
+    // 1. Dependency declared: eligible via package provisioning lifecycle
+    if (hasDep) {
       return {
         detected: true,
         reason: "Vite+ dependency and/or configuration detected",
         hasConfig,
-        hasDependency: hasDep,
-        isExecutableAvailable: Boolean(resolvedBin),
+        hasDependency: true,
+        isExecutableAvailable: hasExec,
         isEligible: true,
       };
     }
+
+    // 2. Dependency not declared, but Vite config and vp script exist:
+    // Requires confirmed executable availability (e.g. global vp in PATH or pre-installed local binary).
+    // Mere script detection or package runner (npx/bunx/pnpm exec) without a resolved executable is not eligible.
+    if (hasConfig && hasVpScript) {
+      if (hasExec) {
+        return {
+          detected: true,
+          reason: "Vite+ configuration detected and executable available",
+          hasConfig: true,
+          hasDependency: false,
+          isExecutableAvailable: true,
+          isEligible: true,
+        };
+      }
+      return {
+        detected: false,
+        reason:
+          "Vite+ script detected but executable is unavailable and dependency is not declared",
+        hasConfig: true,
+        hasDependency: false,
+        isExecutableAvailable: false,
+        isEligible: false,
+      };
+    }
+
     return {
       detected: false,
       reason: "no Vite+ dependency or configuration",
       hasConfig,
-      hasDependency: hasDep,
+      hasDependency: false,
       isExecutableAvailable: false,
       isEligible: false,
     };

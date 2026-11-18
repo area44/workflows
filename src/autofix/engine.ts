@@ -13,8 +13,35 @@ export interface ExecutionResult {
 }
 
 /**
+ * Validates that a file exists and is executable.
+ * On Unix-like platforms, verifies file existence, regular file status, and executable permission via fs.accessSync(..., X_OK).
+ * On Windows, verifies file existence and regular file status without applying Unix X_OK checks.
+ */
+export function isExecutableBinary(
+  filePath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return false;
+    }
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return false;
+    }
+    if (platform === "win32") {
+      return true;
+    }
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolves local project binary safely without falling back to `npx` (which could download unpinned packages).
- * On Unix-like systems, checks node_modules/.bin/<tool>.
+ * On Unix-like systems, checks node_modules/.bin/<tool> with executable permission.
  * On Windows, resolves executable shims (preferring .cmd, then .bat, .exe, or extensionless).
  * Falls back to PATH via io.which.
  */
@@ -35,7 +62,7 @@ export async function resolveProjectBinary(
         return undefined;
       }
       const explicitPath = path.join(binDir, toolBinary);
-      if (fs.existsSync(explicitPath)) {
+      if (isExecutableBinary(explicitPath, platform)) {
         return explicitPath;
       }
     } else {
@@ -49,27 +76,31 @@ export async function resolveProjectBinary(
       const winExtensions = [".cmd", ".bat", ".exe", ""];
       for (const winExt of winExtensions) {
         const candidate = path.join(binDir, `${toolBinary}${winExt}`);
-        if (fs.existsSync(candidate)) {
+        if (isExecutableBinary(candidate, platform)) {
           return candidate;
         }
       }
     }
   } else {
     const localBinPath = path.join(binDir, toolBinary);
-    if (fs.existsSync(localBinPath)) {
+    if (isExecutableBinary(localBinPath, platform)) {
       return localBinPath;
     }
   }
 
-  const pathBin = await io.which(toolBinary, false);
-  if (pathBin) {
-    if (platform === "win32") {
-      const pathExt = path.extname(pathBin).toLowerCase();
-      if (pathExt && !SUPPORTED_WIN_EXTENSIONS.has(pathExt)) {
-        return undefined;
+  try {
+    const pathBin = await io.which(toolBinary, false);
+    if (pathBin) {
+      if (platform === "win32") {
+        const pathExt = path.extname(pathBin).toLowerCase();
+        if (pathExt && !SUPPORTED_WIN_EXTENSIONS.has(pathExt)) {
+          return undefined;
+        }
       }
+      return pathBin;
     }
-    return pathBin;
+  } catch {
+    return undefined;
   }
 
   return undefined;

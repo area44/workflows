@@ -16,6 +16,7 @@ import type {
 
 import {
   classifyScript,
+  hasVitePlusCommand,
   resolveScriptTasks,
 } from "../src/autofix/adapters/javascript/script-adapter.js";
 import {
@@ -27,7 +28,11 @@ import {
   VitePlusAdapter,
   detectToolAvailability,
 } from "../src/autofix/adapters/javascript/tools.js";
-import { ExecutionEngine, resolveProjectBinary } from "../src/autofix/engine.js";
+import {
+  ExecutionEngine,
+  isExecutableBinary,
+  resolveProjectBinary,
+} from "../src/autofix/engine.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
 import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
@@ -1690,10 +1695,21 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
       fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
 
+      // Verify command intent parser recognizes direct vp command
+      expect(hasVitePlusCommand("vp fmt")).toBe(true);
+
+      // When executable is unavailable and dependency is not declared, Vite+ must not be scheduled
+      vi.spyOn(io, "which").mockResolvedValue("");
       const registry = createDefaultRegistry();
-      const plan = await planExecution(registry, { cwd: tempDir }, "fix");
-      // Script fmt runs, and VitePlusAdapter is detected (and fmt script covers format)
-      expect(plan.selectedTools.map((t) => t.id)).toContain("vite-plus");
+      const planUnavailable = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planUnavailable.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // When vp executable is confirmed available in PATH, Vite+ is detected and scheduled
+      vi.spyOn(io, "which").mockImplementation(async (bin) =>
+        bin === "vp" ? "/usr/local/bin/vp" : "",
+      );
+      const planAvailable = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planAvailable.selectedTools.map((t) => t.id)).toContain("vite-plus");
     });
 
     it("detects Vite+ when package script invokes vp in chained command or with env prefix", async () => {
@@ -1708,7 +1724,20 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
       fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
 
+      // Verify command intent parser recognizes vp in chained commands and env prefixes
+      expect(hasVitePlusCommand("echo ready && vp build")).toBe(true);
+      expect(hasVitePlusCommand("NODE_ENV=production vp check")).toBe(true);
+
+      // When executable is unavailable, Vite+ must not be scheduled
+      vi.spyOn(io, "which").mockResolvedValue("");
       const registry = createDefaultRegistry();
+      const planUnavailable = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planUnavailable.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+
+      // When executable is confirmed available in PATH, Vite+ is scheduled
+      vi.spyOn(io, "which").mockImplementation(async (bin) =>
+        bin === "vp" ? "/usr/local/bin/vp" : "",
+      );
       const plan = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(plan.selectedTools.map((t) => t.id)).toContain("vite-plus");
       expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-fmt");
@@ -1716,6 +1745,38 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("detects Vite+ through command wrappers: cross-env, sh -c, bash -c, and runner wrappers", async () => {
+      // 1. Verify command intent parser directly for wrappers and runner wrappers
+      expect(hasVitePlusCommand("cross-env NODE_ENV=production vp fmt")).toBe(true);
+      expect(hasVitePlusCommand("cross-env-shell NODE_ENV=production vp fmt")).toBe(true);
+      expect(hasVitePlusCommand("cross-env CI=true NODE_ENV=production vp lint")).toBe(true);
+      expect(
+        hasVitePlusCommand("cross-env NODE_ENV=production npm run format:vp", {
+          "format:vp": "vp fmt",
+        }),
+      ).toBe(true);
+      expect(hasVitePlusCommand("sh -c 'vp check'")).toBe(true);
+      expect(hasVitePlusCommand("bash -c 'vp fmt'")).toBe(true);
+      expect(hasVitePlusCommand("npx vp fmt")).toBe(true);
+      expect(hasVitePlusCommand("bunx vp fmt")).toBe(true);
+      expect(hasVitePlusCommand("pnpm exec vp fmt")).toBe(true);
+      expect(
+        hasVitePlusCommand("npm run vp-task", {
+          "vp-task": "vp fmt",
+        }),
+      ).toBe(true);
+
+      // Unsupported options, missing commands, or unrelated commands are rejected by parser
+      expect(hasVitePlusCommand("cross-env -f .env vp fmt")).toBe(false);
+      expect(hasVitePlusCommand("cross-env --file .env vp fmt")).toBe(false);
+      expect(hasVitePlusCommand("cross-env -unknown-flag vp fmt")).toBe(false);
+      expect(hasVitePlusCommand("cross-env NODE_ENV=production")).toBe(false);
+      expect(hasVitePlusCommand("cross-env NODE_ENV=production grep vp file.txt")).toBe(false);
+
+      // 2. When executable is confirmed available in PATH, valid wrappers schedule Vite+
+      vi.spyOn(io, "which").mockImplementation(async (bin) =>
+        bin === "vp" ? "/usr/local/bin/vp" : "",
+      );
+
       // cross-env
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1830,20 +1891,6 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       const planBash = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planBash.selectedTools.map((t) => t.id)).toContain("vite-plus");
 
-      // npx vp / bunx vp / pnpm exec vp
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({
-          scripts: {
-            fmt1: "npx vp fmt",
-            fmt2: "bunx vp fmt",
-            fmt3: "pnpm exec vp fmt",
-          },
-        }),
-      );
-      const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
-      expect(planRunners.selectedTools.map((t) => t.id)).toContain("vite-plus");
-
       // script delegation invoking vp
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1856,6 +1903,23 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
       const planDelegation = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planDelegation.selectedTools.map((t) => t.id)).toContain("vite-plus");
+
+      // 3. When executable is unavailable and dependency is not declared:
+      // Even if script invokes npx vp, bunx vp, or pnpm exec vp, no direct Vite+ tasks are scheduled
+      vi.spyOn(io, "which").mockResolvedValue("");
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          scripts: {
+            fmt1: "npx vp fmt",
+            fmt2: "bunx vp fmt",
+            fmt3: "pnpm exec vp fmt",
+          },
+        }),
+      );
+      const planRunners = await planExecution(registry, { cwd: tempDir }, "fix");
+      expect(planRunners.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
+      expect(planRunners.tasks.some((t) => t.executable === "vp")).toBe(false);
     });
 
     it("prevents false positive when 'vp ' only appears inside echo or descriptive string", async () => {
@@ -3676,6 +3740,361 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         expect(state4.hasConfig).toBe(false);
         expect(state4.hasDependency).toBe(false);
         expect(state4.isEligible).toBe(false);
+      });
+    });
+
+    describe("Vite+ Executable Availability Contract & Resolution Scenarios", () => {
+      it("schedules Vite+ when vite-plus dependency is declared and project executable is available", async () => {
+        const binDir = path.join(tempDir, "node_modules", ".bin");
+        fs.mkdirSync(binDir, { recursive: true });
+        fs.writeFileSync(path.join(binDir, "vp"), "");
+        if (process.platform !== "win32") {
+          vi.spyOn(fs, "accessSync").mockReturnValue(undefined);
+        }
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "vite-plus": "^1.4.0" },
+          }),
+        );
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools.map((t) => t.id)).toContain("vite-plus");
+        expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-fmt");
+        expect(plan.tasks.map((t) => t.id)).toContain("vite-plus-lint-fix");
+      });
+
+      it("does not schedule Vite+ when vite.config exists and script invokes vp, but no dependency or executable exists", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            scripts: { fmt: "vp fmt" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools.some((t) => t.id === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.toolId === "vite-plus")).toBe(false);
+        expect(plan.skippedTools).toContainEqual(
+          expect.objectContaining({
+            id: "vite-plus",
+            reason:
+              "Vite+ script detected but executable is unavailable and dependency is not declared",
+          }),
+        );
+
+        const adapter = new VitePlusAdapter();
+        const result = await adapter.detect({
+          cwd: tempDir,
+          jsEnv: inspectJsProjectEnvironment(tempDir),
+        });
+        expect(result.detected).toBe(false);
+        expect(result.hasConfig).toBe(true);
+        expect(result.hasDependency).toBe(false);
+        expect(result.isExecutableAvailable).toBe(false);
+        expect(result.isEligible).toBe(false);
+      });
+
+      it("does not schedule direct Vite+ tasks when script invokes npx vp, without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            scripts: { fmt: "npx vp fmt" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools.some((t) => t.id === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.toolId === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.executable === "vp")).toBe(false);
+      });
+
+      it("does not schedule direct Vite+ tasks when script invokes bunx vp, without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            scripts: { fmt: "bunx vp fmt" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools.some((t) => t.id === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.toolId === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.executable === "vp")).toBe(false);
+      });
+
+      it("does not schedule direct Vite+ tasks when script invokes pnpm exec vp, without dependency or executable", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            scripts: { fmt: "pnpm exec vp fmt" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools.some((t) => t.id === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.toolId === "vite-plus")).toBe(false);
+        expect(plan.tasks.some((t) => t.executable === "vp")).toBe(false);
+      });
+
+      it("schedules Vite+ when config and vp script exist and global vp executable is confirmed in PATH", async () => {
+        vi.spyOn(io, "which").mockImplementation(async (bin) => {
+          if (bin === "vp") return "/usr/local/bin/vp";
+          return "";
+        });
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            scripts: { build: "vp build" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        const registry = createDefaultRegistry();
+        const plan = await planExecution(registry, { cwd: tempDir }, "fix");
+
+        expect(plan.selectedTools).toContainEqual(
+          expect.objectContaining({
+            id: "vite-plus",
+            reason: "Vite+ configuration detected and executable available",
+          }),
+        );
+        expect(plan.tasks.map((t) => t.id)).toEqual(["vite-plus-fmt", "vite-plus-lint-fix"]);
+
+        const engine = new ExecutionEngine();
+        const resolved = await engine.resolveTaskExecutable(plan.tasks[0]);
+        expect(resolved).toBe("/usr/local/bin/vp");
+      });
+
+      it("throws actionable execution error when vite-plus dependency is declared but vp binary is missing after provisioning", async () => {
+        vi.spyOn(io, "which").mockResolvedValue("");
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({
+            devDependencies: { "vite-plus": "^1.4.0" },
+          }),
+        );
+        fs.writeFileSync(path.join(tempDir, "vite.config.ts"), "export default {};");
+
+        await expect(executeJsWorkflow(tempDir)).rejects.toThrow(
+          /Configured tool "Vite\+" could not run: executable "vp" is not available in node_modules\/\.bin or PATH\. Please install "vite-plus" in project dependencies\./,
+        );
+      });
+    });
+
+    describe("Local binary executable validation (resolveProjectBinary & isExecutableBinary)", () => {
+      describe("isExecutableBinary", () => {
+        it("returns false when file does not exist", () => {
+          expect(isExecutableBinary(path.join(tempDir, "nonexistent"))).toBe(false);
+        });
+
+        it("returns false when path is a directory", () => {
+          const dir = path.join(tempDir, "test-dir");
+          fs.mkdirSync(dir);
+          expect(isExecutableBinary(dir)).toBe(false);
+        });
+
+        it("returns true on win32 for existing regular file without checking Unix X_OK", () => {
+          const filePath = path.join(tempDir, "win-binary.cmd");
+          fs.writeFileSync(filePath, "echo win");
+          const accessSpy = vi.spyOn(fs, "accessSync");
+          expect(isExecutableBinary(filePath, "win32")).toBe(true);
+          expect(accessSpy).not.toHaveBeenCalled();
+        });
+
+        it("returns true on Unix when regular file has executable permission (X_OK)", () => {
+          const filePath = path.join(tempDir, "unix-binary");
+          fs.writeFileSync(filePath, "#!/bin/sh\necho unix");
+          vi.spyOn(fs, "accessSync").mockReturnValue(undefined);
+          expect(isExecutableBinary(filePath, "linux")).toBe(true);
+        });
+
+        it("returns false on Unix when regular file lacks executable permission", () => {
+          const filePath = path.join(tempDir, "unix-unexecutable");
+          fs.writeFileSync(filePath, "not executable");
+          vi.spyOn(fs, "accessSync").mockImplementation(() => {
+            const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+            err.code = "EACCES";
+            throw err;
+          });
+          expect(isExecutableBinary(filePath, "linux")).toBe(false);
+        });
+      });
+
+      describe("resolveProjectBinary", () => {
+        it("resolves local binary when it exists and is executable", async () => {
+          const binDir = path.join(tempDir, "node_modules", ".bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const localBin = path.join(binDir, "prettier");
+          fs.writeFileSync(localBin, "#!/usr/bin/env node");
+
+          vi.spyOn(fs, "accessSync").mockReturnValue(undefined);
+
+          const resolved = await resolveProjectBinary(tempDir, "prettier", "linux");
+          expect(resolved).toBe(localBin);
+        });
+
+        it("does not resolve local binary and falls back to PATH when local binary is not executable on Unix", async () => {
+          const binDir = path.join(tempDir, "node_modules", ".bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const localBin = path.join(binDir, "prettier");
+          fs.writeFileSync(localBin, "unexecutable script");
+
+          // Simulate local binary lacking executable permission
+          vi.spyOn(fs, "accessSync").mockImplementation((p) => {
+            if (typeof p === "string" && p.includes("node_modules")) {
+              const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+              err.code = "EACCES";
+              throw err;
+            }
+          });
+
+          // Global PATH fallback is available
+          vi.spyOn(io, "which").mockImplementation(async (bin) => {
+            if (bin === "prettier") return "/usr/local/bin/prettier";
+            return "";
+          });
+
+          const resolved = await resolveProjectBinary(tempDir, "prettier", "linux");
+          expect(resolved).toBe("/usr/local/bin/prettier");
+        });
+
+        it("returns undefined when local binary is not executable on Unix and PATH fallback is unavailable", async () => {
+          const binDir = path.join(tempDir, "node_modules", ".bin");
+          fs.mkdirSync(binDir, { recursive: true });
+          const localBin = path.join(binDir, "biome");
+          fs.writeFileSync(localBin, "unexecutable script");
+
+          vi.spyOn(fs, "accessSync").mockImplementation((p) => {
+            if (typeof p === "string" && p.includes("node_modules")) {
+              const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+              err.code = "EACCES";
+              throw err;
+            }
+          });
+          vi.spyOn(io, "which").mockResolvedValue("");
+
+          const resolved = await resolveProjectBinary(tempDir, "biome", "linux");
+          expect(resolved).toBeUndefined();
+        });
+
+        it("falls back to PATH when local binary does not exist", async () => {
+          vi.spyOn(io, "which").mockImplementation(async (bin) => {
+            if (bin === "eslint") return "/usr/local/bin/eslint";
+            return "";
+          });
+
+          const resolved = await resolveProjectBinary(tempDir, "eslint", "linux");
+          expect(resolved).toBe("/usr/local/bin/eslint");
+        });
+
+        it("resolves binary existing only in PATH", async () => {
+          vi.spyOn(io, "which").mockImplementation(async (bin) => {
+            if (bin === "vp") return "/usr/local/bin/vp";
+            return "";
+          });
+
+          const resolved = await resolveProjectBinary(tempDir, "vp", "linux");
+          expect(resolved).toBe("/usr/local/bin/vp");
+        });
+
+        describe("Windows extension handling (.cmd, .bat, .exe, extensionless)", () => {
+          it("resolves .cmd over other extensions according to priority order", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool.cmd"), "@echo off");
+            fs.writeFileSync(path.join(binDir, "tool.bat"), "@echo off");
+            fs.writeFileSync(path.join(binDir, "tool.exe"), "");
+            fs.writeFileSync(path.join(binDir, "tool"), "");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolved).toBe(path.join(binDir, "tool.cmd"));
+          });
+
+          it("resolves .bat when .cmd is absent", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool.bat"), "@echo off");
+            fs.writeFileSync(path.join(binDir, "tool.exe"), "");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolved).toBe(path.join(binDir, "tool.bat"));
+          });
+
+          it("resolves .exe when .cmd and .bat are absent", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool.exe"), "");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolved).toBe(path.join(binDir, "tool.exe"));
+          });
+
+          it("resolves extensionless shim when extensions are absent", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool"), "");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolved).toBe(path.join(binDir, "tool"));
+          });
+
+          it("resolves explicit Windows binary extension when specified", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool.cmd"), "@echo off");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool.cmd", "win32");
+            expect(resolved).toBe(path.join(binDir, "tool.cmd"));
+          });
+
+          it("rejects unsupported extensions on Windows", async () => {
+            const binDir = path.join(tempDir, "node_modules", ".bin");
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, "tool.ps1"), "Write-Host test");
+
+            const resolved = await resolveProjectBinary(tempDir, "tool.ps1", "win32");
+            expect(resolved).toBeUndefined();
+          });
+
+          it("validates PATH binary extension on Windows", async () => {
+            vi.spyOn(io, "which").mockImplementation(async (bin) => {
+              if (bin === "tool") return "C:\\tools\\tool.CMD";
+              return "";
+            });
+
+            const resolved = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolved).toBe("C:\\tools\\tool.CMD");
+
+            vi.spyOn(io, "which").mockImplementation(async (bin) => {
+              if (bin === "tool") return "C:\\tools\\tool.ps1";
+              return "";
+            });
+
+            const resolvedUnsupported = await resolveProjectBinary(tempDir, "tool", "win32");
+            expect(resolvedUnsupported).toBeUndefined();
+          });
+        });
       });
     });
   });
