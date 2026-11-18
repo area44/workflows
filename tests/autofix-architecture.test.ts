@@ -3121,7 +3121,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
   });
 
   describe("Configuration-Only Tool Detection and Executable Resolution Contract", () => {
-    describe("Scenario: Configuration exists, dependency absent, executable unavailable -> Tool is not scheduled", () => {
+    describe("Configuration exists, dependency absent, executable unavailable -> Tool is not scheduled", () => {
       it("does not schedule Prettier when only .prettierrc.json exists without dependency or executable", async () => {
         vi.spyOn(io, "which").mockResolvedValue("");
         fs.writeFileSync(
@@ -3344,7 +3344,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Global executable exists and global resolution is supported -> Tool is scheduled only after availability is confirmed", () => {
+    describe("Global executable exists and global resolution is supported -> Tool is scheduled only after availability is confirmed", () => {
       it("schedules Prettier when configuration exists and global binary is confirmed in PATH", async () => {
         vi.spyOn(io, "which").mockImplementation(async (bin) => {
           if (bin === "prettier") return "/usr/local/bin/prettier";
@@ -3429,7 +3429,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Dependency declared, configuration exists, executable available -> Tool is detected and scheduled", () => {
+    describe("Dependency declared, configuration exists, executable available -> Tool is detected and scheduled", () => {
       it("schedules Prettier when dependency is declared and configuration exists", async () => {
         const binDir = path.join(tempDir, "node_modules", ".bin");
         fs.mkdirSync(binDir, { recursive: true });
@@ -3485,7 +3485,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: No configuration, no dependency, no executable -> Tool is not scheduled", () => {
+    describe("No configuration, no dependency, no executable -> Tool is not scheduled", () => {
       it("returns clean non-detection without cluttering skipped tools when neither config nor dep exists", async () => {
         vi.spyOn(io, "which").mockResolvedValue("");
         fs.writeFileSync(
@@ -3515,7 +3515,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Configuration exists but package installation has not provisioned the executable -> Tool is not incorrectly scheduled", () => {
+    describe("Configuration exists but package installation has not provisioned the executable -> Tool is not incorrectly scheduled", () => {
       it("does not incorrectly schedule a tool when unrelated packages are installed but tool is absent", async () => {
         vi.spyOn(io, "which").mockResolvedValue("");
         const binDir = path.join(tempDir, "node_modules", ".bin");
@@ -3552,7 +3552,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Dependency declared but executable unexpectedly missing -> Actionable execution error", () => {
+    describe("Dependency declared but executable unexpectedly missing -> Actionable execution error", () => {
       it("throws actionable error during execution when declared tool executable is missing from node_modules/.bin and PATH", async () => {
         vi.spyOn(io, "which").mockResolvedValue("");
         fs.writeFileSync(
@@ -3569,7 +3569,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Vite+ detection contract preservation", () => {
+    describe("Vite+ detection contract preservation", () => {
       it("preserves dependency-only detection for Vite+ without requiring config file", async () => {
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
@@ -3606,7 +3606,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
     });
 
-    describe("Scenario: Shared detectToolAvailability helper", () => {
+    describe("Shared detectToolAvailability helper", () => {
       it("correctly identifies all 4 contract states: config, dependency, executable, and eligibility", async () => {
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
