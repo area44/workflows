@@ -2451,6 +2451,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       // Unix extensionless local binary
       const prettierUnix = path.join(binDir, "prettier");
       fs.writeFileSync(prettierUnix, "");
+      fs.chmodSync(prettierUnix, 0o755);
       const resolvedUnix = await resolveProjectBinary(tempDir, "prettier", "linux");
       expect(resolvedUnix).toBe(prettierUnix);
 
@@ -3497,7 +3498,9 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       it("schedules Prettier when dependency is declared and configuration exists", async () => {
         const binDir = path.join(tempDir, "node_modules", ".bin");
         fs.mkdirSync(binDir, { recursive: true });
-        fs.writeFileSync(path.join(binDir, "prettier"), "");
+        const prettierBin = path.join(binDir, "prettier");
+        fs.writeFileSync(prettierBin, "");
+        fs.chmodSync(prettierBin, 0o755);
 
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
@@ -3522,7 +3525,9 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       it("schedules Biome when dependency is declared and configuration exists", async () => {
         const binDir = path.join(tempDir, "node_modules", ".bin");
         fs.mkdirSync(binDir, { recursive: true });
-        fs.writeFileSync(path.join(binDir, "biome"), "");
+        const biomeBin = path.join(binDir, "biome");
+        fs.writeFileSync(biomeBin, "");
+        fs.chmodSync(biomeBin, 0o755);
 
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
@@ -3747,10 +3752,9 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       it("schedules Vite+ when vite-plus dependency is declared and project executable is available", async () => {
         const binDir = path.join(tempDir, "node_modules", ".bin");
         fs.mkdirSync(binDir, { recursive: true });
-        fs.writeFileSync(path.join(binDir, "vp"), "");
-        if (process.platform !== "win32") {
-          vi.spyOn(fs, "accessSync").mockReturnValue(undefined);
-        }
+        const vpBin = path.join(binDir, "vp");
+        fs.writeFileSync(vpBin, "");
+        fs.chmodSync(vpBin, 0o755);
 
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
@@ -3947,6 +3951,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
           fs.mkdirSync(binDir, { recursive: true });
           const localBin = path.join(binDir, "prettier");
           fs.writeFileSync(localBin, "#!/usr/bin/env node");
+          fs.chmodSync(localBin, 0o755);
 
           vi.spyOn(fs, "accessSync").mockReturnValue(undefined);
 
