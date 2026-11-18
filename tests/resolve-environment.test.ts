@@ -907,7 +907,7 @@ describe("resolve-environment", () => {
   });
 
   describe("Log Formatting and Presentation Requirements (logResolvedEnvironment)", () => {
-    it("Scenario 1: Single-environment resolution (JavaScript) formats plain consolidated lines without groups", () => {
+    it("Single-environment resolution (JavaScript) formats plain consolidated lines without groups", () => {
       const env: ResolvedEnvironment = {
         javascript: {
           detected: true,
@@ -930,7 +930,7 @@ describe("resolve-environment", () => {
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Toolchain"));
     });
 
-    it("Scenario 2: Single-environment resolution (Python) formats plain consolidated lines without groups", () => {
+    it("Single-environment resolution (Python) formats plain consolidated lines without groups", () => {
       const env: ResolvedEnvironment = {
         javascript: {
           detected: false,
@@ -957,7 +957,7 @@ describe("resolve-environment", () => {
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Ruff"));
     });
 
-    it("Scenario 3: Multiple detected environments (JavaScript and Python) consolidates categories into single lines", () => {
+    it("Multiple detected environments (JavaScript and Python) consolidates categories into single lines", () => {
       const env: ResolvedEnvironment = {
         javascript: {
           detected: true,
@@ -984,7 +984,7 @@ describe("resolve-environment", () => {
       expect(core.info).toHaveBeenNthCalledWith(3, "Toolchain: Vite+");
     });
 
-    it("Scenario 5: No supported environment detected logs concise message without groups or runtime lines", () => {
+    it("No supported environment detected logs concise message without groups or runtime lines", () => {
       const env: ResolvedEnvironment = {
         javascript: {
           detected: false,

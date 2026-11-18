@@ -11,7 +11,6 @@ import {
   detectPythonPackageManager,
   findPythonProjectContext,
   hasPythonSource,
-  isRuffDeclaredInProject,
   parseToml,
   PYTHON_PACKAGE_MANAGER_PRIORITY,
   resolvePythonEnvironment,
@@ -647,24 +646,6 @@ dev = ["pytest"]
     });
   });
 
-  describe("isRuffDeclaredInProject()", () => {
-    it("should detect ruff declared in pyproject.toml or requirements.txt", () => {
-      const projUv = createConsumerProjectInTmp({ type: "python-uv" });
-      const projPip = createConsumerProjectInTmp({ type: "python-pip", ruffVersion: "0.17.2" });
-      const projNone = createConsumerProjectInTmp({ type: "python-none" });
-
-      try {
-        expect(isRuffDeclaredInProject(projUv.dir)).toBe(true);
-        expect(isRuffDeclaredInProject(projPip.dir)).toBe(true);
-        expect(isRuffDeclaredInProject(projNone.dir)).toBe(false);
-      } finally {
-        projUv.cleanup();
-        projPip.cleanup();
-        projNone.cleanup();
-      }
-    });
-  });
-
   describe("PYTHON_PACKAGE_MANAGER_PRIORITY Constant", () => {
     it("should define priority order as uv > pip", () => {
       expect(PYTHON_PACKAGE_MANAGER_PRIORITY).toEqual(["uv", "pip"]);
@@ -688,7 +669,7 @@ dev = ["pytest"]
       const readFileSyncSpy = vi.spyOn(fs, "readFileSync");
 
       try {
-        // 1. Initial resolution: pyproject.toml is read from disk exactly once during context discovery and reused for PM detection
+        // Initial resolution: pyproject.toml is read from disk exactly once during context discovery and reused for PM detection
         readFileSyncSpy.mockClear();
         const resolved = resolvePythonEnvironment(proj.dir);
         expect(resolved.detected).toBe(true);
@@ -698,7 +679,7 @@ dev = ["pytest"]
         );
         expect(pyprojectReads.length).toBe(1);
 
-        // 2. Direct call without precomputed context reads pyproject.toml independently
+        // Direct call without precomputed context reads pyproject.toml independently
         readFileSyncSpy.mockClear();
         const directPm = detectPythonPackageManager(proj.dir);
         expect(directPm?.name).toBe("uv");
@@ -707,7 +688,7 @@ dev = ["pytest"]
         );
         expect(directReads.length).toBe(1);
 
-        // 3. Passing precomputed context directly into detectPythonPackageManager avoids redundant file reads
+        // Passing precomputed context directly into detectPythonPackageManager avoids redundant file reads
         const precomputedCtx = findPythonProjectContext(proj.dir);
         readFileSyncSpy.mockClear();
         const reusedPm = detectPythonPackageManager(proj.dir, undefined, {
