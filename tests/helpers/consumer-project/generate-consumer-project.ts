@@ -115,6 +115,68 @@ function resolveJsOptions(options: ConsumerProjectOptions): ResolvedJsOptions {
   return { hasJs, action, runtime, rawPm, pmType, type, packageManager, toolchain };
 }
 
+function resolveHasPython(options: ConsumerProjectOptions, type: string, action: string): boolean {
+  if (typeof options.hasPythonSource === "boolean") {
+    return options.hasPythonSource;
+  }
+  if (typeof options.hasPythonSource === "string") {
+    return options.hasPythonSource === "true";
+  }
+  if (type === "python-none") {
+    return false;
+  }
+  if (
+    action === "pages" &&
+    type !== "consumer-integration" &&
+    options.fixture !== "consumer-project"
+  ) {
+    return false;
+  }
+  if (
+    action === "autofix" &&
+    !type.includes("python") &&
+    type !== "mixed" &&
+    type !== "mixed-bun" &&
+    type !== "consumer-integration"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function resolvePythonPackageManager(
+  options: ConsumerProjectOptions,
+  type: string,
+  hasPython: boolean,
+): string {
+  if (options.pythonPm) {
+    return options.pythonPm;
+  }
+  if (type === "python-uv" || type === "python-conflicting") {
+    return "uv";
+  }
+  if (
+    type === "python-pip" ||
+    type === "mixed" ||
+    type === "mixed-bun" ||
+    type === "consumer-integration" ||
+    hasPython
+  ) {
+    return "pip";
+  }
+  return "";
+}
+
+function resolveRuffVersion(options: ConsumerProjectOptions, type: string): string {
+  if (options.ruffVersion !== undefined) {
+    return options.ruffVersion;
+  }
+  if (type === "python-pip" || type === "python-none") {
+    return "";
+  }
+  return "0.17.2";
+}
+
 /**
  * Resolves Python configuration options for scenario generation.
  */
@@ -123,56 +185,88 @@ function resolvePythonOptions(
   type: string,
   action: string,
 ): ResolvedPythonOptions {
-  let hasPython = true;
-  if (typeof options.hasPythonSource === "boolean") {
-    hasPython = options.hasPythonSource;
-  } else if (typeof options.hasPythonSource === "string") {
-    hasPython = options.hasPythonSource === "true";
-  } else if (type === "python-none") {
-    hasPython = false;
-  } else if (
-    action === "pages" &&
-    type !== "consumer-integration" &&
-    options.fixture !== "consumer-project"
-  ) {
-    hasPython = false;
-  } else if (
-    action === "autofix" &&
-    !type.includes("python") &&
-    type !== "mixed" &&
-    type !== "mixed-bun" &&
-    type !== "consumer-integration"
-  ) {
-    hasPython = false;
-  }
-
-  let pythonPm = options.pythonPm;
-  if (!pythonPm) {
-    if (type === "python-uv" || type === "python-conflicting") {
-      pythonPm = "uv";
-    } else if (
-      type === "python-pip" ||
-      type === "mixed" ||
-      type === "mixed-bun" ||
-      type === "consumer-integration" ||
-      hasPython
-    ) {
-      pythonPm = "pip";
-    } else {
-      pythonPm = "";
-    }
-  }
-
-  const ruffVersion =
-    options.ruffVersion !== undefined
-      ? options.ruffVersion
-      : type === "python-pip" || type === "python-none"
-        ? ""
-        : "0.17.2";
-
+  const hasPython = resolveHasPython(options, type, action);
+  const pythonPm = resolvePythonPackageManager(options, type, hasPython);
+  const ruffVersion = resolveRuffVersion(options, type);
   const pythonVersion = options.pythonVersion || "";
 
   return { hasPython, pythonPm, ruffVersion, pythonVersion };
+}
+
+function addBunNodeTypes(pmType: string, devDependencies: Record<string, string>): void {
+  if (pmType === "bun") {
+    devDependencies["@types/node"] = "^24.0.0";
+  }
+}
+
+function buildBasicJsProject(
+  files: Record<string, string>,
+  markerContent: string,
+  pmType: string,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
+  const scripts = {
+    build: "mkdir -p dist && cp index.html dist/index.html",
+    lint: "node -e \"console.log('Linting JS...')\"",
+    format: "node -e \"console.log('Formatting JS...')\"",
+  };
+  const devDependencies: Record<string, string> = {};
+  addBunNodeTypes(pmType, devDependencies);
+  files["index.html"] =
+    `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+  return { scripts, devDependencies };
+}
+
+function buildVitePlusProject(
+  files: Record<string, string>,
+  markerContent: string,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
+  const scripts = { build: "vp build" };
+  const devDependencies = { "vite-plus": "^1.4.0" };
+  files["vite.config.ts"] = `export default {};\n`;
+  files["index.html"] =
+    `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+  return { scripts, devDependencies };
+}
+
+function buildViteProject(
+  files: Record<string, string>,
+  markerContent: string,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
+  const scripts = { build: "vite build" };
+  const devDependencies = { vite: "^6.0.0" };
+  files["vite.config.ts"] =
+    `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
+  files["index.html"] =
+    `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
+  files["src/main.ts"] = `console.log('vite app');\n`;
+  return { scripts, devDependencies };
+}
+
+function buildAstroProject(
+  files: Record<string, string>,
+  markerContent: string,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
+  const scripts = { build: "astro build" };
+  const devDependencies = { astro: "^5.0.0" };
+  files["astro.config.mjs"] =
+    `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
+  files["src/pages/index.astro"] =
+    `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+  return { scripts, devDependencies };
+}
+
+function buildAutofixJsProject(
+  files: Record<string, string>,
+  markerContent: string,
+  pmType: string,
+): { scripts: Record<string, string>; devDependencies: Record<string, string> } {
+  const scripts = {
+    format: "node -e \"console.log('Formatting JS...')\"",
+    lint: "node -e \"console.log('Linting JS...')\"",
+  };
+  const devDependencies: Record<string, string> = {};
+  addBunNodeTypes(pmType, devDependencies);
+  return { scripts, devDependencies };
 }
 
 /**
@@ -186,71 +280,27 @@ function buildJsScriptsAndHtml(
   const { action, toolchain, type, pmType } = jsOpt;
   const markerContent = options.markerContent || "Workflows Consumer Project";
 
-  let scripts: Record<string, string> = {};
-  let devDependencies: Record<string, string> = {};
-
   if (
     type === "consumer-integration" ||
     options.fixture === "consumer-project" ||
     (!action && !options.toolchain && type === "basic")
   ) {
-    scripts = {
-      build: "mkdir -p dist && cp index.html dist/index.html",
-      lint: "node -e \"console.log('Linting JS...')\"",
-      format: "node -e \"console.log('Formatting JS...')\"",
-    };
-    if (pmType === "bun") {
-      devDependencies = { "@types/node": "^24.0.0" };
-    }
-    files["index.html"] =
-      `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+    return buildBasicJsProject(files, markerContent, pmType);
   } else if (toolchain === "vite-plus" || type === "vite-plus") {
-    scripts = { build: "vp build" };
-    devDependencies = { "vite-plus": "^1.4.0" };
-    files["vite.config.ts"] = `export default {};\n`;
-    files["index.html"] =
-      `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Vite Plus</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+    return buildVitePlusProject(files, markerContent);
   } else if (toolchain === "vite" || type === "vite") {
-    scripts = { build: "vite build" };
-    devDependencies = { vite: "^6.0.0" };
-    files["vite.config.ts"] =
-      `import { defineConfig } from 'vite';\nexport default defineConfig({});\n`;
-    files["index.html"] =
-      `<!DOCTYPE html>\n<html>\n  <body>\n    <h1>${markerContent}</h1>\n    <script type="module" src="/src/main.ts"></script>\n  </body>\n</html>\n`;
-    files["src/main.ts"] = `console.log('vite app');\n`;
+    return buildViteProject(files, markerContent);
   } else if (
     action === "pages" ||
     toolchain === "astro" ||
     (action === "pages" && (type === "basic" || type === "minimal"))
   ) {
-    scripts = { build: "astro build" };
-    devDependencies = { astro: "^5.0.0" };
-    files["astro.config.mjs"] =
-      `import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n`;
-    files["src/pages/index.astro"] =
-      `---\n---\n<html lang="en">\n  <head><meta charset="UTF-8" /><title>Site</title></head>\n  <body><h1>${markerContent}</h1></body>\n</html>\n`;
+    return buildAstroProject(files, markerContent);
   } else if (action === "autofix") {
-    scripts = {
-      format: "node -e \"console.log('Formatting JS...')\"",
-      lint: "node -e \"console.log('Linting JS...')\"",
-    };
-    if (pmType === "bun") {
-      devDependencies = { "@types/node": "^24.0.0" };
-    }
+    return buildAutofixJsProject(files, markerContent, pmType);
   } else {
-    scripts = {
-      build: "mkdir -p dist && cp index.html dist/index.html",
-      lint: "node -e \"console.log('Linting JS...')\"",
-      format: "node -e \"console.log('Formatting JS...')\"",
-    };
-    if (pmType === "bun") {
-      devDependencies = { "@types/node": "^24.0.0" };
-    }
-    files["index.html"] =
-      `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" /><title>Consumer Project</title>\n  </head>\n  <body>\n    <h1>${markerContent}</h1>\n  </body>\n</html>\n`;
+    return buildBasicJsProject(files, markerContent, pmType);
   }
-
-  return { scripts, devDependencies };
 }
 
 let lockfileTemplates: Record<string, string> | null = null;

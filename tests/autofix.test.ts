@@ -1071,7 +1071,7 @@ describe("autofix", () => {
       vi.spyOn(fs, "existsSync").mockImplementation((p: fs.PathLike) =>
         String(p).endsWith("package.json"),
       );
-      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ name: "my-package" }) as any);
+      vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({ name: "package" }) as any);
 
       await run();
 

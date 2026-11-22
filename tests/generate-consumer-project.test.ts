@@ -83,23 +83,23 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
     it("normalizes custom project names deterministically for Python package naming rules", () => {
       expect(normalizePythonProjectName("custom-app")).toBe("custom-app");
-      expect(normalizePythonProjectName("@area44/my-custom_app")).toBe("area44-my-custom-app");
-      expect(normalizePythonProjectName("My Custom_App!")).toBe("my-custom-app");
+      expect(normalizePythonProjectName("@example/custom_app")).toBe("example-custom-app");
+      expect(normalizePythonProjectName("Custom App!")).toBe("custom-app");
       expect(normalizePythonProjectName("")).toBe("consumer-project");
       expect(normalizePythonProjectName(undefined as any)).toBe("consumer-project");
 
       const files = generateConsumerProjectFiles({
-        name: "@area44/my-custom_app!",
+        name: "@example/custom-app!",
       });
 
       const pkg = JSON.parse(files["package.json"]);
       const lock = JSON.parse(files["package-lock.json"]);
       const pyproject = parseToml(files["pyproject.toml"]) as any;
 
-      expect(pkg.name).toBe("@area44/my-custom_app!");
-      expect(lock.name).toBe("@area44/my-custom_app!");
-      expect(lock.packages[""].name).toBe("@area44/my-custom_app!");
-      expect(pyproject.project.name).toBe("area44-my-custom-app");
+      expect(pkg.name).toBe("@example/custom-app!");
+      expect(lock.name).toBe("@example/custom-app!");
+      expect(lock.packages[""].name).toBe("@example/custom-app!");
+      expect(pyproject.project.name).toBe("example-custom-app");
     });
 
     it("handles pythonVersion as exact version versus constraints without operator duplication or stray files", () => {
@@ -527,33 +527,33 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
   describe("parseCliArgs Argument Handling Suite", () => {
     it("parses normal option value correctly", () => {
-      const parsed = parseCliArgs(["my-target", "--ruff-version", "0.17.2"]);
-      expect(parsed.targetDir).toBe("my-target");
+      const parsed = parseCliArgs(["target", "--ruff-version", "0.17.2"]);
+      expect(parsed.targetDir).toBe("target");
       expect(parsed.options.ruffVersion).toBe("0.17.2");
     });
 
     it("parses empty string option value correctly without treating it as boolean", () => {
-      const parsed = parseCliArgs(["my-target", "--ruff-version", ""]);
-      expect(parsed.targetDir).toBe("my-target");
+      const parsed = parseCliArgs(["target", "--ruff-version", ""]);
+      expect(parsed.targetDir).toBe("target");
       expect(parsed.options.ruffVersion).toBe("");
     });
 
     it("parses boolean flags correctly", () => {
-      const parsed = parseCliArgs(["my-target", "--allow-non-empty"]);
-      expect(parsed.targetDir).toBe("my-target");
+      const parsed = parseCliArgs(["target", "--allow-non-empty"]);
+      expect(parsed.targetDir).toBe("target");
       expect(parsed.options.allowNonEmpty).toBe(true);
     });
 
     it("handles option with missing value before another flag without consuming flag", () => {
-      const parsed = parseCliArgs(["my-target", "--ruff-version", "--action", "pages"]);
-      expect(parsed.targetDir).toBe("my-target");
+      const parsed = parseCliArgs(["target", "--ruff-version", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("target");
       expect(parsed.options.ruffVersion).toBe(true);
       expect(parsed.options.action).toBe("pages");
     });
 
     it("handles empty option value followed by another option correctly", () => {
-      const parsed = parseCliArgs(["my-target", "--ruff-version", "", "--action", "pages"]);
-      expect(parsed.targetDir).toBe("my-target");
+      const parsed = parseCliArgs(["target", "--ruff-version", "", "--action", "pages"]);
+      expect(parsed.targetDir).toBe("target");
       expect(parsed.options.ruffVersion).toBe("");
       expect(parsed.options.action).toBe("pages");
     });
