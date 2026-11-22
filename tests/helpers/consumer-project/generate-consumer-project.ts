@@ -115,11 +115,7 @@ function resolveJsOptions(options: ConsumerProjectOptions): ResolvedJsOptions {
   return { hasJs, action, runtime, rawPm, pmType, type, packageManager, toolchain };
 }
 
-function resolveHasPython(
-  options: ConsumerProjectOptions,
-  type: string,
-  action: string,
-): boolean {
+function resolveHasPython(options: ConsumerProjectOptions, type: string, action: string): boolean {
   if (typeof options.hasPythonSource === "boolean") {
     return options.hasPythonSource;
   }

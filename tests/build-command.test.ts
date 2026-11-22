@@ -555,7 +555,7 @@ describe("build-command", () => {
       );
 
       // Test with default failure mode (exitOnFailure: true) -> should call process.exit(1)
-      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => { }) as any);
+      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
       await runBuildCommand({ exitOnFailure: true });
       expect(mockExit).toHaveBeenCalledWith(1);
       mockExit.mockRestore();
