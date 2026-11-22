@@ -1,5 +1,22 @@
 # @area44/workflows
 
+## 10.1.0
+
+### Minor Changes
+
+- f121338: Refactor autofix architecture with capability-aware tool adapters, default Python Ruff toolchain, execution-time binary resolution lifecycle (allowing planning before dependency installation), strict script selection in fix mode, reliable delegation parsing, and aggregated error reporting across independent tasks.
+
+### Patch Changes
+
+- 413042e: Update all non-major dependencies
+- 3348cd6: Refactor autofix execution and environment resolution
+- 2a7188c: Update dependency node to v26
+- f121338: Fix autofix script delegation and classification issues (nested delegation, sequential delegation, and dry-run/write-option classification).
+- f121338: Handle environment wrappers consistently in script delegation and command verification to prevent duplicate autofix task execution.
+- f121338: Fix provider capability isolation in multi-language monorepos and support wrapped Vite+ command detection.
+- f409155: Prioritize fix script in autofix workflow
+- 5a0004c: Rename test directory from __tests/ to tests/
+
 ## 10.0.0
 
 ### Major Changes
