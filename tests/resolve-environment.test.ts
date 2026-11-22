@@ -813,7 +813,7 @@ describe("resolve-environment", () => {
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
-      process.env.GITHUB_REPOSITORY = "owner/my-site";
+      process.env.GITHUB_REPOSITORY = "owner/site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
       try {
@@ -841,7 +841,7 @@ describe("resolve-environment", () => {
       process.chdir(fixturePath);
 
       process.env.GITHUB_ACTION_PATH = "/home/runner/work/_actions/owner/repo/v1/pages";
-      process.env.GITHUB_REPOSITORY = "owner/my-bun-site";
+      process.env.GITHUB_REPOSITORY = "owner/bun-site";
       process.env.GITHUB_REPOSITORY_OWNER = "owner";
 
       try {

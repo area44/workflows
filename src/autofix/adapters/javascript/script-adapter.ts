@@ -829,6 +829,57 @@ export function extractShellWrapperScript(tokens: string[]): string | undefined 
   return undefined;
 }
 
+function isDirectVitePlusInvocation(tokens: string[]): boolean {
+  if (tokens.length === 0) return false;
+
+  if (tokens[0] === "vp") {
+    return true;
+  }
+
+  if ((tokens[0] === "npx" || tokens[0] === "bunx") && tokens[1] === "vp") {
+    return true;
+  }
+
+  if (
+    (tokens[0] === "npm" || tokens[0] === "pnpm" || tokens[0] === "yarn") &&
+    (tokens[1] === "exec" || tokens[1] === "dlx") &&
+    tokens[2] === "vp"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasVitePlusInShellWrapper(
+  tokens: string[],
+  scripts: Record<string, string>,
+  activePath: Set<string>,
+): boolean {
+  const wrapped = extractShellWrapperScript(tokens);
+  if (wrapped !== undefined) {
+    return hasVitePlusCommand(wrapped, scripts, activePath);
+  }
+  return false;
+}
+
+function hasVitePlusInDelegatedScript(
+  tokens: string[],
+  scripts: Record<string, string>,
+  activePath: Set<string>,
+): boolean {
+  const target = extractDelegatedTarget(tokens);
+  if (target && !activePath.has(target) && scripts[target]) {
+    activePath.add(target);
+    try {
+      return hasVitePlusCommand(scripts[target], scripts, activePath);
+    } finally {
+      activePath.delete(target);
+    }
+  }
+  return false;
+}
+
 /**
  * Checks whether an invocation (or nested wrapped invocations) executes the `vp` command.
  * Supports direct invocations, environment wrappers (cross-env), shell wrappers (sh -c, bash -c),
@@ -848,41 +899,16 @@ export function hasVitePlusCommand(
   for (const tokens of invocations) {
     if (tokens.length === 0) continue;
 
-    if (tokens[0] === "vp") {
+    if (isDirectVitePlusInvocation(tokens)) {
       return true;
     }
 
-    // Package-manager runner wrappers: npx vp, bunx vp, pnpm dlx vp, yarn dlx vp, npm exec vp, pnpm exec vp
-    if ((tokens[0] === "npx" || tokens[0] === "bunx") && tokens[1] === "vp") {
-      return true;
-    }
-    if (
-      (tokens[0] === "npm" || tokens[0] === "pnpm" || tokens[0] === "yarn") &&
-      (tokens[1] === "exec" || tokens[1] === "dlx") &&
-      tokens[2] === "vp"
-    ) {
+    if (hasVitePlusInShellWrapper(tokens, scripts, activePath)) {
       return true;
     }
 
-    // Shell wrappers: sh -c "...", bash -c "..."
-    const wrapped = extractShellWrapperScript(tokens);
-    if (wrapped !== undefined) {
-      if (hasVitePlusCommand(wrapped, scripts, activePath)) {
-        return true;
-      }
-    }
-
-    // Package-manager script delegation
-    const target = extractDelegatedTarget(tokens);
-    if (target && !activePath.has(target) && scripts[target]) {
-      activePath.add(target);
-      try {
-        if (hasVitePlusCommand(scripts[target], scripts, activePath)) {
-          return true;
-        }
-      } finally {
-        activePath.delete(target);
-      }
+    if (hasVitePlusInDelegatedScript(tokens, scripts, activePath)) {
+      return true;
     }
   }
 

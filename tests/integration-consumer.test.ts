@@ -20,7 +20,7 @@ import { inspectJsProjectEnvironment, selectAutofixScripts } from "../src/javasc
 import { resolveBuildCommandToParse, resolveBuildOutputPath } from "../src/pages/build-command.js";
 import { resolveSiteVariables, setSiteVariables } from "../src/pages/site-variables.js";
 import { resolveEnvironment, writeOutput } from "../src/resolve-environment.js";
-import { createConsumerProject } from "./helpers/consumer-project.js";
+import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/core");
 
@@ -107,18 +107,18 @@ describe("Consumer Project Module Integration Suite", () => {
 
   describe("Site Variables Resolution", () => {
     it("resolves and sets SITE, BASE, and BASE_URL for consumer project repository", () => {
-      process.env.GITHUB_REPOSITORY = "area44/consumer-project";
-      process.env.GITHUB_REPOSITORY_OWNER = "area44";
+      process.env.GITHUB_REPOSITORY = "example-org/consumer-project";
+      process.env.GITHUB_REPOSITORY_OWNER = "example-org";
       process.env.GITHUB_ACTION_PATH = "/runner/actions/pages";
 
       const vars = resolveSiteVariables(process.env);
       expect(vars).toEqual({
-        site: "https://area44.github.io",
+        site: "https://example-org.github.io",
         base: "/consumer-project/",
       });
 
       setSiteVariables();
-      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://area44.github.io");
+      expect(core.exportVariable).toHaveBeenCalledWith("SITE", "https://example-org.github.io");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE", "/consumer-project/");
       expect(core.exportVariable).toHaveBeenCalledWith("BASE_URL", "/consumer-project/");
     });

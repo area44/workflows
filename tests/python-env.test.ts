@@ -25,11 +25,11 @@ describe("Python Package Manager Detection", () => {
   describe("parseToml() and Standard TOML Parsing", () => {
     describe("Valid TOML constructs", () => {
       it("should parse a basic [project] table", () => {
-        const content = '[project]\nname = "my-package"\nversion = "1.0.0"\n';
+        const content = '[project]\nname = "package"\nversion = "1.0.0"\n';
         const res = parseToml(content) as ParsedTomlSuccess;
         expect(res.success).toBe(true);
         expect(res.data.project).toEqual({
-          name: "my-package",
+          name: "package",
           version: "1.0.0",
         });
       });

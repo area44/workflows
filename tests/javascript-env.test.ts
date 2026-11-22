@@ -41,7 +41,7 @@ describe("javascript-env", () => {
     it("should resolve full JS environment for a project with package.json and pnpm lockfile", () => {
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "my-app", packageManager: "pnpm@9.1.0" }),
+        JSON.stringify({ name: "app", packageManager: "pnpm@9.1.0" }),
       );
 
       const res = resolveJsEnvironment("auto", tempDir);

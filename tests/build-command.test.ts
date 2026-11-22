@@ -300,7 +300,7 @@ describe("build-command", () => {
     });
 
     it("should handle failing build command with non-zero exit code without logging full user command string and without setting path output", async () => {
-      process.env.BUILD_COMMAND = "npm run build --secret my-secret";
+      process.env.BUILD_COMMAND = "npm run build --secret secret";
 
       vi.mocked(exec.exec).mockResolvedValue(2);
 
@@ -310,7 +310,7 @@ describe("build-command", () => {
       expect(core.setFailed).toHaveBeenCalledWith(
         "Build command execution failed with exit code 2.",
       );
-      expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("my-secret"));
+      expect(core.setFailed).not.toHaveBeenCalledWith(expect.stringContaining("secret"));
       expect(core.setOutput).not.toHaveBeenCalledWith("path", expect.anything());
     });
 
@@ -555,7 +555,7 @@ describe("build-command", () => {
       );
 
       // Test with default failure mode (exitOnFailure: true) -> should call process.exit(1)
-      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
+      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => { }) as any);
       await runBuildCommand({ exitOnFailure: true });
       expect(mockExit).toHaveBeenCalledWith(1);
       mockExit.mockRestore();
