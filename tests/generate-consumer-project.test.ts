@@ -83,7 +83,7 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
 
     it("normalizes custom project names deterministically for Python package naming rules", () => {
       expect(normalizePythonProjectName("custom-app")).toBe("custom-app");
-      expect(normalizePythonProjectName("@example/custom-app")).toBe("example-custom-app");
+      expect(normalizePythonProjectName("@example/custom_app")).toBe("example-custom-app");
       expect(normalizePythonProjectName("Custom App!")).toBe("custom-app");
       expect(normalizePythonProjectName("")).toBe("consumer-project");
       expect(normalizePythonProjectName(undefined as any)).toBe("consumer-project");
