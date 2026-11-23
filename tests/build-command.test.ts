@@ -185,7 +185,7 @@ describe("build-command", () => {
     it("should handle arguments containing spaces inside double or single quotes", () => {
       expect(parseCommand('npm run build --outDir "dist dir"')).toEqual({
         command: "npm",
-        args: ["run", "build", "--", "--outDir", "dist dir"],
+        args: ["run", "build", "--outDir", "dist dir"],
       });
 
       expect(parseCommand("node build.js --title 'My Cool Site'")).toEqual({
