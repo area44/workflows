@@ -34,6 +34,6 @@ npm test                                         # full unit + module suite
 npm test tests/generate-consumer-project.test.ts # generator tests
 npm test tests/integration-consumer.test.ts      # consumer integration
 npm run lint
-npm run format --check
+npm run format -- --check
 npm run build
 ```

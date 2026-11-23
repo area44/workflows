@@ -25,8 +25,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -37,6 +35,21 @@ jobs:
         with:
           # path: 'dist'              # default
           # build-command: 'npm run build'
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
 ```
 
 ### Autofix
@@ -69,7 +82,7 @@ npm ci            # install locked dependencies
 npm run build     # bundle src/ -> dist/ (vp pack)
 npm test          # run unit + integration tests (vp test)
 npm run lint      # lint (vp lint)
-npm run format --check   # formatting check (vp fmt --check)
+npm run format -- --check   # formatting check (vp fmt --check)
 ```
 
 The committed `dist/` must match `src/`. `check-dist` in `.github/workflows/ci.yml` fails the build if `npm run build` produces any diff under `dist/`, so run `npm run build` and commit the result whenever you change `src/`.

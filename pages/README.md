@@ -44,8 +44,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -53,9 +51,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: area44/workflows/pages@main
-        with:
-          path: dist
-          build-command: npm run build
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
 ```
 
 Build failures are written to `${RUNNER_TEMP}/pages_build_error.log` for CI assertions. Error handling details: [../docs/errors.md](../docs/errors.md). Security boundaries: [../docs/security.md](../docs/security.md).

@@ -34,7 +34,7 @@ Each action is a root directory with an `action.yml` (inputs, outputs, step guar
 | ------------------ | ------------------------------------ |
 | Install            | `npm ci`                             |
 | Lint + typecheck   | `npm run lint` (`vp lint`)           |
-| Format check       | `npm run format --check`             |
+| Format check       | `npm run format -- --check`          |
 | Build              | `npm run build` (`vp pack`)          |
 | Unit + integration | `npm test` (`vp test`)               |
 | Action CI matrix   | `.github/workflows/test-actions.yml` |
