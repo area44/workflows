@@ -11,7 +11,7 @@ This guide details how `@area44/workflows` verifies composite action behavior (`
 To ensure action workflows function reliably across diverse project configurations, the repository uses a unified scenario factory to dynamically generate consumer projects:
 
 - **Canonical Generator Script (`tests/helpers/consumer-project/generate-consumer-project.ts`)**: The single authoritative source of truth for project file templates, package manifests, lockfiles, CLI argument parsing, directory checks, and overwrite protections. Requires an explicit target directory argument (`node --import tests/helpers/consumer-project/resolver.js tests/helpers/consumer-project/generate-consumer-project.ts <target-directory> [options]`).
-- **TypeScript Test Helper (`tests/helpers/consumer-project.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from `tests/helpers/consumer-project/index.ts` so unit and module-level integration tests share identical generation logic.
+- **TypeScript Test Helper (`tests/helpers/consumer-project/index.ts`)**: Re-exports `createConsumerProject` and `generateConsumerProjectFiles` directly from `tests/helpers/consumer-project/generate-consumer-project.ts` so unit and module-level integration tests share identical generation logic.
 
 ### Scenario Dimensions & Factory Options
 
@@ -67,10 +67,10 @@ Testing is organized across distinct execution boundaries:
   - **Invalid Build Command (`invalid_build_command`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build command execution failed with exit code"`.
   - **Missing Output Directory (`missing_output_dir`)**: Harness asserts exit code 1 and verifies `${RUNNER_TEMP}/pages_build_error.log` contains `"Build output validation failed: Configured build output directory '${BUILD_PATH}' does not exist."`.
 
-### 3. CI Quality & Dist Consistency Workflows (`.github/workflows/ci.yml` & `.github/workflows/check-dist.yml`)
+### 3. CI Quality & Dist Consistency Jobs (`.github/workflows/ci.yml`)
 
 - **`quality-test` Job (`.github/workflows/ci.yml`)**: Provisions Node 26 and Bun 1.4 baseline, runs `npm ci`, code linting (`npm run lint`), formatting check (`npm run format --check`), and unit tests (`npm test`).
-- **`check-dist` Job (`.github/workflows/check-dist.yml`)**: Provisions Node 26, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`).
+- **`check-dist` Job (`.github/workflows/ci.yml`)**: Provisions Node 26, runs `npm ci`, builds artifacts (`npm run build`), and checks for any git diff or untracked files under `dist/` (`git status --porcelain dist/`). Both jobs run independently (in parallel) on every push to `main` and pull request.
 
 ---
 

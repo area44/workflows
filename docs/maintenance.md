@@ -52,7 +52,7 @@ The `npm run build` command uses Vite+ (`vp pack`) to compile and bundle TypeScr
 - `src/pages/build-command.ts` -> `dist/build-command.mjs`
 - `src/autofix/index.ts` -> `dist/autofix.mjs`
 
-The `check-dist` job in `.github/workflows/ci.yml` validates that committed `dist/` artifacts match freshly built outputs, failing if any drift is detected.
+The `check-dist` job in `.github/workflows/ci.yml` validates that committed `dist/` artifacts match freshly built outputs, failing if any drift is detected. It runs as a separate, independent job alongside `quality-test` on every push to `main` and pull request.
 
 ## Quality Gates and Test Commands
 
@@ -70,11 +70,13 @@ Maintainers and automated CI pipelines enforce the following quality gates:
 
 ## Release Process and Versioning
 
-This repository uses `@changesets/cli` to automate package versioning, changelog updates, and tag creation for the private `@area44/workflows` workspace:
+This repository uses `@changesets/cli` to automate package versioning, changelog updates, and tag creation for the `@area44/workflows` package, which is not intended for publication to the npm registry:
 
 1. **Creating Changesets**: Pull requests introducing user-facing changes include a changeset file under `.changeset/*.md` created via `npm run changeset`.
 2. **Version PR**: When PRs are merged into `main`, Changesets automation opens or updates a Version PR that bumps `package.json` version and updates `CHANGELOG.md`.
-3. **Tagging and Release**: Merging the Version PR triggers `changeset tag`, creating git release tags (e.g. `v8.0.1`) and GitHub Releases. Because `@area44/workflows` is a private repository (`"private": true`), no package publication to npm registry takes place.
+3. **Tagging and Release**: Merging the Version PR triggers `changeset tag`, creating git release tags (e.g. `v8.0.1`) and GitHub Releases. Because the `@area44/workflows` package is marked `"private": true` in `package.json`, no package publication to the npm registry takes place.
+
+> **Visibility note**: The `"private": true` field in `package.json` only prevents the npm package from being published; it does not make the GitHub repository private. The source repository (`area44/workflows`) is public, while the npm package remains unpublished by design.
 
 ## Related Documentation
 
