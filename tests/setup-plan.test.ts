@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ResolvedEnvironment } from "@/resolve-environment";
 
-import { createSetupPlan, planBunSetup, planNodeSetup, planPnpmSetup } from "@/setup-plan";
+import { createSetupPlan, planBunSetup, planNodeSetup, planPnpmSetup } from "@/resolve-environment";
 
 describe("setup-plan", () => {
   function createSampleEnvironment(overrides?: Partial<ResolvedEnvironment>): ResolvedEnvironment {

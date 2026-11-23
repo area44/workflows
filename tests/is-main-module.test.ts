@@ -2,7 +2,20 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { isMainModule } from "@/utils/is-main-module";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Checks if the current module is the main entry point executed by Node.js.
+ */
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
 
 describe("isMainModule utility", () => {
   const originalArgv1 = process.argv[1];

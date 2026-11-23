@@ -12,8 +12,8 @@ import {
   executePythonWorkflow,
   executeRuffAutofix,
   run,
-  sanitizePackageManager,
 } from "@/autofix/index";
+import { sanitizePackageManager } from "@/javascript-env";
 import * as pythonEnv from "@/python-env";
 
 vi.mock("@actions/exec");

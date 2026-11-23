@@ -11,25 +11,65 @@ import {
   validateInstallCommands,
   type ResolvedPythonEnvironment,
 } from "@/python-env";
-import {
-  createSetupPlan,
-  type BunSetupPlan,
-  type NodeSetupPlan,
-  type PnpmSetupPlan,
-  type SetupPlan,
-} from "@/setup-plan";
-import { isMainModule } from "@/utils/is-main-module";
+
+export interface NodeSetupPlan {
+  shouldSetup: boolean;
+  cache: string;
+}
+
+export interface BunSetupPlan {
+  shouldSetup: boolean;
+}
+
+export interface PnpmSetupPlan {
+  shouldSetup: boolean;
+}
+
+export interface SetupPlan {
+  node: NodeSetupPlan;
+  bun: BunSetupPlan;
+  pnpm: PnpmSetupPlan;
+}
 
 export type {
   ResolvedJavaScriptEnvironment,
   ResolvedPythonEnvironment,
-  NodeSetupPlan,
-  BunSetupPlan,
-  PnpmSetupPlan,
-  SetupPlan,
 };
 
-export { resolveJsEnvironment, resolvePythonEnvironment, createSetupPlan };
+export { resolveJsEnvironment, resolvePythonEnvironment };
+
+function planNodeSetup(js: ResolvedJavaScriptEnvironment): NodeSetupPlan {
+  const shouldSetup =
+    js.detected && js.packageManager.name !== "pnpm" && js.runtime.name === "node";
+  return {
+    shouldSetup,
+    cache: js.detected && js.packageManager.name === "npm" ? "npm" : "",
+  };
+}
+
+function planBunSetup(js: ResolvedJavaScriptEnvironment): BunSetupPlan {
+  const shouldSetup = js.detected && js.packageManager.name !== "pnpm" && js.runtime.name === "bun";
+  return {
+    shouldSetup,
+  };
+}
+
+function planPnpmSetup(js: ResolvedJavaScriptEnvironment): PnpmSetupPlan {
+  const shouldSetup = js.detected && js.packageManager.name === "pnpm";
+  return {
+    shouldSetup,
+  };
+}
+
+export function createSetupPlan(env: ResolvedEnvironment): SetupPlan {
+  return {
+    node: planNodeSetup(env.javascript),
+    bun: planBunSetup(env.javascript),
+    pnpm: planPnpmSetup(env.javascript),
+  };
+}
+
+export { planNodeSetup, planBunSetup, planPnpmSetup };
 
 export interface ResolvedEnvironment {
   javascript: ResolvedJavaScriptEnvironment;
@@ -272,6 +312,21 @@ export function run(): void {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     core.setFailed(`Environment setup failed: ${msg}`);
+  }
+}
+
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Checks if the current module is the main entry point executed by Node.js.
+ */
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
   }
 }
 

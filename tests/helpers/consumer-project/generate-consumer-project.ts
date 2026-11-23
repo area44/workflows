@@ -2,7 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isMainModule } from "../../../src/utils/is-main-module.js";
+/**
+ * Checks if the current module is the main entry point executed by Node.js.
+ */
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Normalizes a project name for Python package compatibility (PEP 508 / PEP 621).

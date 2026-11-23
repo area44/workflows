@@ -16,13 +16,24 @@ import { installPythonDependencies } from "@/autofix/providers/python";
 import { defaultRegistry } from "@/autofix/registry";
 import {
   inspectJsProjectEnvironment,
-  sanitizePackageManager,
+  resolveJsPackageManager,
   type SupportedPackageManager,
 } from "@/javascript-env";
 import { hasPythonSource, type PythonPackageManagerInfo } from "@/python-env";
-import { isMainModule } from "@/utils/is-main-module";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
-export { sanitizePackageManager };
+/**
+ * Checks if the current module is the main entry point executed by Node.js.
+ */
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Builds the project context once: inspects the JavaScript environment, detects Python source,
@@ -36,7 +47,9 @@ function buildProjectContext(cwd: string): ProjectContext {
   let jsPm: SupportedPackageManager | undefined;
   if (jsEnv.hasPackageJson) {
     try {
-      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: hasSource });
+      const pmInfo = resolveJsPackageManager(jsEnv);
+      // Allow PACKAGE_MANAGER env override (e.g., for testing or forced PM selection)
+      jsPm = (process.env.PACKAGE_MANAGER || pmInfo.name) as SupportedPackageManager;
     } catch {
       // Package manager resolution failed; the JavaScript provider surfaces the error.
       jsPm = undefined;

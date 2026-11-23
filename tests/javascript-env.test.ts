@@ -14,7 +14,6 @@ import {
   resolveRuntime,
   resolveToolchain,
   sanitizePackageManager,
-  selectAutofixScripts,
   validateRuntimePackageManagerCompatibility,
 } from "@/javascript-env";
 
@@ -557,58 +556,6 @@ describe("javascript-env", () => {
     it("should throw Error for unsupported package manager", () => {
       expect(() => getJsInstallationPlan("yarn")).toThrow(Error);
       expect(() => getJsInstallationPlan("yarn")).toThrow(/Unsupported package manager 'yarn'/);
-    });
-  });
-
-  describe("selectAutofixScripts", () => {
-    it("should prioritize 'fix' script over format, lint, and check", () => {
-      const scripts = {
-        fix: "eslint --fix .",
-        format: "prettier -w .",
-        lint: "eslint .",
-        check: "vp check",
-      };
-      expect(selectAutofixScripts(scripts)).toEqual(["fix"]);
-    });
-
-    it("should prioritize 'fix' script when check is also present", () => {
-      const scripts = { fix: "npm run fix", check: "npm run check" };
-      expect(selectAutofixScripts(scripts)).toEqual(["fix"]);
-    });
-
-    it("should select 'format' and 'lint' when both are defined and 'fix' is missing", () => {
-      const scripts = { format: "prettier -w .", lint: "eslint .", check: "vp check" };
-      expect(selectAutofixScripts(scripts)).toEqual(["format", "lint"]);
-    });
-
-    it("should select 'fmt' and 'lint' when 'format' is missing but 'fmt' is defined", () => {
-      const scripts = { fmt: "cargo fmt", lint: "eslint ." };
-      expect(selectAutofixScripts(scripts)).toEqual(["fmt", "lint"]);
-    });
-
-    it("should select single 'format' script when lint is missing", () => {
-      const scripts = { format: "prettier -w ." };
-      expect(selectAutofixScripts(scripts)).toEqual(["format"]);
-    });
-
-    it("should select single 'fmt' script when lint and format are missing", () => {
-      const scripts = { fmt: "cargo fmt" };
-      expect(selectAutofixScripts(scripts)).toEqual(["fmt"]);
-    });
-
-    it("should select single 'lint' script when format/fmt are missing", () => {
-      const scripts = { lint: "eslint ." };
-      expect(selectAutofixScripts(scripts)).toEqual(["lint"]);
-    });
-
-    it("should select 'check' script as lowest priority fallback when fix/format/lint are missing", () => {
-      const scripts = { check: "vp check" };
-      expect(selectAutofixScripts(scripts)).toEqual(["check"]);
-    });
-
-    it("should return empty array when no matching scripts exist", () => {
-      expect(selectAutofixScripts({ test: "vitest", build: "tsc" })).toEqual([]);
-      expect(selectAutofixScripts(undefined)).toEqual([]);
     });
   });
 });

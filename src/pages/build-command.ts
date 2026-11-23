@@ -3,8 +3,19 @@ import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { isMainModule } from "@/utils/is-main-module";
+/**
+ * Checks if the current module is the main entry point executed by Node.js.
+ */
+function isMainModule(metaUrl: string): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(metaUrl) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
 
 export interface ParsedCommand {
   command: string;

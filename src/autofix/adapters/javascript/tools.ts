@@ -50,6 +50,45 @@ export interface DetectToolOptions {
   platform?: NodeJS.Platform;
 }
 
+export interface PlanTaskConfig {
+  id: string;
+  toolId: string;
+  toolName: string;
+  requiredPackage: string;
+  capability: Capability;
+  executable: string;
+  fixArgs?: string[];
+  checkArgs?: string[];
+  description: string;
+  cwd: string;
+}
+
+/**
+ * Creates a plan method for a tool adapter, reducing boilerplate.
+ * Generates fix and check mode tasks from a common configuration.
+ */
+export function createPlanMethod(
+  configs: PlanTaskConfig[],
+): (context: ProjectContext, mode: ExecutionMode) => ExecutionTask[] {
+  return (context: ProjectContext, mode: ExecutionMode): ExecutionTask[] => {
+    const argsKey = mode === "fix" ? "fixArgs" : "checkArgs";
+    return configs
+      .filter((cfg) => cfg[argsKey] && cfg[argsKey]!.length > 0)
+      .map((cfg) => ({
+        id: cfg.id,
+        toolId: cfg.toolId,
+        toolName: cfg.toolName,
+        requiredPackage: cfg.requiredPackage,
+        capability: cfg.capability,
+        executable: cfg.executable,
+        args: cfg[argsKey]!,
+        cwd: context.cwd,
+        mode,
+        description: cfg.description,
+      }));
+  };
+}
+
 /**
  * Shared detection and executable availability resolution abstraction.
  * Distinguishes between:
@@ -388,39 +427,30 @@ export class PrettierAdapter implements ToolAdapter {
     });
   }
 
-  public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
-    if (mode === "fix") {
-      return [
-        {
-          id: "prettier-format",
-          toolId: this.id,
-          toolName: this.name,
-          requiredPackage: "prettier",
-          capability: "format",
-          executable: "prettier",
-          args: ["--write", "."],
-          cwd: context.cwd,
-          mode: "fix",
-          description: "Prettier: format",
-        },
-      ];
-    }
-
-    return [
-      {
-        id: "prettier-check",
-        toolId: this.id,
-        toolName: this.name,
-        requiredPackage: "prettier",
-        capability: "format",
-        executable: "prettier",
-        args: ["--check", "."],
-        cwd: context.cwd,
-        mode: "check",
-        description: "Prettier: format check",
-      },
-    ];
-  }
+  public plan = createPlanMethod([
+    {
+      id: "prettier-format",
+      toolId: "prettier",
+      toolName: "Prettier",
+      requiredPackage: "prettier",
+      capability: "format",
+      executable: "prettier",
+      fixArgs: ["--write", "."],
+      description: "Prettier: format",
+      cwd: "",
+    },
+    {
+      id: "prettier-check",
+      toolId: "prettier",
+      toolName: "Prettier",
+      requiredPackage: "prettier",
+      capability: "format",
+      executable: "prettier",
+      checkArgs: ["--check", "."],
+      description: "Prettier: format check",
+      cwd: "",
+    },
+  ]);
 }
 
 // ESLint Adapter

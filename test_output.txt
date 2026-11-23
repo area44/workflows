@@ -1,0 +1,45 @@
+npm notice run @area44/workflows@10.1.1 test
+npm notice run vp test
+
+ RUN  v5.1.0 C:/Users/Windows/Documents/GitHub/AREA44/workflows
+
+ ❯ tests/generate-consumer-project.test.ts (0 test)
+ ❯ tests/integration-consumer.test.ts (0 test)
+ ❯ tests/python-env.test.ts (0 test)
+ ❯ tests/autofix.test.ts (0 test)
+ ❯ tests/resolve-environment.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/autofix.test.ts [ tests/autofix.test.ts ]
+ FAIL  tests/generate-consumer-project.test.ts [ tests/generate-consumer-project.test.ts ]
+ FAIL  tests/integration-consumer.test.ts [ tests/integration-consumer.test.ts ]
+ FAIL  tests/python-env.test.ts [ tests/python-env.test.ts ]
+ FAIL  tests/resolve-environment.test.ts [ tests/resolve-environment.test.ts ]
+Error: Cannot find module '../../../src/utils/is-main-module.js' imported from C:/Users/Windows/Documents/GitHub/AREA44/workflows/tests/helpers/consumer-project/generate-consumer-project.ts
+ ❯ reviveInvokeError node_modules/vite/dist/vite/node/module-runner.js:546:14
+ ❯ Object.invoke node_modules/vite/dist/vite/node/module-runner.js:562:33
+ ❯ VitestModuleRunner.getModuleInformation node_modules/vite/dist/vite/node/module-runner.js:1202:7
+ ❯ request node_modules/vite/dist/vite/node/module-runner.js:1219:83
+ ❯ tests/helpers/consumer-project/generate-consumer-project.ts:5:1
+      3| import { fileURLToPath } from "node:url";
+      4|
+      5| import { isMainModule } from "../../../src/utils/is-main-module.js";
+       | ^
+      6|
+      7| /**
+ ❯ VitestModuleRunner.directRequest node_modules/vite/dist/vite/node/module-runner.js:1262:59
+ ❯ VitestModuleRunner.cachedRequest node_modules/vite/dist/vite/node/module-runner.js:1169:73
+ ❯ tests/helpers/consumer-project/index.ts:1:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  5 failed | 6 passed (11)
+      Tests  276 passed (276)
+   Start at  01:34:52
+   Duration  18.37s (import 62%, tests 29%, worker 6%, transform 2%)
+
+    Isolate  11 workers spawned · ~2.04s startup each (spawn + environment, per file)
+             at least ~5.44s faster with isolate: false — reuses workers across files instead of one per file
+

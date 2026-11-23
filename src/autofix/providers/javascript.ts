@@ -18,7 +18,6 @@ import {
   getJsInstallationPlan,
   inspectJsProjectEnvironment,
   resolveJsPackageManager,
-  sanitizePackageManager,
   type SupportedPackageManager,
 } from "@/javascript-env";
 
@@ -40,14 +39,14 @@ function anySetupFailed(vars: readonly string[]): boolean {
 /**
  * Resolves the JavaScript package manager, reusing an already-resolved `context.jsPm` when
  * available. Falls back to resolving from the package manager env override or the project
- * environment, throwing an actionable error when resolution fails.
+ * environment.
  */
 export function resolveJsPm(context: ProjectContext): SupportedPackageManager {
   if (context.jsPm) {
     return context.jsPm;
   }
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(context.jsEnv!).name;
-  return sanitizePackageManager(rawPm) as SupportedPackageManager;
+  return rawPm as SupportedPackageManager;
 }
 
 /**

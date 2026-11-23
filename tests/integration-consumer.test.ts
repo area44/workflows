@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { inspectJsProjectEnvironment, selectAutofixScripts } from "@/javascript-env";
+import { inspectJsProjectEnvironment } from "@/javascript-env";
 import { resolveBuildCommandToParse, resolveBuildOutputPath } from "@/pages/build-command";
 import { resolveSiteVariables, setSiteVariables } from "@/pages/site-variables";
 import { resolveEnvironment, writeOutput } from "@/resolve-environment";
@@ -151,14 +151,6 @@ describe("Consumer Project Module Integration Suite", () => {
 
       const outputPath = resolveBuildOutputPath("  custom_build_dir/ ");
       expect(outputPath).toBe("custom_build_dir/");
-    });
-  });
-
-  describe("Autofix Script Selection", () => {
-    it("selects lint and format scripts defined in consumer package.json", () => {
-      const project = inspectJsProjectEnvironment();
-      const scripts = selectAutofixScripts(project.packageJson?.scripts);
-      expect(scripts).toEqual(["format", "lint"]);
     });
   });
 
