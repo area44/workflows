@@ -5,9 +5,9 @@ import type {
   ExecutionTask,
   ProjectContext,
   ToolAdapter,
-} from "../../types.js";
+} from "@/autofix/types";
 
-import { sanitizePackageManager } from "../../../javascript-env.js";
+import { sanitizePackageManager } from "@/javascript-env";
 
 export interface ScriptMapping {
   capability: Capability;

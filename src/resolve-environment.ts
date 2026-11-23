@@ -5,20 +5,20 @@ import {
   resolveJsEnvironment,
   validateRuntimePackageManagerCompatibility,
   type ResolvedJavaScriptEnvironment,
-} from "./javascript-env.js";
+} from "@/javascript-env";
 import {
   resolvePythonEnvironment,
   validateInstallCommands,
   type ResolvedPythonEnvironment,
-} from "./python-env.js";
+} from "@/python-env";
 import {
   createSetupPlan,
   type BunSetupPlan,
   type NodeSetupPlan,
   type PnpmSetupPlan,
   type SetupPlan,
-} from "./setup-plan.js";
-import { isMainModule } from "./utils/is-main-module.js";
+} from "@/setup-plan";
+import { isMainModule } from "@/utils/is-main-module";
 
 export type {
   ResolvedJavaScriptEnvironment,

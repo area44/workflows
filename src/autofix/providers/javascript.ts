@@ -1,17 +1,10 @@
 import * as core from "@actions/core";
 import * as io from "@actions/io";
 
-import type { ExecutionEngine } from "../engine.js";
-import type { ExecutionTask, LanguageProvider, ProjectContext, ToolAdapter } from "../types.js";
+import type { ExecutionEngine } from "@/autofix/engine";
+import type { ExecutionTask, LanguageProvider, ProjectContext, ToolAdapter } from "@/autofix/types";
 
-import {
-  getJsInstallationPlan,
-  inspectJsProjectEnvironment,
-  resolveJsPackageManager,
-  sanitizePackageManager,
-  type SupportedPackageManager,
-} from "../../javascript-env.js";
-import { JavaScriptScriptAdapter } from "../adapters/javascript/script-adapter.js";
+import { JavaScriptScriptAdapter } from "@/autofix/adapters/javascript/script-adapter";
 import {
   BiomeAdapter,
   EslintAdapter,
@@ -19,8 +12,15 @@ import {
   OxlintAdapter,
   PrettierAdapter,
   VitePlusAdapter,
-} from "../adapters/javascript/tools.js";
-import { collectErrors, formatCommand, runLoggedCommand } from "../exec.js";
+} from "@/autofix/adapters/javascript/tools";
+import { collectErrors, formatCommand, runLoggedCommand } from "@/autofix/exec";
+import {
+  getJsInstallationPlan,
+  inspectJsProjectEnvironment,
+  resolveJsPackageManager,
+  sanitizePackageManager,
+  type SupportedPackageManager,
+} from "@/javascript-env";
 
 const JS_SETUP_OUTCOME_VARS = [
   "JS_SETUP_OUTCOME",

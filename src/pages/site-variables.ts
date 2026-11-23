@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 
-import { isMainModule } from "../utils/is-main-module.js";
+import { isMainModule } from "@/utils/is-main-module";
 
 export interface SiteVariables {
   site: string;

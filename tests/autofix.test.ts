@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
+import { createConsumerProject } from "@tests/helpers/consumer-project/index";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,9 +13,8 @@ import {
   executeRuffAutofix,
   run,
   sanitizePackageManager,
-} from "../src/autofix/index";
-import * as pythonEnv from "../src/python-env";
-import { createConsumerProject } from "./helpers/consumer-project/index.js";
+} from "@/autofix/index";
+import * as pythonEnv from "@/python-env";
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");

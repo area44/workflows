@@ -1,9 +1,8 @@
+import { createConsumerProject } from "@tests/helpers/consumer-project/index";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
-
-import { createConsumerProject } from "./helpers/consumer-project/index.js";
 
 vi.mock("@actions/core");
 
@@ -17,7 +16,7 @@ import {
   stripTomlStringsAndComments,
   type ParsedTomlSuccess,
   type ParsedTomlError,
-} from "../src/python-env.js";
+} from "@/python-env.js";
 
 describe("Python Package Manager Detection", () => {
   const fixturesDir = os.tmpdir();

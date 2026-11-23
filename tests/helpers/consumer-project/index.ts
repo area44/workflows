@@ -5,4 +5,4 @@ export {
   normalizePythonProjectName,
   parseCliArgs,
   type ConsumerProjectOptions,
-} from "./generate-consumer-project.js";
+} from "@tests/helpers/consumer-project/generate-consumer-project";

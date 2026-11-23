@@ -1,21 +1,26 @@
 import * as core from "@actions/core";
 import * as io from "@actions/io";
 
-import type { ExecutionTask, LanguageProvider, PlannedExecution, ProjectContext } from "./types.js";
+import type {
+  ExecutionTask,
+  LanguageProvider,
+  PlannedExecution,
+  ProjectContext,
+} from "@/autofix/types";
 
+import { ExecutionEngine } from "@/autofix/engine";
+import { collectErrors } from "@/autofix/exec";
+import { planExecution } from "@/autofix/planner";
+import { installAndExecuteJsTasks, resolveJsPm } from "@/autofix/providers/javascript";
+import { installPythonDependencies } from "@/autofix/providers/python";
+import { defaultRegistry } from "@/autofix/registry";
 import {
   inspectJsProjectEnvironment,
   sanitizePackageManager,
   type SupportedPackageManager,
-} from "../javascript-env.js";
-import { hasPythonSource, type PythonPackageManagerInfo } from "../python-env.js";
-import { isMainModule } from "../utils/is-main-module.js";
-import { ExecutionEngine } from "./engine.js";
-import { collectErrors } from "./exec.js";
-import { planExecution } from "./planner.js";
-import { installAndExecuteJsTasks, resolveJsPm } from "./providers/javascript.js";
-import { installPythonDependencies } from "./providers/python.js";
-import { defaultRegistry } from "./registry.js";
+} from "@/javascript-env";
+import { hasPythonSource, type PythonPackageManagerInfo } from "@/python-env";
+import { isMainModule } from "@/utils/is-main-module";
 
 export { sanitizePackageManager };
 

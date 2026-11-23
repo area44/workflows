@@ -32,6 +32,9 @@ export default defineConfig({
       ],
     },
   },
+  resolve: {
+    tsconfigPaths: true,
+  },
   lint: {
     ignorePatterns,
     plugins: [

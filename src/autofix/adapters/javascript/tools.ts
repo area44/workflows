@@ -8,11 +8,11 @@ import type {
   ExecutionTask,
   ProjectContext,
   ToolAdapter,
-} from "../../types.js";
+} from "@/autofix/types";
 
-import { hasVitePlusDependency, type JsPackageManifest } from "../../../javascript-env.js";
-import { resolveProjectBinary } from "../../engine.js";
-import { hasVitePlusCommand } from "./script-adapter.js";
+import { hasVitePlusCommand } from "@/autofix/adapters/javascript/script-adapter";
+import { resolveProjectBinary } from "@/autofix/engine";
+import { hasVitePlusDependency, type JsPackageManifest } from "@/javascript-env";
 
 function hasVitePlusScript(scripts?: Record<string, string>): boolean {
   if (!scripts) return false;

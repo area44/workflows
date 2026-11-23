@@ -5,9 +5,9 @@ import type {
   ExecutionTask,
   ProjectContext,
   ToolAdapter,
-} from "../../types.js";
+} from "@/autofix/types";
 
-import { hasPythonSource } from "../../../python-env.js";
+import { hasPythonSource } from "@/python-env";
 
 const ruffFormatFailure = (displayCmd: string): string =>
   `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`;

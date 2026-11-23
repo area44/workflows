@@ -1,10 +1,11 @@
 import * as core from "@actions/core";
+import { createConsumerProject } from "@tests/helpers/consumer-project/index";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ResolvedEnvironment } from "../src/resolve-environment.js";
+import type { ResolvedEnvironment } from "@/resolve-environment";
 
 import {
   createSetupPlan,
@@ -13,8 +14,7 @@ import {
   run,
   validateEnvironment,
   writeOutput,
-} from "../src/resolve-environment.js";
-import { createConsumerProject } from "./helpers/consumer-project/index.js";
+} from "@/resolve-environment";
 
 vi.mock("@actions/core");
 

@@ -16,7 +16,7 @@ import {
   sanitizePackageManager,
   selectAutofixScripts,
   validateRuntimePackageManagerCompatibility,
-} from "../src/javascript-env";
+} from "@/javascript-env";
 
 vi.mock("@actions/core");
 

@@ -2,9 +2,9 @@ import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { ExecutableResolution, ExecutionTask } from "./types.js";
+import type { ExecutableResolution, ExecutionTask } from "@/autofix/types";
 
-import { formatCommand, runLoggedCommand } from "./exec.js";
+import { formatCommand, runLoggedCommand } from "@/autofix/exec";
 
 export interface ExecutionResult {
   task: ExecutionTask;

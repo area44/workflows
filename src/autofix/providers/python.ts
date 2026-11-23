@@ -1,16 +1,16 @@
 import * as io from "@actions/io";
 
-import type { ExecutionEngine } from "../engine.js";
-import type { ExecutionTask, LanguageProvider, ProjectContext, ToolAdapter } from "../types.js";
+import type { ExecutionEngine } from "@/autofix/engine";
+import type { ExecutionTask, LanguageProvider, ProjectContext, ToolAdapter } from "@/autofix/types";
 
+import { RuffAdapter } from "@/autofix/adapters/python/ruff";
+import { collectErrors, formatCommand, runLoggedCommand } from "@/autofix/exec";
 import {
   detectPythonPackageManager,
   hasPythonSource,
   validatePythonPmInfoStructure,
   type PythonPackageManagerInfo,
-} from "../../python-env.js";
-import { RuffAdapter } from "../adapters/python/ruff.js";
-import { collectErrors, formatCommand, runLoggedCommand } from "../exec.js";
+} from "@/python-env";
 
 const PYTHON_SETUP_OUTCOME_VARS = [
   "PYTHON_SETUP_OUTCOME",

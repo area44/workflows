@@ -11,16 +11,16 @@
  */
 
 import * as core from "@actions/core";
+import { createConsumerProject } from "@tests/helpers/consumer-project/index";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { inspectJsProjectEnvironment, selectAutofixScripts } from "../src/javascript-env.js";
-import { resolveBuildCommandToParse, resolveBuildOutputPath } from "../src/pages/build-command.js";
-import { resolveSiteVariables, setSiteVariables } from "../src/pages/site-variables.js";
-import { resolveEnvironment, writeOutput } from "../src/resolve-environment.js";
-import { createConsumerProject } from "./helpers/consumer-project/index.js";
+import { inspectJsProjectEnvironment, selectAutofixScripts } from "@/javascript-env";
+import { resolveBuildCommandToParse, resolveBuildOutputPath } from "@/pages/build-command";
+import { resolveSiteVariables, setSiteVariables } from "@/pages/site-variables";
+import { resolveEnvironment, writeOutput } from "@/resolve-environment";
 
 vi.mock("@actions/core");
 

@@ -1,7 +1,7 @@
-import type { LanguageProvider, ToolAdapter } from "./types.js";
+import type { LanguageProvider, ToolAdapter } from "@/autofix/types";
 
-import { JavaScriptLanguageProvider } from "./providers/javascript.js";
-import { PythonLanguageProvider } from "./providers/python.js";
+import { JavaScriptLanguageProvider } from "@/autofix/providers/javascript";
+import { PythonLanguageProvider } from "@/autofix/providers/python";
 
 export class AutofixRegistry {
   private providers: Map<string, LanguageProvider> = new Map();

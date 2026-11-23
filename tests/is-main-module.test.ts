@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { isMainModule } from "../src/utils/is-main-module.js";
+import { isMainModule } from "@/utils/is-main-module";
 
 describe("isMainModule utility", () => {
   const originalArgv1 = process.argv[1];

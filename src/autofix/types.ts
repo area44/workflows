@@ -1,6 +1,6 @@
-import type { JsProjectEnvironment, SupportedPackageManager } from "../javascript-env.js";
-import type { PythonPackageManagerInfo, PythonProjectContext } from "../python-env.js";
-import type { ExecutionEngine } from "./engine.js";
+import type { ExecutionEngine } from "@/autofix/engine";
+import type { JsProjectEnvironment, SupportedPackageManager } from "@/javascript-env";
+import type { PythonPackageManagerInfo, PythonProjectContext } from "@/python-env";
 
 export type Capability = "lint" | "format" | "typecheck" | "assist" | "autofix";
 

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { ResolvedEnvironment } from "../src/resolve-environment.js";
+import type { ResolvedEnvironment } from "@/resolve-environment";
 
-import { createSetupPlan, planBunSetup, planNodeSetup, planPnpmSetup } from "../src/setup-plan.js";
+import { createSetupPlan, planBunSetup, planNodeSetup, planPnpmSetup } from "@/setup-plan";
 
 describe("setup-plan", () => {
   function createSampleEnvironment(overrides?: Partial<ResolvedEnvironment>): ResolvedEnvironment {

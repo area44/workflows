@@ -1,4 +1,4 @@
-import type { AutofixRegistry } from "./registry.js";
+import type { AutofixRegistry } from "@/autofix/registry";
 import type {
   Capability,
   ExecutionMode,
@@ -6,10 +6,10 @@ import type {
   PlannedExecution,
   ProjectContext,
   ToolAdapter,
-} from "./types.js";
+} from "@/autofix/types";
 
-import { inspectJsProjectEnvironment } from "../javascript-env.js";
-import { hasPythonSource } from "../python-env.js";
+import { inspectJsProjectEnvironment } from "@/javascript-env";
+import { hasPythonSource } from "@/python-env";
 
 interface CandidateTool {
   adapter: ToolAdapter;

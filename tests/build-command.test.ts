@@ -13,7 +13,7 @@ import {
   resolveBuildOutputPath,
   runBuildCommand,
   validateBuildOutput,
-} from "../src/pages/build-command";
+} from "@/pages/build-command";
 
 vi.mock("@actions/core");
 vi.mock("@actions/exec");

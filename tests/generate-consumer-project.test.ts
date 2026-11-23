@@ -1,17 +1,16 @@
-import { execSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { parse as parseToml } from "smol-toml";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-
 import {
   createConsumerProject,
   generateConsumerProjectFiles,
   getLockfileTemplates,
   normalizePythonProjectName,
   parseCliArgs,
-} from "./helpers/consumer-project/index.js";
+} from "@tests/helpers/consumer-project/index";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { parse as parseToml } from "smol-toml";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 describe("Consumer Project Generator Unit & Regression Suite", () => {
   let tempDir: string;

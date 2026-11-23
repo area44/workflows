@@ -1,5 +1,5 @@
-import type { ResolvedJavaScriptEnvironment } from "./javascript-env.js";
-import type { ResolvedEnvironment } from "./resolve-environment.js";
+import type { ResolvedJavaScriptEnvironment } from "@/javascript-env";
+import type { ResolvedEnvironment } from "@/resolve-environment";
 
 export interface NodeSetupPlan {
   shouldSetup: boolean;

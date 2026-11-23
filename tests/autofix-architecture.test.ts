@@ -12,13 +12,13 @@ import type {
   LanguageProvider,
   ProjectContext,
   ToolAdapter,
-} from "../src/autofix/types.js";
+} from "@/autofix/types";
 
 import {
   classifyScript,
   hasVitePlusCommand,
   resolveScriptTasks,
-} from "../src/autofix/adapters/javascript/script-adapter.js";
+} from "@/autofix/adapters/javascript/script-adapter";
 import {
   BiomeAdapter,
   EslintAdapter,
@@ -27,23 +27,15 @@ import {
   PrettierAdapter,
   VitePlusAdapter,
   detectToolAvailability,
-} from "../src/autofix/adapters/javascript/tools.js";
-import {
-  ExecutionEngine,
-  isExecutableBinary,
-  resolveProjectBinary,
-} from "../src/autofix/engine.js";
-import { formatCommand } from "../src/autofix/exec.js";
-import { executeJsWorkflow, run } from "../src/autofix/index.js";
-import { planExecution } from "../src/autofix/planner.js";
-import { JavaScriptLanguageProvider } from "../src/autofix/providers/javascript.js";
-import { PythonLanguageProvider } from "../src/autofix/providers/python.js";
-import {
-  AutofixRegistry,
-  createDefaultRegistry,
-  defaultRegistry,
-} from "../src/autofix/registry.js";
-import { inspectJsProjectEnvironment } from "../src/javascript-env.js";
+} from "@/autofix/adapters/javascript/tools";
+import { ExecutionEngine, isExecutableBinary, resolveProjectBinary } from "@/autofix/engine";
+import { formatCommand } from "@/autofix/exec";
+import { executeJsWorkflow, run } from "@/autofix/index";
+import { planExecution } from "@/autofix/planner";
+import { JavaScriptLanguageProvider } from "@/autofix/providers/javascript";
+import { PythonLanguageProvider } from "@/autofix/providers/python";
+import { AutofixRegistry, createDefaultRegistry, defaultRegistry } from "@/autofix/registry";
+import { inspectJsProjectEnvironment } from "@/javascript-env";
 
 vi.mock("@actions/exec");
 vi.mock("@actions/core");

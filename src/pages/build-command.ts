@@ -4,7 +4,7 @@ import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
 
-import { isMainModule } from "../utils/is-main-module.js";
+import { isMainModule } from "@/utils/is-main-module";
 
 export interface ParsedCommand {
   command: string;
