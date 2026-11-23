@@ -8,11 +8,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import YAML from "yaml";
 
-import {
-  executePythonWorkflow,
-  executeRuffAutofix,
-  run,
-} from "@/autofix/index";
+import { executePythonWorkflow, executeRuffAutofix, run } from "@/autofix/index";
 import { sanitizePackageManager } from "@/javascript-env";
 import * as pythonEnv from "@/python-env";
 

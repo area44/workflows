@@ -8,6 +8,7 @@ import type {
 } from "@/autofix/types";
 
 import { sanitizePackageManager } from "@/javascript-env";
+
 import {
   splitChainedCommandsDetailed,
   inspectAndTokenizeCommandLine,
@@ -73,7 +74,7 @@ function resolveLintScript(
   if (scripts.lint && classifyScript(scripts.lint, scripts) === "read-only") {
     return "lint";
   }
-return undefined;
+  return undefined;
 }
 
 function getCommandInvocationTokens(tokens: string[]): string[] {

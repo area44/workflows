@@ -1,5 +1,7 @@
 import * as core from "@actions/core";
 import * as io from "@actions/io";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import type {
   ExecutionTask,
@@ -20,8 +22,6 @@ import {
   type SupportedPackageManager,
 } from "@/javascript-env";
 import { hasPythonSource, type PythonPackageManagerInfo } from "@/python-env";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 
 /**
  * Checks if the current module is the main entry point executed by Node.js.

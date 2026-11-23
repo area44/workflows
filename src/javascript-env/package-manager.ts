@@ -1,5 +1,11 @@
 import * as core from "@actions/core";
-import type { JsPackageManagerInfo, JsProjectEnvironment, SupportedPackageManager } from "@/javascript-env/types";
+
+import type {
+  JsPackageManagerInfo,
+  JsProjectEnvironment,
+  SupportedPackageManager,
+} from "@/javascript-env/types";
+
 import { isSupportedPackageManager } from "@/javascript-env/sanitize";
 
 function parseDevEnginePmItem(pm: unknown): JsPackageManagerInfo | undefined {

@@ -1,9 +1,8 @@
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vite-plus/test";
-
-import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 /**
  * Checks if the current module is the main entry point executed by Node.js.

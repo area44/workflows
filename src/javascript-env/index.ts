@@ -1,10 +1,9 @@
-import type {
-  ResolvedJavaScriptEnvironment,
-} from "@/javascript-env/types";
-import { resolveRuntime } from "@/javascript-env/runtime";
-import { resolveToolchain } from "@/javascript-env/toolchain";
+import type { ResolvedJavaScriptEnvironment } from "@/javascript-env/types";
+
 import { inspectJsProjectEnvironment } from "@/javascript-env/inspect";
 import { resolveJsPackageManager } from "@/javascript-env/package-manager";
+import { resolveRuntime } from "@/javascript-env/runtime";
+import { resolveToolchain } from "@/javascript-env/toolchain";
 
 export * from "@/javascript-env/types";
 export * from "@/javascript-env/runtime";

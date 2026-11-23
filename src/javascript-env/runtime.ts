@@ -3,6 +3,7 @@ import type {
   JsProjectEnvironment,
   SupportedRuntime,
 } from "@/javascript-env/types";
+
 import { hasDevEngineRuntime } from "@/javascript-env/dev-engines";
 
 interface RuntimeSignals {
@@ -109,9 +110,9 @@ export function validateRuntimePackageManagerCompatibility(runtime: string, pmNa
 export function resolveRuntime(pm: PackageManager, project?: JsProjectEnvironment): "node" | "bun" {
   const hasJsProject = Boolean(
     project?.hasPackageJson ||
-      project?.hasPnpmLock ||
-      project?.hasPackageLock ||
-      project?.hasBunLock,
+    project?.hasPnpmLock ||
+    project?.hasPackageLock ||
+    project?.hasBunLock,
   );
   if (!hasJsProject) {
     return "node";

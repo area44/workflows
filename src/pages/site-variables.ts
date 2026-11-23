@@ -1,5 +1,4 @@
 import * as core from "@actions/core";
-
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 

@@ -31,10 +31,7 @@ export interface SetupPlan {
   pnpm: PnpmSetupPlan;
 }
 
-export type {
-  ResolvedJavaScriptEnvironment,
-  ResolvedPythonEnvironment,
-};
+export type { ResolvedJavaScriptEnvironment, ResolvedPythonEnvironment };
 
 export { resolveJsEnvironment, resolvePythonEnvironment };
 

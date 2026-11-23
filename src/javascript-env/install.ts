@@ -1,4 +1,9 @@
-import type { JsInstallationPlan, JsPackageManagerInfo, SupportedPackageManager } from "@/javascript-env/types";
+import type {
+  JsInstallationPlan,
+  JsPackageManagerInfo,
+  SupportedPackageManager,
+} from "@/javascript-env/types";
+
 import { sanitizePackageManager, isSupportedPackageManager } from "@/javascript-env/sanitize";
 
 export function getJsInstallationPlan(pmInput: string | JsPackageManagerInfo): JsInstallationPlan {
