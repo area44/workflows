@@ -9,6 +9,9 @@ import type {
 
 import { hasPythonSource } from "../../../python-env.js";
 
+const ruffFormatFailure = (displayCmd: string): string =>
+  `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`;
+
 export class RuffAdapter implements ToolAdapter {
   public readonly id = "ruff";
   public readonly name = "Ruff";
@@ -37,6 +40,8 @@ export class RuffAdapter implements ToolAdapter {
           cwd: context.cwd,
           mode: "fix",
           description: "Ruff: lint autofix",
+          resolution: "path",
+          formatFailure: ruffFormatFailure,
         },
         {
           id: "ruff-format",
@@ -47,6 +52,8 @@ export class RuffAdapter implements ToolAdapter {
           cwd: context.cwd,
           mode: "fix",
           description: "Ruff: format",
+          resolution: "path",
+          formatFailure: ruffFormatFailure,
         },
       );
     } else {
@@ -60,6 +67,8 @@ export class RuffAdapter implements ToolAdapter {
           cwd: context.cwd,
           mode: "check",
           description: "Ruff: lint check",
+          resolution: "path",
+          formatFailure: ruffFormatFailure,
         },
         {
           id: "ruff-format-check",
@@ -70,6 +79,8 @@ export class RuffAdapter implements ToolAdapter {
           cwd: context.cwd,
           mode: "check",
           description: "Ruff: format check",
+          resolution: "path",
+          formatFailure: ruffFormatFailure,
         },
       );
     }

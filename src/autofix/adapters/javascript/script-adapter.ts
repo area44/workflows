@@ -1299,16 +1299,22 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
     const scriptMappings = resolveScriptTasks(scripts, mode);
 
     const pm = sanitizePackageManager(context.jsPm || "npm");
-    return scriptMappings.map((mapping) => ({
-      id: `script-${mapping.scriptName}`,
-      toolId: this.id,
-      capability: mapping.capability,
-      capabilities: mapping.capabilities,
-      executable: pm,
-      args: ["run", mapping.scriptName],
-      cwd: context.cwd,
-      mode,
-      description: `package.json script: ${pm} run ${mapping.scriptName}`,
-    }));
+    return scriptMappings.map((mapping) => {
+      const scriptName = mapping.scriptName;
+      return {
+        id: `script-${scriptName}`,
+        toolId: this.id,
+        capability: mapping.capability,
+        capabilities: mapping.capabilities,
+        executable: pm,
+        args: ["run", scriptName],
+        cwd: context.cwd,
+        mode,
+        description: `package.json script: ${pm} run ${scriptName}`,
+        resolution: "passthrough",
+        formatFailure: (displayCmd: string) =>
+          `Script "${scriptName}" failed while executing "${displayCmd}".`,
+      };
+    });
   }
 }

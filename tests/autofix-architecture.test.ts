@@ -33,9 +33,16 @@ import {
   isExecutableBinary,
   resolveProjectBinary,
 } from "../src/autofix/engine.js";
+import { formatCommand } from "../src/autofix/exec.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
-import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
+import { JavaScriptLanguageProvider } from "../src/autofix/providers/javascript.js";
+import { PythonLanguageProvider } from "../src/autofix/providers/python.js";
+import {
+  AutofixRegistry,
+  createDefaultRegistry,
+  defaultRegistry,
+} from "../src/autofix/registry.js";
 import { inspectJsProjectEnvironment } from "../src/javascript-env.js";
 
 vi.mock("@actions/exec");
@@ -2632,6 +2639,194 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         ["fmt"],
         expect.objectContaining({ cwd: tempDir }),
       );
+    });
+
+    it("invokes a custom provider's run() lifecycle hook from the run() orchestrator", async () => {
+      const receivedTasks: ExecutionTask[][] = [];
+
+      class CustomAssistAdapter implements ToolAdapter {
+        id = "custom-assist";
+        name = "Custom Assist";
+        capabilities: ["assist"] = ["assist"];
+        detect() {
+          return { detected: true, reason: "custom assist configured" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "custom-assist-task",
+              toolId: this.id,
+              capability: "assist",
+              executable: "custom-assist",
+              args: ["--run"],
+              cwd: ctx.cwd,
+              mode,
+              resolution: "passthrough",
+              description: "custom assist",
+            },
+          ];
+        }
+      }
+
+      class CustomProvider implements LanguageProvider {
+        id = "custom";
+        name = "Custom";
+        executionOrder = 0;
+        detect() {
+          return true;
+        }
+        getAdapters() {
+          return [new CustomAssistAdapter()];
+        }
+        run(
+          _context: ProjectContext,
+          tasks: ExecutionTask[],
+          engine: ExecutionEngine,
+        ): Promise<Error[]> {
+          receivedTasks.push(tasks);
+          return engine
+            .executeTasks(tasks)
+            .then((results) => results.filter((r) => r.error).map((r) => r.error as Error));
+        }
+      }
+
+      defaultRegistry.registerProvider(new CustomProvider());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        vi.spyOn(io, "which").mockResolvedValue("");
+
+        await run(tempDir);
+
+        expect(receivedTasks).toHaveLength(1);
+        expect(receivedTasks[0].map((t) => t.id)).toContain("custom-assist-task");
+        expect(exec.exec).toHaveBeenCalledWith(
+          "custom-assist",
+          ["--run"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("resolves executables by resolution strategy, independent of toolId", async () => {
+      const engine = new ExecutionEngine();
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      // passthrough: uses the logical executable as-is, no PATH lookup.
+      vi.spyOn(io, "which").mockResolvedValue("");
+      const passthrough: ExecutionTask = {
+        id: "passthrough-task",
+        toolId: "any-tool-id",
+        capability: "lint",
+        executable: "my-tool",
+        args: ["x"],
+        cwd: tempDir,
+        mode: "fix",
+        resolution: "passthrough",
+      };
+      const passthroughResults = await engine.executeTasks([passthrough]);
+      expect(passthroughResults[0].exitCode).toBe(0);
+      expect(exec.exec).toHaveBeenCalledWith(
+        "my-tool",
+        ["x"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(io.which).not.toHaveBeenCalled();
+
+      // path: confirms the binary on PATH, then invokes it by name.
+      vi.mocked(io.which).mockResolvedValue("/usr/bin/ruff");
+      const pathTask: ExecutionTask = {
+        id: "path-task",
+        toolId: "some-other-tool-id",
+        capability: "format",
+        executable: "ruff",
+        args: ["fmt"],
+        cwd: tempDir,
+        mode: "fix",
+        resolution: "path",
+      };
+      const pathResults = await engine.executeTasks([pathTask]);
+      expect(pathResults[0].exitCode).toBe(0);
+      expect(io.which).toHaveBeenCalledWith("ruff", false);
+      expect(exec.exec).toHaveBeenCalledWith(
+        "ruff",
+        ["fmt"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+    });
+
+    it("logs only Executing: lines for executed commands and no verbose environment summary", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      vi.mocked(exec.exec).mockResolvedValue(0);
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
+      );
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      await run(tempDir);
+
+      expect(core.info).toHaveBeenCalledWith("Executing: npm install");
+      expect(core.info).toHaveBeenCalledWith("Executing: npm run fix");
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Installing JS dependencies:"),
+      );
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected environments:"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("toolchain:"));
+    });
+
+    it("quotes arguments containing whitespace in Executing: logs", () => {
+      expect(formatCommand("npm", ["run", "build"])).toBe("npm run build");
+      expect(formatCommand("npm", ["run", "build --watch"])).toBe('npm run "build --watch"');
+      expect(formatCommand("tool", ["a b"])).toBe('tool "a b"');
+    });
+
+    it("executes standalone-adapter tasks that have no owning provider during run()", async () => {
+      class StandaloneAssistAdapter implements ToolAdapter {
+        id = "standalone-assist";
+        name = "Standalone Assist";
+        capabilities: ["assist"] = ["assist"];
+        scope = "standalone-assist-scope";
+        detect() {
+          return { detected: true, reason: "standalone assist configured" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-assist-task",
+              toolId: this.id,
+              capability: "assist",
+              executable: "standalone-assist",
+              args: ["--run"],
+              cwd: ctx.cwd,
+              mode,
+              resolution: "passthrough",
+              description: "standalone assist",
+            },
+          ];
+        }
+      }
+
+      defaultRegistry.registerAdapter(new StandaloneAssistAdapter());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        vi.spyOn(io, "which").mockResolvedValue("");
+
+        await run(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "standalone-assist",
+          ["--run"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
     });
   });
 

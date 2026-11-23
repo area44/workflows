@@ -1,10 +1,10 @@
-import * as core from "@actions/core";
-import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { ExecutionTask } from "./types.js";
+import type { ExecutableResolution, ExecutionTask } from "./types.js";
+
+import { formatCommand, runLoggedCommand } from "./exec.js";
 
 export interface ExecutionResult {
   task: ExecutionTask;
@@ -111,21 +111,26 @@ export class ExecutionEngine {
 
   /**
    * Resolves the executable path for a task at execution time (after dependencies are provisioned).
+   *
+   * Resolution is driven by `task.resolution` (defaults to `project-binary`) rather than by
+   * inspecting specific tool ids, so adding a new adapter never requires engine changes.
    */
   public async resolveTaskExecutable(task: ExecutionTask): Promise<string> {
-    if (task.toolId === "npm-scripts") {
+    const resolution: ExecutableResolution = task.resolution ?? "project-binary";
+
+    if (resolution === "passthrough") {
       return task.executable;
     }
 
-    if (task.toolId === "ruff") {
-      const hasRuff = Boolean(await io.which("ruff", false));
-      if (!hasRuff) {
-        throw new Error("Required Python binary 'ruff' is not available in PATH.");
+    if (resolution === "path") {
+      const hasBin = Boolean(await io.which(task.executable, false));
+      if (!hasBin) {
+        throw new Error(`Required binary '${task.executable}' is not available in PATH.`);
       }
-      return "ruff";
+      return task.executable;
     }
 
-    // Tool adapters: resolve from node_modules/.bin or PATH
+    // project-binary: resolve from node_modules/.bin or PATH
     const resolved = await resolveProjectBinary(task.cwd, task.executable, this.platform);
     if (!resolved) {
       const toolName = task.toolName || task.toolId;
@@ -144,11 +149,9 @@ export class ExecutionEngine {
     const results: ExecutionResult[] = [];
 
     for (const task of tasks) {
-      const displayCmd = `${task.executable} ${task.args.join(" ")}`.trim();
-
       try {
         const resolvedExecutable = await this.resolveTaskExecutable(task);
-        core.info(`Executing: ${displayCmd}`);
+        const displayCmd = formatCommand(task.executable, task.args);
 
         const env = task.env
           ? (Object.fromEntries(
@@ -158,19 +161,15 @@ export class ExecutionEngine {
             ) as Record<string, string>)
           : undefined;
 
-        const exitCode = await exec.exec(resolvedExecutable, task.args, {
-          cwd: task.cwd,
+        const exitCode = await runLoggedCommand(task.executable, task.args, task.cwd, {
           env,
-          ignoreReturnCode: true,
+          resolvedExecutable,
         });
 
         if (exitCode !== 0) {
-          const errMessage =
-            task.toolId === "ruff"
-              ? `Ruff command "${displayCmd}" failed. Check Python and Ruff configuration.`
-              : task.toolId === "npm-scripts"
-                ? `Script "${task.args[1] || displayCmd}" failed while executing "${displayCmd}".`
-                : `Task "${task.id}" (${displayCmd}) failed with exit code ${exitCode}.`;
+          const errMessage = task.formatFailure
+            ? task.formatFailure(displayCmd, exitCode)
+            : `Task "${task.id}" (${displayCmd}) failed with exit code ${exitCode}.`;
           results.push({
             task,
             exitCode,

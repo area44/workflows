@@ -14,7 +14,21 @@ The `autofix` composite action automatically formats and fixes code.
 - **JavaScript/TypeScript Project Scripts:** Selects and executes repository-configured scripts (`fix`, `format`, `fmt`, `lint`, `check`) from `package.json`.
 - **Python Formatting and Linting:** Provisions Ruff and executes `ruff check --fix .` and `ruff format .` sequentially whenever Python source code (`.py`/`.pyi`) is detected.
 - **Independent Execution:** JavaScript and Python workflows run independently within the same action step, aggregating diagnostics and failures.
+- **Provider-Owned Lifecycle:** Each language provider (`javascript`, `python`) owns its own setup and execution lifecycle. New languages are added by registering a provider and adapters in the registry — no changes to the central orchestrator are required.
+- **Tool-Agnostic Execution Engine:** Tasks are executed by a single engine that resolves executables via a declarative strategy (`passthrough`, `path`, or `project-binary`) rather than by inspecting tool ids.
+- **Actionable Execution Logging:** Every command that actually runs — dependency installation and task execution alike — is logged once as `Executing: <command>` with arguments quoted for clarity. Verbose environment summaries are not emitted.
 - **autofix.ci Integration:** Automatically invokes `autofix-ci/action` when running inside the `autofix.ci` workflow context.
+
+## Architecture
+
+The autofix runner (`src/autofix/`) is organized into a small set of composable layers:
+
+1. **Registry & Planner** — `planExecution()` walks registered language providers, detects their tools, resolves capability conflicts, and produces a deduplicated task list. The planner stamps each task with its owning `providerId`, so routing is driven by execution domain rather than individual tool ids.
+2. **Orchestrator (`run()`)** — Builds the project context once, plans once, groups tasks by provider, and dispatches each provider's tasks. Providers run in a deterministic order defined by `executionOrder` (decoupled from registration/plan order).
+3. **Language Providers** — Implement an optional `run(context, tasks, engine)` lifecycle hook that gates on setup outcomes, installs dependencies, and executes tasks. Providers without a custom lifecycle fall back to direct engine execution.
+4. **Execution Engine** — Resolves each task's executable according to its `resolution` strategy and executes it, logging `Executing: <command>` before each run and aggregating failures with actionable messages.
+
+Adding a new language requires only a new `LanguageProvider` (with adapters) registered in `createDefaultRegistry()`; the orchestrator and engine need no modification.
 
 ## Usage Example
 
