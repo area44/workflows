@@ -75,14 +75,14 @@ export default defineConfig({
     },
     {
       entry: { "site-variables": "src/pages/site-variables.ts" },
-      outDir: "dist",
+      outDir: "dist/pages",
       format: "esm",
       minify: true,
       platform: "node",
     },
     {
       entry: { "build-command": "src/pages/build-command.ts" },
-      outDir: "dist",
+      outDir: "dist/pages",
       format: "esm",
       minify: true,
       platform: "node",
