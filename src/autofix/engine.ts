@@ -150,7 +150,6 @@ export class ExecutionEngine {
 
     for (const task of tasks) {
       try {
-        const resolvedExecutable = await this.resolveTaskExecutable(task);
         const displayCmd = formatCommand(task.executable, task.args);
 
         const env = task.env
@@ -161,10 +160,14 @@ export class ExecutionEngine {
             ) as Record<string, string>)
           : undefined;
 
-        const exitCode = await runLoggedCommand(task.executable, task.args, task.cwd, {
-          env,
-          resolvedExecutable,
-        });
+        // Resolve first (inside runLoggedCommand); if resolution fails, no Executing: line is emitted.
+        const exitCode = await runLoggedCommand(
+          task.executable,
+          task.args,
+          task.cwd,
+          () => this.resolveTaskExecutable(task),
+          { env },
+        );
 
         if (exitCode !== 0) {
           const errMessage = task.formatFailure

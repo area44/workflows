@@ -29,6 +29,13 @@ describe("autofix", () => {
     vi.clearAllMocks();
     vi.mocked(exec.exec).mockReset();
     vi.mocked(exec.exec).mockResolvedValue(0);
+    // Default: package managers are available on PATH; tool binaries resolved per-test.
+    vi.spyOn(io, "which").mockImplementation(async (bin: string) => {
+      if (bin === "npm" || bin === "pnpm" || bin === "bun" || bin === "pip" || bin === "uv") {
+        return `/usr/bin/${bin}`;
+      }
+      return "";
+    });
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
   });

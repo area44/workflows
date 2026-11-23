@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import * as io from "@actions/io";
 
 import type { ExecutionEngine } from "../engine.js";
 import type { ExecutionTask, LanguageProvider, ProjectContext, ToolAdapter } from "../types.js";
@@ -37,20 +38,33 @@ function anySetupFailed(vars: readonly string[]): boolean {
 }
 
 /**
- * Resolves the JavaScript package manager, throwing an actionable error when resolution fails.
+ * Resolves the JavaScript package manager, reusing an already-resolved `context.jsPm` when
+ * available. Falls back to resolving from the package manager env override or the project
+ * environment, throwing an actionable error when resolution fails.
  */
 export function resolveJsPm(context: ProjectContext): SupportedPackageManager {
+  if (context.jsPm) {
+    return context.jsPm;
+  }
   const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(context.jsEnv!).name;
   return sanitizePackageManager(rawPm) as SupportedPackageManager;
 }
 
 /**
  * Installs JavaScript dependencies using the resolved package manager's install plan.
- * Logs the actual command before running it and surfaces an actionable error on failure.
+ * Resolves the package manager executable on PATH before logging; if it is unavailable, throws
+ * without emitting an `Executing:` line. Surfaces an actionable error on non-zero exit.
  */
 async function installJsDependencies(cwd: string, pm: SupportedPackageManager): Promise<void> {
   const plan = getJsInstallationPlan(pm);
-  const exitCode = await runLoggedCommand(plan.command, plan.args, cwd);
+  const exitCode = await runLoggedCommand(plan.command, plan.args, cwd, async () => {
+    const resolved = await io.which(plan.command, false);
+    if (!resolved) {
+      throw new Error(`Required package manager '${plan.command}' is not available in PATH.`);
+    }
+    // Validate availability, but invoke via the logical name to preserve existing behavior.
+    return plan.command;
+  });
   if (exitCode !== 0) {
     const displayCmd = formatCommand(plan.command, plan.args);
     throw new Error(

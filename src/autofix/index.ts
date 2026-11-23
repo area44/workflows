@@ -76,24 +76,44 @@ async function runProvider(
 export async function run(cwd: string = process.cwd()): Promise<void> {
   const context = buildProjectContext(cwd);
 
-  // Planning is best-effort; providers fall back to their own planning when tasks are absent.
-  let overallPlan: PlannedExecution | undefined;
-  try {
-    overallPlan = await planExecution(defaultRegistry, context, "fix");
-  } catch {
-    overallPlan = undefined;
+  // Informational: surface when the project has no JavaScript component, since the JS
+  // provider's lifecycle (which previously emitted this) only runs when it is detected.
+  if (!context.jsEnv?.hasPackageJson) {
+    core.info("No package.json found. Skipping scripts.");
   }
 
-  const tasksByProvider = groupTasksByProvider(overallPlan?.tasks ?? []);
+  // Planning is authoritative: a planning failure is a real error, not an empty plan.
+  // Surface it and skip execution so we never silently run providers with no tasks.
+  let overallPlan: PlannedExecution;
+  try {
+    overallPlan = await planExecution(defaultRegistry, context, "fix");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.setFailed(`Failed to plan autofix execution: ${message}`);
+    if (process.env.NODE_ENV !== "test") {
+      process.exit(1);
+    }
+    return;
+  }
+
+  const tasksByProvider = groupTasksByProvider(overallPlan.tasks);
   const engine = new ExecutionEngine();
   const errors: Error[] = [];
 
-  // Execution order is decoupled from registration (plan) order via `executionOrder`.
+  // Determine which providers are active for this project up front, so lifecycle hooks
+  // run only for providers whose detect() returned true.
   const providersByExecutionOrder = [...defaultRegistry.getProviders()].sort(
     (a, b) => (a.executionOrder ?? 0) - (b.executionOrder ?? 0),
   );
 
+  const activeProviders: LanguageProvider[] = [];
   for (const provider of providersByExecutionOrder) {
+    if (await provider.detect(context)) {
+      activeProviders.push(provider);
+    }
+  }
+
+  for (const provider of activeProviders) {
     const providerTasks = tasksByProvider.get(provider.id) ?? [];
     errors.push(...(await runProvider(provider, context, providerTasks, engine)));
   }
@@ -129,8 +149,8 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
 
   const context: ProjectContext = { cwd, jsEnv, hasPythonSource: false };
   const plan = await planExecution(defaultRegistry, context, "fix");
-  // Non-Python tasks (JavaScript tools and language-agnostic standalone adapters).
-  const jsTasks = plan.tasks.filter((t) => t.providerId !== "python");
+  // JavaScript-owned tasks only; other providers' tasks are not routed through the JS lifecycle.
+  const jsTasks = plan.tasks.filter((t) => t.providerId === "javascript");
 
   if (jsTasks.length === 0) {
     core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");

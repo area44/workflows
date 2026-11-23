@@ -29,14 +29,23 @@ function anySetupFailed(vars: readonly string[]): boolean {
 }
 
 /**
- * Runs a Python install command, logging it first and surfacing an actionable error on failure.
+ * Runs a Python install command, resolving the executable on PATH before logging. If the
+ * executable is unavailable, throws without emitting an `Executing:` line. Surfaces an
+ * actionable error on non-zero exit.
  */
 async function runPythonInstallCommand(
   executable: string,
   args: string[],
   cwd: string,
 ): Promise<void> {
-  const exitCode = await runLoggedCommand(executable, args, cwd);
+  const exitCode = await runLoggedCommand(executable, args, cwd, async () => {
+    const resolved = await io.which(executable, false);
+    if (!resolved) {
+      throw new Error(`Required executable '${executable}' is not available in PATH.`);
+    }
+    // Validate availability, but invoke via the logical name to preserve existing behavior.
+    return executable;
+  });
   if (exitCode !== 0) {
     const displayCmd = formatCommand(executable, args);
     throw new Error(
