@@ -32,9 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: area44/workflows/pages@main
-        with:
-          # path: 'dist'              # default
-          # build-command: 'npm run build'
 
   deploy:
     needs: build
