@@ -29,6 +29,13 @@ describe("autofix", () => {
     vi.clearAllMocks();
     vi.mocked(exec.exec).mockReset();
     vi.mocked(exec.exec).mockResolvedValue(0);
+    // Default: package managers are available on PATH; tool binaries resolved per-test.
+    vi.spyOn(io, "which").mockImplementation(async (bin: string) => {
+      if (bin === "npm" || bin === "pnpm" || bin === "bun" || bin === "pip" || bin === "uv") {
+        return `/usr/bin/${bin}`;
+      }
+      return "";
+    });
     process.env = { ...originalEnv };
     process.env.PACKAGE_MANAGER = "npm";
   });
@@ -378,7 +385,7 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(core.info).toHaveBeenCalledWith("Executing: npm install");
       expect(exec.exec).toHaveBeenCalledWith(
         "npm",
         ["install"],
@@ -401,9 +408,7 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(core.info).toHaveBeenCalledWith(
-        "Installing JS dependencies: pnpm install --no-frozen-lockfile",
-      );
+      expect(core.info).toHaveBeenCalledWith("Executing: pnpm install --no-frozen-lockfile");
       expect(exec.exec).toHaveBeenCalledWith(
         "pnpm",
         ["install", "--no-frozen-lockfile"],
@@ -426,7 +431,7 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(core.info).toHaveBeenCalledWith("Installing JS dependencies: bun install");
+      expect(core.info).toHaveBeenCalledWith("Executing: bun install");
       expect(exec.exec).toHaveBeenCalledWith(
         "bun",
         ["install"],
@@ -448,7 +453,7 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(core.info).not.toHaveBeenCalledWith("Installing JS dependencies: npm install");
+      expect(core.info).not.toHaveBeenCalledWith("Executing: npm install");
       expect(exec.exec).not.toHaveBeenCalled();
       expect(core.info).toHaveBeenCalledWith(
         "No matching scripts (fix, format, lint, check, etc.) found in package.json.",
@@ -780,6 +785,27 @@ describe("autofix", () => {
           expect.stringContaining("Detected Python package manager"),
         );
         expect(exec.exec).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(pyprojectOnlyTempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should not install Python dependencies when pyproject.toml declares dependencies but no .py files exist", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      const pyprojectOnlyTempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "workflows-autofix-pyproj-deps-"),
+      );
+      fs.writeFileSync(
+        path.join(pyprojectOnlyTempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\ndependencies = [\"requests>=2.0\"]\n",
+      );
+
+      try {
+        await run(pyprojectOnlyTempDir);
+
+        expect(core.info).toHaveBeenCalledWith("No package.json found. Skipping scripts.");
+        expect(exec.exec).not.toHaveBeenCalled();
+        expect(core.setFailed).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(pyprojectOnlyTempDir, { recursive: true, force: true });
       }

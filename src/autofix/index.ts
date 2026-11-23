@@ -1,127 +1,195 @@
 import * as core from "@actions/core";
-import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 
-import type { ExecutionTask, PlannedExecution, ProjectContext } from "./types.js";
+import type { ExecutionTask, LanguageProvider, PlannedExecution, ProjectContext } from "./types.js";
 
 import {
-  getJsInstallationPlan,
   inspectJsProjectEnvironment,
-  resolveJsPackageManager,
   sanitizePackageManager,
-  type JsInstallationPlan,
   type SupportedPackageManager,
 } from "../javascript-env.js";
-import {
-  detectPythonPackageManager,
-  findPythonProjectContext,
-  hasPythonSource,
-  validatePythonPmInfoStructure,
-  type PythonPackageManagerInfo,
-  type PythonProjectContext,
-} from "../python-env.js";
+import { hasPythonSource, type PythonPackageManagerInfo } from "../python-env.js";
 import { isMainModule } from "../utils/is-main-module.js";
 import { ExecutionEngine } from "./engine.js";
+import { collectErrors } from "./exec.js";
 import { planExecution } from "./planner.js";
+import { installAndExecuteJsTasks, resolveJsPm } from "./providers/javascript.js";
+import { installPythonDependencies } from "./providers/python.js";
 import { defaultRegistry } from "./registry.js";
 
 export { sanitizePackageManager };
 
-async function runJsInstallationPlan(
-  plan: JsInstallationPlan,
-  cwd: string = process.cwd(),
-): Promise<void> {
-  const displayCmd = `${plan.command} ${plan.args.join(" ")}`.trim();
-  core.info(`Installing JS dependencies: ${displayCmd}`);
+/**
+ * Builds the project context once: inspects the JavaScript environment, detects Python source,
+ * and best-effort resolves the JavaScript package manager. All downstream planning and
+ * execution reuse this context so environment inspection never runs twice.
+ */
+function buildProjectContext(cwd: string): ProjectContext {
+  const jsEnv = inspectJsProjectEnvironment(cwd);
+  const hasSource = hasPythonSource(cwd);
 
-  const exitCode = await exec.exec(plan.command, plan.args, { cwd, ignoreReturnCode: true });
-  if (exitCode !== 0) {
-    throw new Error(
-      `JS dependency installation failed executing "${displayCmd}". Check dependency constraints or lockfile compatibility.`,
-    );
+  let jsPm: SupportedPackageManager | undefined;
+  if (jsEnv.hasPackageJson) {
+    try {
+      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: hasSource });
+    } catch {
+      // Package manager resolution failed; the JavaScript provider surfaces the error.
+      jsPm = undefined;
+    }
+  }
+
+  return { cwd, jsEnv, jsPm, hasPythonSource: hasSource };
+}
+
+function groupTasksByProvider(tasks: readonly ExecutionTask[]): Map<string, ExecutionTask[]> {
+  const byProvider = new Map<string, ExecutionTask[]>();
+  for (const task of tasks) {
+    const key = task.providerId ?? "";
+    const bucket = byProvider.get(key) ?? [];
+    bucket.push(task);
+    byProvider.set(key, bucket);
+  }
+  return byProvider;
+}
+
+/**
+ * Executes a single provider's tasks.
+ *
+ * Providers that implement `run()` own their full lifecycle (dependency setup + execution).
+ * Providers without a custom lifecycle fall back to direct engine execution of their tasks.
+ */
+async function runProvider(
+  provider: LanguageProvider,
+  context: ProjectContext,
+  tasks: ExecutionTask[],
+  engine: ExecutionEngine,
+): Promise<Error[]> {
+  if (provider.run) {
+    return provider.run(context, tasks, engine);
+  }
+  if (tasks.length === 0) {
+    return [];
+  }
+  return collectErrors(await engine.executeTasks(tasks));
+}
+
+export async function run(cwd: string = process.cwd()): Promise<void> {
+  const context = buildProjectContext(cwd);
+
+  // Informational: surface when the project has no JavaScript component, since the JS
+  // provider's lifecycle (which previously emitted this) only runs when it is detected.
+  if (!context.jsEnv?.hasPackageJson) {
+    core.info("No package.json found. Skipping scripts.");
+  }
+
+  // Planning is authoritative: a planning failure is a real error, not an empty plan.
+  // Surface it and skip execution so we never silently run providers with no tasks.
+  let overallPlan: PlannedExecution;
+  try {
+    overallPlan = await planExecution(defaultRegistry, context, "fix");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.setFailed(`Failed to plan autofix execution: ${message}`);
+    if (process.env.NODE_ENV !== "test") {
+      process.exit(1);
+    }
+    return;
+  }
+
+  const tasksByProvider = groupTasksByProvider(overallPlan.tasks);
+  const engine = new ExecutionEngine();
+  const errors: Error[] = [];
+
+  // Determine which providers are active for this project up front, so lifecycle hooks
+  // run only for providers whose detect() returned true.
+  const providersByExecutionOrder = [...defaultRegistry.getProviders()].sort(
+    (a, b) => (a.executionOrder ?? 0) - (b.executionOrder ?? 0),
+  );
+
+  const activeProviders: LanguageProvider[] = [];
+  for (const provider of providersByExecutionOrder) {
+    if (await provider.detect(context)) {
+      activeProviders.push(provider);
+    }
+  }
+
+  for (const provider of activeProviders) {
+    const providerTasks = tasksByProvider.get(provider.id) ?? [];
+    errors.push(...(await runProvider(provider, context, providerTasks, engine)));
+  }
+
+  // Tasks without an owning provider (standalone adapters) execute generically after providers.
+  const standaloneTasks = tasksByProvider.get("") ?? [];
+  if (standaloneTasks.length > 0) {
+    errors.push(...collectErrors(await engine.executeTasks(standaloneTasks)));
+  }
+
+  if (errors.length > 0) {
+    const combinedMessage = errors.map((e) => e.message).join("\n");
+    core.setFailed(`Failed to run scripts: ${combinedMessage}`);
+    if (process.env.NODE_ENV !== "test") {
+      process.exit(1);
+    }
   }
 }
 
+/**
+ * Standalone entry point: runs the JavaScript provider lifecycle for a single project.
+ * Plans JavaScript tasks, installs dependencies, executes them, and throws on failure.
+ */
 export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<void> {
   const jsEnv = inspectJsProjectEnvironment(cwd);
   if (!jsEnv.hasPackageJson) {
     core.info("No package.json found. Skipping scripts.");
     return;
   }
-
   if (jsEnv.packageJsonError) {
     throw new Error(jsEnv.packageJsonError);
   }
 
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-  const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
+  let jsPm: SupportedPackageManager | undefined;
+  if (jsEnv.hasPackageJson) {
+    try {
+      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: false });
+    } catch {
+      // Package manager resolution failed; installAndExecuteJsTasks re-resolves and surfaces the error.
+      jsPm = undefined;
+    }
+  }
 
-  const context: ProjectContext = {
-    cwd,
-    jsEnv,
-    jsPm: pm,
-    hasPythonSource: false,
-  };
-
+  const context: ProjectContext = { cwd, jsEnv, jsPm, hasPythonSource: false };
   const plan = await planExecution(defaultRegistry, context, "fix");
-  const jsTasks = plan.tasks.filter((t) => t.toolId !== "ruff");
+  // JavaScript-owned tasks only; other providers' tasks are not routed through the JS lifecycle.
+  const jsTasks = plan.tasks.filter((t) => t.providerId === "javascript");
 
   if (jsTasks.length === 0) {
     core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
     return;
   }
 
-  const installPlan = getJsInstallationPlan(pm);
-  await runJsInstallationPlan(installPlan, cwd);
-
   const engine = new ExecutionEngine();
-  const results = await engine.executeTasks(jsTasks);
-  const failures = results.filter((r) => r.error);
-  if (failures.length > 0) {
-    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
-    throw new Error(errorMessages.join("\n"));
+  const errors = await installAndExecuteJsTasks(context, jsTasks, engine);
+  if (errors.length > 0) {
+    throw new Error(errors.map((e) => e.message).join("\n"));
   }
 }
 
-async function runPythonCommand(
-  executable: string,
-  args: string[],
-  cwd: string = process.cwd(),
-): Promise<void> {
-  const displayCmd = `${executable} ${args.join(" ")}`.trim();
-  core.info(`Executing: ${displayCmd}`);
-  const exitCode = await exec.exec(executable, args, { cwd, ignoreReturnCode: true });
-  if (exitCode !== 0) {
-    throw new Error(
-      `Python command "${displayCmd}" failed. Check Python environment and dependency configuration.`,
-    );
-  }
-}
-
+/**
+ * Standalone entry point: installs Python dependencies for the given package manager.
+ */
 export async function executePythonWorkflow(
   pmInfo: PythonPackageManagerInfo,
   cwd: string = process.cwd(),
 ): Promise<void> {
-  validatePythonPmInfoStructure(pmInfo, 'Invalid Python environment: "pmInfo" must be an object');
-
-  const requiredBin = pmInfo.name === "pip" ? "pip" : pmInfo.name;
-  const hasPmBin = Boolean(await io.which(requiredBin, false));
-
-  if (!hasPmBin && !pmInfo.isStandalone) {
-    const message = `Required Python package manager '${requiredBin}' is not available in PATH.`;
-    throw new Error(message);
-  }
-
-  if (!pmInfo.isStandalone && pmInfo.installCommands.length > 0) {
-    const installCmds = pmInfo.installCommands;
-    const displayCmd = installCmds.map((c) => `${c.executable} ${c.args.join(" ")}`).join(" && ");
-    core.info(`Installing Python dependencies: ${displayCmd}`);
-    for (const { executable, args } of installCmds) {
-      await runPythonCommand(executable, args, cwd);
-    }
-  }
+  await installPythonDependencies(pmInfo, cwd);
 }
 
+/**
+ * Standalone entry point: runs Ruff lint/format autofix for a Python project.
+ *
+ * `hasSource` may be supplied by callers that already detected Python source (avoids a
+ * duplicate scan). `preplannedTasks` may be supplied to skip re-planning.
+ */
 export async function executeRuffAutofix(
   cwd: string = process.cwd(),
   hasSource?: boolean,
@@ -138,208 +206,18 @@ export async function executeRuffAutofix(
   } else {
     const hasRuff = Boolean(await io.which("ruff", false));
     if (!hasRuff) {
-      const message = "Required Python binary 'ruff' is not available in PATH.";
-      throw new Error(message);
+      throw new Error("Required Python binary 'ruff' is not available in PATH.");
     }
-
-    const context: ProjectContext = {
-      cwd,
-      hasPythonSource: true,
-    };
+    const context: ProjectContext = { cwd, hasPythonSource: true };
     const ruffPlan = await planExecution(defaultRegistry, context, "fix");
-    tasks = ruffPlan.tasks.filter((t) => t.toolId === "ruff");
+    tasks = ruffPlan.tasks.filter((t) => t.providerId === "python");
   }
 
   const engine = new ExecutionEngine();
   const results = await engine.executeTasks(tasks);
-  const failures = results.filter((r) => r.error);
+  const failures = collectErrors(results);
   if (failures.length > 0) {
-    const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
-    throw new Error(errorMessages.join("\n"));
-  }
-}
-
-async function runJsWorkflowStep(
-  cwd: string,
-  preplannedJsTasks?: ExecutionTask[],
-): Promise<Error | null> {
-  const jsSetupFailed =
-    process.env.JS_SETUP_OUTCOME === "failure" ||
-    process.env.NODE_SETUP_OUTCOME === "failure" ||
-    process.env.BUN_SETUP_OUTCOME === "failure" ||
-    process.env.PNPM_SETUP_OUTCOME === "failure";
-
-  if (jsSetupFailed) {
-    return new Error("JavaScript runtime or package manager setup failed.");
-  }
-
-  try {
-    if (preplannedJsTasks) {
-      const jsEnv = inspectJsProjectEnvironment(cwd);
-      if (!jsEnv.hasPackageJson) {
-        core.info("No package.json found. Skipping scripts.");
-        return null;
-      }
-      if (jsEnv.packageJsonError) {
-        throw new Error(jsEnv.packageJsonError);
-      }
-      if (preplannedJsTasks.length === 0) {
-        core.info("No matching scripts (fix, format, lint, check, etc.) found in package.json.");
-        return null;
-      }
-      const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-      const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
-      const installPlan = getJsInstallationPlan(pm);
-      await runJsInstallationPlan(installPlan, cwd);
-
-      const engine = new ExecutionEngine();
-      const results = await engine.executeTasks(preplannedJsTasks);
-      const failures = results.filter((r) => r.error);
-      if (failures.length > 0) {
-        const errorMessages = failures.map((f) => f.error?.message || `Task ${f.task.id} failed`);
-        throw new Error(errorMessages.join("\n"));
-      }
-      return null;
-    }
-
-    await executeJsWorkflow(cwd);
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error : new Error(String(error));
-  }
-}
-
-async function runPythonDepsStep(
-  cwd: string,
-  precomputed?: {
-    ctx?: PythonProjectContext;
-    hasSource?: boolean;
-    pmInfo?: PythonPackageManagerInfo | null;
-  },
-): Promise<Error | null> {
-  const pythonEnvSetupFailed =
-    process.env.PYTHON_SETUP_OUTCOME === "failure" ||
-    process.env.UV_SETUP_OUTCOME === "failure" ||
-    process.env.PY_SETUP_OUTCOME === "failure";
-
-  if (pythonEnvSetupFailed) {
-    return new Error("Python runtime or package manager setup failed.");
-  }
-
-  const pythonPmInfo =
-    precomputed && "pmInfo" in precomputed
-      ? precomputed.pmInfo
-      : detectPythonPackageManager(cwd, undefined, {
-          ctx: precomputed?.ctx,
-          hasSource: precomputed?.hasSource,
-        });
-
-  if (!pythonPmInfo) {
-    return null;
-  }
-
-  try {
-    await executePythonWorkflow(pythonPmInfo, cwd);
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error : new Error(String(error));
-  }
-}
-
-async function runRuffStep(
-  cwd: string,
-  hasSource?: boolean,
-  preplannedTasks?: ExecutionTask[],
-): Promise<Error | null> {
-  const ruffSetupFailed = process.env.RUFF_SETUP_OUTCOME === "failure";
-
-  if (ruffSetupFailed) {
-    return new Error("Ruff setup failed.");
-  }
-
-  try {
-    await executeRuffAutofix(cwd, hasSource, preplannedTasks);
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error : new Error(String(error));
-  }
-}
-
-async function runPythonWorkflowStep(
-  cwd: string,
-  hasSource?: boolean,
-  preplannedPythonTasks?: ExecutionTask[],
-): Promise<Error[]> {
-  const hasSourceCode = hasSource ?? hasPythonSource(cwd);
-  if (!hasSourceCode) {
-    return [];
-  }
-
-  const errors: Error[] = [];
-
-  const ctx = findPythonProjectContext(cwd);
-  const pmInfo = detectPythonPackageManager(cwd, undefined, {
-    ctx,
-    hasSource: true,
-    isProject: true,
-  });
-
-  const depsErr = await runPythonDepsStep(cwd, { ctx, hasSource: true, pmInfo });
-  if (depsErr) {
-    errors.push(depsErr);
-  }
-
-  const ruffErr = await runRuffStep(cwd, hasSourceCode, preplannedPythonTasks);
-  if (ruffErr) {
-    errors.push(ruffErr);
-  }
-
-  return errors;
-}
-
-export async function run(cwd: string = process.cwd()): Promise<void> {
-  const hasSource = hasPythonSource(cwd);
-  let overallPlan: PlannedExecution | undefined;
-
-  // Emit explainable execution plan summary before execution using shared planner
-  try {
-    const jsEnv = inspectJsProjectEnvironment(cwd);
-    const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(jsEnv).name;
-    const pm = sanitizePackageManager(rawPm) as SupportedPackageManager;
-
-    const fullContext: ProjectContext = {
-      cwd,
-      jsEnv,
-      jsPm: pm,
-      hasPythonSource: hasSource,
-    };
-    overallPlan = await planExecution(defaultRegistry, fullContext, "fix");
-    core.info(overallPlan.summary);
-  } catch {
-    // Planning summary logging is best-effort and should not halt execution
-  }
-
-  const errors: Error[] = [];
-
-  const jsTasks = overallPlan ? overallPlan.tasks.filter((t) => t.toolId !== "ruff") : undefined;
-  const pythonTasks = overallPlan
-    ? overallPlan.tasks.filter((t) => t.toolId === "ruff")
-    : undefined;
-
-  const jsErr = await runJsWorkflowStep(cwd, jsTasks);
-  if (jsErr) {
-    errors.push(jsErr);
-  }
-
-  const pythonErrs = await runPythonWorkflowStep(cwd, hasSource, pythonTasks);
-  errors.push(...pythonErrs);
-
-  if (errors.length > 0) {
-    const combinedMessage = errors.map((e) => e.message).join("\n");
-    core.setFailed(`Failed to run scripts: ${combinedMessage}`);
-    if (process.env.NODE_ENV !== "test") {
-      process.exit(1);
-    }
+    throw new Error(failures.map((e) => e.message).join("\n"));
   }
 }
 

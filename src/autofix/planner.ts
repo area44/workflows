@@ -15,6 +15,7 @@ interface CandidateTool {
   adapter: ToolAdapter;
   reason?: string;
   scope: string;
+  providerId?: string;
 }
 
 function isTaskCapabilityCovered(
@@ -67,13 +68,15 @@ function getOrCreateScopeCapabilities(
   return caps;
 }
 
+type ToolRecord = { id: string; name: string; reason?: string; providerId?: string };
+
 async function processCandidateTools(
   candidateTools: CandidateTool[],
   coveredCapabilitiesByScope: Map<string, Set<Capability>>,
   context: ProjectContext,
   mode: ExecutionMode,
-  selectedTools: Array<{ id: string; name: string; reason?: string }>,
-  skippedTools: Array<{ id: string; name: string; reason: string }>,
+  selectedTools: Array<{ id: string; name: string; reason?: string; providerId?: string }>,
+  skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }>,
   tasks: ExecutionTask[],
 ): Promise<void> {
   for (const candidate of candidateTools) {
@@ -95,11 +98,17 @@ async function processCandidateTools(
         id: adapter.id,
         name: adapter.name,
         reason: "all capabilities already covered by higher priority tool",
+        providerId: candidate.providerId,
       });
       continue;
     }
 
-    selectedTools.push({ id: adapter.id, name: adapter.name, reason: candidate.reason });
+    selectedTools.push({
+      id: adapter.id,
+      name: adapter.name,
+      reason: candidate.reason,
+      providerId: candidate.providerId,
+    });
     for (const task of kept) {
       scopeCapabilities.add(task.capability);
       if (task.capabilities) {
@@ -108,7 +117,11 @@ async function processCandidateTools(
         }
       }
     }
-    tasks.push(...kept);
+    tasks.push(
+      ...kept.map((task) =>
+        candidate.providerId ? { ...task, providerId: candidate.providerId } : task,
+      ),
+    );
 
     if (skipped.length > 0) {
       const skippedCaps = Array.from(new Set(skipped.map((t) => t.capability))).join(", ");
@@ -116,6 +129,7 @@ async function processCandidateTools(
         id: adapter.id,
         name: adapter.name,
         reason: `partially skipped (${skippedCaps} covered by higher priority tool)`,
+        providerId: candidate.providerId,
       });
     }
   }
@@ -126,8 +140,8 @@ async function processStandaloneAdapters(
   coveredCapabilitiesByScope: Map<string, Set<Capability>>,
   context: ProjectContext,
   mode: ExecutionMode,
-  selectedTools: Array<{ id: string; name: string; reason?: string }>,
-  skippedTools: Array<{ id: string; name: string; reason: string }>,
+  selectedTools: Array<{ id: string; name: string; reason?: string; providerId?: string }>,
+  skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }>,
   tasks: ExecutionTask[],
 ): Promise<void> {
   const candidateTools: CandidateTool[] = [];
@@ -135,6 +149,7 @@ async function processStandaloneAdapters(
     const result = await adapter.detect(context);
     const scope = adapter.scope ?? `standalone:${adapter.id}`;
     if (result.detected) {
+      // Standalone adapters are language-agnostic; no provider owns their tasks.
       candidateTools.push({ adapter, reason: result.reason, scope });
     } else if (result.reason && !result.reason.startsWith("no ")) {
       skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
@@ -187,8 +202,8 @@ export async function planExecution(
     hasPythonSource: resolvedHasPythonSource,
   };
 
-  const selectedTools: Array<{ id: string; name: string; reason?: string }> = [];
-  const skippedTools: Array<{ id: string; name: string; reason: string }> = [];
+  const selectedTools: ToolRecord[] = [];
+  const skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }> = [];
   const tasks: ExecutionTask[] = [];
 
   const providers = registry.getProviders();
@@ -208,7 +223,7 @@ export async function planExecution(
       const result = await adapter.detect(effectiveContext);
       const scope = adapter.scope ?? provider.id;
       if (result.detected) {
-        candidateTools.push({ adapter, reason: result.reason, scope });
+        candidateTools.push({ adapter, reason: result.reason, scope, providerId: provider.id });
       } else if (result.reason && !result.reason.startsWith("no ")) {
         skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
       }
@@ -257,8 +272,8 @@ export async function planExecution(
 export function formatExecutionPlanSummary(
   registry: AutofixRegistry,
   context: ProjectContext,
-  selectedTools: Array<{ id: string; name: string; reason?: string }>,
-  skippedTools: Array<{ id: string; name: string; reason: string }>,
+  selectedTools: ToolRecord[],
+  skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }>,
   tasks: ExecutionTask[],
 ): string {
   const lines: string[] = [];
@@ -272,9 +287,11 @@ export function formatExecutionPlanSummary(
   if (hasPy) {
     lines.push("");
     lines.push("Python toolchain:");
-    const pyTools = selectedTools.filter((t) => t.id === "ruff");
+    const pyTools = selectedTools.filter((t) => t.providerId === "python");
     if (pyTools.length > 0) {
-      lines.push("  Ruff: default tool");
+      for (const t of pyTools) {
+        lines.push(`  ${t.name}: default tool`);
+      }
     } else {
       lines.push("  None");
     }
@@ -283,11 +300,12 @@ export function formatExecutionPlanSummary(
   if (hasJs) {
     lines.push("");
     lines.push("JavaScript toolchain:");
-    const jsSelected = selectedTools.filter((t) => t.id !== "ruff");
+    // Non-Python tools (including language-agnostic standalone adapters) belong to the JS section.
+    const jsSelected = selectedTools.filter((t) => t.providerId !== "python");
     for (const t of jsSelected) {
       lines.push(`  ${t.name}: selected`);
     }
-    const jsSkipped = skippedTools.filter((t) => t.id !== "ruff");
+    const jsSkipped = skippedTools.filter((t) => t.providerId !== "python");
     for (const t of jsSkipped) {
       lines.push(`  ${t.name}: skipped (${t.reason})`);
     }

@@ -33,9 +33,16 @@ import {
   isExecutableBinary,
   resolveProjectBinary,
 } from "../src/autofix/engine.js";
+import { formatCommand } from "../src/autofix/exec.js";
 import { executeJsWorkflow, run } from "../src/autofix/index.js";
 import { planExecution } from "../src/autofix/planner.js";
-import { AutofixRegistry, createDefaultRegistry } from "../src/autofix/registry.js";
+import { JavaScriptLanguageProvider } from "../src/autofix/providers/javascript.js";
+import { PythonLanguageProvider } from "../src/autofix/providers/python.js";
+import {
+  AutofixRegistry,
+  createDefaultRegistry,
+  defaultRegistry,
+} from "../src/autofix/registry.js";
 import { inspectJsProjectEnvironment } from "../src/javascript-env.js";
 
 vi.mock("@actions/exec");
@@ -47,11 +54,33 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
   const originalEnv = { ...process.env };
   const originalCwd = process.cwd();
 
+  /**
+   * Mocks `io.which` so package managers resolve (for install steps) while specific tools
+   * resolve to the given path or "" (to simulate missing executables). Tests that previously
+   * returned "" for everything now keep package managers available so install succeeds.
+   */
+  function mockWhichWith(overrides: Record<string, string>): void {
+    vi.spyOn(io, "which").mockImplementation(async (bin: string) => {
+      if (bin in overrides) return overrides[bin];
+      if (bin === "npm" || bin === "pnpm" || bin === "bun" || bin === "pip" || bin === "uv") {
+        return `/usr/bin/${bin}`;
+      }
+      return "";
+    });
+  }
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     vi.mocked(exec.exec).mockReset();
     vi.mocked(exec.exec).mockResolvedValue(0);
+    // Default: package managers are available on PATH; tool binaries are resolved by individual tests.
+    vi.spyOn(io, "which").mockImplementation(async (bin: string) => {
+      if (bin === "npm" || bin === "pnpm" || bin === "bun" || bin === "pip" || bin === "uv") {
+        return `/usr/bin/${bin}`;
+      }
+      return "";
+    });
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "autofix-arch-test-"));
     process.chdir(tempDir);
     process.env = { ...originalEnv };
@@ -1146,7 +1175,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("throws actionable error when tool is configured but its executable cannot be found", async () => {
-      vi.spyOn(io, "which").mockResolvedValue("");
+      mockWhichWith({});
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -1161,10 +1190,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("Vite+ in fix mode executes vp fmt and vp lint --fix rather than check --fix", async () => {
-      vi.spyOn(io, "which").mockImplementation(async (bin) => {
-        if (bin === "vp") return "/usr/local/bin/vp";
-        return "";
-      });
+      mockWhichWith({ vp: "/usr/local/bin/vp" });
 
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1194,10 +1220,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("resolves capabilities dynamically: 'format:write' script allows ESLint tool detection to run lint", async () => {
-      vi.spyOn(io, "which").mockImplementation(async (bin) => {
-        if (bin === "eslint") return "/usr/local/bin/eslint";
-        return "";
-      });
+      mockWhichWith({ eslint: "/usr/local/bin/eslint" });
 
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1225,10 +1248,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     });
 
     it("resolves capabilities dynamically: 'format:write' script + Vite+ runs Vite+ lint while skipping Vite+ fmt", async () => {
-      vi.spyOn(io, "which").mockImplementation(async (bin) => {
-        if (bin === "vp") return "/usr/local/bin/vp";
-        return "";
-      });
+      mockWhichWith({ vp: "/usr/local/bin/vp" });
 
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1259,10 +1279,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
   describe("Error Aggregation Across Multiple Failures", () => {
     it("aggregates errors when multiple independent JS and Python tasks fail", async () => {
-      vi.spyOn(io, "which").mockImplementation(async (bin) => {
-        if (bin === "ruff") return "/usr/bin/ruff";
-        return "";
-      });
+      mockWhichWith({ ruff: "/usr/bin/ruff" });
 
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -1699,7 +1716,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(hasVitePlusCommand("vp fmt")).toBe(true);
 
       // When executable is unavailable and dependency is not declared, Vite+ must not be scheduled
-      vi.spyOn(io, "which").mockResolvedValue("");
+      mockWhichWith({});
       const registry = createDefaultRegistry();
       const planUnavailable = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planUnavailable.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
@@ -1729,7 +1746,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(hasVitePlusCommand("NODE_ENV=production vp check")).toBe(true);
 
       // When executable is unavailable, Vite+ must not be scheduled
-      vi.spyOn(io, "which").mockResolvedValue("");
+      mockWhichWith({});
       const registry = createDefaultRegistry();
       const planUnavailable = await planExecution(registry, { cwd: tempDir }, "fix");
       expect(planUnavailable.selectedTools.map((t) => t.id)).not.toContain("vite-plus");
@@ -1906,7 +1923,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       // 3. When executable is unavailable and dependency is not declared:
       // Even if script invokes npx vp, bunx vp, or pnpm exec vp, no direct Vite+ tasks are scheduled
-      vi.spyOn(io, "which").mockResolvedValue("");
+      mockWhichWith({});
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
         JSON.stringify({
@@ -2633,6 +2650,563 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         expect.objectContaining({ cwd: tempDir }),
       );
     });
+
+    it("invokes a custom provider's run() lifecycle hook from the run() orchestrator", async () => {
+      const receivedTasks: ExecutionTask[][] = [];
+
+      class CustomAssistAdapter implements ToolAdapter {
+        id = "custom-assist";
+        name = "Custom Assist";
+        capabilities: ["assist"] = ["assist"];
+        detect() {
+          return { detected: true, reason: "custom assist configured" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "custom-assist-task",
+              toolId: this.id,
+              capability: "assist",
+              executable: "custom-assist",
+              args: ["--run"],
+              cwd: ctx.cwd,
+              mode,
+              resolution: "passthrough",
+              description: "custom assist",
+            },
+          ];
+        }
+      }
+
+      class CustomProvider implements LanguageProvider {
+        id = "custom";
+        name = "Custom";
+        executionOrder = 0;
+        detect() {
+          return true;
+        }
+        getAdapters() {
+          return [new CustomAssistAdapter()];
+        }
+        run(
+          _context: ProjectContext,
+          tasks: ExecutionTask[],
+          engine: ExecutionEngine,
+        ): Promise<Error[]> {
+          receivedTasks.push(tasks);
+          return engine
+            .executeTasks(tasks)
+            .then((results) => results.filter((r) => r.error).map((r) => r.error as Error));
+        }
+      }
+
+      defaultRegistry.registerProvider(new CustomProvider());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        expect(receivedTasks).toHaveLength(1);
+        expect(receivedTasks[0].map((t) => t.id)).toContain("custom-assist-task");
+        expect(exec.exec).toHaveBeenCalledWith(
+          "custom-assist",
+          ["--run"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("resolves executables by resolution strategy, independent of toolId", async () => {
+      const engine = new ExecutionEngine();
+      vi.mocked(exec.exec).mockResolvedValue(0);
+
+      // passthrough: uses the logical executable as-is, no PATH lookup.
+      mockWhichWith({});
+      const passthrough: ExecutionTask = {
+        id: "passthrough-task",
+        toolId: "any-tool-id",
+        capability: "lint",
+        executable: "my-tool",
+        args: ["x"],
+        cwd: tempDir,
+        mode: "fix",
+        resolution: "passthrough",
+      };
+      const passthroughResults = await engine.executeTasks([passthrough]);
+      expect(passthroughResults[0].exitCode).toBe(0);
+      expect(exec.exec).toHaveBeenCalledWith(
+        "my-tool",
+        ["x"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(io.which).not.toHaveBeenCalled();
+
+      // path: confirms the binary on PATH, then invokes it by name.
+      vi.mocked(io.which).mockResolvedValue("/usr/bin/ruff");
+      const pathTask: ExecutionTask = {
+        id: "path-task",
+        toolId: "some-other-tool-id",
+        capability: "format",
+        executable: "ruff",
+        args: ["fmt"],
+        cwd: tempDir,
+        mode: "fix",
+        resolution: "path",
+      };
+      const pathResults = await engine.executeTasks([pathTask]);
+      expect(pathResults[0].exitCode).toBe(0);
+      expect(io.which).toHaveBeenCalledWith("ruff", false);
+      expect(exec.exec).toHaveBeenCalledWith(
+        "ruff",
+        ["fmt"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+    });
+
+    it("logs only Executing: lines for executed commands and no verbose environment summary", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      vi.mocked(exec.exec).mockResolvedValue(0);
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
+      );
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      await run(tempDir);
+
+      expect(core.info).toHaveBeenCalledWith("Executing: npm install");
+      expect(core.info).toHaveBeenCalledWith("Executing: npm run fix");
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Installing JS dependencies:"),
+      );
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Detected environments:"));
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("toolchain:"));
+    });
+
+    it("quotes arguments containing whitespace in Executing: logs", () => {
+      expect(formatCommand("npm", ["run", "build"])).toBe("npm run build");
+      expect(formatCommand("npm", ["run", "build --watch"])).toBe("npm run 'build --watch'");
+      expect(formatCommand("tool", ["a b"])).toBe("tool 'a b'");
+    });
+
+    it("executes standalone-adapter tasks that have no owning provider during run()", async () => {
+      class StandaloneAssistAdapter implements ToolAdapter {
+        id = "standalone-assist";
+        name = "Standalone Assist";
+        capabilities: ["assist"] = ["assist"];
+        scope = "standalone-assist-scope";
+        detect() {
+          return { detected: true, reason: "standalone assist configured" };
+        }
+        plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+          return [
+            {
+              id: "standalone-assist-task",
+              toolId: this.id,
+              capability: "assist",
+              executable: "standalone-assist",
+              args: ["--run"],
+              cwd: ctx.cwd,
+              mode,
+              resolution: "passthrough",
+              description: "standalone assist",
+            },
+          ];
+        }
+      }
+
+      defaultRegistry.registerAdapter(new StandaloneAssistAdapter());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "standalone-assist",
+          ["--run"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("does not invoke a provider's run() lifecycle when its detect() returns false", async () => {
+      let lifecycleCalled = false;
+
+      class NeverDetectedProvider implements LanguageProvider {
+        id = "never-detected";
+        name = "Never Detected";
+        executionOrder = 0;
+        detect() {
+          return false;
+        }
+        getAdapters() {
+          return [];
+        }
+        run(): Promise<Error[]> {
+          lifecycleCalled = true;
+          return Promise.resolve([]);
+        }
+      }
+
+      defaultRegistry.registerProvider(new NeverDetectedProvider());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        expect(lifecycleCalled).toBe(false);
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("invokes a detected provider's run() lifecycle even when it has no execution tasks", async () => {
+      let lifecycleCalled = false;
+      let receivedTasks: ExecutionTask[] = [];
+
+      class DetectedButEmptyProvider implements LanguageProvider {
+        id = "detected-empty";
+        name = "Detected Empty";
+        executionOrder = 0;
+        detect() {
+          return true;
+        }
+        getAdapters() {
+          // No adapters -> no tasks planned, but provider is detected.
+          return [];
+        }
+        run(_ctx: ProjectContext, tasks: ExecutionTask[]): Promise<Error[]> {
+          lifecycleCalled = true;
+          receivedTasks = tasks;
+          return Promise.resolve([]);
+        }
+      }
+
+      defaultRegistry.registerProvider(new DetectedButEmptyProvider());
+      try {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        expect(lifecycleCalled).toBe(true);
+        expect(receivedTasks).toHaveLength(0);
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("does not install dependencies or execute commands for a non-detected provider with side effects", async () => {
+      class SideEffectProvider implements LanguageProvider {
+        id = "side-effect";
+        name = "Side Effect";
+        executionOrder = 0;
+        detect() {
+          return false;
+        }
+        getAdapters() {
+          return [];
+        }
+        run(): Promise<Error[]> {
+          // If called, this would attempt an install — detect()=false must prevent it.
+          return Promise.resolve([]);
+        }
+      }
+
+      defaultRegistry.registerProvider(new SideEffectProvider());
+      try {
+        vi.mocked(exec.exec).mockReset();
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        // No JS/Python provider is detected (empty tempDir), so no install should run.
+        expect(exec.exec).not.toHaveBeenCalled();
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("surfaces a planning failure and does not execute providers", async () => {
+      // Force planning to throw by registering a provider whose detect() throws.
+      class ThrowingProvider implements LanguageProvider {
+        id = "throwing";
+        name = "Throwing";
+        detect(): boolean {
+          throw new Error("simulated planning failure");
+        }
+        getAdapters() {
+          return [];
+        }
+        run(): Promise<Error[]> {
+          return Promise.resolve([]);
+        }
+      }
+
+      defaultRegistry.registerProvider(new ThrowingProvider());
+      try {
+        vi.mocked(exec.exec).mockReset();
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        await run(tempDir);
+
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("Failed to plan autofix execution"),
+        );
+        // No tasks should have been executed.
+        expect(exec.exec).not.toHaveBeenCalled();
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("does not emit Executing: when the JS package manager executable is missing", async () => {
+      vi.spyOn(io, "which").mockResolvedValue("");
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
+      );
+      fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+      await run(tempDir);
+
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Executing: npm install"));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("Required package manager 'npm' is not available in PATH"),
+      );
+    });
+
+    it("does not emit Executing: when the Python package manager executable is missing", async () => {
+      vi.spyOn(io, "which").mockResolvedValue("");
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(
+        path.join(tempDir, "pyproject.toml"),
+        "[project]\nname = 'demo'\ndependencies = [\"requests\"]\n",
+      );
+
+      await run(tempDir);
+
+      expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Executing: pip"));
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("Required Python package manager 'pip' is not available in PATH"),
+      );
+    });
+
+    it("reuses the resolved context.jsPm instead of re-resolving the package manager", async () => {
+      // PACKAGE_MANAGER override is set to pnpm; buildProjectContext resolves it once and
+      // the provider must reuse that value rather than re-running detection.
+      process.env.PACKAGE_MANAGER = "pnpm";
+      fs.writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({ scripts: { fix: "echo fix" } }),
+      );
+      fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "{}");
+
+      vi.mocked(exec.exec).mockResolvedValue(0);
+      mockWhichWith({});
+
+      await run(tempDir);
+
+      // The install command must use pnpm (from the resolved context.jsPm), not re-detect.
+      expect(exec.exec).toHaveBeenCalledWith(
+        "pnpm",
+        ["install", "--no-frozen-lockfile"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+    });
+
+    it("does not route non-JavaScript provider tasks through the JavaScript lifecycle in executeJsWorkflow", async () => {
+      class NonJsProvider implements LanguageProvider {
+        id = "non-js";
+        name = "Non JS";
+        detect() {
+          return true;
+        }
+        getAdapters() {
+          return [
+            {
+              id: "non-js-adapter",
+              name: "Non JS Adapter",
+              capabilities: ["assist"] as const,
+              detect() {
+                return { detected: true, reason: "non-js" };
+              },
+              plan(ctx: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
+                return [
+                  {
+                    id: "non-js-task",
+                    toolId: "non-js-adapter",
+                    providerId: "non-js",
+                    capability: "assist",
+                    executable: "non-js-tool",
+                    args: ["--run"],
+                    cwd: ctx.cwd,
+                    mode,
+                    resolution: "passthrough" as const,
+                  },
+                ];
+              },
+            },
+          ];
+        }
+        run(): Promise<Error[]> {
+          return Promise.resolve([]);
+        }
+      }
+
+      defaultRegistry.registerProvider(new NonJsProvider());
+      try {
+        vi.mocked(exec.exec).mockReset();
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ scripts: { fix: "echo fix" } }),
+        );
+        fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}");
+
+        await executeJsWorkflow(tempDir);
+
+        // The non-js task must NOT be executed through the JS lifecycle.
+        expect(exec.exec).not.toHaveBeenCalledWith("non-js-tool", ["--run"], expect.anything());
+      } finally {
+        defaultRegistry.clear();
+        defaultRegistry.registerProvider(new PythonLanguageProvider());
+        defaultRegistry.registerProvider(new JavaScriptLanguageProvider());
+      }
+    });
+
+    it("formatCommand handles empty args, quotes, backslashes, and shell-sensitive characters", () => {
+      expect(formatCommand("tool", [""])).toBe("tool ''");
+      expect(formatCommand("tool", ["it's"])).toBe("tool 'it'\\''s'");
+      expect(formatCommand("tool", ["a\\b"])).toBe("tool 'a\\b'");
+      expect(formatCommand("tool", ["$HOME"])).toBe("tool '$HOME'");
+      expect(formatCommand("tool", ["a;b"])).toBe("tool 'a;b'");
+      expect(formatCommand("tool", ["a|b"])).toBe("tool 'a|b'");
+      expect(formatCommand("tool", ["a&b"])).toBe("tool 'a&b'");
+    });
+
+    describe("executeJsWorkflow package manager consistency", () => {
+      const setupJsProject = (
+        lockfile: "package-lock.json" | "pnpm-lock.yaml" | "bun.lock",
+        _packageManager: "npm" | "pnpm" | "bun",
+      ): string => {
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ scripts: { format: "prettier --write ." } }),
+        );
+        fs.writeFileSync(path.join(tempDir, lockfile), "{}");
+        return tempDir;
+      };
+
+      it("uses pnpm consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("pnpm-lock.yaml", "pnpm");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "pnpm",
+          ["install", "--no-frozen-lockfile"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "pnpm",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+      });
+
+      it("uses Bun consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("bun.lock", "bun");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "bun",
+          ["install"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "bun",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+      });
+
+      it("respects PACKAGE_MANAGER override over lockfile-detected manager", async () => {
+        const originalPm = process.env.PACKAGE_MANAGER;
+        process.env.PACKAGE_MANAGER = "bun";
+        try {
+          vi.mocked(exec.exec).mockResolvedValue(0);
+          mockWhichWith({});
+          setupJsProject("pnpm-lock.yaml", "pnpm");
+
+          await executeJsWorkflow(tempDir);
+
+          expect(exec.exec).toHaveBeenCalledWith(
+            "bun",
+            ["install"],
+            expect.objectContaining({ cwd: tempDir }),
+          );
+          expect(exec.exec).toHaveBeenCalledWith(
+            "bun",
+            ["run", "format"],
+            expect.objectContaining({ cwd: tempDir }),
+          );
+          expect(exec.exec).not.toHaveBeenCalledWith("pnpm", expect.anything(), expect.anything());
+          expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+        } finally {
+          process.env.PACKAGE_MANAGER = originalPm;
+        }
+      });
+
+      it("uses npm consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("package-lock.json", "npm");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "npm",
+          ["install"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "npm",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      });
+    });
   });
 
   describe("Nested Delegation and Duplicate Task Prevention", () => {
@@ -3188,7 +3762,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
   describe("Configuration-Only Tool Detection and Executable Resolution Contract", () => {
     describe("Configuration exists, dependency absent, executable unavailable -> Tool is not scheduled", () => {
       it("does not schedule Prettier when only .prettierrc.json exists without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "config-only-prettier" }),
@@ -3229,7 +3803,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule Biome when only biome.json exists without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "config-only-biome" }),
@@ -3262,7 +3836,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule ESLint when only eslint.config.js exists without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "config-only-eslint" }),
@@ -3295,7 +3869,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule Oxlint when only oxlint.json exists without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "config-only-oxlint" }),
@@ -3328,7 +3902,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule Oxfmt when only oxfmt.json exists without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "config-only-oxfmt" }),
@@ -3361,7 +3935,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule Prettier when configured via package.json key without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3385,7 +3959,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule ESLint when configured via package.json key without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3471,7 +4045,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("refuses to schedule tool when global executable resolution returns empty or invalid binary", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
 
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
@@ -3556,7 +4130,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
     describe("No configuration, no dependency, no executable -> Tool is not scheduled", () => {
       it("returns clean non-detection without cluttering skipped tools when neither config nor dep exists", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({ name: "plain-package" }),
@@ -3586,7 +4160,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
     describe("Configuration exists but package installation has not provisioned the executable -> Tool is not incorrectly scheduled", () => {
       it("does not incorrectly schedule a tool when unrelated packages are installed but tool is absent", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         const binDir = path.join(tempDir, "node_modules", ".bin");
         fs.mkdirSync(binDir, { recursive: true });
         fs.writeFileSync(path.join(binDir, "other-tool"), "");
@@ -3623,7 +4197,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
     describe("Dependency declared but executable unexpectedly missing -> Actionable execution error", () => {
       it("throws actionable error during execution when declared tool executable is missing from node_modules/.bin and PATH", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3772,7 +4346,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule Vite+ when vite.config exists and script invokes vp, but no dependency or executable exists", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3807,7 +4381,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule direct Vite+ tasks when script invokes npx vp, without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3825,7 +4399,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule direct Vite+ tasks when script invokes bunx vp, without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3843,7 +4417,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("does not schedule direct Vite+ tasks when script invokes pnpm exec vp, without dependency or executable", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3891,7 +4465,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       });
 
       it("throws actionable execution error when vite-plus dependency is declared but vp binary is missing after provisioning", async () => {
-        vi.spyOn(io, "which").mockResolvedValue("");
+        mockWhichWith({});
         fs.writeFileSync(
           path.join(tempDir, "package.json"),
           JSON.stringify({
@@ -3997,7 +4571,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
               throw err;
             }
           });
-          vi.spyOn(io, "which").mockResolvedValue("");
+          mockWhichWith({});
 
           const resolved = await resolveProjectBinary(tempDir, "biome", "linux");
           expect(resolved).toBeUndefined();
