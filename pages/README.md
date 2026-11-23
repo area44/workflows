@@ -1,21 +1,38 @@
-# area44/pages
+# pages
 
-Build and upload GitHub Pages static site.
+Build a static site and upload the GitHub Pages artifact. Reference: `area44/workflows/pages@main`.
 
-## Action Purpose
+## Behavior
 
-The `pages` composite action automates static site builds and artifact generation for GitHub Pages deployments.
+1. **Resolve environment** — detects the JavaScript runtime (`node`/`bun`) and package manager (`npm`/`pnpm`/`bun`), and whether Vite+ is in use. See [../docs/environment-resolution.md](../docs/environment-resolution.md).
+2. **Provision toolchain** — sets up pnpm, bun, node, or Vite+ via their official setup actions as resolved; otherwise installs dependencies (`npm ci`/`npm install`, `pnpm install --frozen-lockfile`, `bun install --frozen-lockfile`).
+3. **Export site variables** — `SITE` (`https://<owner>.github.io`), `BASE`, and `BASE_URL` (`/` for a primary `<owner>.github.io` repo, `/<repo>/` otherwise).
+4. **Build** — runs the build command:
+   - `build-command` input if set;
+   - else `vp build` when Vite+ is detected (falls back to `vpr build` if `vp` is unavailable);
+   - else `<package-manager> run build`.
+5. **Validate & upload** — fails if the output directory (`path`) is missing, empty, or not a directory; otherwise uploads it with `actions/upload-pages-artifact`.
 
-## Features and Supported Behavior
+## Inputs
 
-- **Automatic Environment Resolution:** Automatically detects project package manager (`npm`, `pnpm`, `bun`) and runtime (`node`, `bun`).
-- **Flexible Runtimes:** Supports Node.js and Bun project runtimes with automatic detection from project configuration (`.bun-version`, `.nvmrc`, `.node-version`, `packageManager`, and `devEngines`).
-- **Automatic Vite+ Detection:** Automatically detects Vite+ project configuration and executes `vp build` (or falls back to `vpr build` if `vp` is unavailable).
-- **Custom Build Commands:** Supports custom build commands via `build-command` input.
-- **Site Environment Export:** Automatically exports `SITE` (`https://<owner>.github.io`), `BASE`, and `BASE_URL` (`/` for primary user/org site, `/<repo>/` for project sites) environment variables for build steps.
-- **Build Output Validation:** Validates that the configured build output directory (`path`) exists and contains built files before uploading the pages artifact.
+| Name            | Description                               | Default                                                             |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------------- |
+| `path`          | Directory where the built site is located | `dist`                                                              |
+| `build-command` | Custom build command                      | `vp build` if Vite+ is detected, else `<package-manager> run build` |
 
-## Usage Example
+## Outputs
+
+| Name                         | Description                                          |
+| ---------------------------- | ---------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript/TypeScript project was detected |
+| `javascript-runtime`         | The resolved runtime (`node` or `bun`)               |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)   |
+| `javascript-toolchain`       | The resolved toolchain (`vite-plus` or empty string) |
+| `vp-version`                 | The version of Vite+ installed                       |
+
+The canonical input/output contract is [action.yml](./action.yml); this table is a convenience summary.
+
+## Usage
 
 ```yaml
 name: GitHub Pages
@@ -27,51 +44,28 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+      - uses: area44/workflows/pages@main
 
-      - name: Build and Upload Artifact
-        uses: area44/workflows/pages@main
-        with:
-          # Optional: path: 'dist'
-          # Optional: build-command: 'npm run build'
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
 ```
 
-## Public API Contract
-
-### Inputs
-
-| Name            | Description                               | Default                       | Required |
-| --------------- | ----------------------------------------- | ----------------------------- | -------- |
-| `path`          | Directory where the built site is located | `dist`                        | Optional |
-| `build-command` | Custom build command                      | `<package-manager> run build` | Optional |
-
-### Outputs
-
-| Name                         | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
-| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
-| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
-| `javascript-toolchain`       | The resolved toolchain (`vite-plus` or empty string)       |
-| `vp-version`                 | The version of Vite+ installed                             |
-
-## Related Documentation
-
-- **[Repository README](../README.md)**: Project overview and action API summary.
-- **[Environment Resolution Algorithm Guide](../docs/environment-resolution.md)**: Design principles, decision flow, conflict handling, and setup planning details.
-- **[Error Handling Architecture](../docs/errors.md)**: Native JavaScript error boundaries, top-level error handling, and error logging.
-- **[Security Boundaries](../docs/security.md)**: Input sanitization, argument tokenization, and command execution boundaries.
-- **[Maintenance & Repository Health](../docs/maintenance.md)**: Maintenance workflows, build scripts, and quality gates.
-- **[Integration Testing Guide](../docs/integration-testing.md)**: Module integration testing, fixture generators, and CI test harnesses.
+Build failures are written to `${RUNNER_TEMP}/pages_build_error.log` for CI assertions. Error handling details: [../docs/errors.md](../docs/errors.md). Security boundaries: [../docs/security.md](../docs/security.md).

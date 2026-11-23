@@ -199,6 +199,23 @@ describe("build-command", () => {
       });
     });
 
+    it("should preserve npm argument separator -- in parsed arguments", () => {
+      expect(parseCommand("npm run build -- --outDir dist")).toEqual({
+        command: "npm",
+        args: ["run", "build", "--", "--outDir", "dist"],
+      });
+
+      expect(parseCommand('npm run build -- --outDir "dist dir"')).toEqual({
+        command: "npm",
+        args: ["run", "build", "--", "--outDir", "dist dir"],
+      });
+
+      expect(parseCommand("pnpm run build -- --flag")).toEqual({
+        command: "pnpm",
+        args: ["run", "build", "--", "--flag"],
+      });
+    });
+
     it("should handle escaped characters and quotes", () => {
       expect(parseCommand("node build\\ script.js --flag")).toEqual({
         command: "node",

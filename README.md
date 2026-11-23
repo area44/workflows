@@ -1,13 +1,19 @@
 # area44/workflows
 
-This repository provides reusable **GitHub Actions workflows and composite actions** for the AREA44 ecosystem. It standardizes CI/CD processes, static site deployment, and automated code maintenance across projects.
+Reusable **GitHub Actions composite actions** for the AREA44 ecosystem: static-site deployment to GitHub Pages and automated code formatting/fixing.
 
-## Available Actions
+## Actions
 
-- **[Pages](./pages/README.md)** (`area44/workflows/pages@main`): Build and deploy static sites to GitHub Pages.
-- **[Autofix](./autofix/README.md)** (`area44/workflows/autofix@main`): Automatically format and fix code.
+| Action                         | Reference                       | Purpose                                           |
+| ------------------------------ | ------------------------------- | ------------------------------------------------- |
+| [pages](./pages/README.md)     | `area44/workflows/pages@main`   | Build a static site and upload the Pages artifact |
+| [autofix](./autofix/README.md) | `area44/workflows/autofix@main` | Format and fix JavaScript/TypeScript and Python   |
 
-## Quick Start
+Each action's `action.yml` is the source of truth for its public inputs and outputs. The per-action READMEs document purpose, behavior, and usage.
+
+## Usage
+
+### Pages
 
 ```yaml
 name: GitHub Pages
@@ -19,92 +25,76 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+      - uses: area44/workflows/pages@main
 
-      - name: Build site
-        uses: area44/workflows/pages@main
-        with:
-          # Optional: path: 'dist'
-          # Optional: build-command: 'npm run build'
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
 ```
 
-## Public Action API Summary
+### Autofix
 
-Each action's `action.yml` serves as the single source of truth for its public API contract.
+```yaml
+name: autofix.ci
 
-### `pages` (GitHub Pages Build and Upload)
+on:
+  push:
+    branches: ["main"]
+  pull_request:
 
-#### Inputs
+permissions:
+  contents: read
 
-| Name            | Description                               | Default                       | Required |
-| --------------- | ----------------------------------------- | ----------------------------- | -------- |
-| `path`          | Directory where the built site is located | `dist`                        | Optional |
-| `build-command` | Custom build command                      | `<package-manager> run build` | Optional |
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: area44/workflows/autofix@main
+```
 
-#### Outputs
+## Development
 
-| Name                         | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
-| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
-| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
-| `javascript-toolchain`       | The resolved toolchain (`vite-plus` or empty string)       |
-| `vp-version`                 | The version of Vite+ installed                             |
-
-### `autofix` (Automatically format and fix code)
-
-#### Inputs
-
-This action accepts no inputs.
-
-#### Outputs
-
-| Name                         | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `javascript-detected`        | Whether a JavaScript project (`package.json`) was detected |
-| `javascript-runtime`         | The resolved JavaScript runtime (`node` or `bun`)          |
-| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)         |
-| `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected     |
-| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)        |
-
-## Documentation Index
-
-- **[Pages Action Documentation](./pages/README.md)**: Details on inputs, outputs, environment variables (`SITE`, `BASE`, `BASE_URL`), and static site requirements.
-- **[Autofix Action Documentation](./autofix/README.md)**: Information on JavaScript script selection, Python Ruff formatting/linting, and autofix.ci integration.
-- **[Environment Resolution Algorithm Guide](./docs/environment-resolution.md)**: Design principles, decision flow, conflict handling, setup planning, and maintenance guide for repository environment resolution.
-- **[Error Handling Architecture](./docs/errors.md)**: Native JavaScript error propagation, top-level boundaries, and build failure logging.
-- **[Security Boundaries](./docs/security.md)**: Trust boundaries, shell command argument tokenization without subshell execution, and secret masking.
-- **[Maintenance & Repository Health](./docs/maintenance.md)**: Invariants, sources of truth, build pipelines (`npm run build`), quality gates, and release versioning.
-- **[Integration Testing & Scenario Factory Guide](./docs/integration-testing.md)**: Dynamic scenario factory architecture, unit tests, module-level tests, and composite action CI matrix verification.
-
-## Development and Testing
-
-Local testing and validation commands are managed via Vite+ (`vp`):
+Requires Node.js (this repo builds with Vite+ / `vp`).
 
 ```bash
-# Run unit and integration tests
-npm test
-
-# Run code style linting
-npm run lint
-
-# Check formatting
-npm run format --check
-
-# Build bundle artifacts in dist/
-npm run build
+npm ci            # install locked dependencies
+npm run build     # bundle src/ -> dist/ (vp pack)
+npm test          # run unit + integration tests (vp test)
+npm run lint      # lint (vp lint)
+npm run format -- --check   # formatting check (vp fmt --check)
 ```
 
-For comprehensive details on repository structure and release management, see [docs/maintenance.md](./docs/maintenance.md) and [docs/integration-testing.md](./docs/integration-testing.md).
+The committed `dist/` must match `src/`. `check-dist` in `.github/workflows/ci.yml` fails the build if `npm run build` produces any diff under `dist/`, so run `npm run build` and commit the result whenever you change `src/`.
+
+## Documentation
+
+- [pages/README.md](./pages/README.md) — pages action behavior and API.
+- [autofix/README.md](./autofix/README.md) — autofix architecture and behavior.
+- [docs/environment-resolution.md](./docs/environment-resolution.md) — how runtimes, package managers, and toolchains are detected.
+- [docs/maintenance.md](./docs/maintenance.md) — sources of truth, build pipeline, quality gates, release process.
+- [docs/integration-testing.md](./docs/integration-testing.md) — scenario factory, test layers, CI matrix.
+- [docs/errors.md](./docs/errors.md) — error handling and failure reporting.
+- [docs/security.md](./docs/security.md) — trust boundaries and command execution safety.
+- [AGENTS.md](./AGENTS.md) — repository-level instructions for coding agents.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT](./LICENSE).

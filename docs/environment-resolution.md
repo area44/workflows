@@ -1,79 +1,52 @@
-# Environment Resolution Algorithm Guide
+# Environment Resolution
 
-This guide explains the design principles, decision flow, conflict handling, and maintenance rules for repository environment resolution in `@area44/workflows`.
+How the actions detect a repository's runtimes, package managers, and toolchains. Implemented in `src/resolve-environment.ts` (orchestration), `src/javascript-env.ts`, `src/python-env.ts`, and `src/setup-plan.ts` — those modules and their tests in `tests/` are the authoritative specification for exact behavior.
 
----
+## Domains
 
-## Purpose and Scope
+JavaScript/TypeScript and Python resolve independently. A repo may contain either, both, or neither. When neither is detected, resolution logs `No JavaScript or Python environment detected.` and succeeds.
 
-Environment resolution is the initial phase of composite action execution (`pages` and `autofix`). It inspects a repository's configuration and source files, resolves the effective execution environment, derives a deterministic tool setup plan, and exports GitHub Actions outputs for downstream execution steps.
+## Resolution
 
-Environment resolution determines which runtimes, package managers, and toolchains a repository targets. Official setup actions (`actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/ruff-action`) natively handle runtime and tool version selection and installation according to their documented capabilities. Downstream composite action steps execute builds, dependency installations, and autofix commands based on the exported outputs without mutating repository files.
-
----
-
-## Core Principles
-
-- **Domain Independence**: JavaScript/TypeScript and Python project resolution operate as independent domains. Repositories can contain JavaScript, Python, both, or neither. When neither domain is detected, the standalone plain-text message `No JavaScript or Python environment detected.` is emitted and resolution continues without error.
-- **Delegated Version Resolution**: Official setup actions own runtime and tool version selection and installation. `pnpm/setup` manages pnpm and runtime setup directly when `pnpm` is selected, bypassing dedicated Node.js/Bun setup steps to prevent duplicate setup. TypeScript detects ecosystem presence, selects package managers and toolchains, and coordinates setup orchestration without parsing version files.
-- **Toolchain Classification**: Vite+ is the only supported JavaScript toolchain (`Toolchain: Vite+`). Standard Vite alone is not classified or reported as a toolchain. When Vite+ is not detected, the `Toolchain` line is omitted entirely.
-- **Python Package Manager Selection**: Default package manager is `pip`. `uv` is selected when `uv.lock` or explicit `uv` configuration (`[tool.uv]` table or `uv.toml`) is detected.
-- **Plain-Text Summary Logging**: Summary logs use plain-text output in category order (`Runtime`, `Package Manager`, `Toolchain`).
-- **Explicit Conflict Validation**: Contradictory configuration declarations across manifest files and package managers trigger immediate validation errors rather than applying silent tie-breakers.
-- **Pure Setup Planning**: Environment resolution and filesystem inspection are strictly separated from setup plan generation. Setup plans are derived through a pure, deterministic transformation layer with zero filesystem access or action side effects.
-
----
-
-## Resolution Algorithm
-
-The environment resolution entrypoint (`run()` in `src/resolve-environment.ts`) executes environment discovery, domain resolution, aggregate validation, setup planning, and output export sequentially:
+`run()` in `src/resolve-environment.ts` runs sequentially:
 
 ```mermaid
 flowchart TD
-    A[Repository Files & Config] --> B1[Resolve JS Domain]
-    A --> B2[Resolve Python Domain]
-
-    subgraph Domain Resolution & Conflict Handling
-        B1 --> C1{Validate JS Signals}
-        B2 --> C2{Validate Python Config}
-
-        C1 -- Conflicting Signals --> FAIL[Execution Failure: core.setFailed]
-        C2 -- Invalid Config / Lock --> FAIL
-
-        C1 -- Valid / Not Detected --> D1[Resolved JS Environment]
-        C2 -- Valid / Not Detected --> D2[Resolved Python Environment]
-    end
-
-    D1 --> E[Aggregate Environment]
+    A[Repo files & config] --> B1[Resolve JS domain]
+    A --> B2[Resolve Python domain]
+    B1 --> C1{Validate JS signals}
+    B2 --> C2{Validate Python config}
+    C1 -- conflict --> FAIL[core.setFailed]
+    C2 -- invalid --> FAIL
+    C1 -- ok --> D1[Resolved JS env]
+    C2 -- ok --> D2[Resolved Python env]
+    D1 --> E[Aggregate env]
     D2 --> E
-
-    subgraph Aggregate Validation & Setup Planning Pipeline
-        E --> F{validateEnvironment}
-        F -- Invariant Violation --> FAIL
-        F -- Valid Aggregate Env --> G[createSetupPlan\nDerive Pure Setup Plan]
-        G --> H[core.setOutput\nExport Action Outputs]
-    end
-
-    H --> I[Downstream Action Step Guards\npages / autofix]
+    E --> F{validateEnvironment}
+    F -- violation --> FAIL
+    F -- ok --> G[createSetupPlan]
+    G --> H[core.setOutput]
 ```
 
----
+## Rules
 
-## Conflict Handling
+- **Delegated version resolution** — `actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/setup-uv`, and `astral-sh/ruff-action` own version selection and installation. When `pnpm` is selected, `pnpm/setup` provisions it (and the runtime) directly, so the node/bun setup steps are skipped to avoid duplicate setup.
+- **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
+- **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
+- **Toolchain** — `vite-plus` is the recognized toolchain, detected from a Vite+ dependency in `package.json`.
+- **Python package manager** — `pip` by default; `uv` when `uv.lock` or explicit uv config (`[tool.uv]` / `uv.toml`) is present. `uv.lock` without a valid `pyproject.toml` is an error.
+- **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
-The algorithm distinguishes clearly between missing information (handled by deterministic defaults) and invalid or contradictory configuration (which halts step execution):
+## Conflict handling
 
-- **Successful Resolution**: Valid, non-contradictory configuration signals are resolved to explicit runtime, package manager, and toolchain settings.
-- **Undetected Domains**: Absent project files or source code return valid `detected: false` states without error. When neither domain is detected, an informational log is emitted and resolution completes successfully.
-- **Conflicting Signals**: Contradictory declarations (such as declaring conflicting runtimes across configuration files) fail validation immediately and halt execution with an error annotation (`core.setFailed`).
-- **Invalid Configuration State**: Invariant violations (such as lockfiles existing without required project configuration or malformed aggregate environments) trigger explicit error messages and halt execution.
-
----
+- Valid config → explicit runtime/package-manager/toolchain outputs.
+- Undetected domain → `detected: false`, no error.
+- Contradictory config or invariant violation (e.g. lockfile without required manifest) → `core.setFailed` and halt.
 
 ## Maintenance
 
-When modifying or extending the environment resolution algorithm:
+When resolution behavior changes:
 
-- **Implementation as Authority**: The source code and automated test suites serve as the authoritative specification for exact behavioral details and edge cases.
-- **Automated Test Coverage**: Add or update automated tests in `tests/` when resolution logic or edge-case handling changes.
-- **Documentation Synchronization**: Keep the Mermaid flowchart and core principles in this document synchronized with implementation changes, and ensure README references remain accurate.
+- Update `src/` and add or update tests in `tests/`.
+- Keep this document's mermaid flow and rules in sync.
+- Update the `README.md` / `pages/README.md` / `autofix/README.md` references if entrypoints change.

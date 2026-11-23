@@ -1,47 +1,28 @@
-# Error Handling Architecture
+# Error Handling
 
-This document defines the error handling architecture, native error propagation, top-level entry point boundaries, build failure logging, and `@actions/core` failure reporting across `@area44/workflows`.
+How errors are thrown, propagated, and reported across the composite actions and resolution modules.
 
-## Purpose and Scope
+## Propagation
 
-This specification governs how errors are generated, caught, propagated, logged, and reported to GitHub Actions runner environments across composite actions (`pages`, `autofix`) and core resolution modules.
+Modules throw native `Error` instances with actionable messages. There are no custom error classes or error-wrapping utilities; `core.setFailed(message)` and `core.error(message)` report failures to the runner.
 
-## Native JavaScript Error Propagation
+Each bundled entrypoint wraps its work in a top-level boundary:
 
-All internal modules throw standard native JavaScript `Error` instances containing clear, actionable, and context-rich messages. Custom error classes, error wrapping utilities, or custom regex-based string sanitizers are avoided in favor of direct native exceptions.
+- `dist/resolve-environment.mjs` — catches unparseable manifests and package-manager conflicts.
+- `dist/pages/site-variables.mjs` — warns (does not fail) on missing or inconsistent `GITHUB_REPOSITORY` / `GITHUB_REPOSITORY_OWNER`.
+- `dist/pages/build-command.mjs` — catches non-zero build exit codes and output-directory validation errors.
+- `dist/autofix.mjs` — runs JavaScript and Python independently and aggregates their errors before failing the step.
 
-### Core Failure Reporting
+## Build failure log
 
-Action steps report failures to the GitHub Actions runner using official `@actions/core` APIs:
+`runBuildCommand()` in `src/pages/build-command.ts` writes failure details to `${RUNNER_TEMP}/pages_build_error.log` (when `RUNNER_TEMP` is set) so CI can assert the reason. Messages:
 
-- `core.setFailed(message)`: Marks the current workflow step as failed and logs the provided error message.
-- `core.error(message)`: Emits inline error log annotations when appropriate.
+- `Build command execution failed with exit code <n>.`
+- `Build output validation failed: <reason>` (e.g. `Configured build output directory 'dist' does not exist.`)
 
-## Entry Point Boundaries
+`.github/workflows/test-actions.yml` asserts both the exit code and the exact log contents for negative scenarios.
 
-Bundled executable action entrypoints (`dist/resolve-environment.mjs`, `dist/pages/site-variables.mjs`, `dist/pages/build-command.mjs`, `dist/autofix.mjs`) wrap execution inside top-level `try/catch` error boundaries:
+## Invariants
 
-1. **`resolve-environment`**: Catches unparseable project manifests or package manager resolution conflicts, triggering `core.setFailed()` with the exact error message.
-2. **`site-variables`**: Validates `GITHUB_REPOSITORY` and `GITHUB_REPOSITORY_OWNER` environment variables. Emits warnings if repository metadata is missing or malformed without failing the job when possible.
-3. **`build-command`**: Wraps build command parsing, CLI execution, and output directory validation. Catches non-zero process exit codes and missing build output directories.
-4. **`autofix`**: Wraps independent JavaScript and Python workflow steps, aggregating errors across both pipelines before reporting final step outcomes via `core.setFailed()`.
-
-## Build Failure Logging (`pages_build_error.log`)
-
-For machine-verifiable assertions in CI workflows, `runBuildCommand()` in `src/pages/build-command.ts` captures build failures:
-
-- **Log File Location**: When the `RUNNER_TEMP` environment variable is set by the runner, failure details are written to `${RUNNER_TEMP}/pages_build_error.log`.
-- **Diagnostic Coverage**: Captures non-zero exit codes from custom or default build commands (e.g., `"Build command execution failed with exit code 1"`) and output path validation errors (e.g., `"Build output validation failed: Configured build output directory 'dist' does not exist."`).
-- **CI Verification**: Integration workflows like `.github/workflows/test-actions.yml` assert step failure status and verify the exact contents of `${RUNNER_TEMP}/pages_build_error.log` for negative scenario matrix jobs.
-
-## Operational Invariants
-
-1. **No Silent Failures**: Any unhandled exception during resolution or execution MUST terminate the action step with a non-zero exit code.
-2. **Aggregated Diagnostics**: In multi-language workflows (`autofix`), failure in one language pipeline does not immediately suppress execution or error reporting from other active pipelines. All accumulated errors are logged prior to setting step failure.
-
-## Related Documentation
-
-- **[Repository README](../README.md)**: Project overview and action API summary.
-- **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
-- **[Maintenance & Repository Health](./maintenance.md)**: Source files, build pipeline, and quality gates.
-- **[Integration Testing Guide](./integration-testing.md)**: Integration test matrix and failure mode verification.
+- **No silent failures** — any unhandled error terminates the step non-zero.
+- **Aggregated diagnostics** — in `autofix`, one language's failure does not suppress the other; all errors are logged before `setFailed`.
