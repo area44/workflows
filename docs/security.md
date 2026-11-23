@@ -14,7 +14,7 @@ Composite action inputs (`build-command`, `path`) and repo manifests (`package.j
 
 ## Secret masking
 
-GitHub Actions automatically masks secrets registered via `secrets.*` in log output. Arbitrary sensitive values in environment variables are not necessarily masked — a custom token passed through `env:` will appear in logs unless it is explicitly registered for masking with `core.setSecret()` (or `echo "::add-mask::"`) before it can be printed. Errors in this action avoid dumping raw environment maps into logs as a defense-in-depth measure, but this is not a substitute for proper secret registration.
+GitHub Actions automatically masks secrets registered via `secrets.*` in log output. Arbitrary sensitive values in environment variables are not necessarily masked — a custom token passed through `env:` will appear in logs unless it is explicitly registered for masking with `core.setSecret()` before it can be printed. Errors in this action avoid dumping raw environment maps into logs as a defense-in-depth measure, but this is not a substitute for proper secret registration.
 
 ## Source vs artifact
 
