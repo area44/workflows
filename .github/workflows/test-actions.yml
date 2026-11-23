@@ -194,7 +194,7 @@ jobs:
         run: |
           set -e
           node "$ACTION_PATH/../dist/resolve-environment.mjs"
-          node "$ACTION_PATH/../dist/site-variables.mjs"
+          node "$ACTION_PATH/../dist/pages/site-variables.mjs"
 
           ACTUAL_PM=$(node -e '
             const fs = require("fs");
@@ -234,7 +234,7 @@ jobs:
           esac
 
           set +e
-          node "$ACTION_PATH/../dist/build-command.mjs" > /dev/null 2>&1
+          node "$ACTION_PATH/../dist/pages/build-command.mjs" > /dev/null 2>&1
           EXIT_CODE=$?
           set -e
 

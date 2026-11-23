@@ -76,12 +76,12 @@ describe("build-command", () => {
 
       const siteVarsStep = steps.find((s: any) => s.id === "set_site_variables");
       expect(siteVarsStep).toBeDefined();
-      expect(siteVarsStep.run).toContain('node "$ACTION_PATH/../dist/site-variables.mjs"');
+      expect(siteVarsStep.run).toContain('node "$ACTION_PATH/../dist/pages/site-variables.mjs"');
       expect(siteVarsStep.if).toContain("steps.resolve_environment.outcome == 'success'");
 
       const buildSiteStep = steps.find((s: any) => s.id === "build_site");
       expect(buildSiteStep).toBeDefined();
-      expect(buildSiteStep.run).toContain('node "$ACTION_PATH/../dist/build-command.mjs"');
+      expect(buildSiteStep.run).toContain('node "$ACTION_PATH/../dist/pages/build-command.mjs"');
       expect(buildSiteStep.if).toContain("steps.resolve_environment.outcome == 'success'");
       expect(buildSiteStep.if).toContain(
         "steps.install_dependencies.outcome == 'success' || steps.setup_vp.outcome == 'success'",
@@ -98,8 +98,10 @@ describe("build-command", () => {
 
       // Verify referenced dist entrypoint files exist on disk
       expect(fs.existsSync(path.resolve(process.cwd(), "dist/resolve-environment.mjs"))).toBe(true);
-      expect(fs.existsSync(path.resolve(process.cwd(), "dist/site-variables.mjs"))).toBe(true);
-      expect(fs.existsSync(path.resolve(process.cwd(), "dist/build-command.mjs"))).toBe(true);
+      expect(fs.existsSync(path.resolve(process.cwd(), "dist/pages/site-variables.mjs"))).toBe(
+        true,
+      );
+      expect(fs.existsSync(path.resolve(process.cwd(), "dist/pages/build-command.mjs"))).toBe(true);
     });
   });
 

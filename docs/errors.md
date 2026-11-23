@@ -19,7 +19,7 @@ Action steps report failures to the GitHub Actions runner using official `@actio
 
 ## Entry Point Boundaries
 
-Bundled executable action entrypoints (`dist/resolve-environment.mjs`, `dist/site-variables.mjs`, `dist/build-command.mjs`, `dist/autofix.mjs`) wrap execution inside top-level `try/catch` error boundaries:
+Bundled executable action entrypoints (`dist/resolve-environment.mjs`, `dist/pages/site-variables.mjs`, `dist/pages/build-command.mjs`, `dist/autofix.mjs`) wrap execution inside top-level `try/catch` error boundaries:
 
 1. **`resolve-environment`**: Catches unparseable project manifests or package manager resolution conflicts, triggering `core.setFailed()` with the exact error message.
 2. **`site-variables`**: Validates `GITHUB_REPOSITORY` and `GITHUB_REPOSITORY_OWNER` environment variables. Emits warnings if repository metadata is missing or malformed without failing the job when possible.

@@ -48,8 +48,8 @@ Every public composite action provided by this repository adheres to the followi
 The `npm run build` command uses Vite+ (`vp pack`) to compile and bundle TypeScript source files from `src/` into standalone executable ESM entrypoints in `dist/`:
 
 - `src/resolve-environment.ts` -> `dist/resolve-environment.mjs`
-- `src/pages/site-variables.ts` -> `dist/site-variables.mjs`
-- `src/pages/build-command.ts` -> `dist/build-command.mjs`
+- `src/pages/site-variables.ts` -> `dist/pages/site-variables.mjs`
+- `src/pages/build-command.ts` -> `dist/pages/build-command.mjs`
 - `src/autofix/index.ts` -> `dist/autofix.mjs`
 
 The `check-dist` job in `.github/workflows/ci.yml` validates that committed `dist/` artifacts match freshly built outputs, failing if any drift is detected. It runs as a separate, independent job alongside `quality-test` on every push to `main` and pull request.

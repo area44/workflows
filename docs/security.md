@@ -13,7 +13,7 @@ This document specifies the security boundaries and defensive measures implement
 
 ## Command Execution & Subshell Avoidance
 
-- **Action Bootstrap Runtime**: Internal bundled action entrypoints (`dist/resolve-environment.mjs`, `dist/site-variables.mjs`, `dist/build-command.mjs`, `dist/autofix.mjs`) execute directly under Node.js without shell wrappers.
+- **Action Bootstrap Runtime**: Internal bundled action entrypoints (`dist/resolve-environment.mjs`, `dist/pages/site-variables.mjs`, `dist/pages/build-command.mjs`, `dist/autofix.mjs`) execute directly under Node.js without shell wrappers.
 - **Binary Tokenization**: Project build and autofix commands are executed via `@actions/exec` using distinct binary names and argument arrays derived from resolved project tools (e.g. `npm`, `pnpm`, `bun`, `vp`, `ruff`).
 - **Custom Build Command Parsing**: `src/pages/build-command.ts` parses custom `build-command` strings using a custom tokenizer respecting single quotes, double quotes, and backslash escapes.
 - **Subshell Avoidance**: Commands are executed directly as binary executable paths and argument arrays without subshell invocation (avoiding `sh -c` or `bash -c`).
