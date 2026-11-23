@@ -147,7 +147,17 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
     throw new Error(jsEnv.packageJsonError);
   }
 
-  const context: ProjectContext = { cwd, jsEnv, hasPythonSource: false };
+  let jsPm: SupportedPackageManager | undefined;
+  if (jsEnv.hasPackageJson) {
+    try {
+      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: false });
+    } catch {
+      // Package manager resolution failed; installAndExecuteJsTasks re-resolves and surfaces the error.
+      jsPm = undefined;
+    }
+  }
+
+  const context: ProjectContext = { cwd, jsEnv, jsPm, hasPythonSource: false };
   const plan = await planExecution(defaultRegistry, context, "fix");
   // JavaScript-owned tasks only; other providers' tasks are not routed through the JS lifecycle.
   const jsTasks = plan.tasks.filter((t) => t.providerId === "javascript");

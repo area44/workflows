@@ -3107,6 +3107,106 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       expect(formatCommand("tool", ["a|b"])).toBe("tool 'a|b'");
       expect(formatCommand("tool", ["a&b"])).toBe("tool 'a&b'");
     });
+
+    describe("executeJsWorkflow package manager consistency", () => {
+      const setupJsProject = (
+        lockfile: "package-lock.json" | "pnpm-lock.yaml" | "bun.lock",
+        _packageManager: "npm" | "pnpm" | "bun",
+      ): string => {
+        fs.writeFileSync(
+          path.join(tempDir, "package.json"),
+          JSON.stringify({ scripts: { format: "prettier --write ." } }),
+        );
+        fs.writeFileSync(path.join(tempDir, lockfile), "{}");
+        return tempDir;
+      };
+
+      it("uses pnpm consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("pnpm-lock.yaml", "pnpm");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "pnpm",
+          ["install", "--no-frozen-lockfile"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "pnpm",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+      });
+
+      it("uses Bun consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("bun.lock", "bun");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "bun",
+          ["install"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "bun",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+      });
+
+      it("respects PACKAGE_MANAGER override over lockfile-detected manager", async () => {
+        const originalPm = process.env.PACKAGE_MANAGER;
+        process.env.PACKAGE_MANAGER = "bun";
+        try {
+          vi.mocked(exec.exec).mockResolvedValue(0);
+          mockWhichWith({});
+          setupJsProject("pnpm-lock.yaml", "pnpm");
+
+          await executeJsWorkflow(tempDir);
+
+          expect(exec.exec).toHaveBeenCalledWith(
+            "bun",
+            ["install"],
+            expect.objectContaining({ cwd: tempDir }),
+          );
+          expect(exec.exec).toHaveBeenCalledWith(
+            "bun",
+            ["run", "format"],
+            expect.objectContaining({ cwd: tempDir }),
+          );
+          expect(exec.exec).not.toHaveBeenCalledWith("pnpm", expect.anything(), expect.anything());
+          expect(exec.exec).not.toHaveBeenCalledWith("npm", expect.anything(), expect.anything());
+        } finally {
+          process.env.PACKAGE_MANAGER = originalPm;
+        }
+      });
+
+      it("uses npm consistently for install and script execution", async () => {
+        vi.mocked(exec.exec).mockResolvedValue(0);
+        mockWhichWith({});
+        setupJsProject("package-lock.json", "npm");
+
+        await executeJsWorkflow(tempDir);
+
+        expect(exec.exec).toHaveBeenCalledWith(
+          "npm",
+          ["install"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "npm",
+          ["run", "format"],
+          expect.objectContaining({ cwd: tempDir }),
+        );
+      });
+    });
   });
 
   describe("Nested Delegation and Duplicate Task Prevention", () => {
