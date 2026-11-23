@@ -183,9 +183,9 @@ describe("build-command", () => {
     });
 
     it("should handle arguments containing spaces inside double or single quotes", () => {
-      expect(parseCommand('npm run build --outDir "dist dir"')).toEqual({
+      expect(parseCommand('npm run build -- --outDir "dist dir"')).toEqual({
         command: "npm",
-        args: ["run", "build", "--outDir", "dist dir"],
+        args: ["run", "build", "--", "--outDir", "dist dir"],
       });
 
       expect(parseCommand("node build.js --title 'My Cool Site'")).toEqual({
@@ -196,6 +196,23 @@ describe("build-command", () => {
       expect(parseCommand("custom-tool --arg1 \"val 1\" --arg2 'val 2'")).toEqual({
         command: "custom-tool",
         args: ["--arg1", "val 1", "--arg2", "val 2"],
+      });
+    });
+
+    it("should preserve npm argument separator -- in parsed arguments", () => {
+      expect(parseCommand("npm run build -- --outDir dist")).toEqual({
+        command: "npm",
+        args: ["run", "build", "--", "--outDir", "dist"],
+      });
+
+      expect(parseCommand('npm run build -- --outDir "dist dir"')).toEqual({
+        command: "npm",
+        args: ["run", "build", "--", "--outDir", "dist dir"],
+      });
+
+      expect(parseCommand("pnpm run build -- --flag")).toEqual({
+        command: "pnpm",
+        args: ["run", "build", "--", "--flag"],
       });
     });
 

@@ -15,10 +15,10 @@ Build a static site and upload the GitHub Pages artifact. Reference: `area44/wor
 
 ## Inputs
 
-| Name            | Description                               | Default                       |
-| --------------- | ----------------------------------------- | ----------------------------- |
-| `path`          | Directory where the built site is located | `dist`                        |
-| `build-command` | Custom build command                      | `<package-manager> run build` |
+| Name            | Description                               | Default                                                             |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------------- |
+| `path`          | Directory where the built site is located | `dist`                                                              |
+| `build-command` | Custom build command                      | `vp build` if Vite+ is detected, else `<package-manager> run build` |
 
 ## Outputs
 
@@ -35,17 +35,27 @@ The canonical input/output contract is [action.yml](./action.yml); this table is
 ## Usage
 
 ```yaml
+name: GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
 permissions:
   contents: read
   pages: write
   id-token: write
 
-steps:
-  - uses: actions/checkout@v7
-  - uses: area44/workflows/pages@main
-    with:
-      path: dist
-      build-command: npm run build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: area44/workflows/pages@main
+        with:
+          path: dist
+          build-command: npm run build
 ```
 
 Build failures are written to `${RUNNER_TEMP}/pages_build_error.log` for CI assertions. Error handling details: [../docs/errors.md](../docs/errors.md). Security boundaries: [../docs/security.md](../docs/security.md).

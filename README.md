@@ -21,6 +21,7 @@ name: GitHub Pages
 on:
   push:
     branches: ["main"]
+  pull_request:
 
 permissions:
   contents: read

@@ -42,12 +42,22 @@ The canonical output contract is [action.yml](./action.yml); this table is a con
 ## Usage
 
 ```yaml
+name: autofix.ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
 permissions:
   contents: read
 
-steps:
-  - uses: actions/checkout@v7
-  - uses: area44/workflows/autofix@main
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: area44/workflows/autofix@main
 ```
 
 When the workflow is named `autofix.ci`, the action also runs `autofix-ci/action` to commit fixes. Environment resolution details: [../docs/environment-resolution.md](../docs/environment-resolution.md). Security boundaries: [../docs/security.md](../docs/security.md).
