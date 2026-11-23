@@ -1,86 +1,50 @@
-# Repository Maintenance & Health
+# Maintenance
 
-This document defines the maintenance policies, repository operational invariants, sources of truth, build pipelines, quality gates, and release procedures for `@area44/workflows`.
+Sources of truth, build pipeline, quality gates, and release process for this repository.
 
-## Purpose and Scope
+## Sources of truth
 
-This specification governs code maintenance, build artifact generation, quality gate enforcement, and release versioning procedures across the `@area44/workflows` repository.
+| Domain               | Authoritative source                             |
+| -------------------- | ------------------------------------------------ |
+| Package version      | `package.json` `version`                         |
+| Public action APIs   | `pages/action.yml`, `autofix/action.yml`         |
+| Build entrypoints    | `vite.config.ts` `pack` array (`src/` → `dist/`) |
+| Environment behavior | `src/resolve-environment.ts` + `tests/`          |
 
-## Repository Invariants
+Metadata, API contracts, and version declarations each have exactly one authoritative source; other files reference rather than duplicate them.
 
-The `@area44/workflows` repository enforces machine-verifiable operational invariants:
+## Structure
 
-- **Single Source of Truth**: Metadata, API contracts, and version declarations originate from single designated canonical source files.
-- **Explicit API Contracts**: Public GitHub Actions APIs are defined explicitly in per-action `action.yml` files (`pages/action.yml` and `autofix/action.yml`).
-- **Action Bootstrap Runtime**: Internal action entrypoints (`dist/*.mjs`) run consistently under Node.js across supported GitHub Actions runners. The target project runtime (`RUNTIME`) and package manager (`PACKAGE_MANAGER`) determine how user project commands (`bun install`, `pnpm install`, `npm run build`, `vp build`, `ruff`) are executed, keeping internal action orchestration decoupled from project runtime selection.
-- **Artifact Synchronization**: Tracked executable artifacts in `dist/` must remain perfectly synchronized with source code in `src/`.
+Each action is a root directory with an `action.yml` (inputs, outputs, step guards, steps) and a consumer `README.md`. Execution steps invoke committed artifacts in `dist/` via Node, e.g. `node "$ACTION_PATH/../dist/resolve-environment.mjs"`. The bundled entrypoints under `dist/*.mjs` run under Node.js across supported runners; the target project's runtime (`RUNTIME`) and package manager (`PACKAGE_MANAGER`) only govern how project commands (`npm run build`, `bun install`, `ruff`) execute.
 
-## Sources of Truth
+## Build pipeline
 
-To prevent duplication and configuration drift, specific files serve as authoritative sources of truth:
+`npm run build` (`vp pack`) bundles `src/` into ESM entrypoints in `dist/`:
 
-| Domain                 | Authoritative Source of Truth File                                 | Description                                                                       |
-| ---------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Package Versioning     | `package.json` (`version` property)                                | Primary package metadata and release version number.                              |
-| Public Action APIs     | Per-action `action.yml` (`pages/action.yml`, `autofix/action.yml`) | Single source of truth for public inputs, outputs, and step guards.               |
-| Environment Algorithms | `docs/environment-resolution.md`                                   | Canonical specification for environment resolution and setup planning algorithms. |
-| Build Pack Entries     | `vite.config.ts` (`pack` configuration array)                      | Canonical entrypoints mapping `src/` modules to `dist/*.mjs`.                     |
+- `src/resolve-environment.ts` → `dist/resolve-environment.mjs`
+- `src/autofix/index.ts` → `dist/autofix.mjs`
+- `src/pages/site-variables.ts` → `dist/pages/site-variables.mjs`
+- `src/pages/build-command.ts` → `dist/pages/build-command.mjs`
 
-## Algorithm & Documentation Synchronization
+`dist/` is committed and must match `src/`. The `check-dist` job in `.github/workflows/ci.yml` runs `npm run build` and fails if `git status --porcelain dist/` is non-empty.
 
-Environment resolution algorithms in `src/` (`src/resolve-environment.ts`, `src/javascript-env.ts`, `src/python-env.ts`, `src/setup-plan.ts`) are specified at a high level in [`docs/environment-resolution.md`](./environment-resolution.md). Whenever environment resolution or setup planning behavior changes, maintainers must:
+## Quality gates
 
-- Keep the documented principles and Mermaid flowchart in `docs/environment-resolution.md` synchronized with the implementation.
-- Add or update automated tests in `tests/` for exhaustive edge cases, treating source code and test suites as the authority for exact behavioral edge cases.
-- Update documentation references across `README.md`, `pages/README.md`, and `autofix/README.md` if responsibilities or entrypoints change.
+| Gate               | Command / step                       |
+| ------------------ | ------------------------------------ |
+| Install            | `npm ci`                             |
+| Lint + typecheck   | `npm run lint` (`vp lint`)           |
+| Format check       | `npm run format --check`          |
+| Build              | `npm run build` (`vp pack`)          |
+| Unit + integration | `npm test` (`vp test`)               |
+| Action CI matrix   | `.github/workflows/test-actions.yml` |
 
-## Public Action Structure
+`quality-test` (lint, format, test) and `check-dist` run in parallel on every push to `main` and pull request.
 
-Every public composite action provided by this repository adheres to the following structure:
+## Release
 
-- A dedicated directory at the repository root matching its declared action name (e.g., `pages/`, `autofix/`).
-- An `action.yml` metadata file defining inputs, outputs, step guards, environment variables, and execution steps.
-- A consumer-facing `README.md` file documenting purpose, features, exact inputs, outputs, usage examples, and failure behavior.
-- Execution steps in `action.yml` that invoke verified build artifacts located in `dist/` using Node (e.g., `node "$ACTION_PATH/../dist/resolve-environment.mjs"`).
+Uses `@changesets/cli`. The package is `"private": true`, so it is tagged and released on GitHub but never published to npm (the field does not affect repo visibility).
 
-## Build Artifacts Pipeline
-
-The `npm run build` command uses Vite+ (`vp pack`) to compile and bundle TypeScript source files from `src/` into standalone executable ESM entrypoints in `dist/`:
-
-- `src/resolve-environment.ts` -> `dist/resolve-environment.mjs`
-- `src/pages/site-variables.ts` -> `dist/pages/site-variables.mjs`
-- `src/pages/build-command.ts` -> `dist/pages/build-command.mjs`
-- `src/autofix/index.ts` -> `dist/autofix.mjs`
-
-The `check-dist` job in `.github/workflows/ci.yml` validates that committed `dist/` artifacts match freshly built outputs, failing if any drift is detected. It runs as a separate, independent job alongside `quality-test` on every push to `main` and pull request.
-
-## Quality Gates and Test Commands
-
-Maintainers and automated CI pipelines enforce the following quality gates:
-
-| Stage / Gate              | Command / Pipeline Step                               | Description                                                         |
-| ------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
-| Dependency Installation   | `npm ci`                                              | Installs exact locked workspace dependencies.                       |
-| Lint                      | `npm run lint` (`vp lint`)                            | Validates code style and lint rules via Vite+.                      |
-| Formatting Validation     | `npm run format --check` (`vp fmt --check`)           | Checks code formatting without mutating source files.               |
-| Build                     | `npm run build` (`vp pack`)                           | Bundles TypeScript source code into `dist/` artifacts.              |
-| Unit & Integration Tests  | `npm test` (`vp test`)                                | Executes unit and scenario factory test suites via Vitest.          |
-| Action Integration Matrix | GitHub Actions (`.github/workflows/test-actions.yml`) | Tests `pages` and `autofix` composite actions in live runner steps. |
-| Changeset Creation        | `npm run changeset`                                   | Interactively creates a new changeset file.                         |
-
-## Release Process and Versioning
-
-This repository uses `@changesets/cli` to automate package versioning, changelog updates, and tag creation for the `@area44/workflows` package, which is not intended for publication to the npm registry:
-
-1. **Creating Changesets**: Pull requests introducing user-facing changes include a changeset file under `.changeset/*.md` created via `npm run changeset`.
-2. **Version PR**: When PRs are merged into `main`, Changesets automation opens or updates a Version PR that bumps `package.json` version and updates `CHANGELOG.md`.
-3. **Tagging and Release**: Merging the Version PR triggers `changeset tag`, creating git release tags (e.g. `v8.0.1`) and GitHub Releases. Because the `@area44/workflows` package is marked `"private": true` in `package.json`, no package publication to the npm registry takes place.
-
-> **Visibility note**: The `"private": true` field in `package.json` only prevents the npm package from being published; it does not make the GitHub repository private. The source repository (`area44/workflows`) is public, while the npm package remains unpublished by design.
-
-## Related Documentation
-
-- **[Repository README](../README.md)**: Main project overview and action API summary.
-- **[Error Handling Architecture](./errors.md)**: Native JavaScript error boundaries and failure logging.
-- **[Security Boundaries](./security.md)**: Trust boundaries, process tokenization, and secret masking.
-- **[Integration Testing Guide](./integration-testing.md)**: Scenario factory, unit testing, and integration CI matrix.
+1. PRs with user-facing changes include a changeset (`npm run changeset` → `.changeset/*.md`).
+2. Merging to `main` makes Changesets open/update a Version PR that bumps `package.json` and `CHANGELOG.md`.
+3. Merging the Version PR runs `npm run version` + `npm run release`, creating git tags and GitHub Releases.

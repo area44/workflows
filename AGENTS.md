@@ -1,20 +1,43 @@
-# Project Overview
+# Agent Instructions
 
-This repository contains reusable GitHub Actions workflows and composite actions (Astro, Vite, Autofix) for the AREA44 ecosystem.
+Reusable GitHub Actions composite actions for the AREA44 ecosystem. Source lives in `src/`; `action.yml` files (`pages/`, `autofix/`) are the public API; bundled entrypoints in `dist/` are generated from `src/` and committed.
 
-<!--VITE PLUS START-->
+## Workflow
 
-# Using Vite+, the Unified Toolchain for the Web
+1. Install: `npm ci`
+2. Make changes in `src/`.
+3. If you changed `src/`, rebuild: `npm run build`. Commit the resulting `dist/` changes — `check-dist` in `.github/workflows/ci.yml` fails otherwise.
+4. Format/lint/typecheck: `npm run lint` and `npm run format --check`. Auto-fix with `npm run format` or `npm run lint --fix`.
+5. Test: `npm test`.
 
-This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, and it invokes Vite through `vp dev` and `vp build`. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
+Do not hand-edit `dist/` — it is generated. Do not add runtime dependencies to the published actions without a changeset.
 
-Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.dev/guide/.
+## Commands
 
-## Review Checklist
+| Task               | Command                     |
+| ------------------ | --------------------------- |
+| Install            | `npm ci`                    |
+| Build `dist/`      | `npm run build` (`vp pack`) |
+| Unit + integration | `npm test` (`vp test`)      |
+| Lint + typecheck   | `npm run lint` (`vp lint`)  |
+| Format check       | `npm run format --check`    |
+| Format fix         | `npm run format`            |
+| Changeset          | `npm run changeset`         |
 
-- [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to format, lint, type check and test changes.
-- [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
-- [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
+Run `npm run <script>` (or `npx vp <task>`) rather than calling `vp` directly unless it is on `PATH`.
 
-<!--VITE PLUS END-->
+## Completion criteria
+
+A change is done only when:
+
+- `npm run lint` passes with no errors.
+- `npm run format --check` passes.
+- `npm test` passes (on Windows, the scenario-factory spawning tests in `tests/generate-consumer-project.test.ts` fail with `ERR_UNSUPPORTED_ESM_URL_SCHEME`; treat the remaining suites as the gate and do not claim the full suite passed if they fail).
+- If `src/` changed: `npm run build` was run and `dist/` changes are staged.
+
+## Where to look
+
+- Public action API (inputs/outputs/steps): `pages/action.yml`, `autofix/action.yml`.
+- Behavior details: [pages/README.md](pages/README.md), [autofix/README.md](autofix/README.md).
+- Environment resolution: [docs/environment-resolution.md](docs/environment-resolution.md).
+- Build/release/test architecture: [docs/maintenance.md](docs/maintenance.md), [docs/integration-testing.md](docs/integration-testing.md).
