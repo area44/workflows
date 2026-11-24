@@ -18,7 +18,7 @@ import {
   classifyScript,
   hasVitePlusCommand,
   resolveScriptTasks,
-} from "@/autofix/adapters/javascript/script-adapter";
+} from "@/autofix/adapters/javascript";
 import {
   BiomeAdapter,
   EslintAdapter,

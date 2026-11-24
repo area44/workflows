@@ -10,9 +10,10 @@ import type {
   ToolAdapter,
 } from "@/autofix/types";
 
-import { hasVitePlusCommand } from "@/autofix/adapters/javascript/script-adapter";
 import { resolveProjectBinary } from "@/autofix/engine";
 import { hasVitePlusDependency, type JsPackageManifest } from "@/javascript-env";
+
+import { hasVitePlusCommand } from "./vite-plus-detector";
 
 function hasVitePlusScript(scripts?: Record<string, string>): boolean {
   if (!scripts) return false;
