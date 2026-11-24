@@ -16,7 +16,7 @@ import {
   stripTomlStringsAndComments,
   type ParsedTomlSuccess,
   type ParsedTomlError,
-} from "@/python-env.js";
+} from "@/python-env";
 
 describe("Python Package Manager Detection", () => {
   const fixturesDir = os.tmpdir();
