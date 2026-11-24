@@ -28,8 +28,9 @@ import {
   VitePlusAdapter,
   detectToolAvailability,
 } from "@/autofix/adapters/javascript/tools";
-import { ExecutionEngine, isExecutableBinary, resolveProjectBinary } from "@/autofix/engine";
+import { ExecutionEngine } from "@/autofix/engine";
 import { formatCommand } from "@/autofix/exec";
+import { isExecutableBinary, resolveProjectBinary } from "@/autofix/executable-resolver";
 import { executeJsWorkflow, run } from "@/autofix/index";
 import { planExecution } from "@/autofix/planner";
 import { JavaScriptLanguageProvider } from "@/autofix/providers/javascript";

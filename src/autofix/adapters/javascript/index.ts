@@ -39,3 +39,11 @@ export {
   resolveCheckScriptTasks,
   type ScriptMapping,
 } from "./script-task-resolver";
+
+export {
+  BaseToolAdapter,
+  detectToolAvailability,
+  type AdapterConfig,
+  type DetectToolOptions,
+  type TaskDefinition,
+} from "./base-adapter";
