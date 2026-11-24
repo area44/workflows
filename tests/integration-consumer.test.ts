@@ -3,7 +3,7 @@
  *
  * Scope & Architecture:
  * This test suite validates module-level integration between domain modules in `src/`
- * (resolveEnvironment, resolveSiteVariables, resolveBuildCommandToParse, selectAutofixScripts)
+ * (resolveEnvironment, resolveSiteVariables, resolveBuildCommandToParse)
  * against a dynamically generated consumer project fixture.
  *
  * Direct module imports are used here for fast local unit/component validation.
