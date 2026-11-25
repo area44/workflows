@@ -19,7 +19,7 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
   public readonly capabilities: readonly Capability[] = ["autofix", "format", "lint"];
 
   public detect(context: ProjectContext): AdapterDetectionResult {
-    const scripts = context.jsEnv?.packageJson?.scripts;
+    const scripts = context.javascript?.env.packageJson?.scripts;
     if (!scripts || Object.keys(scripts).length === 0) {
       return { detected: false, reason: "no scripts declared in package.json" };
     }
@@ -40,10 +40,10 @@ export class JavaScriptScriptAdapter implements ToolAdapter {
   }
 
   public plan(context: ProjectContext, mode: ExecutionMode): ExecutionTask[] {
-    const scripts = context.jsEnv?.packageJson?.scripts || {};
+    const scripts = context.javascript?.env.packageJson?.scripts || {};
     const scriptMappings = resolveScriptTasks(scripts, mode);
 
-    const pm = sanitizePackageManager(context.jsPm || "npm");
+    const pm = sanitizePackageManager(context.javascript?.packageManager || "npm");
     return scriptMappings.map((mapping) => {
       const scriptName = mapping.scriptName;
       return {

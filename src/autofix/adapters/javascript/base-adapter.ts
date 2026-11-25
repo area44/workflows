@@ -47,7 +47,7 @@ export async function detectToolAvailability(
   options: DetectToolOptions,
 ): Promise<AdapterDetectionResult> {
   const { toolName, executable, requiredPackage, hasConfig, extraPackages, platform } = options;
-  const pkg = context.jsEnv?.packageJson;
+  const pkg = context.javascript?.env.packageJson;
   const packagesToCheck = [requiredPackage, ...(extraPackages ?? [])];
   const hasDep = packagesToCheck.some((dep) => hasDependency(pkg, dep));
 
@@ -164,7 +164,7 @@ export abstract class BaseToolAdapter implements ToolAdapter {
     }
 
     const hasPkgConfig = this.config.pkgConfigKeys?.some((key) =>
-      Boolean((context.jsEnv?.packageJson as any)?.[key]),
+      Boolean((context.javascript?.env.packageJson as any)?.[key]),
     );
     const hasConfigFile = hasAnyConfigFile(context.cwd, this.config.configFiles);
     const hasConfig = Boolean(hasPkgConfig || hasConfigFile);
@@ -183,7 +183,7 @@ export abstract class BaseToolAdapter implements ToolAdapter {
     context: ProjectContext,
     customResult: { hasConfig: boolean; hasVpScript?: boolean },
   ): Promise<AdapterDetectionResult> {
-    const pkg = context.jsEnv?.packageJson;
+    const pkg = context.javascript?.env.packageJson;
     const hasDep = hasVitePlusDependency(pkg);
     const hasConfig = customResult.hasConfig;
     const hasVpScript = customResult.hasVpScript ?? false;

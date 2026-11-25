@@ -32,7 +32,7 @@ import { ExecutionEngine } from "@/autofix/engine";
 import { formatCommand } from "@/autofix/exec";
 import { isExecutableBinary, resolveProjectBinary } from "@/autofix/executable-resolver";
 import { executeJsWorkflow, run } from "@/autofix/index";
-import { planExecution } from "@/autofix/planner";
+import { planExecution } from "@/autofix/planner/index";
 import { JavaScriptLanguageProvider } from "@/autofix/providers/javascript";
 import { PythonLanguageProvider } from "@/autofix/providers/python";
 import { AutofixRegistry, createDefaultRegistry, defaultRegistry } from "@/autofix/registry";
@@ -128,7 +128,11 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
     it("keeps lint and format as separate capabilities in plan", async () => {
       vi.spyOn(io, "which").mockResolvedValue("/usr/bin/ruff");
       const registry = createDefaultRegistry();
-      const plan = await planExecution(registry, { cwd: tempDir, hasPythonSource: true }, "fix");
+      const plan = await planExecution(
+        registry,
+        { cwd: tempDir, python: { hasSource: true } },
+        "fix",
+      );
 
       const ruffTasks = plan.tasks.filter((t) => t.toolId === "ruff");
       expect(ruffTasks).toHaveLength(2);
@@ -2095,7 +2099,11 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
 
       const registry = createDefaultRegistry();
-      const plan = await planExecution(registry, { cwd: tempDir, hasPythonSource: true }, "fix");
+      const plan = await planExecution(
+        registry,
+        { cwd: tempDir, python: { hasSource: true } },
+        "fix",
+      );
 
       // Verify Python tasks are scheduled (Ruff lint and format)
       expect(plan.tasks.some((t) => t.id === "ruff-lint-fix")).toBe(true);
@@ -3778,7 +3786,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new PrettierAdapter();
         const detection = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(detection.detected).toBe(false);
         expect(detection.hasConfig).toBe(true);
@@ -3819,7 +3827,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new BiomeAdapter();
         const detection = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(detection.detected).toBe(false);
         expect(detection.hasConfig).toBe(true);
@@ -3852,7 +3860,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new EslintAdapter();
         const detection = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(detection.detected).toBe(false);
         expect(detection.hasConfig).toBe(true);
@@ -3885,7 +3893,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new OxlintAdapter();
         const detection = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(detection.detected).toBe(false);
         expect(detection.hasConfig).toBe(true);
@@ -3918,7 +3926,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new OxfmtAdapter();
         const detection = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(detection.detected).toBe(false);
         expect(detection.hasConfig).toBe(true);
@@ -4141,7 +4149,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const prettierAdapter = new PrettierAdapter();
         const prettierResult = await prettierAdapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(prettierResult.detected).toBe(false);
         expect(prettierResult.reason).toBe("no Prettier dependency or configuration");
@@ -4217,7 +4225,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new VitePlusAdapter();
         const result = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(result.detected).toBe(true);
         expect(result.hasDependency).toBe(true);
@@ -4234,7 +4242,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new VitePlusAdapter();
         const result = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(result.detected).toBe(false);
         expect(result.isEligible).toBe(false);
@@ -4252,7 +4260,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         );
         const dummyContext: ProjectContext = {
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         };
 
         // State 1: Config true, Dep true -> eligible
@@ -4272,7 +4280,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "no-dep" }));
         const noDepContext: ProjectContext = {
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         };
         const state2 = await detectToolAvailability(noDepContext, {
           toolId: "custom",
@@ -4364,7 +4372,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
         const adapter = new VitePlusAdapter();
         const result = await adapter.detect({
           cwd: tempDir,
-          jsEnv: inspectJsProjectEnvironment(tempDir),
+          javascript: { env: inspectJsProjectEnvironment(tempDir) },
         });
         expect(result.detected).toBe(false);
         expect(result.hasConfig).toBe(true);

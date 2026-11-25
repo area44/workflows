@@ -32,12 +32,15 @@ export class Planner {
   constructor(private readonly registry: AutofixRegistry) {}
 
   async plan(context: ProjectContext, mode: ExecutionMode = "fix"): Promise<PlannedExecution> {
-    const resolvedHasPythonSource = context.hasPythonSource ?? hasPythonSource(context.cwd);
-    const resolvedJsEnv = context.jsEnv ?? inspectJsProjectEnvironment(context.cwd);
+    const resolvedHasPythonSource = context.python?.hasSource ?? hasPythonSource(context.cwd);
+    const resolvedJsEnv = context.javascript?.env ?? inspectJsProjectEnvironment(context.cwd);
     const effectiveContext: ProjectContext = {
-      ...context,
-      jsEnv: resolvedJsEnv,
-      hasPythonSource: resolvedHasPythonSource,
+      cwd: context.cwd,
+      javascript: {
+        env: resolvedJsEnv,
+        packageManager: context.javascript?.packageManager,
+      },
+      python: { hasSource: resolvedHasPythonSource },
     };
 
     const selectedTools: ToolRecord[] = [];
@@ -114,6 +117,15 @@ export class Planner {
 
 export function createPlanner(registry: AutofixRegistry): Planner {
   return new Planner(registry);
+}
+
+export async function planExecution(
+  registry: AutofixRegistry,
+  context: ProjectContext,
+  mode: ExecutionMode = "fix",
+): Promise<PlannedExecution> {
+  const planner = createPlanner(registry);
+  return planner.plan(context, mode);
 }
 
 export { filterCandidateTasks } from "./scope-resolver";

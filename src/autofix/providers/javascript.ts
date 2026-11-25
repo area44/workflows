@@ -43,10 +43,11 @@ function anySetupFailed(vars: readonly string[]): boolean {
  * environment, throwing an actionable error when resolution fails.
  */
 export function resolveJsPm(context: ProjectContext): SupportedPackageManager {
-  if (context.jsPm) {
-    return context.jsPm;
+  if (context.javascript?.packageManager) {
+    return context.javascript.packageManager;
   }
-  const rawPm = process.env.PACKAGE_MANAGER || resolveJsPackageManager(context.jsEnv!).name;
+  const rawPm =
+    process.env.PACKAGE_MANAGER || resolveJsPackageManager(context.javascript!.env).name;
   return sanitizePackageManager(rawPm) as SupportedPackageManager;
 }
 
@@ -106,7 +107,7 @@ async function runJsProvider(
     return [new Error("JavaScript runtime or package manager setup failed.")];
   }
 
-  const jsEnv = context.jsEnv ?? inspectJsProjectEnvironment(context.cwd);
+  const jsEnv = context.javascript?.env ?? inspectJsProjectEnvironment(context.cwd);
   if (!jsEnv.hasPackageJson) {
     core.info("No package.json found. Skipping scripts.");
     return [];
@@ -120,7 +121,7 @@ async function runJsProvider(
     return [];
   }
 
-  return installAndExecuteJsTasks({ ...context, jsEnv }, tasks, engine);
+  return installAndExecuteJsTasks({ ...context, javascript: { env: jsEnv } }, tasks, engine);
 }
 
 export class JavaScriptLanguageProvider implements LanguageProvider {
@@ -137,7 +138,7 @@ export class JavaScriptLanguageProvider implements LanguageProvider {
   private oxfmtAdapter = new OxfmtAdapter();
 
   public detect(context: ProjectContext): boolean {
-    return Boolean(context.jsEnv?.hasPackageJson);
+    return Boolean(context.javascript?.env.hasPackageJson);
   }
 
   public getAdapters(_context: ProjectContext): ToolAdapter[] {

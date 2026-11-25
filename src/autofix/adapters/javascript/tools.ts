@@ -66,11 +66,11 @@ const vitePlusConfig: AdapterConfig = {
     const hasConfig = vitePlusConfig.configFiles.some((f) =>
       fs.existsSync(path.join(context.cwd, f)),
     );
-    const hasVpScript = hasVitePlusScript(context.jsEnv?.packageJson?.scripts);
+    const hasVpScript = hasVitePlusScript(context.javascript?.env.packageJson?.scripts);
     return { hasConfig, hasVpScript };
   },
   customPlan: async (context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> => {
-    const pkg = context.jsEnv?.packageJson;
+    const pkg = context.javascript?.env.packageJson;
     const hasDep = hasVitePlusDependency(pkg);
     const hasConfig = vitePlusConfig.configFiles.some((f) =>
       fs.existsSync(path.join(context.cwd, f)),

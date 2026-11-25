@@ -89,7 +89,7 @@ async function runPythonProvider(
   tasks: ExecutionTask[],
   engine: ExecutionEngine,
 ): Promise<Error[]> {
-  const hasSourceCode = context.hasPythonSource ?? hasPythonSource(context.cwd);
+  const hasSourceCode = context.python?.hasSource ?? hasPythonSource(context.cwd);
   if (!hasSourceCode) {
     return [];
   }
@@ -132,7 +132,7 @@ export class PythonLanguageProvider implements LanguageProvider {
   private ruffAdapter = new RuffAdapter();
 
   public detect(context: ProjectContext): boolean {
-    return context.hasPythonSource ?? hasPythonSource(context.cwd);
+    return context.python?.hasSource ?? hasPythonSource(context.cwd);
   }
 
   public getAdapters(_context: ProjectContext): ToolAdapter[] {

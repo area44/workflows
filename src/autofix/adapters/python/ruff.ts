@@ -19,7 +19,7 @@ export class RuffAdapter implements ToolAdapter {
 
   public detect(context: ProjectContext): AdapterDetectionResult {
     // Ruff is the default toolchain whenever Python source code is detected
-    const hasSource = context.hasPythonSource ?? hasPythonSource(context.cwd);
+    const hasSource = context.python?.hasSource ?? hasPythonSource(context.cwd);
     if (hasSource) {
       return { detected: true, reason: "default Python toolchain" };
     }
