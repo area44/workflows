@@ -1,8 +1,51 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import type { ParsedToml } from "./types";
 
-import { collectParentDirs } from "./directory-utils";
+import { collectParentDirs, isDirectoryMatchedByGlobs } from "./directory-utils";
 import { readPyprojectToml } from "./toml-parser";
-import { isValidUvWorkspaceConfig, isWorkspaceMember, isObject } from "./types";
+import { isValidUvWorkspaceConfig, isObject } from "./types";
+
+export function isWorkspaceMember(
+  wsRootDir: string,
+  childDir: string,
+  workspaceConfig: Record<string, unknown>,
+): boolean {
+  const resolvedWsRoot = path.resolve(wsRootDir);
+  const resolvedChild = path.resolve(childDir);
+  const relPath = path.relative(resolvedWsRoot, resolvedChild).replace(/\\/g, "/");
+
+  if (relPath.startsWith("..") || path.isAbsolute(relPath)) {
+    return false;
+  }
+
+  const members = Array.isArray(workspaceConfig.members)
+    ? workspaceConfig.members.filter((m): m is string => typeof m === "string")
+    : [];
+
+  const excludes = Array.isArray(workspaceConfig.exclude)
+    ? workspaceConfig.exclude.filter((e): e is string => typeof e === "string")
+    : [];
+
+  const effectiveRelPath = relPath === "" ? "." : relPath;
+
+  if (excludes.length > 0 && isDirectoryMatchedByGlobs(effectiveRelPath, excludes)) {
+    return false;
+  }
+
+  if (!isDirectoryMatchedByGlobs(effectiveRelPath, members)) {
+    return false;
+  }
+
+  if (resolvedChild !== resolvedWsRoot) {
+    if (!fs.existsSync(path.join(resolvedChild, "pyproject.toml"))) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 export function getWorkspaceConfigInDir(
   dir: string,

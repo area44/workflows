@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { ExecutionMode, ExecutionTask, ProjectContext } from "@/autofix/types";
+import type {
+  AdapterDetectionResult,
+  ExecutionMode,
+  ExecutionTask,
+  ProjectContext,
+} from "@/autofix/types";
 
 import { resolveProjectBinary } from "@/autofix/executable-resolver";
 import { hasVitePlusDependency } from "@/javascript-env";
@@ -12,14 +17,7 @@ import {
   detectToolAvailability,
   type DetectToolOptions,
 } from "./base-adapter";
-import { hasVitePlusCommand } from "./vite-plus-detector";
-
-function hasVitePlusScript(scripts?: Record<string, string>): boolean {
-  if (!scripts) return false;
-  return Object.values(scripts).some((scriptBody) => {
-    return hasVitePlusCommand(scriptBody, scripts);
-  });
-}
+import { hasVitePlusScript } from "./vite-plus-detector";
 
 export { detectToolAvailability, type DetectToolOptions };
 
@@ -62,12 +60,57 @@ const vitePlusConfig: AdapterConfig = {
       description: "Vite+: vp lint",
     },
   ],
-  customDetect: async (context: ProjectContext) => {
+  customDetect: async (context: ProjectContext): Promise<AdapterDetectionResult> => {
+    const pkg = context.javascript?.env.packageJson;
+    const hasDep = hasVitePlusDependency(pkg);
     const hasConfig = vitePlusConfig.configFiles.some((f) =>
       fs.existsSync(path.join(context.cwd, f)),
     );
     const hasVpScript = hasVitePlusScript(context.javascript?.env.packageJson?.scripts);
-    return { hasConfig, hasVpScript };
+    const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
+    const hasExec = Boolean(resolvedBin);
+
+    if (hasDep) {
+      return {
+        detected: true,
+        reason: "Vite+ dependency and/or configuration detected",
+        hasConfig,
+        hasDependency: true,
+        isExecutableAvailable: hasExec,
+        isEligible: true,
+      };
+    }
+
+    if (hasConfig && hasVpScript) {
+      if (hasExec) {
+        return {
+          detected: true,
+          reason: "Vite+ configuration detected and executable available",
+          hasConfig: true,
+          hasDependency: false,
+          isExecutableAvailable: true,
+          isEligible: true,
+        };
+      }
+      return {
+        detected: false,
+        reason:
+          "Vite+ script detected but executable is unavailable and dependency is not declared",
+        hasConfig: true,
+        hasDependency: false,
+        isExecutableAvailable: false,
+        isEligible: false,
+      };
+    }
+
+    return {
+      detected: false,
+      reason: "no Vite+ dependency or configuration",
+      hasConfig,
+      hasDependency: false,
+      isExecutableAvailable: false,
+      isEligible: false,
+    };
   },
   customPlan: async (context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> => {
     const pkg = context.javascript?.env.packageJson;

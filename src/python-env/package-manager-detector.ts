@@ -10,14 +10,9 @@ import type {
 } from "./types";
 
 import { hasPythonSource, findPythonProjectContext } from "./project-inspector";
-import {
-  PYTHON_PACKAGE_MANAGER_PRIORITY,
-  isObject,
-  isValidUvWorkspaceConfig,
-  isWorkspaceMember,
-} from "./types";
+import { PYTHON_PACKAGE_MANAGER_PRIORITY, isObject, isValidUvWorkspaceConfig } from "./types";
 import { getRelativePath } from "./utils";
-import { getWorkspaceConfigInDir } from "./uv-workspace";
+import { getWorkspaceConfigInDir, isWorkspaceMember } from "./uv-workspace";
 
 function isUvProjectConfigPresent(parsed: Record<string, unknown>, rawContent?: string): boolean {
   if (hasProjectTable(parsed, rawContent) || hasBuildSystemTable(parsed, rawContent)) {

@@ -13,7 +13,6 @@ export {
   DEFAULT_EXCLUDED_DIRS,
   isObject,
   isValidUvWorkspaceConfig,
-  isWorkspaceMember,
 } from "./types";
 
 export { parseToml, parseTomlFile, readPyprojectToml, readUvToml } from "./toml-parser";
@@ -25,6 +24,7 @@ export {
   isInUvWorkspace,
   getWorkspaceConfigInDir,
   getWorkspaceConfigInDir as findWorkspaceConfigInDir,
+  isWorkspaceMember,
 } from "./uv-workspace";
 
 export {
