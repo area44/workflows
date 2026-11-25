@@ -11,48 +11,21 @@ import type {
 import { inspectJsProjectEnvironment } from "@/javascript-env";
 import { hasPythonSource } from "@/python-env";
 
-import { deduplicateTasks } from "./deduplicator";
-import { processCandidateTools } from "./scope-resolver";
+import { processCandidateTools, processStandaloneAdapters } from "./scope-resolver";
 import { formatExecutionPlanSummary } from "./summary-maker";
-
-interface CandidateTool {
-  adapter: ToolAdapter;
-  reason?: string;
-  scope: string;
-  providerId?: string;
-}
 
 type ToolRecord = { id: string; name: string; reason?: string; providerId?: string };
 
-async function processStandaloneAdapters(
-  registry: AutofixRegistry,
-  coveredCapabilitiesByScope: Map<string, Set<Capability>>,
-  context: ProjectContext,
-  mode: ExecutionMode,
-  selectedTools: ToolRecord[],
-  skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }>,
-  tasks: ExecutionTask[],
-): Promise<void> {
-  const candidateTools: CandidateTool[] = [];
-  for (const adapter of registry.getStandaloneAdapters()) {
-    const result = await adapter.detect(context);
-    const scope = adapter.scope ?? `standalone:${adapter.id}`;
-    if (result.detected) {
-      candidateTools.push({ adapter, reason: result.reason, scope });
-    } else if (result.reason && !result.reason.startsWith("no ")) {
-      skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
+function deduplicateTasks(tasks: ExecutionTask[]): ExecutionTask[] {
+  const deduplicatedTasks: ExecutionTask[] = [];
+  const seenTaskIds = new Set<string>();
+  for (const task of tasks) {
+    if (!seenTaskIds.has(task.id)) {
+      seenTaskIds.add(task.id);
+      deduplicatedTasks.push(task);
     }
   }
-
-  await processCandidateTools(
-    candidateTools,
-    coveredCapabilitiesByScope,
-    context,
-    mode,
-    selectedTools,
-    skippedTools,
-    tasks,
-  );
+  return deduplicatedTasks;
 }
 
 export class Planner {
@@ -82,7 +55,12 @@ export class Planner {
       }
 
       const adapters = provider.getAdapters(effectiveContext);
-      const candidateTools: CandidateTool[] = [];
+      const candidateTools: {
+        adapter: ToolAdapter;
+        reason?: string;
+        scope: string;
+        providerId?: string;
+      }[] = [];
 
       for (const adapter of adapters) {
         const result = await adapter.detect(effectiveContext);
@@ -138,7 +116,8 @@ export function createPlanner(registry: AutofixRegistry): Planner {
   return new Planner(registry);
 }
 
+export { filterCandidateTasks } from "./scope-resolver";
 export { processCandidateTools } from "./scope-resolver";
-export { deduplicateTasks } from "./deduplicator";
+export { processStandaloneAdapters } from "./scope-resolver";
 export { formatExecutionPlanSummary } from "./summary-maker";
-export { filterCandidateTasks } from "./capability-resolver";
+export { deduplicateTasks };
