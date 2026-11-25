@@ -21,6 +21,25 @@ import { hasVitePlusScript } from "./vite-plus-detector";
 
 export { detectToolAvailability, type DetectToolOptions };
 
+interface VitePlusState {
+  hasDep: boolean;
+  hasConfig: boolean;
+  hasVpScript: boolean;
+  hasExec: boolean;
+}
+
+async function resolveVitePlusState(context: ProjectContext): Promise<VitePlusState> {
+  const pkg = context.javascript?.env.packageJson;
+  const hasDep = hasVitePlusDependency(pkg);
+  const hasConfig = vitePlusConfig.configFiles.some((f) =>
+    fs.existsSync(path.join(context.cwd, f)),
+  );
+  const hasVpScript = hasVitePlusScript(pkg?.scripts);
+  const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
+  const hasExec = Boolean(resolvedBin);
+  return { hasDep, hasConfig, hasVpScript, hasExec };
+}
+
 const vitePlusConfig: AdapterConfig = {
   id: "vite-plus",
   name: "Vite+",
@@ -61,14 +80,7 @@ const vitePlusConfig: AdapterConfig = {
     },
   ],
   customDetect: async (context: ProjectContext): Promise<AdapterDetectionResult> => {
-    const pkg = context.javascript?.env.packageJson;
-    const hasDep = hasVitePlusDependency(pkg);
-    const hasConfig = vitePlusConfig.configFiles.some((f) =>
-      fs.existsSync(path.join(context.cwd, f)),
-    );
-    const hasVpScript = hasVitePlusScript(context.javascript?.env.packageJson?.scripts);
-    const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
-    const hasExec = Boolean(resolvedBin);
+    const { hasDep, hasConfig, hasVpScript, hasExec } = await resolveVitePlusState(context);
 
     if (hasDep) {
       return {
@@ -113,14 +125,7 @@ const vitePlusConfig: AdapterConfig = {
     };
   },
   customPlan: async (context: ProjectContext, mode: ExecutionMode): Promise<ExecutionTask[]> => {
-    const pkg = context.javascript?.env.packageJson;
-    const hasDep = hasVitePlusDependency(pkg);
-    const hasConfig = vitePlusConfig.configFiles.some((f) =>
-      fs.existsSync(path.join(context.cwd, f)),
-    );
-    const hasVpScript = hasVitePlusScript(pkg?.scripts);
-    const resolvedBin = await resolveProjectBinary(context.cwd, "vp");
-    const hasExec = Boolean(resolvedBin);
+    const { hasDep, hasConfig, hasVpScript, hasExec } = await resolveVitePlusState(context);
 
     if (!hasDep && hasConfig && hasVpScript && !hasExec) {
       return [];
