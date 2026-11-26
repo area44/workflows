@@ -455,14 +455,10 @@ describe("Consumer Project Generator Unit & Regression Suite", () => {
   });
 
   describe("CLI Invocation Safety", () => {
-    const generatorScript = path.resolve(
-      process.cwd(),
-      "tests/helpers/consumer-project/generate-consumer-project.ts",
-    );
-    const resolverScript = path.resolve(
-      process.cwd(),
-      "tests/helpers/consumer-project/resolver.js",
-    );
+    const generatorScript = "./tests/helpers/consumer-project/generate-consumer-project.ts";
+    const resolverScript = "./tests/helpers/consumer-project/resolver.js";
+    // Relative paths are required on Windows with Node.js ESM loader; absolute paths
+    // with drive letters trigger ERR_UNSUPPORTED_ESM_URL_SCHEME (protocol 'c:').
     const nodeCmd = `node --import "${resolverScript}" "${generatorScript}"`;
 
     it("fails with error code 1 when CLI is invoked without a target directory argument", () => {
