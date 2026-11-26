@@ -6,6 +6,7 @@
 - Potential large module count in autofix JS adapter; monitor cohesion.
 
 ## Classification
+
 - P3: lint warning in skill script.
 - P2: Windows spawn test failures (environment).
 - P3: type assertion in base-adapter.
