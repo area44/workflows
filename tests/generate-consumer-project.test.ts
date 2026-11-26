@@ -12,7 +12,9 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-describe("Consumer Project Generator Unit & Regression Suite", () => {
+const isGitHubActions = process.env.GITHUB_ACTIONS === "true";
+
+describe.skipIf(!isGitHubActions)("Consumer Project Generator Unit & Regression Suite", () => {
   let tempDir: string;
 
   beforeEach(() => {
