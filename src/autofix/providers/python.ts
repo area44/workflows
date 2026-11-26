@@ -91,9 +91,7 @@ async function runPythonProvider(
   engine: ExecutionEngine,
 ): Promise<Error[]> {
   const hasSourceCode = context.python?.hasSource ?? hasPythonSource(context.cwd);
-  const isPythonProject = context.python?.inspection
-    ? true
-    : hasPythonProject(context.cwd, { hasSource: hasSourceCode });
+  const isPythonProject = context.python?.hasProject ?? hasPythonProject(context.cwd);
 
   const errors: Error[] = [];
 
@@ -121,6 +119,10 @@ async function runPythonProvider(
 
   // Execute Ruff tasks only when Python source files are present
   if (hasSourceCode && tasks.length > 0) {
+    // If dependency installation failed, don't proceed with Ruff
+    if (errors.length > 0) {
+      return errors;
+    }
     errors.push(...collectErrors(await engine.executeTasks(tasks)));
   }
 
@@ -135,7 +137,7 @@ export class PythonLanguageProvider implements LanguageProvider {
   private ruffAdapter = new RuffAdapter();
 
   public detect(context: ProjectContext): boolean {
-    return context.python?.hasSource ?? hasPythonSource(context.cwd);
+    return context.python?.hasProject ?? hasPythonProject(context.cwd);
   }
 
   public getAdapters(_context: ProjectContext): ToolAdapter[] {

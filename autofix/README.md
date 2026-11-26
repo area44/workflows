@@ -29,13 +29,13 @@ None.
 
 ## Outputs
 
-| Name                         | Description                                            |
-| ---------------------------- | ------------------------------------------------------ |
-| `javascript-detected`        | Whether a JavaScript/TypeScript project was detected   |
-| `javascript-runtime`         | The resolved runtime (`node` or `bun`)                 |
-| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)     |
-| `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected |
-| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)    |
+| Name                         | Description                                                      |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript/TypeScript project was detected             |
+| `javascript-runtime`         | The resolved runtime (`node` or `bun`)                           |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)               |
+| `python-detected`            | Whether a Python project (dependency configuration) was detected |
+| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)              |
 
 The canonical output contract is [action.yml](./action.yml); this table is a convenience summary.
 

@@ -127,10 +127,11 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
     it("keeps lint and format as separate capabilities in plan", async () => {
       vi.spyOn(io, "which").mockResolvedValue("/usr/bin/ruff");
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
       const registry = createDefaultRegistry();
       const plan = await planExecution(
         registry,
-        { cwd: tempDir, python: { hasSource: true } },
+        { cwd: tempDir, python: { hasSource: true, hasProject: true } },
         "fix",
       );
 
@@ -2998,21 +2999,18 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
     });
 
-    it("does not emit Executing: when Ruff executable is missing for Ruff-only workflows", async () => {
+    it("does not emit Executing: when Ruff executable is missing for Python project without dependencies", async () => {
       vi.spyOn(io, "which").mockResolvedValue("");
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(
-        path.join(tempDir, "pyproject.toml"),
-        "[project]\nname = 'demo'\ndependencies = [\"requests\"]\n",
-      );
+      fs.writeFileSync(path.join(tempDir, "pyproject.toml"), "[project]\nname = 'demo'\n");
 
       await run(tempDir);
 
-      // Ruff tasks don't require Python dependencies, so package manager detection is skipped
-      // But Ruff itself is required
+      // Project with [project] but no dependencies is detected as pip package with install -e .
+      // Since pip is not available, it fails with pip error
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Executing: pip"));
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Required binary 'ruff' is not available in PATH"),
+        expect.stringContaining("Required Python package manager 'pip' is not available in PATH"),
       );
     });
 

@@ -52,6 +52,7 @@ export interface JavaScriptProjectContext {
 
 export interface PythonProjectContextSummary {
   hasSource: boolean;
+  hasProject?: boolean;
   inspection?: PythonProjectInspection;
   packageManager?: PythonPackageManagerInfo | null;
 }
