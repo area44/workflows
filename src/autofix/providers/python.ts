@@ -7,6 +7,7 @@ import { RuffAdapter } from "@/autofix/adapters/python/ruff";
 import { collectErrors, formatCommand, runLoggedCommand } from "@/autofix/exec";
 import {
   detectPythonPackageManager,
+  hasPythonProject,
   hasPythonSource,
   validatePythonPmInfoStructure,
   type PythonPackageManagerInfo,
@@ -90,15 +91,14 @@ async function runPythonProvider(
   engine: ExecutionEngine,
 ): Promise<Error[]> {
   const hasSourceCode = context.python?.hasSource ?? hasPythonSource(context.cwd);
-  if (!hasSourceCode) {
-    return [];
-  }
+  const isPythonProject = context.python?.hasProject ?? hasPythonProject(context.cwd);
 
   const errors: Error[] = [];
 
-  if (!anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
+  // Install Python dependencies for detected Python projects
+  if (isPythonProject && !anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
     const pmInfo = detectPythonPackageManager(context.cwd, undefined, {
-      hasSource: true,
+      hasSource: hasSourceCode,
       isProject: true,
     });
     if (pmInfo) {
@@ -108,17 +108,26 @@ async function runPythonProvider(
         errors.push(toError(error));
       }
     }
-  } else {
+  } else if (isPythonProject) {
     errors.push(new Error("Python runtime or package manager setup failed."));
   }
 
-  if (process.env[RUFF_SETUP_OUTCOME_VAR] === "failure") {
-    errors.push(new Error("Ruff setup failed."));
-    return errors;
-  }
+  // Execute Ruff tasks only when Python source files are present
+  if (hasSourceCode) {
+    // Check Ruff setup only when source exists
+    if (process.env[RUFF_SETUP_OUTCOME_VAR] === "failure") {
+      errors.push(new Error("Ruff setup failed."));
+      return errors;
+    }
 
-  if (tasks.length > 0) {
-    errors.push(...collectErrors(await engine.executeTasks(tasks)));
+    // If dependency installation failed, don't proceed with Ruff
+    if (errors.length > 0) {
+      return errors;
+    }
+
+    if (tasks.length > 0) {
+      errors.push(...collectErrors(await engine.executeTasks(tasks)));
+    }
   }
 
   return errors;
@@ -132,7 +141,7 @@ export class PythonLanguageProvider implements LanguageProvider {
   private ruffAdapter = new RuffAdapter();
 
   public detect(context: ProjectContext): boolean {
-    return context.python?.hasSource ?? hasPythonSource(context.cwd);
+    return context.python?.hasProject ?? hasPythonProject(context.cwd);
   }
 
   public getAdapters(_context: ProjectContext): ToolAdapter[] {

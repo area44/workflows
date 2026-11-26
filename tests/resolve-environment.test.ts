@@ -54,6 +54,7 @@ describe("resolve-environment", () => {
             installCommands: [{ executable: "uv", args: ["sync"] }],
             isStandalone: false,
           },
+          hasSource: true,
         },
       };
     }
@@ -652,6 +653,7 @@ describe("resolve-environment", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       };
 
@@ -765,6 +767,7 @@ describe("resolve-environment", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       };
 
@@ -791,6 +794,7 @@ describe("resolve-environment", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       };
 
@@ -798,6 +802,7 @@ describe("resolve-environment", () => {
 
       expect(core.setOutput).toHaveBeenCalledWith("python-detected", "false");
       expect(core.setOutput).toHaveBeenCalledWith("python-package-manager", "");
+      expect(core.setOutput).toHaveBeenCalledWith("python-source-detected", "false");
     });
   });
 
@@ -918,6 +923,7 @@ describe("resolve-environment", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       };
 
@@ -945,6 +951,7 @@ describe("resolve-environment", () => {
             execPrefix: "uv run",
             installCommands: [{ executable: "uv", args: ["sync"] }],
           },
+          hasSource: true,
         },
       };
 
@@ -972,6 +979,7 @@ describe("resolve-environment", () => {
             execPrefix: "uv run",
             installCommands: [{ executable: "uv", args: ["sync"] }],
           },
+          hasSource: true,
         },
       };
 
@@ -995,6 +1003,7 @@ describe("resolve-environment", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       };
 

@@ -19,19 +19,20 @@ import {
   sanitizePackageManager,
   type SupportedPackageManager,
 } from "@/javascript-env";
-import { hasPythonSource, type PythonPackageManagerInfo } from "@/python-env";
+import { hasPythonProject, hasPythonSource, type PythonPackageManagerInfo } from "@/python-env";
 import { isMainModule } from "@/utils/is-main-module";
 
 export { sanitizePackageManager };
 
 /**
- * Builds the project context once: inspects the JavaScript environment, detects Python source,
- * and best-effort resolves the JavaScript package manager. All downstream planning and
+ * Builds the project context once: inspects the JavaScript environment, detects Python project
+ * and source, and best-effort resolves the JavaScript package manager. All downstream planning and
  * execution reuse this context so environment inspection never runs twice.
  */
 function buildProjectContext(cwd: string): ProjectContext {
   const jsEnv = inspectJsProjectEnvironment(cwd);
   const hasSource = hasPythonSource(cwd);
+  const hasProject = hasPythonProject(cwd);
 
   let jsPm: SupportedPackageManager | undefined;
   if (jsEnv.hasPackageJson) {
@@ -47,7 +48,7 @@ function buildProjectContext(cwd: string): ProjectContext {
   if (jsEnv) {
     context.javascript = { env: jsEnv, packageManager: jsPm };
   }
-  context.python = { hasSource: hasSource };
+  context.python = { hasSource: hasSource, hasProject: hasProject };
   return context;
 }
 

@@ -25,6 +25,7 @@ describe("setup-plan", () => {
           installCommands: [{ executable: "uv", args: ["sync"] }],
           isStandalone: false,
         },
+        hasSource: true,
         ...overrides?.python,
       },
     };
@@ -202,6 +203,7 @@ describe("setup-plan", () => {
         python: {
           detected: false,
           packageManager: null,
+          hasSource: false,
         },
       });
       const plan = createSetupPlan(env);

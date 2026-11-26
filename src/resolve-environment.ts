@@ -206,6 +206,7 @@ export function writeOutput(env: ResolvedEnvironment): void {
   core.setOutput("javascript-toolchain", js.toolchain ?? "");
 
   core.setOutput("python-detected", String(python.detected));
+  core.setOutput("python-source-detected", String(python.hasSource));
   core.setOutput("python-package-manager", python.packageManager ? python.packageManager.name : "");
 }
 

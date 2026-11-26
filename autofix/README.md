@@ -4,9 +4,9 @@ Format and fix JavaScript/TypeScript and Python code. Reference: `area44/workflo
 
 ## Behavior
 
-1. **Resolve environment** — detects JavaScript and Python domains independently (a repo may have one, both, or neither). Emits `No JavaScript or Python environment detected.` and succeeds when neither is present.
-2. **Provision tools** — sets up uv/Python/ruff for Python and node/bun/pnpm for JavaScript via official setup actions, based on what was detected.
-3. **Run autofix** — plans and executes fix tasks per detected language, aggregates diagnostics, and fails the step if any task fails. Commands that run are logged as `Executing: <command>` with quoted arguments.
+1. **Resolve** — detects JavaScript and Python domains independently (a repo may have one, both, or neither). Emits `No JavaScript or Python environment detected.` and succeeds when neither is present.
+2. **Provision** — sets up uv/Python/ruff for Python and node/bun/pnpm for JavaScript via official setup actions, based on what was detected.
+3. **Execute** — plans and executes fix tasks per detected language, aggregates diagnostics, and fails the step if any task fails. Commands that run are logged as `Executing: <command>` with quoted arguments.
 
 ### JavaScript / TypeScript
 
@@ -29,13 +29,13 @@ None.
 
 ## Outputs
 
-| Name                         | Description                                            |
-| ---------------------------- | ------------------------------------------------------ |
-| `javascript-detected`        | Whether a JavaScript/TypeScript project was detected   |
-| `javascript-runtime`         | The resolved runtime (`node` or `bun`)                 |
-| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)     |
-| `python-detected`            | Whether Python source code (`.py`/`.pyi`) was detected |
-| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)    |
+| Name                         | Description                                                 |
+| ---------------------------- | ----------------------------------------------------------- |
+| `javascript-detected`        | Whether a JavaScript/TypeScript project was detected        |
+| `javascript-runtime`         | The resolved runtime (`node` or `bun`)                      |
+| `javascript-package-manager` | The package manager used (`npm`, `pnpm`, or `bun`)          |
+| `python-detected`            | Whether a Python project or Python source code was detected |
+| `python-package-manager`     | The Python package manager detected (`uv` or `pip`)         |
 
 The canonical output contract is [action.yml](./action.yml); this table is a convenience summary.
 
