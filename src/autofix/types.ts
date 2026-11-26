@@ -43,6 +43,12 @@ export interface ExecutionTask {
    * Receives the display command and exit code; returns the message to surface.
    */
   formatFailure?: (displayCmd: string, exitCode: number) => string;
+  /**
+   * Whether this task requires project dependencies to be installed.
+   * Defaults to true for backward compatibility; set to false for tools like Ruff
+   * that operate independently of the project environment.
+   */
+  requiresDependencies?: boolean;
 }
 
 export interface JavaScriptProjectContext {

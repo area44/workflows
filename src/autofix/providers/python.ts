@@ -96,7 +96,10 @@ async function runPythonProvider(
 
   const errors: Error[] = [];
 
-  if (!anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
+  // Check if any tasks require project dependencies
+  const needsDependencies = tasks.some((task) => task.requiresDependencies !== false);
+
+  if (needsDependencies && !anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
     const pmInfo = detectPythonPackageManager(context.cwd, undefined, {
       hasSource: true,
       isProject: true,
@@ -108,7 +111,7 @@ async function runPythonProvider(
         errors.push(toError(error));
       }
     }
-  } else {
+  } else if (needsDependencies) {
     errors.push(new Error("Python runtime or package manager setup failed."));
   }
 

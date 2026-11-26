@@ -185,8 +185,8 @@ describe("autofix", () => {
       );
       fs.writeFileSync(path.join(uvTempDir, "uv.lock"), "version = 1\n");
 
-      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
-        if (executable === "uv" && args?.[0] === "sync") return 1;
+      vi.mocked(exec.exec).mockImplementation(async (_executable, args) => {
+        if (args?.[0] === "format") return 1;
         return 0;
       });
 
@@ -194,12 +194,17 @@ describe("autofix", () => {
         await run(uvTempDir);
 
         expect(exec.exec).toHaveBeenCalledWith(
-          "uv",
-          ["sync"],
+          "ruff",
+          ["check", "--fix", "."],
+          expect.objectContaining({ cwd: uvTempDir }),
+        );
+        expect(exec.exec).toHaveBeenCalledWith(
+          "ruff",
+          ["format", "."],
           expect.objectContaining({ cwd: uvTempDir }),
         );
         expect(core.setFailed).toHaveBeenCalledWith(
-          expect.stringContaining('Python command "uv sync" failed.'),
+          expect.stringContaining('Ruff command "ruff format ." failed.'),
         );
       } finally {
         fs.rmSync(uvTempDir, { recursive: true, force: true });
@@ -340,25 +345,20 @@ describe("autofix", () => {
       );
       fs.writeFileSync(path.join(tempDir, "uv.lock"), "version = 1\n");
 
-      vi.mocked(exec.exec).mockImplementation(async (executable, args) => {
-        if (executable === "uv" && args?.[0] === "sync") {
-          fs.writeFileSync(
-            path.join(tempDir, "uv.lock"),
-            "version = 1\n[[package]]\nname = 'requests'\nversion = '2.31.0'\n",
-          );
-        }
-        return 0;
-      });
+      vi.mocked(exec.exec).mockResolvedValue(0);
 
       await run(tempDir);
 
       expect(exec.exec).toHaveBeenCalledWith(
-        "uv",
-        ["sync"],
+        "ruff",
+        ["check", "--fix", "."],
         expect.objectContaining({ cwd: tempDir }),
       );
-      const updatedLock = fs.readFileSync(path.join(tempDir, "uv.lock"), "utf8");
-      expect(updatedLock).toContain("name = 'requests'");
+      expect(exec.exec).toHaveBeenCalledWith(
+        "ruff",
+        ["format", "."],
+        expect.objectContaining({ cwd: tempDir }),
+      );
       expect(core.setFailed).not.toHaveBeenCalled();
     });
   });
@@ -501,11 +501,6 @@ describe("autofix", () => {
       await run(scenarioPath);
 
       expect(exec.exec).toHaveBeenCalledWith(
-        "uv",
-        ["sync"],
-        expect.objectContaining({ cwd: scenarioPath }),
-      );
-      expect(exec.exec).toHaveBeenCalledWith(
         "ruff",
         ["check", "--fix", "."],
         expect.objectContaining({ cwd: scenarioPath }),
@@ -515,6 +510,8 @@ describe("autofix", () => {
         ["format", "."],
         expect.objectContaining({ cwd: scenarioPath }),
       );
+      // uv sync should not be called for Ruff-only workflows
+      expect(exec.exec).not.toHaveBeenCalledWith("uv", ["sync"], expect.anything());
     });
 
     it("should install Python dependencies when executing Python workflow", async () => {
@@ -600,7 +597,7 @@ describe("autofix", () => {
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
-    it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", async () => {
+    it("should execute JS scripts and Ruff in mixed-language projects without installing Python deps for Ruff-only tasks", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       const mixedTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-mixed-"));
       fs.writeFileSync(
@@ -619,11 +616,8 @@ describe("autofix", () => {
           ["run", "fix"],
           expect.objectContaining({ cwd: mixedTempDir }),
         );
-        expect(exec.exec).toHaveBeenCalledWith(
-          "pip",
-          ["install", "-r", "requirements.txt"],
-          expect.objectContaining({ cwd: mixedTempDir }),
-        );
+        // Ruff tasks don't require Python dependencies, so pip install should not be called
+        expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
         expect(exec.exec).toHaveBeenCalledWith(
           "ruff",
           ["check", "--fix", "."],
@@ -1502,7 +1496,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should run Python dependency installation and skip Ruff when Ruff setup outcome is failure but Python setup succeeds", async () => {
+    it("should skip Python dependency installation and fail on Ruff setup failure", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       process.env.RUFF_SETUP_OUTCOME = "failure";
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -1510,16 +1504,14 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      expect(exec.exec).toHaveBeenCalledWith(
-        "pip",
-        ["install", "-r", "requirements.txt"],
-        expect.objectContaining({ cwd: tempDir }),
-      );
+      // Ruff tasks don't require dependencies, so pip install should not be called
+      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
+      // Ruff should not run because setup failed
       expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
       expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Ruff setup failed."));
     });
 
-    it("should skip Python dependency setup and attempt Ruff when Python setup outcome is failure but Ruff setup succeeds", async () => {
+    it("should run Ruff even when Python setup fails, since Ruff doesn't require dependencies", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       process.env.PY_SETUP_OUTCOME = "failure";
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -1527,6 +1519,38 @@ describe("autofix", () => {
 
       await run(tempDir);
 
+      // Ruff tasks don't require dependencies, so pip install should not be called
+      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
+      // Ruff should still run since it doesn't need Python dependencies
+      expect(exec.exec).toHaveBeenCalledWith(
+        "ruff",
+        ["check", "--fix", "."],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      expect(exec.exec).toHaveBeenCalledWith(
+        "ruff",
+        ["format", "."],
+        expect.objectContaining({ cwd: tempDir }),
+      );
+      // No Python setup failure error should be added since we don't need dependencies
+      expect(core.setFailed).not.toHaveBeenCalledWith(
+        expect.stringContaining("Python runtime or package manager setup failed."),
+      );
+    });
+
+    it("should run Ruff and report Ruff failures without attempting Python dependency installation", async () => {
+      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
+      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
+
+      vi.mocked(exec.exec).mockImplementation(async (executable) => {
+        if (executable === "ruff") return 1;
+        return 0;
+      });
+
+      await run(tempDir);
+
+      // Python dependency installation should not be attempted for Ruff-only tasks
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
       expect(exec.exec).toHaveBeenCalledWith(
         "ruff",
@@ -1534,37 +1558,7 @@ describe("autofix", () => {
         expect.objectContaining({ cwd: tempDir }),
       );
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Python runtime or package manager setup failed."),
-      );
-    });
-
-    it("should attempt Ruff execution even if Python dependency installation fails, and record both failures", async () => {
-      vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
-      fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
-      fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
-
-      vi.mocked(exec.exec).mockImplementation(async (executable) => {
-        if (executable === "pip") return 1;
-        if (executable === "ruff") return 1;
-        return 0;
-      });
-
-      await run(tempDir);
-
-      expect(exec.exec).toHaveBeenCalledWith(
-        "pip",
-        ["install", "-r", "requirements.txt"],
-        expect.objectContaining({ cwd: tempDir }),
-      );
-      expect(exec.exec).toHaveBeenCalledWith(
-        "ruff",
-        ["check", "--fix", "."],
-        expect.objectContaining({ cwd: tempDir }),
-      );
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringMatching(
-          /Failed to run scripts: Python command "pip install -r requirements\.txt" failed.*?\nRuff command "ruff check --fix \." failed/,
-        ),
+        expect.stringContaining('Ruff command "ruff check --fix ." failed'),
       );
     });
   });

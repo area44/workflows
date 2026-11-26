@@ -2998,7 +2998,7 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
       );
     });
 
-    it("does not emit Executing: when the Python package manager executable is missing", async () => {
+    it("does not emit Executing: when Ruff executable is missing for Ruff-only workflows", async () => {
       vi.spyOn(io, "which").mockResolvedValue("");
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(
@@ -3008,9 +3008,11 @@ describe("Refactored Autofix Architecture & Tool Adapters", () => {
 
       await run(tempDir);
 
+      // Ruff tasks don't require Python dependencies, so package manager detection is skipped
+      // But Ruff itself is required
       expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining("Executing: pip"));
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("Required Python package manager 'pip' is not available in PATH"),
+        expect.stringContaining("Required binary 'ruff' is not available in PATH"),
       );
     });
 
