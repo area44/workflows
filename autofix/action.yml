@@ -11,7 +11,7 @@ outputs:
     description: "The JavaScript package manager used (npm, pnpm, or bun)"
     value: ${{ steps.resolve_environment.outputs.javascript-package-manager }}
   python-detected:
-    description: "Whether Python source code was detected"
+    description: "Whether a Python project or Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.python-detected }}
   python-package-manager:
     description: "The Python package manager detected (uv or pip)"

@@ -34,7 +34,7 @@ flowchart TD
 - **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
 - **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
 - **Toolchain** — `vite-plus` is the recognized toolchain, detected from a Vite+ dependency in `package.json`.
-- **Python package manager** — `pip` by default; `uv` when `uv.lock` or explicit uv config (`[tool.uv]` / `uv.toml`) is present. `uv.lock` without a valid `pyproject.toml` is an error.
+- **Python package manager** — `pip` by default; `uv` when `uv.lock` or explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies) is present. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not currently recognized as a project manifest.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
 ## Conflict handling
@@ -58,7 +58,8 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 ### Python Project Detection
 
 - Determines whether the repository is a Python project based on dependency configuration.
-- Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `uv.lock`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration, `uv.toml`.
+- Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `uv.lock`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration in `pyproject.toml` (when it defines a workspace or dev-dependencies).
+- `uv.toml` is not currently recognized as a project manifest.
 - A project is detected even when no `.py`/`.pyi` source files exist.
 - Used to decide whether to install/synchronize dependencies.
 
@@ -69,15 +70,18 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 
 ### Execution Order
 
-When a Python project is detected:
+The GitHub Actions workflow executes in this order:
 
 1. **Environment setup** — GitHub Actions provisions Python runtime and package manager (`actions/setup-python` or `astral-sh/setup-uv`).
-2. **Dependency installation** — Runs `uv sync` (for uv projects) or `pip install` (for pip projects) automatically. This happens for ALL detected Python projects, regardless of whether source files exist.
+2. **Ruff setup** — `astral-sh/ruff-action` provisions Ruff executable.
+3. **Run autofix** — The autofix runner executes the Python provider lifecycle:
+   a. **Dependency installation** — Runs `uv sync` (for uv projects) or `pip install` (for pip projects) automatically. This happens for ALL detected Python projects, regardless of whether source files exist.
    - For uv: `uv sync` is used without `--locked`, `--frozen`, or `--upgrade`. This allows uv to update `uv.lock` when synchronization requires it.
    - For pip: Dependencies are installed from detected configuration (`requirements.txt`, `pyproject.toml` `[project]`, `setup.py`, `setup.cfg`). Pip does not generate or update lockfiles.
-3. **Ruff setup** — `astral-sh/ruff-action` provisions Ruff.
-4. **Ruff lint autofix** — Runs `ruff check --fix .` **only when Python source files are detected**.
-5. **Ruff formatting** — Runs `ruff format .` **only when Python source files are detected**, after lint autofix.
+     b. **Ruff lint autofix** — Runs `ruff check --fix .` **only when Python source files are detected**.
+     c. **Ruff formatting** — Runs `ruff format .` **only when Python source files are detected**, after lint autofix.
+
+Note: Dependency installation occurs inside the Python provider during the "Run autofix" step, not during the GitHub Actions setup steps. This ensures installation happens after the runtime and package manager are provisioned, and before Ruff executes.
 
 ### Key Behaviors
 
