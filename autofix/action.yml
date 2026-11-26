@@ -13,9 +13,6 @@ outputs:
   python-detected:
     description: "Whether a Python project or Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.python-detected }}
-  python-source-detected:
-    description: "Whether Python source code (.py/.pyi files) was detected"
-    value: ${{ steps.resolve_environment.outputs.python-source-detected }}
   python-package-manager:
     description: "The Python package manager detected (uv or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
