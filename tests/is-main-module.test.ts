@@ -37,21 +37,18 @@ describe("isMainModule utility", () => {
   });
 });
 
-describe("ESM URL scheme regression (ERR_UNSUPPORTED_ESM_URL_SCHEME)", () => {
-  it("pathToFileURL produces a file:// URL (not a drive-letter protocol) on Windows", () => {
+describe("ESM URL round-trip (pathToFileURL / fileURLToPath)", () => {
+  it("pathToFileURL produces a file:// URL", () => {
     const filePath = path.resolve("src/resolve-environment.ts");
     const url = pathToFileURL(filePath);
     expect(url.protocol).toBe("file:");
-    // On Windows, the protocol must not be a drive letter like "c:"
-    expect(url.protocol).not.toBe("c:");
     expect(url.protocol).not.toMatch(/^[a-z]:$/i);
   });
 
-  it("pathToFileURL href uses forward slashes on Windows paths", () => {
+  it("pathToFileURL href does not contain backslashes in the URL path", () => {
     const filePath = path.resolve("src/resolve-environment.ts");
     const href = pathToFileURL(filePath).href;
     expect(href.startsWith("file://")).toBe(true);
-    // Backslashes should not appear in the file:// URL path
     expect(href).not.toMatch(/file:\/\\[\\/]/);
   });
 
@@ -59,7 +56,6 @@ describe("ESM URL scheme regression (ERR_UNSUPPORTED_ESM_URL_SCHEME)", () => {
     const filePath = path.resolve("src/resolve-environment.ts");
     const url = pathToFileURL(filePath);
     const back = fileURLToPath(url);
-    // On Windows, round-trip may normalize separators/case; compare normalized
     expect(path.normalize(back)).toBe(path.normalize(filePath));
   });
 
