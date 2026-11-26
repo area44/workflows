@@ -4,9 +4,9 @@ Format and fix JavaScript/TypeScript and Python code. Reference: `area44/workflo
 
 ## Behavior
 
-1. **Resolve environment** — detects JavaScript and Python domains independently (a repo may have one, both, or neither). Emits `No JavaScript or Python environment detected.` and succeeds when neither is present.
-2. **Provision tools** — sets up uv/Python/ruff for Python and node/bun/pnpm for JavaScript via official setup actions, based on what was detected.
-3. **Run autofix** — plans and executes fix tasks per detected language, aggregates diagnostics, and fails the step if any task fails. Commands that run are logged as `Executing: <command>` with quoted arguments.
+1. **Resolve** — detects JavaScript and Python domains independently (a repo may have one, both, or neither). Emits `No JavaScript or Python environment detected.` and succeeds when neither is present.
+2. **Provision** — sets up uv/Python/ruff for Python and node/bun/pnpm for JavaScript via official setup actions, based on what was detected.
+3. **Execute** — plans and executes fix tasks per detected language, aggregates diagnostics, and fails the step if any task fails. Commands that run are logged as `Executing: <command>` with quoted arguments.
 
 ### JavaScript / TypeScript
 

@@ -6,9 +6,9 @@ How the actions detect a repository's runtimes, package managers, and toolchains
 
 JavaScript/TypeScript and Python resolve independently. A repo may contain either, both, or neither. When neither is detected, resolution logs `No JavaScript or Python environment detected.` and succeeds.
 
-## Resolution
+## Resolution Flow
 
-`run()` in `src/resolve-environment.ts` runs sequentially:
+`run()` in `src/resolve-environment.ts` executes sequentially:
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ flowchart TD
 - **Python package manager** — `pip` by default; `uv` when `uv.lock` or explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies) is present. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not currently recognized as a project manifest.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
-## Conflict handling
+## Conflict Handling
 
 - Valid config → explicit runtime/package-manager/toolchain outputs.
 - Undetected domain → `detected: false`, no error.

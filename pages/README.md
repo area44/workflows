@@ -4,9 +4,9 @@ Build a static site and upload the GitHub Pages artifact. Reference: `area44/wor
 
 ## Behavior
 
-1. **Resolve environment** — detects the JavaScript runtime (`node`/`bun`) and package manager (`npm`/`pnpm`/`bun`), and whether Vite+ is in use. See [../docs/environment-resolution.md](../docs/environment-resolution.md).
-2. **Provision toolchain** — sets up pnpm, bun, node, or Vite+ via their official setup actions as resolved; otherwise installs dependencies (`npm ci`/`npm install`, `pnpm install --frozen-lockfile`, `bun install --frozen-lockfile`).
-3. **Export site variables** — `SITE` (`https://<owner>.github.io`), `BASE`, and `BASE_URL` (`/` for a primary `<owner>.github.io` repo, `/<repo>/` otherwise).
+1. **Resolve** — detects the JavaScript runtime (`node`/`bun`) and package manager (`npm`/`pnpm`/`bun`), and whether Vite+ is in use. See [../docs/environment-resolution.md](../docs/environment-resolution.md).
+2. **Provision** — sets up pnpm, bun, node, or Vite+ via their official setup actions as resolved; otherwise installs dependencies (`npm ci`/`npm install`, `pnpm install --frozen-lockfile`, `bun install --frozen-lockfile`).
+3. **Export** — `SITE` (`https://<owner>.github.io`), `BASE`, and `BASE_URL` (`/` for a primary `<owner>.github.io` repo, `/<repo>/` otherwise).
 4. **Build** — runs the build command:
    - `build-command` input if set;
    - else `vp build` when Vite+ is detected (falls back to `vpr build` if `vp` is unavailable);

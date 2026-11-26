@@ -6,11 +6,11 @@ Reusable GitHub Actions composite actions for the AREA44 ecosystem. Source lives
 
 1. Install: `npm ci`
 2. Make changes in `src/`.
-3. If you changed `src/`, rebuild: `npm run build`. Commit the resulting `dist/` changes — `check-dist` in `.github/workflows/ci.yml` fails otherwise.
+3. If `src/` changed: rebuild with `npm run build` and commit `dist/` — `check-dist` in CI fails otherwise.
 4. Format/lint/typecheck: `npm run lint` and `npm run format -- --check`. Auto-fix with `npm run format` or `npm run lint -- --fix`.
 5. Test: `npm test`.
 
-Do not hand-edit `dist/` — it is generated. Do not add runtime dependencies to the published actions without a changeset.
+Do not hand-edit `dist/` — it is generated. Do not add runtime dependencies to published actions without a changeset.
 
 ## Commands
 
@@ -32,7 +32,7 @@ A change is done only when:
 
 - `npm run lint` passes with no errors.
 - `npm run format -- --check` passes.
-- `npm test` passes (on Windows, the scenario-factory spawning tests in `tests/generate-consumer-project.test.ts` fail with `ERR_UNSUPPORTED_ESM_URL_SCHEME`; treat the remaining suites as the gate and do not claim the full suite passed if they fail).
+- `npm test` passes (on Windows, scenario-factory spawning tests in `tests/generate-consumer-project.test.ts` fail with `ERR_UNSUPPORTED_ESM_URL_SCHEME`; treat remaining suites as the gate).
 - If `src/` changed: `npm run build` was run and `dist/` changes are staged.
 
 ## Where to look
