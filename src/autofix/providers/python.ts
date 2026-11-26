@@ -112,18 +112,22 @@ async function runPythonProvider(
     errors.push(new Error("Python runtime or package manager setup failed."));
   }
 
-  if (process.env[RUFF_SETUP_OUTCOME_VAR] === "failure") {
-    errors.push(new Error("Ruff setup failed."));
-    return errors;
-  }
-
   // Execute Ruff tasks only when Python source files are present
-  if (hasSourceCode && tasks.length > 0) {
+  if (hasSourceCode) {
+    // Check Ruff setup only when source exists
+    if (process.env[RUFF_SETUP_OUTCOME_VAR] === "failure") {
+      errors.push(new Error("Ruff setup failed."));
+      return errors;
+    }
+
     // If dependency installation failed, don't proceed with Ruff
     if (errors.length > 0) {
       return errors;
     }
-    errors.push(...collectErrors(await engine.executeTasks(tasks)));
+
+    if (tasks.length > 0) {
+      errors.push(...collectErrors(await engine.executeTasks(tasks)));
+    }
   }
 
   return errors;

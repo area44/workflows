@@ -57,8 +57,9 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 
 ### Python Project Detection
 
-- Determines whether the repository is a Python project based on dependency configuration.
+- Determines whether the repository is a Python project based on dependency configuration **or Python source code**.
 - Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `uv.lock`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration in `pyproject.toml` (when it defines a workspace or dev-dependencies).
+- Also detects Python projects when `.py`/`.pyi` source files are present, even without dependency manifests.
 - `uv.toml` is not currently recognized as a project manifest.
 - A project is detected even when no `.py`/`.pyi` source files exist.
 - Used to decide whether to install/synchronize dependencies.
@@ -88,7 +89,7 @@ Note: Dependency installation occurs inside the Python provider during the "Run 
 - Dependency installation is **independent of Ruff execution**. A Python project with `uv.lock` but no `.py` files will still run `uv sync`.
 - If dependency installation fails, Ruff does **not** execute. The action fails with the dependency installation error.
 - JavaScript-only repositories never trigger Python setup or dependency installation.
-- The `python-detected` output from environment resolution indicates a Python **project** was detected (not just source files).
+- The `python-detected` output from environment resolution indicates a Python **project or Python source code** was detected. The `python-source-detected` output indicates specifically whether Python source files (`.py`/`.pyi`) were found.
 
 ### uv Lockfile Behavior
 

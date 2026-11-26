@@ -13,6 +13,9 @@ outputs:
   python-detected:
     description: "Whether a Python project or Python source code was detected"
     value: ${{ steps.resolve_environment.outputs.python-detected }}
+  python-source-detected:
+    description: "Whether Python source code (.py/.pyi files) was detected"
+    value: ${{ steps.resolve_environment.outputs.python-source-detected }}
   python-package-manager:
     description: "The Python package manager detected (uv or pip)"
     value: ${{ steps.resolve_environment.outputs.python-package-manager }}
@@ -64,7 +67,7 @@ runs:
 
     - name: Setup Ruff
       id: setup_ruff
-      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-detected == 'true' }}
+      if: ${{ !cancelled() && steps.resolve_environment.outcome == 'success' && steps.resolve_environment.outputs.python-source-detected == 'true' }}
       uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89
       with:
         args: "--version"

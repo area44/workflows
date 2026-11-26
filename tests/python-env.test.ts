@@ -596,6 +596,7 @@ dev = ["pytest"]
         expect(resolved).toEqual({
           detected: false,
           packageManager: null,
+          hasSource: false,
         });
       } finally {
         proj.cleanup();

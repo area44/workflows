@@ -52,6 +52,7 @@ export interface PythonPackageManagerInfo {
 export interface ResolvedPythonEnvironment {
   detected: boolean;
   packageManager: PythonPackageManagerInfo | null;
+  hasSource: boolean;
 }
 
 export interface ParsedTomlSuccess {

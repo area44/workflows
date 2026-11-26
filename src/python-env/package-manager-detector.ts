@@ -317,6 +317,7 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
     return {
       detected: false,
       packageManager: null,
+      hasSource: false,
     };
   }
 
@@ -329,5 +330,6 @@ export function resolvePythonEnvironment(cwd: string = process.cwd()): ResolvedP
   return {
     detected: true,
     packageManager: pmInfo,
+    hasSource,
   };
 }

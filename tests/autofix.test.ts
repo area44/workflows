@@ -1475,7 +1475,7 @@ describe("autofix", () => {
       const setupRuffStep = steps.find((s: any) => s.id === "setup_ruff");
       expect(setupRuffStep).toBeDefined();
       expect(setupRuffStep.if).toContain(
-        "steps.resolve_environment.outputs.python-detected == 'true'",
+        "steps.resolve_environment.outputs.python-source-detected == 'true'",
       );
 
       const runAutofixStep = steps.find((s: any) => s.id === "run_autofix");
