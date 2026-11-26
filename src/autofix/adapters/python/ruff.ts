@@ -42,7 +42,6 @@ export class RuffAdapter implements ToolAdapter {
           description: "Ruff: lint autofix",
           resolution: "path",
           formatFailure: ruffFormatFailure,
-          requiresDependencies: false,
         },
         {
           id: "ruff-format",
@@ -55,7 +54,6 @@ export class RuffAdapter implements ToolAdapter {
           description: "Ruff: format",
           resolution: "path",
           formatFailure: ruffFormatFailure,
-          requiresDependencies: false,
         },
       );
     } else {
@@ -71,7 +69,6 @@ export class RuffAdapter implements ToolAdapter {
           description: "Ruff: lint check",
           resolution: "path",
           formatFailure: ruffFormatFailure,
-          requiresDependencies: false,
         },
         {
           id: "ruff-format-check",
@@ -84,7 +81,6 @@ export class RuffAdapter implements ToolAdapter {
           description: "Ruff: format check",
           resolution: "path",
           formatFailure: ruffFormatFailure,
-          requiresDependencies: false,
         },
       );
     }

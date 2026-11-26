@@ -500,6 +500,12 @@ describe("autofix", () => {
 
       await run(scenarioPath);
 
+      // uv sync should be called for Python projects with uv.lock
+      expect(exec.exec).toHaveBeenCalledWith(
+        "uv",
+        ["sync"],
+        expect.objectContaining({ cwd: scenarioPath }),
+      );
       expect(exec.exec).toHaveBeenCalledWith(
         "ruff",
         ["check", "--fix", "."],
@@ -510,8 +516,6 @@ describe("autofix", () => {
         ["format", "."],
         expect.objectContaining({ cwd: scenarioPath }),
       );
-      // uv sync should not be called for Ruff-only workflows
-      expect(exec.exec).not.toHaveBeenCalledWith("uv", ["sync"], expect.anything());
     });
 
     it("should install Python dependencies when executing Python workflow", async () => {
@@ -597,7 +601,7 @@ describe("autofix", () => {
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
     });
 
-    it("should execute JS scripts and Ruff in mixed-language projects without installing Python deps for Ruff-only tasks", async () => {
+    it("should execute JS scripts, Python dependency setup, and Ruff in mixed-language projects in correct order", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       const mixedTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "workflows-autofix-mixed-"));
       fs.writeFileSync(
@@ -616,8 +620,11 @@ describe("autofix", () => {
           ["run", "fix"],
           expect.objectContaining({ cwd: mixedTempDir }),
         );
-        // Ruff tasks don't require Python dependencies, so pip install should not be called
-        expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
+        expect(exec.exec).toHaveBeenCalledWith(
+          "pip",
+          ["install", "-r", "requirements.txt"],
+          expect.objectContaining({ cwd: mixedTempDir }),
+        );
         expect(exec.exec).toHaveBeenCalledWith(
           "ruff",
           ["check", "--fix", "."],
@@ -1496,7 +1503,7 @@ describe("autofix", () => {
       );
     });
 
-    it("should skip Python dependency installation and fail on Ruff setup failure", async () => {
+    it("should install Python dependencies and skip Ruff when Ruff setup outcome is failure but Python setup succeeds", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       process.env.RUFF_SETUP_OUTCOME = "failure";
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -1504,14 +1511,16 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      // Ruff tasks don't require dependencies, so pip install should not be called
-      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
-      // Ruff should not run because setup failed
+      expect(exec.exec).toHaveBeenCalledWith(
+        "pip",
+        ["install", "-r", "requirements.txt"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
       expect(exec.exec).not.toHaveBeenCalledWith("ruff", expect.anything(), expect.anything());
       expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Ruff setup failed."));
     });
 
-    it("should run Ruff even when Python setup fails, since Ruff doesn't require dependencies", async () => {
+    it("should skip Python dependency setup and attempt Ruff when Python setup outcome is failure but Ruff setup succeeds", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       process.env.PY_SETUP_OUTCOME = "failure";
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
@@ -1519,7 +1528,7 @@ describe("autofix", () => {
 
       await run(tempDir);
 
-      // Ruff tasks don't require dependencies, so pip install should not be called
+      // Python dependency installation is skipped due to setup failure
       expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
       // Ruff should still run since it doesn't need Python dependencies
       expect(exec.exec).toHaveBeenCalledWith(
@@ -1532,26 +1541,30 @@ describe("autofix", () => {
         ["format", "."],
         expect.objectContaining({ cwd: tempDir }),
       );
-      // No Python setup failure error should be added since we don't need dependencies
-      expect(core.setFailed).not.toHaveBeenCalledWith(
+      // Python setup failure error should be reported
+      expect(core.setFailed).toHaveBeenCalledWith(
         expect.stringContaining("Python runtime or package manager setup failed."),
       );
     });
 
-    it("should run Ruff and report Ruff failures without attempting Python dependency installation", async () => {
+    it("should install Python dependencies, then run Ruff and report Ruff failures", async () => {
       vi.spyOn(io, "which").mockImplementation(async (bin) => `/usr/bin/${bin}`);
       fs.writeFileSync(path.join(tempDir, "main.py"), "print('hello')\n");
       fs.writeFileSync(path.join(tempDir, "requirements.txt"), "requests==2.31.0\n");
 
-      vi.mocked(exec.exec).mockImplementation(async (executable) => {
+      vi.mocked(exec.exec).mockImplementation(async (executable, _args) => {
+        if (executable === "pip") return 0;
         if (executable === "ruff") return 1;
         return 0;
       });
 
       await run(tempDir);
 
-      // Python dependency installation should not be attempted for Ruff-only tasks
-      expect(exec.exec).not.toHaveBeenCalledWith("pip", expect.anything(), expect.anything());
+      expect(exec.exec).toHaveBeenCalledWith(
+        "pip",
+        ["install", "-r", "requirements.txt"],
+        expect.objectContaining({ cwd: tempDir }),
+      );
       expect(exec.exec).toHaveBeenCalledWith(
         "ruff",
         ["check", "--fix", "."],

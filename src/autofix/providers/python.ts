@@ -7,6 +7,7 @@ import { RuffAdapter } from "@/autofix/adapters/python/ruff";
 import { collectErrors, formatCommand, runLoggedCommand } from "@/autofix/exec";
 import {
   detectPythonPackageManager,
+  hasPythonProject,
   hasPythonSource,
   validatePythonPmInfoStructure,
   type PythonPackageManagerInfo,
@@ -90,18 +91,16 @@ async function runPythonProvider(
   engine: ExecutionEngine,
 ): Promise<Error[]> {
   const hasSourceCode = context.python?.hasSource ?? hasPythonSource(context.cwd);
-  if (!hasSourceCode) {
-    return [];
-  }
+  const isPythonProject = context.python?.inspection
+    ? true
+    : hasPythonProject(context.cwd, { hasSource: hasSourceCode });
 
   const errors: Error[] = [];
 
-  // Check if any tasks require project dependencies
-  const needsDependencies = tasks.some((task) => task.requiresDependencies !== false);
-
-  if (needsDependencies && !anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
+  // Install Python dependencies for detected Python projects
+  if (isPythonProject && !anySetupFailed(PYTHON_SETUP_OUTCOME_VARS)) {
     const pmInfo = detectPythonPackageManager(context.cwd, undefined, {
-      hasSource: true,
+      hasSource: hasSourceCode,
       isProject: true,
     });
     if (pmInfo) {
@@ -111,7 +110,7 @@ async function runPythonProvider(
         errors.push(toError(error));
       }
     }
-  } else if (needsDependencies) {
+  } else if (isPythonProject) {
     errors.push(new Error("Python runtime or package manager setup failed."));
   }
 
@@ -120,7 +119,8 @@ async function runPythonProvider(
     return errors;
   }
 
-  if (tasks.length > 0) {
+  // Execute Ruff tasks only when Python source files are present
+  if (hasSourceCode && tasks.length > 0) {
     errors.push(...collectErrors(await engine.executeTasks(tasks)));
   }
 
