@@ -10,7 +10,7 @@ import type {
 
 import { ExecutionEngine } from "@/autofix/engine";
 import { collectErrors } from "@/autofix/exec";
-import { planExecution } from "@/autofix/planner";
+import { planExecution } from "@/autofix/planner/index";
 import { installAndExecuteJsTasks, resolveJsPm } from "@/autofix/providers/javascript";
 import { installPythonDependencies } from "@/autofix/providers/python";
 import { defaultRegistry } from "@/autofix/registry";
@@ -36,14 +36,19 @@ function buildProjectContext(cwd: string): ProjectContext {
   let jsPm: SupportedPackageManager | undefined;
   if (jsEnv.hasPackageJson) {
     try {
-      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: hasSource });
+      jsPm = resolveJsPm({ cwd, javascript: { env: jsEnv }, python: { hasSource: hasSource } });
     } catch {
       // Package manager resolution failed; the JavaScript provider surfaces the error.
       jsPm = undefined;
     }
   }
 
-  return { cwd, jsEnv, jsPm, hasPythonSource: hasSource };
+  const context: ProjectContext = { cwd };
+  if (jsEnv) {
+    context.javascript = { env: jsEnv, packageManager: jsPm };
+  }
+  context.python = { hasSource: hasSource };
+  return context;
 }
 
 function groupTasksByProvider(tasks: readonly ExecutionTask[]): Map<string, ExecutionTask[]> {
@@ -83,7 +88,7 @@ export async function run(cwd: string = process.cwd()): Promise<void> {
 
   // Informational: surface when the project has no JavaScript component, since the JS
   // provider's lifecycle (which previously emitted this) only runs when it is detected.
-  if (!context.jsEnv?.hasPackageJson) {
+  if (!context.javascript?.env.hasPackageJson) {
     core.info("No package.json found. Skipping scripts.");
   }
 
@@ -155,14 +160,18 @@ export async function executeJsWorkflow(cwd: string = process.cwd()): Promise<vo
   let jsPm: SupportedPackageManager | undefined;
   if (jsEnv.hasPackageJson) {
     try {
-      jsPm = resolveJsPm({ cwd, jsEnv, hasPythonSource: false });
+      jsPm = resolveJsPm({ cwd, javascript: { env: jsEnv }, python: { hasSource: false } });
     } catch {
       // Package manager resolution failed; installAndExecuteJsTasks re-resolves and surfaces the error.
       jsPm = undefined;
     }
   }
 
-  const context: ProjectContext = { cwd, jsEnv, jsPm, hasPythonSource: false };
+  const context: ProjectContext = {
+    cwd,
+    javascript: { env: jsEnv, packageManager: jsPm },
+    python: { hasSource: false },
+  };
   const plan = await planExecution(defaultRegistry, context, "fix");
   // JavaScript-owned tasks only; other providers' tasks are not routed through the JS lifecycle.
   const jsTasks = plan.tasks.filter((t) => t.providerId === "javascript");
@@ -213,7 +222,7 @@ export async function executeRuffAutofix(
     if (!hasRuff) {
       throw new Error("Required Python binary 'ruff' is not available in PATH.");
     }
-    const context: ProjectContext = { cwd, hasPythonSource: true };
+    const context: ProjectContext = { cwd, python: { hasSource: true } };
     const ruffPlan = await planExecution(defaultRegistry, context, "fix");
     tasks = ruffPlan.tasks.filter((t) => t.providerId === "python");
   }

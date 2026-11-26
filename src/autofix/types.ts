@@ -1,6 +1,7 @@
 import type { ExecutionEngine } from "@/autofix/engine";
 import type { JsProjectEnvironment, SupportedPackageManager } from "@/javascript-env";
-import type { PythonPackageManagerInfo, PythonProjectContext } from "@/python-env";
+import type { PythonPackageManagerInfo } from "@/python-env";
+import type { PythonProjectContext as PythonProjectInspection } from "@/python-env";
 
 export type Capability = "lint" | "format" | "typecheck" | "assist" | "autofix";
 
@@ -44,13 +45,21 @@ export interface ExecutionTask {
   formatFailure?: (displayCmd: string, exitCode: number) => string;
 }
 
+export interface JavaScriptProjectContext {
+  env: JsProjectEnvironment;
+  packageManager?: SupportedPackageManager;
+}
+
+export interface PythonProjectContextSummary {
+  hasSource: boolean;
+  inspection?: PythonProjectInspection;
+  packageManager?: PythonPackageManagerInfo | null;
+}
+
 export interface ProjectContext {
   cwd: string;
-  jsEnv?: JsProjectEnvironment;
-  jsPm?: SupportedPackageManager;
-  pyCtx?: PythonProjectContext;
-  pyPmInfo?: PythonPackageManagerInfo | null;
-  hasPythonSource?: boolean;
+  javascript?: JavaScriptProjectContext;
+  python?: PythonProjectContextSummary;
 }
 
 export interface AdapterDetectionResult {

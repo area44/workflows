@@ -1,3 +1,4 @@
+import type { AutofixRegistry } from "@/autofix/registry";
 import type {
   Capability,
   ExecutionMode,
@@ -5,8 +6,6 @@ import type {
   ProjectContext,
   ToolAdapter,
 } from "@/autofix/types";
-
-import { filterCandidateTasks } from "./capability-resolver";
 
 interface CandidateTool {
   adapter: ToolAdapter;
@@ -16,6 +15,41 @@ interface CandidateTool {
 }
 
 type ToolRecord = { id: string; name: string; reason?: string; providerId?: string };
+
+function isTaskCapabilityCovered(
+  taskCapability: Capability,
+  coveredCapabilities: Set<Capability>,
+): boolean {
+  if (coveredCapabilities.has("autofix")) {
+    return true;
+  }
+  if (taskCapability === "autofix") {
+    return (
+      coveredCapabilities.has("format") &&
+      coveredCapabilities.has("lint") &&
+      coveredCapabilities.has("assist")
+    );
+  }
+  return coveredCapabilities.has(taskCapability);
+}
+
+export function filterCandidateTasks(
+  plannedTasks: ExecutionTask[],
+  providerCapabilities: Set<Capability>,
+): { kept: ExecutionTask[]; skipped: ExecutionTask[] } {
+  const kept: ExecutionTask[] = [];
+  const skipped: ExecutionTask[] = [];
+
+  for (const task of plannedTasks) {
+    if (isTaskCapabilityCovered(task.capability, providerCapabilities)) {
+      skipped.push(task);
+    } else {
+      kept.push(task);
+    }
+  }
+
+  return { kept, skipped };
+}
 
 function getOrCreateScopeCapabilities(
   coveredCapabilitiesByScope: Map<string, Set<Capability>>,
@@ -92,4 +126,35 @@ export async function processCandidateTools(
       });
     }
   }
+}
+
+export async function processStandaloneAdapters(
+  registry: AutofixRegistry,
+  coveredCapabilitiesByScope: Map<string, Set<Capability>>,
+  context: ProjectContext,
+  mode: ExecutionMode,
+  selectedTools: ToolRecord[],
+  skippedTools: Array<{ id: string; name: string; reason: string; providerId?: string }>,
+  tasks: ExecutionTask[],
+): Promise<void> {
+  const candidateTools: CandidateTool[] = [];
+  for (const adapter of registry.getStandaloneAdapters()) {
+    const result = await adapter.detect(context);
+    const scope = adapter.scope ?? `standalone:${adapter.id}`;
+    if (result.detected) {
+      candidateTools.push({ adapter, reason: result.reason, scope });
+    } else if (result.reason && !result.reason.startsWith("no ")) {
+      skippedTools.push({ id: adapter.id, name: adapter.name, reason: result.reason });
+    }
+  }
+
+  await processCandidateTools(
+    candidateTools,
+    coveredCapabilitiesByScope,
+    context,
+    mode,
+    selectedTools,
+    skippedTools,
+    tasks,
+  );
 }

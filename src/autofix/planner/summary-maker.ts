@@ -13,8 +13,8 @@ export function formatExecutionPlanSummary(
   const lines: string[] = [];
 
   lines.push("Detected environments:");
-  const hasPy = context.hasPythonSource ?? false;
-  const hasJs = context.jsEnv?.hasPackageJson ?? false;
+  const hasPy = context.python?.hasSource ?? false;
+  const hasJs = context.javascript?.env.hasPackageJson ?? false;
   lines.push(`  Python: ${hasPy}`);
   lines.push(`  JavaScript: ${hasJs}`);
 
