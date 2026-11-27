@@ -24,7 +24,7 @@ The aggregate output of environment resolution. Contains detected JavaScript and
 
 ### Setup Plan
 
-A pure, deterministic transform (`createSetupPlan`) that derives **GitHub Actions setup parameters** (which `setup-*` actions to run, with what cache keys) from a `ResolvedEnvironment`. Has no filesystem access, no side effects, no detection logic.
+A pure, deterministic transformation that derives GitHub Actions setup parameters from a Resolved Environment. It has no filesystem access, side effects, or detection logic.
 
 ### Toolchain
 
@@ -60,7 +60,7 @@ The command and arguments to install JavaScript dependencies. Derived from the r
 
 ### Vite+
 
-The **only recognized toolchain**. Detected by presence of a Vite+ dependency in `package.json`. When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`).
+The toolchain recognized by the Pages action for default build-command resolution. Detected by presence of a Vite+ dependency in `package.json`. When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`).
 
 ---
 
@@ -120,7 +120,7 @@ The authoritative output of planning: the set of execution tasks plus selected a
 
 ### Conflict Domain
 
-Scope for capability deduplication and conflict resolution. Defaults to `provider.id` (e.g., "javascript", "python"). Standalone adapters can explicitly match a provider id to resolve genuine conflicts within that domain.
+Scope for capability deduplication and conflict resolution. Provider adapters default to `provider.id` (e.g., "javascript", "python"). Standalone adapters default to an isolated per-adapter scope (`standalone:${id}`) and may explicitly match a provider id or shared scope to resolve genuine conflicts within that domain.
 
 ### Execution Engine
 

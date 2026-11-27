@@ -8,7 +8,7 @@
 The autofix action must support multiple languages (JavaScript, Python) and multiple tools per language (ESLint, Prettier, Biome, Ruff, etc.). Design options:
 
 1. **Monolithic executor**: Single function with `if (js) ... else if (python) ...` and hardcoded tool logic
-2. **Provider/Adapter pattern** (current): Registry of `LanguageProvider`s; each provider owns detection, planning, and optional custom lifecycle; adapters produce `ExecutionTask[]` for specific tools
+2. **Provider/Adapter pattern** (current): Registry of `LanguageProvider`s; each provider owns language-level detection, adapter selection, and an optional custom lifecycle. Adapters handle tool-specific detection and planning, producing `ExecutionTask[]` for specific tools
 3. **Plugin system**: Dynamic loading of external packages (too heavy for this scope)
 
 ## Decision
