@@ -33,7 +33,7 @@ flowchart TD
 - **Delegated version resolution** — `actions/setup-node`, `pnpm/setup`, `oven-sh/setup-bun`, `actions/setup-python`, `astral-sh/setup-uv`, and `astral-sh/ruff-action` own version selection and installation. When `pnpm` is selected, `pnpm/setup` provisions it (and the runtime) directly, so the node/bun setup steps are skipped to avoid duplicate setup.
 - **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
 - **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
-- **Toolchain** — `vite-plus` is the recognized toolchain, detected from a Vite+ dependency in `package.json`.
+- **Pages toolchain** — `vite-plus` is currently the only toolchain recognized by the Pages action for default build-command resolution.
 - **Python package manager** — `pip` by default; `uv` when `uv.lock`, explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies), or applicable `uv.toml` configuration is detected. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 

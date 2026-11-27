@@ -41,8 +41,8 @@ The optional `run()` lifecycle is intentional: providers that need language-spec
 
 Current providers:
 
-- `javascript`: Detects via `package.json`; plans via script selection + tool-native fallback; custom `run()` handles `npm install` + execution
-- `python`: Detects via project/source detection; plans Ruff lint/format; custom `run()` handles `uv sync`/`pip install` + Ruff execution
+- `javascript`: Detects via `package.json`; its adapters plan script selection and tool-native fallback tasks; custom `run()` handles dependency installation and execution.
+- `python`: Detects via Python project/source detection; its Ruff adapter plans lint/format tasks; custom `run()` handles dependency installation and Ruff execution.
 
 ## Consequences
 
