@@ -32,7 +32,7 @@ A change is done only when:
 
 - `npm run lint` passes with no errors.
 - `npm run format -- --check` passes.
-- `npm test` passes (on Windows, scenario-factory spawning tests in `tests/generate-consumer-project.test.ts` fail with `ERR_UNSUPPORTED_ESM_URL_SCHEME`; treat remaining suites as the gate).
+- `npm test` passes (`tests/generate-consumer-project.test.ts` is intentionally skipped locally — it runs only in GitHub Actions via `GITHUB_ACTIONS`; treat remaining suites as the local gate).
 - If `src/` changed: `npm run build` was run and `dist/` changes are staged.
 
 ## Where to look

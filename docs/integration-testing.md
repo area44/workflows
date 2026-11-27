@@ -14,8 +14,9 @@ Factory dimensions (options): `action` (`pages`/`autofix`), `runtime` (`node`/`b
 ## Test layers
 
 1. **Unit + module (`npm test`)** — Vitest (`vp test`), importing `src/` directly:
-   - Unit: `tests/{python-env,javascript-env,resolve-environment,build-command,site-variables,autofix,generate-consumer-project}.test.ts`.
+   - Unit: `tests/{python-env,javascript-env,resolve-environment,build-command,site-variables,autofix}.test.ts`.
    - Module integration: `tests/integration-consumer.test.ts` validates detection, formatting, site variables, custom build commands, and error diagnostics against generated scenarios in `os.tmpdir()`.
+   - **GitHub Actions-only:** `tests/generate-consumer-project.test.ts` runs only when `GITHUB_ACTIONS` is set (i.e., in GitHub Actions). It is skipped during local development to avoid spawning consumer-project builds in the local feedback loop. GitHub Actions runs this suite on `ubuntu-latest` through the existing `npm test` command.
 2. **Action matrix (`.github/workflows/test-actions.yml`)** — runs the real composite actions (`./action-source/pages`, `./action-source/autofix`) on live runners. The action repo is checked out to `action-source/`; the consumer project is generated at `$GITHUB_WORKSPACE` so `action-source/` stays pristine.
    - Positive: Astro/Vite/Vite+ pages builds; node/bun + npm/pnpm/bun sync; Python uv/pip + ruff; mixed projects.
    - Negative: `invalid_build_command` and `missing_output_dir` run `dist/pages/build-command.mjs` in a subshell harness and assert exit code 1 plus the exact `${RUNNER_TEMP}/pages_build_error.log` message.
@@ -30,8 +31,7 @@ Factory dimensions (options): `action` (`pages`/`autofix`), `runtime` (`node`/`b
 ## Commands
 
 ```bash
-npm test                                         # full unit + module suite
-npm test tests/generate-consumer-project.test.ts # generator tests
+npm test                                         # full unit + module suite (generate-consumer-project skipped locally; runs in GitHub Actions)
 npm test tests/integration-consumer.test.ts      # consumer integration
 npm run lint
 npm run format -- --check
