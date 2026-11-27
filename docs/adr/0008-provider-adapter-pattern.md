@@ -19,9 +19,13 @@ The autofix action must support multiple languages (JavaScript, Python) and mult
 
 - `id`: unique string (e.g., "javascript", "python")
 - `detect(context)`: returns `true` if provider applies to project
-- `plan(context, mode)`: returns `ExecutionTask[]` for mode (`fix`/`check`)
+- `getAdapters(context)`: returns the tool adapters owned by this provider
 - `run(context, tasks, engine)`: **optional** custom lifecycle (setup + execution)
 - `executionOrder`: numeric sort key for provider execution sequence
+
+Planning is performed by adapters (`plan`), not by providers directly. Providers coordinate detection and adapter ownership while the orchestrator routes tasks by `providerId`.
+
+The optional `run()` lifecycle is intentional: providers that need language-specific setup (dependency installation, setup-outcome gating) own that setup and execution without the orchestrator learning language details. Providers without special setup fall back to the generic engine path. This keeps setup coupled to the language that requires it rather than forcing an artificial setup abstraction.
 
 ### Adapter
 

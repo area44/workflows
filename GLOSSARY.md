@@ -86,7 +86,7 @@ A repository recognized as a Python project based on **dependency configuration 
 
 ### Python Source
 
-The presence of `.py`/`.pyi` files anywhere in the repo (including test directories). Determines whether **Ruff lint/format tasks execute**.
+Python source files (`.py`/`.pyi`) that belong to the project, excluding generated files, dependency directories, virtual environments, and build output. Their presence determines whether Python tooling such as Ruff lint/format tasks execute.
 
 ### Python Package Manager
 
@@ -121,7 +121,7 @@ A tool-specific implementation that produces `ExecutionTask[]`. Examples: `ruff`
 
 ### Execution Task
 
-A single command to execute: `{ id, name, command, args, workingDirectory, providerId?, conflictDomain? }`.
+A single planned unit of work to be executed by the execution engine: one command invocation with its arguments, working directory, execution mode, and owning provider. It is a product of planning, not a description of implementation structure.
 
 ### Planned Execution
 

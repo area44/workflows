@@ -13,7 +13,7 @@ The **pages** action needs a default build command for JavaScript projects. Opti
 
 ## Decision
 
-**Only Vite+ is recognized as a toolchain.** When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`). All other frameworks use `<package-manager> run build` (or custom `build-command` input).
+**Only Vite+ is recognized as a toolchain within the Pages action.** This decision scopes toolchain recognition to the pages action's default build-command resolution; it does not claim that Vite+ is the only JavaScript tool supported anywhere in the repository. Individual JavaScript tools and adapters (for example in the autofix action) may support other tools independently. When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`). All other frameworks use `<package-manager> run build` (or custom `build-command` input).
 
 ## Consequences
 
