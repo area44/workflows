@@ -34,7 +34,7 @@ flowchart TD
 - **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
 - **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
 - **Toolchain** — `vite-plus` is the recognized toolchain, detected from a Vite+ dependency in `package.json`.
-- **Python package manager** — `pip` by default; `uv` when `uv.lock` or explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies) is present. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not currently recognized as a project manifest.
+- **Python package manager** — `pip` by default; `uv` when `uv.lock`, explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies), or applicable `uv.toml` configuration is detected. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
 ## Conflict Handling
@@ -60,7 +60,7 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 - Determines whether the repository is a Python project based on dependency configuration **or Python source code**.
 - Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `uv.lock`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration in `pyproject.toml` (when it defines a workspace or dev-dependencies).
 - Also detects Python projects when `.py`/`.pyi` source files are present, even without dependency manifests.
-- `uv.toml` is not currently recognized as a project manifest.
+- `uv.toml` is not a project manifest, but may contribute to uv package-manager detection once a Python project has been identified.
 - A project is detected even when no `.py`/`.pyi` source files exist.
 - Used to decide whether to install/synchronize dependencies.
 

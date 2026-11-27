@@ -28,7 +28,7 @@ A pure, deterministic transformation that derives GitHub Actions setup parameter
 
 ### Toolchain
 
-A recognized build/test framework that influences execution behavior. Currently only **vite-plus** is recognized (detected via Vite+ dependency in `package.json`). Affects the default build command for the **pages** action.
+The toolchain recognized by the Pages action for default build-command resolution. Currently only **vite-plus** is recognized (detected via Vite+ dependency in `package.json`). Affects the default build command for the **pages** action.
 
 ---
 
