@@ -40,7 +40,7 @@ Examples:
 ## Alternatives Rejected
 
 - **Silent tie-breaker (last wins / first wins / highest precedence wins)**: Hides misconfiguration; causes "works on my machine" vs CI discrepancies; violates principle of least surprise
-- **Warning + proceed**: GitHub Actions has no "warning" output that doesn't fail the step; would require custom annotation parsing
+- **Warning + proceed**: Technically supported through GitHub Actions warning annotations (`core.warning`). Rejected because contradictory runtime configuration should not continue with an ambiguous environment.
 
 ## Related
 

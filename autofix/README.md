@@ -2,6 +2,8 @@
 
 Format and fix JavaScript/TypeScript and Python code. Reference: `area44/workflows/autofix@main`.
 
+> **Version pinning**: `@main` is a floating reference. For production, pin to a version tag (e.g., `@v1`) or an immutable commit SHA. See [GitHub's guidance](https://docs.github.com/en/actions/using-workflows/using-actions-in-your-workflow#referencing-an-action).
+
 ## Behavior
 
 1. **Resolve** — detects JavaScript and Python domains independently (a repo may have one, both, or neither). Emits `No JavaScript or Python environment detected.` and succeeds when neither is present.

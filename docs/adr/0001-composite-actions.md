@@ -21,7 +21,7 @@ Use **composite actions** with bundled Node entrypoints in `dist/`.
 ### Positive
 
 - **Single installation**: Consumers add one step (`uses: area44/workflows/pages@main`), no workflow file management
-- **Version pinning**: Consumers pin to `@main`, `@v1`, or SHA — same as any action
+- **Version pinning**: Consumers pin to `@main`, `@v1`, or SHA — same as any action. `@main` is a floating reference (always latest `main`); `@v1` is a major-version tag; a commit SHA is an immutable reference. GitHub recommends commit SHA for highest stability and security.
 - **Monorepo simplicity**: Shared code (`src/resolve-environment`, `src/javascript-env`, `src/python-env`) stays in one place
 - **No Docker overhead**: Runs on standard `ubuntu-latest` runners; no image build/push/maintenance
 - **Transparent debugging**: Entrypoints are readable `.mjs` files; consumers can inspect `dist/` before using

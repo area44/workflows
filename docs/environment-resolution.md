@@ -1,6 +1,14 @@
 # Environment Resolution
 
-How the actions detect a repository's runtimes, package managers, and toolchains. Implemented in `src/resolve-environment.ts` (orchestration), `src/javascript-env.ts`, `src/python-env.ts`, and `src/setup-plan.ts` — those modules and their tests in `tests/` are the authoritative specification for exact behavior.
+How the actions detect a repository's runtimes, package managers, and toolchains. Implemented in:
+
+- `src/resolve-environment.ts` — orchestration and validation
+- `src/javascript-env/` — JavaScript environment resolution
+- `src/python-env/` — Python environment resolution
+- `src/setup-plan.ts` — setup plan generation
+- `tests/` — behavioral specification
+
+These modules and their tests are the authoritative specification for exact behavior.
 
 ## Domains
 
@@ -34,7 +42,7 @@ flowchart TD
 - **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
 - **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
 - **Pages toolchain** — `vite-plus` is currently the only toolchain recognized by the Pages action for default build-command resolution.
-- **Python package manager** — `pip` by default; `uv` when `uv.lock`, explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies), or applicable `uv.toml` configuration is detected. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
+- **Python package manager** — `pip` by default; `uv` when a valid `uv.lock` (with valid `pyproject.toml`), explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies), or applicable `uv.toml` configuration is detected for an identified Python project. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
 ## Conflict Handling
@@ -68,6 +76,25 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 
 - Determines whether Python source code exists (`.py`/`.pyi` files anywhere in the repo, including test directories).
 - Used to decide whether to execute Ruff lint/format tasks.
+
+#### Excluded Directories
+
+Source detection skips known dependency, virtual environment, cache, and build directories to avoid false positives from vendored or generated code. The default excluded directories are:
+
+```
+.git
+.venv, venv, env, .env, virtualenv, .virtualenv, conda-env, .conda
+node_modules
+site-packages
+__pycache__
+.tox, .nox
+.pytest_cache, .mypy_cache, .ruff_cache
+dist, build, .egg-info
+.next, .astro, out
+vendor, .yarn
+```
+
+This ensures that `.py` files in virtual environments, `node_modules`, build outputs, and cache directories do not trigger Ruff execution.
 
 ### Execution Order
 

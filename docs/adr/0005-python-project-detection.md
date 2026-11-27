@@ -22,12 +22,12 @@ Current behavior: A repo with only `main.py` and no `pyproject.toml`/`requiremen
 
 - **Scripts without manifests work**: Single-file scripts, glue code, and minimal projects get dependency installation (e.g., `uv sync` creates virtualenv, installs deps from `pyproject.toml` if added later)
 - **No false negatives**: A repo with Python code but no manifest (yet) still gets Python runtime + package manager provisioned
-- **Consistent with JS**: JavaScript domain detects via `package.json` OR `bun.lock`/version files — presence of _any_ signal triggers domain
+- **Consistent intent with JS**: JavaScript domain detects via `package.json` — presence of a project manifest triggers the domain. Lockfiles and version files influence package manager/runtime resolution but do not independently trigger domain detection.
 
 ### Negative
 
 - **Over-detection**: A repo with a stray `.py` file (e.g., generated, vendored, test fixture) triggers Python setup
-- **Standalone projects**: A Python project with source but no manifest gets `isStandalone: true` — skips dependency installation but still provisions runtime/pm
+- **Standalone projects**: A Python project with source but no manifest gets `isStandalone: true` — skips dependency installation entirely but still provisions runtime/pm
 
 ### Neutral
 
@@ -38,7 +38,7 @@ Current behavior: A repo with only `main.py` and no `pyproject.toml`/`requiremen
 
 ## Alternatives Rejected
 
-- **Manifest-only**: Would miss legitimate Python projects that haven't added a manifest yet; inconsistent with JS domain behavior
+- **Manifest-only**: Would miss legitimate Python projects that haven't added a manifest yet
 - **Source-only**: Would miss projects with manifests but no source (e.g., pure dependency consumers, template repos)
 
 ## Related

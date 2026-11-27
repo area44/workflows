@@ -87,13 +87,15 @@ Python source files (`.py`/`.pyi`) found within the project tree, excluding know
 
 **uv** or **pip**. Determined by:
 
-- `uv` when a valid `uv.lock`, recognized uv configuration
+- `uv` when a valid `uv.lock` (with valid `pyproject.toml`), recognized uv configuration
   in `pyproject.toml`, or applicable `uv.toml` configuration
   is detected for an identified Python project.
 - `pip` otherwise (default).
 
 `uv.toml` alone does not establish Python project identity.
 `uv.lock` without a valid `pyproject.toml` is an error.
+
+**Explicit opt-out**: To force pip, remove all uv signals: `uv.lock`, `[tool.uv]` in `pyproject.toml`, and `uv.toml`, while retaining valid pip configuration.
 
 ### Installation Commands
 

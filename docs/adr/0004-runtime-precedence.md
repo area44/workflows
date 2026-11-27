@@ -23,7 +23,7 @@ Signals considered:
 3. **Package manager** — `bun` package manager → Bun runtime; `npm`/`pnpm` → Node.js
 4. **Default** — Node.js
 
-**Validation**: If multiple signals exist at the **same precedence level** and contradict (e.g., both `.bun-version` and `.nvmrc`), validation fails (ADR 0003).
+**Validation**: Validation rejects contradictory runtime signals regardless of their precedence level. Precedence is used only after conflicting signals have been ruled out.
 
 ## Consequences
 

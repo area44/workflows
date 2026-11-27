@@ -11,8 +11,9 @@ Current behavior: **uv wins** — priority order is `["uv", "pip"]` (see `PYTHON
 
 Signals for uv:
 
-- `uv.lock` file present
+- `uv.lock` file present (requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or `[tool.uv.workspace]`)
 - `[tool.uv]` in `pyproject.toml` with workspace or dev-dependencies
+- Applicable `uv.toml` configuration (once a Python project has been identified)
 
 Signals for pip:
 
@@ -40,14 +41,14 @@ Signals for pip:
 
 ### Neutral
 
-- **`uv.lock` without `pyproject.toml` is an error**: Prevents half-migrated state where lockfile exists but manifest doesn't
-- **Explicit opt-out**: Repos can force pip by removing `uv.lock` and ensuring no `[tool.uv]` config
+- **`uv.lock` without a valid `pyproject.toml` is an error**: Prevents half-migrated state where lockfile exists but manifest doesn't. A lockfile can signal project presence, but the configuration must ultimately be valid.
+- **Explicit opt-out**: To force pip, remove all uv signals: `uv.lock`, `[tool.uv]` in `pyproject.toml`, and `uv.toml`, while retaining valid pip configuration.
 
 ## Alternatives Rejected
 
 - **pip first (legacy default)**: Perpetuates slower, less reproducible tooling; contradicts ecosystem direction
 - **Fail on ambiguity**: Would require explicit `python-package-manager` input; adds friction for majority case
-- **Detect from `pyproject.toml` `[tool.uv]` only**: Would miss `uv.lock`-only projects (valid uv usage)
+- **Detect from `pyproject.toml` `[tool.uv]` only**: Would miss `uv.lock` with valid `pyproject.toml`
 
 ## Related
 
