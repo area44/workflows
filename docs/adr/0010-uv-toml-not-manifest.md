@@ -7,14 +7,12 @@
 
 uv supports `uv.toml` for tool configuration (similar to `pip.conf` / `pip.ini`). Should we recognize `uv.toml` as a Python project manifest?
 
-Current behavior: **No** — `uv.toml` is explicitly ignored. Python project detection only recognizes:
+Python project identification and package-manager detection are separate responsibilities:
 
-- `pyproject.toml` with `[project]` or `[build-system]`
-- `uv.lock`
-- `requirements.txt`
-- `setup.py` / `setup.cfg`
-- `[tool.uv]` in `pyproject.toml` (workspace or dev-dependencies)
-- `.py`/`.pyi` source files
+- Project identification determines whether the repository is a Python project. `uv.toml` alone must not establish that identity; project identification relies on `pyproject.toml`, lockfiles, requirements/setup files, or Python source files.
+- Package-manager detection determines whether uv is used once a Python project has already been identified. In that phase, `uv.toml` may contribute to detecting uv.
+
+`pyproject.toml`, `uv.lock`, and `uv.toml` therefore have distinct roles: `pyproject.toml` carries project metadata and uv configuration, `uv.lock` is a lockfile tied to a valid project, and `uv.toml` is tool configuration that can inform uv detection but cannot by itself make a Python project.
 
 ## Decision
 

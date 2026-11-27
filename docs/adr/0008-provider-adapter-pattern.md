@@ -30,8 +30,14 @@ The optional `run()` lifecycle is intentional: providers that need language-spec
 ### Adapter
 
 - Tool-specific implementation producing `ExecutionTask[]`
-- Registered via provider's `plan()` or standalone in registry
-- Conflict domain defaults to `provider.id` for deduplication
+- Detects applicability and plans work for its supported capabilities
+- Uses `scope` for capability deduplication and conflict resolution; provider adapters default to `provider.id`, standalone adapters default to an isolated per-adapter scope unless they explicitly match a provider id or shared scope
+
+### ExecutionTask
+
+- `providerId` is optional and identifies owning provider when applicable
+- Standalone adapter tasks may omit `providerId`
+- `scope`-based deduplication replaces the old `conflictDomain` concept
 
 Current providers:
 
@@ -45,7 +51,7 @@ Current providers:
 - **Open/closed**: Add new language by registering a `LanguageProvider` — orchestrator and engine unchanged
 - **Single responsibility**: Provider owns domain logic; adapter owns tool logic; engine owns execution mechanics
 - **Testability**: Each provider/adapter testable in isolation with mocked context
-- **Conflict resolution**: `conflictDomain` allows deduplication within a domain (e.g., multiple formatters) without cross-domain interference
+- **Conflict resolution**: `scope` allows deduplication within a domain (e.g., multiple formatters) without cross-domain interference
 - **Custom lifecycles**: Providers with complex setup (JS install, Python sync) implement `run()`; simple providers fall back to engine
 
 ### Negative
@@ -55,7 +61,7 @@ Current providers:
 
 ### Neutral
 
-- **Standalone adapters**: Can register adapters without a provider (e.g., hypothetical future tool not tied to a language domain) — uses empty `providerId` and explicit `conflictDomain`
+- **Standalone adapters**: Can register adapters without a provider (e.g., hypothetical future tool not tied to a language domain) — omit `providerId` and use `scope` for deduplication
 
 ## Alternatives Rejected
 
