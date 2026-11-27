@@ -8,7 +8,7 @@
 The autofix action must support multiple languages (JavaScript, Python) and multiple tools per language (ESLint, Prettier, Biome, Ruff, etc.). Design options:
 
 1. **Monolithic executor**: Single function with `if (js) ... else if (python) ...` and hardcoded tool logic
-2. **Provider/Adapter pattern** (current): Registry of `LanguageProvider`s; each provider owns detection, planning, and optional custom lifecycle; adapters produce `ExecutionTask[]` for specific tools
+2. **Provider/Adapter pattern** (current): Registry of `LanguageProvider`s; each provider owns language-level detection, adapter selection, and an optional custom lifecycle. Adapters handle tool-specific detection and planning, producing `ExecutionTask[]` for specific tools
 3. **Plugin system**: Dynamic loading of external packages (too heavy for this scope)
 
 ## Decision
@@ -19,20 +19,30 @@ The autofix action must support multiple languages (JavaScript, Python) and mult
 
 - `id`: unique string (e.g., "javascript", "python")
 - `detect(context)`: returns `true` if provider applies to project
-- `plan(context, mode)`: returns `ExecutionTask[]` for mode (`fix`/`check`)
+- `getAdapters(context)`: returns the tool adapters owned by this provider
 - `run(context, tasks, engine)`: **optional** custom lifecycle (setup + execution)
 - `executionOrder`: numeric sort key for provider execution sequence
+
+Planning is performed by adapters (`plan`), not by providers directly. Providers coordinate detection and adapter ownership while the orchestrator routes tasks by `providerId`.
+
+The optional `run()` lifecycle is intentional: providers that need language-specific setup (dependency installation, setup-outcome gating) own that setup and execution without the orchestrator learning language details. Providers without special setup fall back to the generic engine path. This keeps setup coupled to the language that requires it rather than forcing an artificial setup abstraction.
 
 ### Adapter
 
 - Tool-specific implementation producing `ExecutionTask[]`
-- Registered via provider's `plan()` or standalone in registry
-- Conflict domain defaults to `provider.id` for deduplication
+- Detects applicability and plans work for its supported capabilities
+- Uses `scope` for capability deduplication and conflict resolution; provider adapters default to `provider.id`, standalone adapters default to an isolated per-adapter scope unless they explicitly match a provider id or shared scope
+
+### ExecutionTask
+
+- `providerId` is optional and identifies owning provider when applicable
+- Standalone adapter tasks may omit `providerId`
+- `scope`-based deduplication replaces the old `conflictDomain` concept
 
 Current providers:
 
-- `javascript`: Detects via `package.json`; plans via script selection + tool-native fallback; custom `run()` handles `npm install` + execution
-- `python`: Detects via project/source detection; plans Ruff lint/format; custom `run()` handles `uv sync`/`pip install` + Ruff execution
+- `javascript`: Detects via `package.json`; its adapters plan script selection and tool-native fallback tasks; custom `run()` handles dependency installation and execution.
+- `python`: Detects via Python project/source detection; its Ruff adapter plans lint/format tasks; custom `run()` handles dependency installation and Ruff execution.
 
 ## Consequences
 
@@ -41,7 +51,7 @@ Current providers:
 - **Open/closed**: Add new language by registering a `LanguageProvider` — orchestrator and engine unchanged
 - **Single responsibility**: Provider owns domain logic; adapter owns tool logic; engine owns execution mechanics
 - **Testability**: Each provider/adapter testable in isolation with mocked context
-- **Conflict resolution**: `conflictDomain` allows deduplication within a domain (e.g., multiple formatters) without cross-domain interference
+- **Conflict resolution**: `scope` allows deduplication within a domain (e.g., multiple formatters) without cross-domain interference
 - **Custom lifecycles**: Providers with complex setup (JS install, Python sync) implement `run()`; simple providers fall back to engine
 
 ### Negative
@@ -51,7 +61,7 @@ Current providers:
 
 ### Neutral
 
-- **Standalone adapters**: Can register adapters without a provider (e.g., hypothetical future tool not tied to a language domain) — uses empty `providerId` and explicit `conflictDomain`
+- **Standalone adapters**: Can register adapters without a provider (e.g., hypothetical future tool not tied to a language domain) — omit `providerId` and use `scope` for deduplication
 
 ## Alternatives Rejected
 

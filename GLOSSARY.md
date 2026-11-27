@@ -20,20 +20,15 @@ The process of inspecting a repository's files and configuration to produce a **
 
 ### Resolved Environment
 
-The aggregate output of environment resolution. Contains two sections:
-
-- `javascript`: `ResolvedJavaScriptEnvironment` (detected, runtime, packageManager, toolchain)
-- `python`: `ResolvedPythonEnvironment` (detected, packageManager, hasSource)
-
-This is the **single source of truth** for all downstream planning and execution.
+The aggregate output of environment resolution. Contains detected JavaScript and Python environments. This is the **single source of truth** for all downstream planning and execution.
 
 ### Setup Plan
 
-A pure, deterministic transform (`createSetupPlan`) that derives **GitHub Actions setup parameters** (which `setup-*` actions to run, with what cache keys) from a `ResolvedEnvironment`. Has no filesystem access, no side effects, no detection logic.
+A pure, deterministic transformation that derives GitHub Actions setup parameters from a Resolved Environment. It has no filesystem access, side effects, or detection logic.
 
 ### Toolchain
 
-A recognized build/test framework that influences execution behavior. Currently only **vite-plus** is recognized (detected via Vite+ dependency in `package.json`). Affects the default build command for the **pages** action.
+The toolchain recognized by the Pages action for default build-command resolution. Currently only **vite-plus** is recognized (detected via Vite+ dependency in `package.json`). Affects the default build command for the **pages** action.
 
 ---
 
@@ -61,11 +56,11 @@ The dependency manager: **npm**, **pnpm**, or **bun**. Determined by precedence:
 
 ### Installation Plan
 
-The command and arguments to install JavaScript dependencies (`JsInstallationPlan`). Derived from the resolved package manager.
+The command and arguments to install JavaScript dependencies. Derived from the resolved package manager.
 
 ### Vite+
 
-The **only recognized toolchain**. Detected by presence of a Vite+ dependency in `package.json`. When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`).
+The toolchain recognized by the Pages action for default build-command resolution. Detected by presence of a Vite+ dependency in `package.json`. When detected, the **pages** action defaults to `vp build` (falls back to `vpr build`).
 
 ---
 
@@ -86,20 +81,23 @@ A repository recognized as a Python project based on **dependency configuration 
 
 ### Python Source
 
-The presence of `.py`/`.pyi` files anywhere in the repo (including test directories). Determines whether **Ruff lint/format tasks execute**.
+Python source files (`.py`/`.pyi`) found within the project tree, excluding known dependency, virtual environment, cache, and build directories. Their presence determines whether Python tooling such as Ruff lint and format tasks execute.
 
 ### Python Package Manager
 
 **uv** or **pip**. Determined by:
 
-- `uv` when `uv.lock` OR explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies)
-- `pip` otherwise (default)
+- `uv` when a valid `uv.lock`, recognized uv configuration
+  in `pyproject.toml`, or applicable `uv.toml` configuration
+  is detected for an identified Python project.
+- `pip` otherwise (default).
 
-**`uv.lock` without a valid `pyproject.toml` is an error.**
+`uv.toml` alone does not establish Python project identity.
+`uv.lock` without a valid `pyproject.toml` is an error.
 
 ### Installation Commands
 
-The exact commands to install Python dependencies (`PythonPackageManagerInfo.installCommands`). For uv: `uv sync`. For pip: `pip install` from detected config.
+The commands used to install Python dependencies. For uv: `uv sync`. For pip: `pip install` from detected config.
 
 ---
 
@@ -107,33 +105,29 @@ The exact commands to install Python dependencies (`PythonPackageManagerInfo.ins
 
 ### Provider
 
-A language-specific execution unit registered in the **registry**. Owns:
-
-- `detect(context)`: whether it applies to the current project
-- `plan(context, mode)`: returns `ExecutionTask[]` for the mode (`fix`/`check`)
-- Optional `run(context, tasks, engine)`: custom lifecycle (setup + execution)
+A language-specific execution unit registered in the registry. Owns detection of applicability and provision of tool adapters, plus an optional custom setup and execution lifecycle.
 
 Current providers: `javascript`, `python`.
 
 ### Adapter
 
-A tool-specific implementation that produces `ExecutionTask[]`. Examples: `ruff` adapter (Python), `vite-plus-detector` / `tools` adapter (JavaScript).
+A tool-specific integration that detects applicability and plans execution tasks. Examples: `ruff` adapter (Python), `vite-plus-detector` / `tools` adapter (JavaScript).
 
 ### Execution Task
 
-A single command to execute: `{ id, name, command, args, workingDirectory, providerId?, conflictDomain? }`.
+A planned unit of work executed by the execution engine. It describes a command invocation, its arguments, working directory, execution mode, and optional provider ownership.
 
 ### Planned Execution
 
-The output of `planExecution`: `{ tasks: ExecutionTask[], selectedTools, skippedTools }`. The **authoritative plan** — a planning failure is a real error, not an empty plan.
+The authoritative output of planning: the set of execution tasks plus selected and skipped tools. A planning failure is a real error, not an empty plan.
 
 ### Conflict Domain
 
-Scope for capability deduplication and conflict resolution. Defaults to `provider.id` (e.g., "javascript", "python"). Standalone adapters can explicitly match a provider id to resolve genuine conflicts within that domain.
+Scope for capability deduplication and conflict resolution. Provider adapters default to `provider.id` (e.g., "javascript", "python"). Standalone adapters default to an isolated per-adapter scope (`standalone:${id}`) and may explicitly match a provider id or shared scope to resolve genuine conflicts within that domain.
 
 ### Execution Engine
 
-The generic executor that resolves executables (`passthrough`/`path`/`project-binary`), logs each run as `Executing: <command>`, and aggregates diagnostics.
+The generic executor that resolves executables, logs each run, and aggregates diagnostics.
 
 ---
 
@@ -161,8 +155,8 @@ Conflicting signals (e.g., both `.bun-version` and `.nvmrc`, or `packageManager:
 
 ### Invalid Environment
 
-A `ResolvedEnvironment` that fails structural validation (missing fields, wrong types, invariant violations like `uv.lock` without `pyproject.toml`).
+A resolved environment that fails structural validation (missing fields, wrong types, or invariant violations such as a lockfile without a project manifest).
 
 ### Standalone Python Project
 
-A Python project with `pmInfo.isStandalone: true` — has a package manager but **no dependency configuration** (no lockfile, no config file). Skips dependency installation entirely.
+A Python project with a package manager but no dependency configuration (no lockfile, no config file). Skips dependency installation entirely.
