@@ -2,8 +2,6 @@
 
 Build a static site and upload the GitHub Pages artifact. Reference: `area44/workflows/pages@main`.
 
-> **Version pinning**: `@main` is a floating reference. For production, pin to a version tag (e.g., `@v1`) or an immutable commit SHA. See [GitHub's guidance](https://docs.github.com/en/actions/using-workflows/using-actions-in-your-workflow#referencing-an-action).
-
 ## Behavior
 
 1. **Resolve** — detects the JavaScript runtime (`node`/`bun`) and package manager (`npm`/`pnpm`/`bun`), and whether Vite+ is in use. See [../docs/environment-resolution.md](../docs/environment-resolution.md).

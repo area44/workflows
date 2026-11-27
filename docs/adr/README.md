@@ -25,4 +25,4 @@ ADRs live in this directory and are numbered sequentially (`0001-...`). Preserve
 | 0009 | Vite+ Toolchain             | [0009-vite-plus-only-toolchain.md](./0009-vite-plus-only-toolchain.md)                                 |
 | 0010 | uv.toml vs Project Manifest | [0010-uv-toml-not-manifest.md](./0010-uv-toml-not-manifest.md)                                         |
 
-> **Note on dates**: All ADRs currently show **2024-01-15** as the date. This is the date the decisions were recorded in this ADR format; it may not reflect the original decision date. Update individual ADR dates when historical information is available.
+> **Note on dates**: All ADRs currently show **2024-01-15** as the date. This is the date the decisions were recorded in the ADR document format (added in commit 22a5f3a); it may not reflect the original date each decision was made. Do not infer historical accuracy from these dates without supporting evidence.

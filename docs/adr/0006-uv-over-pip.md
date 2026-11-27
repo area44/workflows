@@ -11,15 +11,15 @@ Current behavior: **uv wins** — priority order is `["uv", "pip"]` (see `PYTHON
 
 Signals for uv:
 
-- `uv.lock` file present (requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or `[tool.uv.workspace]`)
-- `[tool.uv]` in `pyproject.toml` with workspace or dev-dependencies
-- Applicable `uv.toml` configuration (once a Python project has been identified)
+- `uv.lock` file present (requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]` configuration)
+- `[tool.uv]` in `pyproject.toml` with valid workspace configuration (`members` array) or recognized `dev-dependencies` array
+- `uv.toml` configuration (once a Python project has been identified through other signals)
 
 Signals for pip:
 
 - `requirements.txt`
 - `setup.py` / `setup.cfg`
-- `pyproject.toml` with `[project]` (no uv config)
+- `pyproject.toml` with `[project]` (no recognized uv configuration)
 
 ## Decision
 
@@ -32,17 +32,21 @@ Signals for pip:
 - **Modern default**: uv is faster, has better caching, produces reproducible lockfiles
 - **Lockfile fidelity**: `uv.lock` is a complete, cross-platform lockfile; `requirements.txt` is not
 - **Single command**: `uv sync` handles both lockfile update and installation; pip requires separate steps
-- **Workspace support**: uv workspaces (via `[tool.uv]` in `pyproject.toml`) are properly detected and supported
+- **Workspace support**: uv workspaces (via valid `[tool.uv.workspace]` in `pyproject.toml`) are properly detected and supported
 
 ### Negative
 
 - **Migration surprise**: Repos with both `uv.lock` and `requirements.txt` silently switch to uv
-- **pip-only workflows**: Teams standardized on pip must remove `uv.lock` or add explicit uv config to opt out
+- **pip-only workflows**: Teams standardized on pip must remove applicable uv signals to avoid uv selection
 
 ### Neutral
 
-- **`uv.lock` without a valid `pyproject.toml` is an error**: Prevents half-migrated state where lockfile exists but manifest doesn't. A lockfile can signal project presence, but the configuration must ultimately be valid.
-- **Explicit opt-out**: To force pip, remove all uv signals: `uv.lock`, `[tool.uv]` in `pyproject.toml`, and `uv.toml`, while retaining valid pip configuration.
+- **`uv.lock` validity**: `uv.lock` requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]` configuration. A lockfile alone is not sufficient; the project configuration must be recognized.
+- **Explicit opt-out**: To use pip, remove all applicable uv signals:
+  - `uv.lock`
+  - Recognized `[tool.uv]` configuration in `pyproject.toml` (valid workspace or `dev-dependencies` array)
+  - `uv.toml` (when it would contribute to uv detection)
+    Valid pip-oriented configuration can remain, such as `requirements.txt`, `setup.py`, `setup.cfg`, or `pyproject.toml` with `[project]` and no recognized uv configuration.
 
 ## Alternatives Rejected
 

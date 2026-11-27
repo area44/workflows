@@ -71,11 +71,11 @@ The toolchain recognized by the Pages action for default build-command resolutio
 A repository recognized as a Python project based on **dependency configuration OR Python source code**. Recognized by:
 
 - `pyproject.toml` with `[project]` or `[build-system]`
-- `uv.lock`
 - `requirements.txt`
 - `setup.py` / `setup.cfg`
-- `[tool.uv]` in `pyproject.toml` (workspace or dev-dependencies)
+- `[tool.uv]` in `pyproject.toml` (valid workspace or recognized `dev-dependencies` array)
 - `.py`/`.pyi` source files (even without dependency manifests)
+- `uv.lock` (as a project signal, but requires valid `pyproject.toml` with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]` for uv selection)
 
 **`uv.toml` is NOT recognized** as a project manifest.
 
@@ -87,15 +87,13 @@ Python source files (`.py`/`.pyi`) found within the project tree, excluding know
 
 **uv** or **pip**. Determined by:
 
-- `uv` when a valid `uv.lock` (with valid `pyproject.toml`), recognized uv configuration
-  in `pyproject.toml`, or applicable `uv.toml` configuration
-  is detected for an identified Python project.
+- `uv` when a valid `uv.lock` (with valid `pyproject.toml` containing `[project]`, `[build-system]`, or valid `[tool.uv.workspace]`), recognized uv configuration in `pyproject.toml` (valid workspace or `dev-dependencies` array), or applicable `uv.toml` configuration is detected for an identified Python project.
 - `pip` otherwise (default).
 
 `uv.toml` alone does not establish Python project identity.
-`uv.lock` without a valid `pyproject.toml` is an error.
+`uv.lock` without a valid `pyproject.toml` (with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]`) is an error.
 
-**Explicit opt-out**: To force pip, remove all uv signals: `uv.lock`, `[tool.uv]` in `pyproject.toml`, and `uv.toml`, while retaining valid pip configuration.
+**Explicit opt-out**: To use pip, remove all applicable uv signals: `uv.lock`, recognized `[tool.uv]` configuration in `pyproject.toml` (valid workspace or `dev-dependencies` array), and `uv.toml` (when it would contribute to uv detection), while retaining valid pip configuration such as `requirements.txt`, `setup.py`, `setup.cfg`, or `pyproject.toml` with `[project]` and no recognized uv configuration.
 
 ### Installation Commands
 

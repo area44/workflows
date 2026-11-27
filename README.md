@@ -11,8 +11,6 @@ Reusable **GitHub Actions composite actions** for the AREA44 ecosystem: static-s
 
 Each action's `action.yml` is the source of truth for its public inputs and outputs. The per-action READMEs document purpose, behavior, and usage.
 
-> **Note on version references**: The examples above use `@main` for convenience. `@main` is a floating reference that always points to the latest commit on the `main` branch. For production workflows, pin to a version tag (e.g., `@v1`) or an immutable commit SHA for maximum stability and security. See [GitHub's guidance on pinning actions](https://docs.github.com/en/actions/using-workflows/using-actions-in-your-workflow#referencing-an-action).
-
 ## Usage
 
 ### Pages
