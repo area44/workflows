@@ -1,5 +1,12 @@
 # @area44/workflows
 
+## 10.1.2
+
+### Patch Changes
+
+- 4d95075: feat(autofix): implement new planner architecture
+- 918277f: test(tests): add new test suites and fix Windows ESM path issues
+
 ## 10.1.1
 
 ### Patch Changes
