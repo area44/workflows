@@ -28,6 +28,7 @@ Composite actions invoke Node entrypoints. Options for producing `dist/`:
 
   Runtime setup actions, toolchain provisioning, and consumer dependency
   installation may still require network access.
+
 - **Simple mental model**: `src/` → build → `dist/` → commit → release; same as any compiled language
 
 ### Negative
