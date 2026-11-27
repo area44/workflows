@@ -46,5 +46,6 @@ Each action is a root directory with an `action.yml` (inputs, outputs, step guar
 Uses `@changesets/cli`. The package is `"private": true`, so it is tagged and released on GitHub but never published to npm (the field does not affect repo visibility).
 
 1. PRs with user-facing changes include a changeset (`npm run changeset` → `.changeset/*.md`).
-2. Merging to `main` makes Changesets open/update a Version PR that bumps `package.json` and `CHANGELOG.md`.
-3. Merging the Version PR runs `npm run version` + `npm run release`, creating git tags and GitHub Releases.
+2. Merging changeset-bearing PRs into `main` triggers the Changesets action.
+3. The action creates or updates a Version PR by running `npm run version`.
+4. Merging the Version PR triggers `npm run release`, creating git tags and GitHub Releases.

@@ -1,6 +1,14 @@
 # Environment Resolution
 
-How the actions detect a repository's runtimes, package managers, and toolchains. Implemented in `src/resolve-environment.ts` (orchestration), `src/javascript-env.ts`, `src/python-env.ts`, and `src/setup-plan.ts` — those modules and their tests in `tests/` are the authoritative specification for exact behavior.
+How the actions detect a repository's runtimes, package managers, and toolchains. Implemented in:
+
+- `src/resolve-environment.ts` — orchestration and validation
+- `src/javascript-env/` — JavaScript environment resolution
+- `src/python-env/` — Python environment resolution
+- `src/setup-plan.ts` — setup plan generation
+- `tests/` — behavioral specification
+
+These modules and their tests are the authoritative specification for exact behavior.
 
 ## Domains
 
@@ -34,7 +42,7 @@ flowchart TD
 - **Runtime precedence** — `devEngines` declarations, then version files (`.bun-version` vs `.nvmrc`/`.node-version`), then package manager (`bun`), else Node.js. Contradictory signals (e.g. bun + node config) fail validation rather than applying a silent tie-breaker.
 - **Package manager precedence** — `packageManager` field, then `devEngines.packageManager`, then lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `bun.lock`), else `npm`.
 - **Pages toolchain** — `vite-plus` is currently the only toolchain recognized by the Pages action for default build-command resolution.
-- **Python package manager** — `pip` by default; `uv` when `uv.lock`, explicit uv config in `pyproject.toml` (`[tool.uv]` with workspace or dev-dependencies), or applicable `uv.toml` configuration is detected. `uv.lock` without a valid `pyproject.toml` is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
+- **Python package manager** — `pip` by default; `uv` when a valid `uv.lock` (with valid `pyproject.toml` containing `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array), an object-valued `[tool.uv]` table in `pyproject.toml`, or applicable `uv.toml` configuration is detected for an identified Python project (subject to project configuration validity). `uv.lock` without a valid `pyproject.toml` (with `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array) is an error. `uv.toml` is not a project manifest but may contribute to uv detection once a Python project has been identified.
 - **Pure setup plan** — `createSetupPlan(env)` is a pure transform (no filesystem access, no side effects) derived from the resolved environment, guaranteeing plan/environment consistency.
 
 ## Conflict Handling
@@ -58,8 +66,9 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 ### Python Project Detection
 
 - Determines whether the repository is a Python project based on dependency configuration **or Python source code**.
-- Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `uv.lock`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration in `pyproject.toml` (when it defines a workspace or dev-dependencies).
+- Recognizes: `pyproject.toml` with `[project]` or `[build-system]`, `requirements.txt`, `setup.py`, `setup.cfg`, `[tool.uv]` configuration in `pyproject.toml` (when it defines a valid workspace or recognized `dev-dependencies` array).
 - Also detects Python projects when `.py`/`.pyi` source files are present, even without dependency manifests.
+- `uv.lock` is recognized as a project signal but requires a valid `pyproject.toml` with `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array for uv package-manager selection.
 - `uv.toml` is not a project manifest, but may contribute to uv package-manager detection once a Python project has been identified.
 - A project is detected even when no `.py`/`.pyi` source files exist.
 - Used to decide whether to install/synchronize dependencies.
@@ -69,6 +78,25 @@ The Python Autofix provider (`src/autofix/providers/python.ts`) follows a specif
 - Determines whether Python source code exists (`.py`/`.pyi` files anywhere in the repo, including test directories).
 - Used to decide whether to execute Ruff lint/format tasks.
 
+#### Excluded Directories
+
+Source detection skips known dependency, virtual environment, cache, and build directories to avoid false positives from vendored or generated code. The default excluded directories are:
+
+```
+.git
+.venv, venv, env, .env, virtualenv, .virtualenv, conda-env, .conda
+node_modules
+site-packages
+__pycache__
+.tox, .nox
+.pytest_cache, .mypy_cache, .ruff_cache
+dist, build, *.egg-info
+.next, .astro, out
+vendor, .yarn
+```
+
+This ensures that `.py` files in virtual environments, `node_modules`, build outputs, and cache directories do not trigger Ruff execution.
+
 ### Execution Order
 
 The GitHub Actions workflow executes in this order:
@@ -76,7 +104,7 @@ The GitHub Actions workflow executes in this order:
 1. **Environment setup** — GitHub Actions provisions Python runtime and package manager (`actions/setup-python` or `astral-sh/setup-uv`).
 2. **Ruff setup** — `astral-sh/ruff-action` provisions Ruff executable.
 3. **Run autofix** — The autofix runner executes the Python provider lifecycle:
-   a. **Dependency installation** — Runs `uv sync` (for uv projects) or `pip install` (for pip projects) automatically. This happens for ALL detected Python projects, regardless of whether source files exist.
+   a. **Dependency installation** — Runs `uv sync` (for uv projects) or `pip install` (for pip projects) automatically for Python projects that have a supported dependency configuration. Standalone projects (source-only with no dependency configuration) skip installation entirely.
    - For uv: `uv sync` is used without `--locked`, `--frozen`, or `--upgrade`. This allows uv to update `uv.lock` when synchronization requires it.
    - For pip: Dependencies are installed from detected configuration (`requirements.txt`, `pyproject.toml` `[project]`, `setup.py`, `setup.cfg`). Pip does not generate or update lockfiles.
      b. **Ruff lint autofix** — Runs `ruff check --fix .` **only when Python source files are detected**.
