@@ -35,7 +35,7 @@ Current behavior: A repo with only `main.py` and no `pyproject.toml`/`requiremen
 - **Two-phase in autofix**:
   - **Project detection** → decides whether to provision Python runtime and package manager (runs for ALL detected projects).
   - **Source detection** → decides whether to run Ruff lint/format (only when `.py`/`.pyi` files exist).
-- **Dependency installation**: Only runs when a supported dependency configuration is present (e.g., `pyproject.toml` with `[project]`, `requirements.txt`, `setup.py`, `setup.cfg`, `uv.lock` with valid `pyproject.toml`, or recognized `[tool.uv]` config). Source-only projects without such configuration skip dependency installation entirely.
+- **Dependency installation**: Only runs when a supported dependency configuration is present (e.g., `pyproject.toml` with `[project]`, `requirements.txt`, `setup.py`, `setup.cfg`, `uv.lock` with valid `pyproject.toml` containing `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array, or recognized `[tool.uv]` config). Source-only projects without such configuration skip dependency installation entirely.
 - **Ruff execution**: Runs when Python source files are detected (`.py`/`.pyi`), independent of whether dependency installation occurred. If dependency installation fails, Ruff does not execute.
 
 ## Alternatives Rejected

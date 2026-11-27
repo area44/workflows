@@ -11,8 +11,8 @@ Current behavior: **uv wins** — priority order is `["uv", "pip"]` (see `PYTHON
 
 Signals for uv:
 
-- `uv.lock` file present (requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]` configuration)
-- `[tool.uv]` in `pyproject.toml` with valid workspace configuration (`members` array) or recognized `dev-dependencies` array
+- `uv.lock` file present (requires a valid `pyproject.toml` with `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array)
+- An object-valued `[tool.uv]` table in `pyproject.toml` (once a Python project has been identified through other signals)
 - `uv.toml` configuration (once a Python project has been identified through other signals)
 
 Signals for pip:
@@ -41,10 +41,11 @@ Signals for pip:
 
 ### Neutral
 
-- **`uv.lock` validity**: `uv.lock` requires a valid `pyproject.toml` with `[project]`, `[build-system]`, or valid `[tool.uv.workspace]` configuration. A lockfile alone is not sufficient; the project configuration must be recognized.
+- **`uv.lock` validity**: `uv.lock` requires a valid `pyproject.toml` with `[project]`, `[build-system]`, valid `[tool.uv.workspace]`, or recognized `[tool.uv]` `dev-dependencies` array. A lockfile alone is not sufficient; the project configuration must be recognized.
+- **uv selection without `uv.lock`**: An object-valued `[tool.uv]` table or `uv.toml` can contribute to uv selection, but only when a Python project has already been identified AND the project configuration is valid (`[project]`, `[build-system]`, valid workspace, or recognized `dev-dependencies`).
 - **Explicit opt-out**: To use pip, remove all applicable uv signals:
   - `uv.lock`
-  - Recognized `[tool.uv]` configuration in `pyproject.toml` (valid workspace or `dev-dependencies` array)
+  - Any object-valued `[tool.uv]` table in `pyproject.toml`
   - `uv.toml` (when it would contribute to uv detection)
     Valid pip-oriented configuration can remain, such as `requirements.txt`, `setup.py`, `setup.cfg`, or `pyproject.toml` with `[project]` and no recognized uv configuration.
 

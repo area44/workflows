@@ -19,7 +19,7 @@ Composite actions invoke Node entrypoints. Options for producing `dist/`:
 
 ### Positive
 
-- **Zero-runtime build**: Action runs immediately — no `npm install`, no compilation, no network fetch
+- **No runtime package installation**: Consumers execute the committed bundle directly without installing this repository's npm dependencies or compiling the action at runtime.
 - **Deterministic execution**: The exact code reviewed is the code executed; no supply-chain gap between source and runtime
 - **Auditability**: Consumers can `git show area44/workflows@main:dist/autofix.mjs` to verify what runs
 - **No npm registry dependency for the action implementation**:
